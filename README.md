@@ -297,8 +297,9 @@ intellidocs/
 | Service           | Platform              | Cost                    |
 |-------------------|-----------------------|-------------------------|
 | React front-end   | Vercel                | Free                    |
-| Express + Redis   | DigitalOcean          | $200 student credits    |
-| Python FastAPI    | Azure                 | $100 student credits    |
+| Express           | DigitalOcean          | paid (???)              |
+| Express           | DigitalOcean          | Free                    |
+| Python FastAPI    | Azure                 | Free                    |
 | PostgreSQL + Auth | Supabase              | Free tier               |
 | AI (dev)          | Ollama qwen2.5:7b     | Free (local GPU)        |
 | AI (demo)         | Claude API            | Pay per token           |
