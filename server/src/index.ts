@@ -1,6 +1,8 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import documentRoutes from './routes/documentRoutes'
+
 
 dotenv.config()
 
@@ -14,20 +16,23 @@ app.use(express.urlencoded({ extended: true }))
 
 // Health check route
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'IntelliDocs API is running',
     timestamp: new Date().toISOString()
   })
 })
 
+
 // Root route
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'Welcome to IntelliDocs API',
     version: '0.1.0'
   })
 })
+
+app.use('/documents', documentRoutes)
 
 // 404 handler
 app.use((req, res) => {
