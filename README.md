@@ -273,6 +273,104 @@ intellidocs/
 
 ---
 
+## AI Provider System
+
+### Context
+- Most of IntelliDocs does NOT use an AI API
+  - Formatting prediction = Python ML model (scikit-learn)
+  - Grammar checking = pyspellchecker + JFLEG dataset
+  - Behavior tracking = Redis + DuckDB pipeline
+  - Confidence scoring = ML model output
+
+- The AI API is ONLY used for:
+  - ChatOverlay chatbot (MCP tool orchestration)
+  - Natural language command interpretation
+
+### Implementation Details
+
+#### 1. AI Client File
+`filepath: server/src/ai/aiClient.ts`
+
+Support two providers via `AI_PROVIDER` env variable:
+- `"ollama"` → development (local GPU, free)
+- `"gemini"` → production (Gemini free tier)
+
+#### 2. Environment Variables
+
+**server/.env.development**
+```
+AI_PROVIDER=ollama
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+```
+
+**server/.env.production**
+```
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your_key_from_aistudio.google.com
+GEMINI_MODEL=gemini-1.5-flash
+```
+
+#### 3. Dependencies
+- Ollama: `ollama` (npm package)
+- Gemini: `@google/generative-ai`
+
+#### 4. AI Client Interface
+
+```typescript
+interface Message {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
+interface AIResponse {
+  text: string
+  provider: 'ollama' | 'gemini'
+  model: string
+}
+
+type AIProvider = 'ollama' | 'gemini'
+
+interface AIClient {
+  // Send a message and get a response
+  chat(
+    messages: Message[],
+    systemPrompt?: string
+  ): Promise<string>
+
+  // Send a message and stream the response
+  // for real-time chatbot responses
+  stream(
+    messages: Message[],
+    systemPrompt?: string,
+    onChunk: (chunk: string) => void
+  ): Promise<void>
+}
+```
+
+#### 5. Rules
+- No `any` types
+- Every function explicitly typed
+- Comment every function in plain English
+- Keep `aiClient.ts` under 80 lines
+- Handle errors with try/catch
+- Log which provider is active on server start:
+  ```
+  console.log(`AI Provider: ${process.env.AI_PROVIDER}`)
+  console.log(`Model: ${process.env.AI_PROVIDER === 'ollama' 
+    ? process.env.OLLAMA_MODEL 
+    : process.env.GEMINI_MODEL}`)
+  ```
+- Throw a clear error if `AI_PROVIDER` is not set
+- Never hardcode API keys
+
+#### 6. Provider Transparency
+- MCP tools in `server/src/mcp/tools/` must work identically regardless of provider
+- Skill files in `server/src/ai/skills/` must work identically regardless of provider
+- Provider switch is invisible to them — they only call `aiClient`
+
+---
+
 ## Coding Conventions
 
 - No any types in TypeScript — ever
