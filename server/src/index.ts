@@ -1,10 +1,14 @@
-import express from 'express'
-import cors from 'cors'
 import dotenv from 'dotenv'
-import documentRoutes from './routes/documentRoutes'
-
 
 dotenv.config()
+
+
+import express from 'express'
+import cors from 'cors'
+import documentRoutes from './routes/documentRoutes'
+import authRoutes from './routes/authRoutes'
+
+
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -33,6 +37,7 @@ app.get('/', (req, res) => {
 })
 
 app.use('/documents', documentRoutes)
+app.use('/auth', authRoutes)
 
 // 404 handler
 app.use((req, res) => {
