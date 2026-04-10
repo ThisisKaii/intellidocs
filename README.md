@@ -2,7 +2,7 @@
 
 > An intelligent document editor that learns your formatting behavior and automatically suggests improvements.
 
-## 🎯 What is IntelliDocs?
+## What is IntelliDocs?
 
 IntelliDocs is a research system designed to answer a simple question: **Can an editor learn how you format documents and predict your next formatting choice?**
 
@@ -10,17 +10,17 @@ Unlike Word or Google Docs, IntelliDocs fills a specific gap: it's the first edi
 
 ### Key Features
 
-- 📝 **Custom Editor** - Built from scratch with the contentEditable API (no pre-built editor libraries)
-- 🧠 **ML-Powered Predictions** - Learns your formatting patterns over time
-- ✍️ **Grammar & Spell Check** - Real-time writing assistance
-- 💬 **AI Chatbot** - Natural language commands to format your document
-- 📊 **Behavioral Insights** - Understand how you format and why
-- 🔄 **Real-Time Sync** - Auto-save to cloud with Supabase
-- 🎓 **Research-Ready** - Built for academic validation and user studies
+- Custom Editor - Built from scratch with the contentEditable API (no pre-built editor libraries)
+- ML-Powered Predictions - Learns your formatting patterns over time
+- Grammar & Spell Check - Real-time writing assistance
+- AI Chatbot - Natural language commands to format your document
+- Behavioral Insights - Understand how you format and why
+- Real-Time Sync - Auto-save to cloud with Supabase
+- Research-Ready - Built for academic validation and user studies
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -79,7 +79,7 @@ Visit http://localhost:5173 in your browser to get started!
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 IntelliDocs is built with **strict MVC separation** across three main services:
 
@@ -109,7 +109,7 @@ IntelliDocs is built with **strict MVC separation** across three main services:
 
 ---
 
-## 🔬 Research Goals
+## Research Goals
 
 This is a **capstone research system** designed to validate 5 key research questions:
 
@@ -123,7 +123,7 @@ This is a **capstone research system** designed to validate 5 key research quest
 
 ---
 
-## 📋 Tech Stack
+## Tech Stack
 
 | Component | Technology | Why |
 |---|---|---|
@@ -138,7 +138,7 @@ This is a **capstone research system** designed to validate 5 key research quest
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 - **[AGENTS.md](./AGENTS.md)** - Technical guide for developers and AI tools
 - **[Folder Structure](./AGENTS.md#folder-structure)** - Complete codebase layout
@@ -148,9 +148,9 @@ This is a **capstone research system** designed to validate 5 key research quest
 
 ---
 
-## 🛣️ Development Roadmap
+## Development Roadmap
 
-### Phase 1: Foundation ✅
+### Phase 1: Foundation
 - Supabase setup with database
 - Express CRUD for documents
 - Supabase Auth integration
@@ -194,7 +194,7 @@ This is a **capstone research system** designed to validate 5 key research quest
 
 ---
 
-## 🎓 For Researchers
+## For Researchers
 
 IntelliDocs is designed to be a complete research platform:
 
@@ -213,7 +213,7 @@ IntelliDocs is designed to be a complete research platform:
 
 ---
 
-## 🔐 Security & Privacy
+## Security & Privacy
 
 - **No custom auth** - Delegated to Supabase Auth
 - **RLS policies** - Row-level security on all tables
@@ -223,7 +223,7 @@ IntelliDocs is designed to be a complete research platform:
 
 ---
 
-## 💻 System Requirements
+## System Requirements
 
 ### Development Machine
 - OS: Linux, macOS, or Windows
@@ -240,28 +240,28 @@ IntelliDocs is designed to be a complete research platform:
 
 ---
 
-## 📝 License
+## License
 
 This is a capstone research project. See your institution's guidelines for licensing.
 
 ---
 
-## 👤 Author
+## Author
 
-**Joshua Asingua**  
-Capstone Research Project  
-Built with ❤️ for better document editing
+**Joshua Asingua**
+Capstone Research Project
+Built with dedication for better document editing
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 This is a capstone project. For contributions, please contact the maintainer.
 
 ---
 
-## 📞 Support
+## Support
 
-For technical documentation, see [AGENTS.md](./AGENTS.md)  
-For setup issues, check the [Quick Start](#-quick-start) section  
+For technical documentation, see [AGENTS.md](./AGENTS.md)
+For setup issues, check the [Quick Start](#quick-start) section
 For research collaboration, reach out via GitHub issues
