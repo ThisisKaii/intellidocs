@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ import { Label } from '@/components/ui/label'
 
 function Login() {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -27,7 +29,10 @@ function Login() {
 
     try {
       const response = await api.auth.login(email, password)
-      localStorage.setItem('authToken', response.session.access_token)
+      login(
+        { id: response.user.id, email: response.user.email },
+        response.session.access_token
+      )
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
@@ -47,7 +52,7 @@ function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10 text-foreground">
       <div className="w-full max-w-[31.875rem]">
-        <Card className="w-full border-border/60 bg-card shadow-xl">
+        <Card className="w-full bg-card shadow-sm border border-border">
           <CardHeader className="space-y-2 text-center">
             <CardTitle className="text-2xl font-semibold tracking-tight">
               Welcome back
@@ -96,7 +101,7 @@ function Login() {
             </form>
 
             <p className="text-center text-sm text-muted-foreground">
-              Don’t have an account?{' '}
+              Don't have an account?{' '}
               <Link
                 to="/register"
                 className="font-medium text-foreground underline-offset-4 hover:underline"

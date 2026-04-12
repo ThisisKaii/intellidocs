@@ -23,7 +23,7 @@ function Document() {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* ── Top bar ────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-3">
             <Button asChild variant="ghost" size="icon-sm">
@@ -36,7 +36,7 @@ function Document() {
               <FileText className="size-4 text-primary" />
               <span className="text-sm font-medium">Untitled document</span>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
               <Cloud className="size-3 text-emerald-500" />
               Saved
             </div>
@@ -58,10 +58,10 @@ function Document() {
       {/* ── Main workspace ─────────────────────────── */}
       <div className="mx-auto flex w-full max-w-7xl flex-1 gap-0">
         {/* Editor area */}
-        <main className="flex-1 border-r border-border/60 p-6">
+        <main className="flex-1 border-r border-border p-6">
           <div className="mx-auto max-w-3xl">
             {/* Toolbar placeholder */}
-            <div className="mb-4 flex items-center gap-1 rounded-lg border border-border/60 bg-card p-1.5">
+            <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-card p-1.5">
               {['B', 'I', 'U', 'H1', 'H2', 'H3'].map((btn) => (
                 <button
                   key={btn}
@@ -82,7 +82,7 @@ function Document() {
             </div>
 
             {/* Editor surface */}
-            <div className="min-h-[560px] rounded-lg border border-dashed border-border/40 bg-card p-8">
+            <div className="min-h-[560px] rounded-lg border border-dashed border-border bg-card p-8">
               <p className="text-sm leading-7 text-muted-foreground">
                 The custom contentEditable editor will render here. This surface
                 will contain the toolbar formatting, inline grammar highlights,
@@ -97,7 +97,7 @@ function Document() {
 
         {/* Right sidebar */}
         <aside className="hidden w-72 flex-col gap-4 p-5 lg:flex">
-          <Card className="border-border/60">
+          <Card className="shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Document info</CardTitle>
               <CardDescription className="text-xs">
@@ -117,7 +117,7 @@ function Document() {
                 <span className="text-muted-foreground">Suggestions</span>
                 <span className="font-medium">—</span>
               </div>
-              <div className="h-px bg-border/60" />
+              <div className="h-px bg-border" />
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Confidence</span>
                 <span className="font-medium text-primary">—</span>
@@ -125,7 +125,7 @@ function Document() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60">
+          <Card className="shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Actions</CardTitle>
             </CardHeader>

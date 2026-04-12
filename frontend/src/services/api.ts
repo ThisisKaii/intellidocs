@@ -2,14 +2,19 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
+interface User {
+  id: string
+  email: string
+}
+
 interface LoginResponse {
-  user: unknown
+  user: User
   session: { access_token: string }
   message: string
 }
 
 interface RegisterResponse {
-  user: unknown
+  user: User
   message: string
 }
 

@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ import { Label } from '@/components/ui/label'
 
 function Register() {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -29,8 +31,16 @@ function Register() {
 
     try {
       await api.auth.register(email, password)
-      setSuccess('Account created. Redirecting to login…')
-      setTimeout(() => navigate('/login'), 1200)
+      
+      // Auto-login after successful registration
+      const loginResponse = await api.auth.login(email, password)
+      login(
+        { id: loginResponse.user.id, email: loginResponse.user.email },
+        loginResponse.session.access_token
+      )
+      
+      setSuccess('Account created. Redirecting…')
+      setTimeout(() => navigate('/'), 1200)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
     } finally {
@@ -49,7 +59,7 @@ function Register() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10 text-foreground">
       <div className="w-full max-w-[31.875rem]">
-        <Card className="w-full border-border/60 bg-card shadow-xl">
+        <Card className="w-full bg-card shadow-sm border border-border">
           <CardHeader className="space-y-2 text-center">
             <CardTitle className="text-2xl font-semibold tracking-tight">
               Create your account
