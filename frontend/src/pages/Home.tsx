@@ -42,8 +42,8 @@ const features = [
 
 function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/40 text-foreground">
-      <nav className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
+    <div className="min-h-screen bg-background text-foreground">
+      <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <Link to="/" className="flex items-center gap-2">
             <FileText className="size-5 text-primary" />
@@ -66,7 +66,7 @@ function Home() {
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-16 px-6 pb-20 pt-16">
         <section className="grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
               <Sparkles className="size-3 text-primary" />
               Capstone research project
             </div>
@@ -101,7 +101,7 @@ function Home() {
                 { label: 'Avg. time saved', value: '38%' },
                 { label: 'Suggestions applied', value: '47' },
               ].map((stat) => (
-                <Card key={stat.label} className="border-border/60 bg-card/95 shadow-sm">
+                <Card key={stat.label} className="border-border bg-card shadow-sm">
                   <CardContent className="space-y-1 p-4">
                     <p className="text-xs uppercase tracking-widest text-muted-foreground">
                       {stat.label}
@@ -113,7 +113,7 @@ function Home() {
             </div>
           </div>
 
-          <Card className="border-border/60 bg-card/95 shadow-xl">
+          <Card className="border-border bg-card shadow-sm">
             <CardHeader className="space-y-2">
               <CardDescription className="text-xs uppercase tracking-[0.2em]">
                 Workspace preview
@@ -121,23 +121,23 @@ function Home() {
               <CardTitle className="text-2xl">Your documents, organized</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+              <div className="rounded-xl border border-border bg-muted/30 p-4">
                 <div className="mb-3 h-3 w-28 rounded-full bg-primary/20" />
                 <div className="space-y-2">
-                  <div className="h-2 w-full rounded bg-muted/60" />
-                  <div className="h-2 w-5/6 rounded bg-muted/60" />
-                  <div className="h-2 w-4/6 rounded bg-muted/60" />
-                  <div className="h-2 w-3/4 rounded bg-muted/60" />
+                  <div className="h-2 w-full rounded bg-muted" />
+                  <div className="h-2 w-5/6 rounded bg-muted" />
+                  <div className="h-2 w-4/6 rounded bg-muted" />
+                  <div className="h-2 w-3/4 rounded bg-muted" />
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-border/60 bg-background p-4">
+                <div className="rounded-xl border border-border bg-background p-4">
                   <p className="text-xs text-muted-foreground">Auto-save</p>
                   <p className="mt-2 text-lg font-semibold text-emerald-500">
                     Synced
                   </p>
                 </div>
-                <div className="rounded-xl border border-border/60 bg-background p-4">
+                <div className="rounded-xl border border-border bg-background p-4">
                   <p className="text-xs text-muted-foreground">Next suggestion</p>
                   <p className="mt-2 text-lg font-semibold">Heading format</p>
                 </div>
@@ -148,7 +148,7 @@ function Home() {
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {features.map((feature) => (
-            <Card key={feature.title} className="border-border/60 bg-card/95 shadow-sm">
+            <Card key={feature.title} className="border-border bg-card shadow-sm">
               <CardHeader className="pb-2">
                 <feature.icon className="mb-1 size-4 text-primary" />
                 <CardTitle className="text-sm font-medium">{feature.title}</CardTitle>
@@ -163,7 +163,7 @@ function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-border/60 py-8">
+      <footer className="border-t border-border py-8">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 sm:flex-row">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <FileText className="size-3.5" />
