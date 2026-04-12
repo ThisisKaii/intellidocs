@@ -1,5 +1,8 @@
 import { useParams, Link } from 'react-router-dom'
+import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
+import { Toolbar } from '@/components/editor/Toolbar'
+import { EditorCore } from '@/components/editor/EditorCore'
 import {
   Card,
   CardContent,
@@ -16,9 +19,40 @@ import {
   Cloud,
 } from 'lucide-react'
 
-/** Document page — editor workspace with toolbar and sidebar */
+// Document page — editor workspace with toolbar and sidebar
 function Document() {
   const { id } = useParams()
+  const [content, setContent] = useState('')
+  const [isSaved, setIsSaved] = useState(true)
+  const [wordCount, setWordCount] = useState(0)
+  const [charCount, setCharCount] = useState(0)
+  const editorRef = useRef<HTMLDivElement | null>(null)
+
+  function focusEditor() {
+    if (editorRef.current) {
+      editorRef.current.focus()
+    }
+  }
+
+
+  function handleContentChange(newContent: string) {
+    setContent(newContent)
+    setIsSaved(false)
+
+    // Count words and characters
+    const text = newContent.replace(/<[^>]*>/g, '') // Strip HTML tags
+    const words = text.trim().split(/\s+/).filter((w) => w.length > 0).length
+    const chars = text.length
+
+    setWordCount(words)
+    setCharCount(chars)
+  }
+
+  function handleSave() {
+    // TODO: Save to backend via api.documents.update()
+    setIsSaved(true)
+    console.log('Document saved:', content)
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -36,9 +70,15 @@ function Document() {
               <FileText className="size-4 text-primary" />
               <span className="text-sm font-medium">Untitled document</span>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
-              <Cloud className="size-3 text-emerald-500" />
-              Saved
+            <div
+              className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${
+                isSaved
+                  ? 'border-border bg-emerald-500/10 text-emerald-600'
+                  : 'border-yellow-500 bg-yellow-500/10 text-yellow-600'
+              }`}
+            >
+              <Cloud className="size-3" />
+              {isSaved ? 'Saved' : 'Unsaved'}
             </div>
           </div>
 
@@ -47,7 +87,7 @@ function Document() {
               <Lightbulb className="mr-1 size-3.5" />
               Suggestions
             </Button>
-            <Button size="sm">
+            <Button size="sm" onClick={handleSave} disabled={isSaved}>
               <Save className="mr-1 size-3.5" />
               Save
             </Button>
@@ -60,38 +100,9 @@ function Document() {
         {/* Editor area */}
         <main className="flex-1 border-r border-border p-6">
           <div className="mx-auto max-w-3xl">
-            {/* Toolbar placeholder */}
-            <div className="mb-4 flex items-center gap-1 rounded-lg border border-border bg-card p-1.5">
-              {['B', 'I', 'U', 'H1', 'H2', 'H3'].map((btn) => (
-                <button
-                  key={btn}
-                  className="flex h-7 min-w-[28px] items-center justify-center rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  {btn}
-                </button>
-              ))}
-              <div className="mx-1 h-5 w-px bg-border" />
-              {['List', 'Quote', 'Code'].map((btn) => (
-                <button
-                  key={btn}
-                  className="flex h-7 items-center justify-center rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  {btn}
-                </button>
-              ))}
-            </div>
+            <Toolbar onFormatApplied={() => {}} onFocusEditor={focusEditor} />
+            <EditorCore ref={editorRef} onContentChange={handleContentChange} />
 
-            {/* Editor surface */}
-            <div className="min-h-[560px] rounded-lg border border-dashed border-border bg-card p-8">
-              <p className="text-sm leading-7 text-muted-foreground">
-                The custom contentEditable editor will render here. This surface
-                will contain the toolbar formatting, inline grammar highlights,
-                and the suggestion overlay with confidence scoring.
-              </p>
-              <p className="mt-4 text-xs text-muted-foreground/60">
-                Document ID: {id}
-              </p>
-            </div>
           </div>
         </main>
 
@@ -101,17 +112,17 @@ function Document() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Document info</CardTitle>
               <CardDescription className="text-xs">
-                Metadata and quick actions.
+                Metadata and quick stats.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Words</span>
-                <span className="font-medium">0</span>
+                <span className="font-medium">{wordCount}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Characters</span>
-                <span className="font-medium">0</span>
+                <span className="font-medium">{charCount}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Suggestions</span>
