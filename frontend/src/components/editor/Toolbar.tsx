@@ -1,10 +1,8 @@
-// Toolbar.tsx
-// Formatting buttons for the editor
 
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import * as FormattingCommands from './FormattingCommands'
-import { isFormatActive, restoreSelection } from './Selectionmanager'
+import { isFormatActive, restoreSelection } from './SelectionManager'
 import {
   Bold,
   Italic,

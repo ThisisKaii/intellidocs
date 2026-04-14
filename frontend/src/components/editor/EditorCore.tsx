@@ -1,6 +1,7 @@
 
+
 import { useRef, useEffect, forwardRef } from 'react'
-import { saveSelectionIfInside } from './Selectionmanager'
+import { saveSelectionIfInside } from './SelectionManager'
 
 interface EditorCoreProps {
   onContentChange?: (content: string) => void
@@ -23,9 +24,11 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
 
     // Load initial content once
     useEffect(() => {
-      if (editorRef.current && initialContent) {
-        editorRef.current.innerHTML = initialContent
-      }
+
+      if(!editorRef.current) return
+      if (editorRef.current.innerHTML !== initialContent) {
+      editorRef.current.innerHTML = initialContent
+    }
     }, [initialContent])
 
     // Track selection changes globally

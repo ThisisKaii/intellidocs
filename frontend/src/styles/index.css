@@ -101,33 +101,34 @@
   }
 
   .dark {
-    --background: #09090b;
-    --foreground: #fafafa;
-    --card: #09090b;
-    --card-foreground: #fafafa;
-    --popover: #09090b;
-    --popover-foreground: #fafafa;
-    --primary: #fafafa;
-    --primary-foreground: #18181b;
-    --secondary: #27272a;
-    --secondary-foreground: #fafafa;
-    --muted: #27272a;
-    --muted-foreground: #a1a1aa;
-    --accent: #27272a;
-    --accent-foreground: #fafafa;
-    --destructive: #7f1d1d;
-    --destructive-foreground: #fafafa;
-    --border: #27272a;
-    --input: #27272a;
-    --ring: #d4d4d8;
-    --sidebar: #09090b;
-    --sidebar-foreground: #fafafa;
-    --sidebar-primary: #fafafa;
-    --sidebar-primary-foreground: #18181b;
-    --sidebar-accent: #27272a;
-    --sidebar-accent-foreground: #fafafa;
-    --sidebar-border: #27272a;
-    --sidebar-ring: #d4d4d8;
+    /* Google Drive dark mode inspired palette */
+    --background: #131314;
+    --foreground: #e8eaed;
+    --card: #1f1f1f;
+    --card-foreground: #e8eaed;
+    --popover: #2d2e30;
+    --popover-foreground: #e8eaed;
+    --primary: #8ab4f8;
+    --primary-foreground: #131314;
+    --secondary: #2d2e30;
+    --secondary-foreground: #e8eaed;
+    --muted: #2d2e30;
+    --muted-foreground: #9aa0a6;
+    --accent: #394457;
+    --accent-foreground: #c2e7ff;
+    --destructive: #f28b82;
+    --destructive-foreground: #131314;
+    --border: #3c4043;
+    --input: #3c4043;
+    --ring: #8ab4f8;
+    --sidebar: #1f1f1f;
+    --sidebar-foreground: #e8eaed;
+    --sidebar-primary: #8ab4f8;
+    --sidebar-primary-foreground: #131314;
+    --sidebar-accent: #394457;
+    --sidebar-accent-foreground: #c2e7ff;
+    --sidebar-border: #3c4043;
+    --sidebar-ring: #8ab4f8;
   }
 
   * {
@@ -146,10 +147,12 @@
     min-height: 100%;
     font-family: var(--font-sans);
     letter-spacing: var(--tracking-normal);
+    overflow-x: hidden;
   }
 
   #root {
     min-height: 100%;
+    overflow-x: hidden;
   }
 }
 

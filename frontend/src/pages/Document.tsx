@@ -1,5 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { Toolbar } from '@/components/editor/Toolbar'
 import { EditorCore } from '@/components/editor/EditorCore'
@@ -19,44 +20,98 @@ import {
   Cloud,
 } from 'lucide-react'
 
-// Document page — editor workspace with toolbar and sidebar
-function Document() {
+function Document(): JSX.Element {
   const { id } = useParams()
-  const [content, setContent] = useState('')
-  const [isSaved, setIsSaved] = useState(true)
-  const [wordCount, setWordCount] = useState(0)
-  const [charCount, setCharCount] = useState(0)
   const editorRef = useRef<HTMLDivElement | null>(null)
 
-  function focusEditor() {
+  const [title, setTitle] = useState<string>('Untitled Document')
+  const [content, setContent] = useState<string>('')
+  const [lastSavedContent, setLastSavedContent] = useState<string>('')
+  const [isSaved, setIsSaved] = useState<boolean>(true)
+  const [wordCount, setWordCount] = useState<number>(0)
+  const [charCount, setCharCount] = useState<number>(0)
+
+  const savingRef = useRef<boolean>(false)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    async function loadDocument(): Promise<void> {
+      if (!id) return
+
+      try {
+        const doc = await api.documents.get(id)
+        setTitle(doc.title)
+        setContent(doc.content || '')
+        setLastSavedContent(doc.content || '')
+        setIsSaved(true)
+        updateCounts(doc.content || '')
+      } catch (err) {
+        console.error(err)
+      }
+    }
+
+    loadDocument()
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+
+    intervalRef.current = setInterval(async () => {
+      if (savingRef.current) return
+      if (content === lastSavedContent) return
+
+      try {
+        savingRef.current = true
+        await api.documents.update(id, { content })
+        setLastSavedContent(content)
+        setIsSaved(true)
+      } catch (err) {
+        console.error('Autosave failed', err)
+      } finally {
+        savingRef.current = false
+      }
+    }, 8000)
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [id, content, lastSavedContent])
+
+  function updateCounts(html: string): void {
+    const text = html.replace(/<[^>]*>/g, '')
+    const words = text.trim().split(/\s+/).filter((w) => w.length > 0).length
+    setWordCount(words)
+    setCharCount(text.length)
+  }
+
+  function handleContentChange(newContent: string): void {
+    setContent(newContent)
+    setIsSaved(false)
+    updateCounts(newContent)
+  }
+
+  async function handleSave(): Promise<void> {
+    if (!id) return
+    try {
+      await api.documents.update(id, { content })
+      setLastSavedContent(content)
+      setIsSaved(true)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  function focusEditor(): void {
     if (editorRef.current) {
       editorRef.current.focus()
     }
   }
 
-
-  function handleContentChange(newContent: string) {
-    setContent(newContent)
-    setIsSaved(false)
-
-    // Count words and characters
-    const text = newContent.replace(/<[^>]*>/g, '') // Strip HTML tags
-    const words = text.trim().split(/\s+/).filter((w) => w.length > 0).length
-    const chars = text.length
-
-    setWordCount(words)
-    setCharCount(chars)
-  }
-
-  function handleSave() {
-    // TODO: Save to backend via api.documents.update()
-    setIsSaved(true)
-    console.log('Document saved:', content)
-  }
-
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      {/* ── Top bar ────────────────────────────────── */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-3">
@@ -68,7 +123,7 @@ function Document() {
             <div className="h-5 w-px bg-border" />
             <div className="flex items-center gap-2">
               <FileText className="size-4 text-primary" />
-              <span className="text-sm font-medium">Untitled document</span>
+              <span className="text-sm font-medium">{title}</span>
             </div>
             <div
               className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs ${
@@ -95,18 +150,18 @@ function Document() {
         </div>
       </header>
 
-      {/* ── Main workspace ─────────────────────────── */}
       <div className="mx-auto flex w-full max-w-7xl flex-1 gap-0">
-        {/* Editor area */}
         <main className="flex-1 border-r border-border p-6">
           <div className="mx-auto max-w-3xl">
             <Toolbar onFormatApplied={() => {}} onFocusEditor={focusEditor} />
-            <EditorCore ref={editorRef} onContentChange={handleContentChange} />
-
+            <EditorCore
+              ref={editorRef}
+              onContentChange={handleContentChange}
+              initialContent={content}
+            />
           </div>
         </main>
 
-        {/* Right sidebar */}
         <aside className="hidden w-72 flex-col gap-4 p-5 lg:flex">
           <Card className="shadow-sm">
             <CardHeader className="pb-2">
