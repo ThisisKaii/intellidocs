@@ -7,6 +7,16 @@ interface User {
   email: string
 }
 
+export interface DocumentRecord {
+  id: string
+  user_id: string
+  title: string
+  content: string
+  formatting_history: unknown[]
+  created_at: string
+  updated_at: string
+}
+
 interface LoginResponse {
   user: User
   session: { access_token: string }
@@ -16,6 +26,11 @@ interface LoginResponse {
 interface RegisterResponse {
   user: User
   message: string
+}
+
+interface UpdateDocumentRequest {
+  title?: string
+  content?: string
 }
 
 function getAuthToken(): string | null {
@@ -34,6 +49,10 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     headers,
   })
 
+  if (response.status === 204) {
+    return null as T
+  }
+
   if (!response.ok) {
     const errorBody: unknown = await response.json().catch(() => null)
     if (
@@ -51,19 +70,19 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 }
 
 export const api = {
-  health: async () => {
+  health: async (): Promise<{ status: string; message: string }> => {
     return fetchAPI<{ status: string; message: string }>('health')
   },
 
   auth: {
-    login: async (email: string, password: string) => {
+    login: async (email: string, password: string): Promise<LoginResponse> => {
       return fetchAPI<LoginResponse>('auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       })
     },
-    register: async (email: string, password: string) => {
+    register: async (email: string, password: string): Promise<RegisterResponse> => {
       return fetchAPI<RegisterResponse>('auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,28 +92,28 @@ export const api = {
   },
 
   documents: {
-    list: async () => {
-      return fetchAPI<any[]>('documents')
+    list: async (): Promise<DocumentRecord[]> => {
+      return fetchAPI<DocumentRecord[]>('documents')
     },
-    get: async (id: string) => {
-      return fetchAPI<any>(`documents/${id}`)
+    get: async (id: string): Promise<DocumentRecord> => {
+      return fetchAPI<DocumentRecord>(`documents/${id}`)
     },
-    create: async (title: string) => {
-      return fetchAPI<any>('documents', {
+    create: async (title: string): Promise<DocumentRecord> => {
+      return fetchAPI<DocumentRecord>('documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       })
     },
-    update: async (id: string, data: any) => {
-      return fetchAPI<any>(`documents/${id}`, {
+    update: async (id: string, data: UpdateDocumentRequest): Promise<DocumentRecord> => {
+      return fetchAPI<DocumentRecord>(`documents/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
     },
-    delete: async (id: string) => {
-      return fetchAPI<any>(`documents/${id}`, {
+    delete: async (id: string): Promise<null> => {
+      return fetchAPI<null>(`documents/${id}`, {
         method: 'DELETE',
       })
     },
