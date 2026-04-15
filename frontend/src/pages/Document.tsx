@@ -20,9 +20,11 @@ import {
   Cloud,
 } from 'lucide-react'
 
+
 function Document(): JSX.Element {
   const { id } = useParams()
   const editorRef = useRef<HTMLDivElement | null>(null)
+  const [formatHistory, setFormatHistory] = useState<string[]>([])
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
@@ -79,6 +81,10 @@ function Document(): JSX.Element {
       }
     }
   }, [id, content, lastSavedContent])
+
+  function handleFormatApplied(action: string): void {
+    setFormatHistory((prev) => [...prev, action])
+  }
 
   function updateCounts(html: string): void {
     const text = html.replace(/<[^>]*>/g, '')
@@ -153,7 +159,10 @@ function Document(): JSX.Element {
       <div className="mx-auto flex w-full max-w-7xl flex-1 gap-0">
         <main className="flex-1 border-r border-border p-6">
           <div className="mx-auto max-w-3xl">
-            <Toolbar onFormatApplied={() => {}} onFocusEditor={focusEditor} />
+            <Toolbar
+              onFormatApplied={handleFormatApplied}
+              onFocusEditor={focusEditor}/>
+
             <EditorCore
               ref={editorRef}
               onContentChange={handleContentChange}

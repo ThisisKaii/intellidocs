@@ -17,9 +17,10 @@ import {
 } from 'lucide-react'
 
 interface ToolbarProps {
-  onFormatApplied?: () => void
+  onFormatApplied?: (action: string) => void
   onFocusEditor?: () => void
 }
+
 
 export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set())
@@ -39,29 +40,29 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
   }, [])
 
   // Apply formatting while keeping selection
-  function handleFormat(command: () => void, format?: string) {
+  function handleFormat(command: () => void, action?: string) {
     onFocusEditor?.()
     restoreSelection()
     command()
-    onFormatApplied?.()
+    if (action) onFormatApplied?.(action)
 
-    if (format) {
+    if (action) {
       setActiveFormats((prev) => {
         const next = new Set(prev)
-        if (next.has(format)) {
-          next.delete(format)
+        if (next.has(action)) {
+          next.delete(action)
         } else {
-          next.add(format)
+          next.add(action)
         }
         return next
       })
     }
   }
 
-  function handleMouseDown(command: () => void, format?: string) {
+  function handleMouseDown(command: () => void, action?: string) {
     return (event: React.MouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
-      handleFormat(command, format)
+      handleFormat(command, action)
     }
   }
 
@@ -81,28 +82,28 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading1)}>
+      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading1, 'heading1')}>
         <Heading1 className="size-4" />
       </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading2)}>
+      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading2, 'heading2')}>
         <Heading2 className="size-4" />
       </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading3)}>
+      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading3, 'heading3')}>
         <Heading3 className="size-4" />
       </Button>
 
       <div className="mx-1 h-5 w-px bg-border" />
 
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.bulletList)}>
+      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.bulletList, 'unordered_list')}>
         <List className="size-4" />
       </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.numberedList)}>
+      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.numberedList, 'ordered_list')}>
         <ListOrdered className="size-4" />
       </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.blockquote)}>
+      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.blockquote, 'blockquote')}>
         <Quote className="size-4" />
       </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.codeBlock)}>
+      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.codeBlock, 'code_block')}>
         <Code className="size-4" />
       </Button>
     </div>
