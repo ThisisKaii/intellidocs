@@ -2,7 +2,7 @@
 
 **Last Updated:** Current Thread  
 **Phase:** Phase 1 — Foundation (Steps 1–6)  
-**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Next: Step 2 (Autosave + Formatting History)
+**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Step 2 (Autosave + Formatting History) ✅ Complete.
 
 ---
 
@@ -23,10 +23,12 @@
 - ✅ API client typed (User/DocumentRecord)
 
 ### Editor (contentEditable)
-- ✅ `EditorCore` + formatting toolbar
+- ✅ EditorCore + formatting toolbar
 - ✅ Selection handling and formatting commands
 - ✅ Lists/blockquote nesting fixes
 - ✅ Save/load content to backend
+- ✅ Autosave every ~8s (only when content changes)
+- ✅ Formatting history tracking and persistence
 
 ### Home UI (Drive-style)
 - ✅ Split into components:
@@ -44,6 +46,8 @@
 ## ✅ Testing Confirmed
 - Auth flow works end-to-end
 - Editor saves and reloads content
+- Autosave persists updates
+- Formatting history saved to `formatting_history`
 - Drive-style Home UI loads documents and actions work
 
 ---
@@ -53,12 +57,10 @@
 
 ---
 
-## 🚀 Next Step (Phase 1 → Step 2)
-
-### Step 2: Autosave + Formatting History
-- Add autosave interval (5–10s)
-- Track formatting actions in `formatting_history`
-- Save `formatting_history` with document updates
+## 🚀 Next Step (Phase 2: Behavior Pipeline)
+- Implement BehaviorListener (frontend)
+- Add Redis buffer (backend)
+- Add DuckDB schema + aggregator
 
 ---
 
@@ -74,7 +76,6 @@
 ---
 
 ## ✅ Next Thread Checklist
-- [ ] Implement autosave in `Document.tsx`
-- [ ] Add formatting history state
-- [ ] Wire Toolbar to log formatting actions
-- [ ] Save `formatting_history` in document updates
+- [ ] Start Phase 2: BehaviorListener + Redis + DuckDB
+- [ ] Wire formatting events to Redis buffer
+- [ ] Aggregate to DuckDB for training
