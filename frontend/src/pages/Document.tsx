@@ -4,6 +4,7 @@ import { api } from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { Toolbar } from '@/components/editor/Toolbar'
 import { EditorCore } from '@/components/editor/EditorCore'
+import { BehaviorEvent, createBehaviorEvent } from '@/components/editor/behaviorListener'
 import {
   Card,
   CardContent,
@@ -23,6 +24,7 @@ import {
 
 function Document(): JSX.Element {
   const { id } = useParams()
+  const [behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([])
   const editorRef = useRef<HTMLDivElement | null>(null)
   const [formatHistory, setFormatHistory] = useState<string[]>([])
 
@@ -84,6 +86,11 @@ function Document(): JSX.Element {
 
   function handleFormatApplied(action: string): void {
     setFormatHistory((prev) => [...prev, action])
+
+    if (id) {
+      const event = createBehaviorEvent(action, id)
+      setBehaviorEvents((prev) => [...prev, event])
+    }
   }
 
   function updateCounts(html: string): void {
@@ -99,16 +106,21 @@ function Document(): JSX.Element {
     updateCounts(newContent)
   }
 
-  async function handleSave(): Promise<void> {
-    if (!id) return
-    try {
-      await api.documents.update(id, { content })
-      setLastSavedContent(content)
-      setIsSaved(true)
-    } catch (err) {
-      console.error(err)
-    }
+async function handleSave(): Promise<void> {
+  if (!id) return
+  try {
+    await api.documents.update(id, {
+      content,
+      formatting_history: formatHistory,
+    })
+    console.log('behaviorEvents', behaviorEvents)
+    setLastSavedContent(content)
+    setIsSaved(true)
+  } catch (err) {
+    console.error(err)
   }
+}
+
 
   function focusEditor(): void {
     if (editorRef.current) {
