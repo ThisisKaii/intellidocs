@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;600;700;800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -6,9 +7,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: var(--font-geist-sans, "Geist Variable", ui-sans-serif, system-ui, sans-serif);
+  --font-sans: var(--font-inter, "Inter", ui-sans-serif, system-ui, sans-serif);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-serif: var(--font-manrope, "Manrope", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -70,65 +71,88 @@
 
 @layer base {
   :root {
-    --background: #ffffff;
-    --foreground: #09090b;
-    --card: #ffffff;
-    --card-foreground: #09090b;
-    --popover: #ffffff;
-    --popover-foreground: #09090b;
-    --primary: #18181b;
-    --primary-foreground: #fafafa;
-    --secondary: #f4f4f5;
-    --secondary-foreground: #18181b;
-    --muted: #f4f4f5;
-    --muted-foreground: #71717a;
-    --accent: #f4f4f5;
-    --accent-foreground: #18181b;
-    --destructive: #ef4444;
-    --destructive-foreground: #fafafa;
-    --border: #e4e4e7;
-    --input: #e4e4e7;
-    --ring: #18181b;
-    --radius: 0.5rem;
-    --sidebar: #f4f4f5;
-    --sidebar-foreground: #18181b;
-    --sidebar-primary: #18181b;
-    --sidebar-primary-foreground: #fafafa;
-    --sidebar-accent: #e4e4e7;
-    --sidebar-accent-foreground: #18181b;
-    --sidebar-border: #e4e4e7;
-    --sidebar-ring: #18181b;
+    --font-inter: "Inter";
+    --font-manrope: "Manrope";
+    --background: #10131a;
+    --surface: #10131a;
+    --surface-container-lowest: #0b0e14;
+    --surface-container-low: #191c22;
+    --surface-container: #1d2026;
+    --surface-container-high: #272a31;
+    --surface-container-highest: #32353c;
+    --surface-bright: #363940;
+    --surface-dim: #10131a;
+    --outline-variant: #424754;
+    --on-surface-variant: #c2c6d6;
+    --primary-container: #4d8eff;
+    --foreground: #e1e2eb;
+    --card: #1d2026;
+    --card-foreground: #e1e2eb;
+    --popover: #272a31;
+    --popover-foreground: #e1e2eb;
+    --primary: #adc6ff;
+    --primary-foreground: #00285d;
+    --secondary: #c2c7d0;
+    --secondary-foreground: #2c3138;
+    --muted: #191c22;
+    --muted-foreground: #c2c6d6;
+    --accent: #32353c;
+    --accent-foreground: #e1e2eb;
+    --destructive: #ffb4ab;
+    --destructive-foreground: #690005;
+    --border: #424754;
+    --input: #0b0e14;
+    --ring: #adc6ff;
+    --radius: 0.75rem;
+    --sidebar: #191c22;
+    --sidebar-foreground: #e1e2eb;
+    --sidebar-primary: #adc6ff;
+    --sidebar-primary-foreground: #00285d;
+    --sidebar-accent: #1d2026;
+    --sidebar-accent-foreground: #e1e2eb;
+    --sidebar-border: #424754;
+    --sidebar-ring: #adc6ff;
   }
 
   .dark {
-    /* Google Drive dark mode inspired palette */
-    --background: #131314;
-    --foreground: #e8eaed;
-    --card: #1f1f1f;
-    --card-foreground: #e8eaed;
-    --popover: #2d2e30;
-    --popover-foreground: #e8eaed;
-    --primary: #8ab4f8;
-    --primary-foreground: #131314;
-    --secondary: #2d2e30;
-    --secondary-foreground: #e8eaed;
-    --muted: #2d2e30;
-    --muted-foreground: #9aa0a6;
-    --accent: #394457;
-    --accent-foreground: #c2e7ff;
-    --destructive: #f28b82;
-    --destructive-foreground: #131314;
-    --border: #3c4043;
-    --input: #3c4043;
-    --ring: #8ab4f8;
-    --sidebar: #1f1f1f;
-    --sidebar-foreground: #e8eaed;
-    --sidebar-primary: #8ab4f8;
-    --sidebar-primary-foreground: #131314;
-    --sidebar-accent: #394457;
-    --sidebar-accent-foreground: #c2e7ff;
-    --sidebar-border: #3c4043;
-    --sidebar-ring: #8ab4f8;
+    --background: #10131a;
+    --surface: #10131a;
+    --surface-container-lowest: #0b0e14;
+    --surface-container-low: #191c22;
+    --surface-container: #1d2026;
+    --surface-container-high: #272a31;
+    --surface-container-highest: #32353c;
+    --surface-bright: #363940;
+    --surface-dim: #10131a;
+    --outline-variant: #424754;
+    --on-surface-variant: #c2c6d6;
+    --primary-container: #4d8eff;
+    --foreground: #e1e2eb;
+    --card: #1d2026;
+    --card-foreground: #e1e2eb;
+    --popover: #272a31;
+    --popover-foreground: #e1e2eb;
+    --primary: #adc6ff;
+    --primary-foreground: #00285d;
+    --secondary: #c2c7d0;
+    --secondary-foreground: #2c3138;
+    --muted: #191c22;
+    --muted-foreground: #c2c6d6;
+    --accent: #32353c;
+    --accent-foreground: #e1e2eb;
+    --destructive: #ffb4ab;
+    --destructive-foreground: #690005;
+    --border: #424754;
+    --input: #0b0e14;
+    --ring: #adc6ff;
+    --sidebar: #191c22;
+    --sidebar-foreground: #e1e2eb;
+    --sidebar-primary: #adc6ff;
+    --sidebar-primary-foreground: #00285d;
+    --sidebar-accent: #1d2026;
+    --sidebar-accent-foreground: #e1e2eb;
+    --sidebar-border: #424754;
+    --sidebar-ring: #adc6ff;
   }
 
   * {
