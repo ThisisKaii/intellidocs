@@ -1,0 +1,2 @@
+user_id,document_id,total_events,bold_count,italic_count,underline_count,heading1_count,heading2_count,heading3_count,ordered_list_count,unordered_list_count,blockquote_count,code_block_count,last_action,last_event_ts,window_start,window_end,ingested_at
+e5f5ac17-33b5-43e6-a5a8-4f55568f061d,45d5a0a4-f8b2-46cb-b2c0-ef7521e23681,2,0,1,1,0,0,0,0,0,0,0,italic,2026-04-17 21:22:32.042,2026-04-17 21:22:31.435,2026-04-17 21:22:32.042,2026-04-17 21:46:03.327218
