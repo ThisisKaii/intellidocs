@@ -150,7 +150,7 @@ export function DriveTable({
             return (
               <div
                 key={doc.id}
-                className="group flex items-center gap-3 rounded-xl px-4 py-2.5 transition-colors duration-100 hover:bg-muted/50"
+                className="group flex items-center gap-3 rounded-xl px-4 py-2.5 transition-colors duration-100 hover:bg-muted/30"
               >
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15">
                   <FileText className="size-5 text-primary" />

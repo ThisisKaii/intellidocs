@@ -1,12 +1,20 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { Lock, Mail, FileText } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 
 function Login(): JSX.Element {
   const navigate = useNavigate()
@@ -19,6 +27,16 @@ function Login(): JSX.Element {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
+
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address.')
+      return
+    }
+    if (!password) {
+      setError('Please enter your password.')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -44,99 +62,103 @@ function Login(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen bg-[color:var(--surface)] text-foreground flex items-center justify-center px-4 py-10 font-sans">
-      <div className="w-full max-w-[28rem] mx-auto">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-semibold tracking-tight text-primary font-serif">
-            IntelliDocs
-          </h1>
-        </div>
+    <div className="flex min-h-screen items-center justify-center bg-background text-foreground bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background px-4">
+      <main className="w-full max-w-[440px]">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+        >
+          <div className="mb-6 flex flex-col items-center justify-center gap-2">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-primary">
+              <FileText className="size-5 text-primary-foreground" />
+            </div>
+            <h1 className="text-xl font-semibold tracking-tight">IntelliDocs</h1>
+          </div>
 
-        <Card className="w-full border-0 ring-0 bg-[color:var(--surface-container-low)] shadow-[0_20px_40px_rgba(0,0,0,0.4)] rounded-xl">
-          <CardHeader className="space-y-2 pb-4">
-            <CardTitle className="text-2xl font-semibold tracking-tight text-foreground font-serif">
-              Welcome back
-            </CardTitle>
-            <p className="text-[0.875rem] text-muted-foreground leading-[1.6]">
-              Sign in to continue to IntelliDocs.
-            </p>
-          </CardHeader>
-
-          <CardContent className="space-y-6 pt-6">
-            {error ? (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            <form className="space-y-6" onSubmit={handleSubmit}>
-              <div className="space-y-2">
-                <Label
-                  htmlFor="login-email"
-                  className="text-[0.6875rem] uppercase tracking-[0.05em] text-[color:var(--on-surface-variant)]"
-                >
-                  Email Address
-                </Label>
-                <Input
-                  id="login-email"
-                  type="email"
-                  value={email}
-                  onChange={handleEmailChange}
-                  placeholder="name@company.com"
-                  autoComplete="email"
-                  required
-                  className="bg-[color:var(--surface-container-lowest)] border border-[color:var(--outline-variant)]/20 focus-visible:ring-2 focus-visible:ring-primary/15 focus-visible:border-primary/50 transition-all duration-300"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label
-                    htmlFor="login-password"
-                    className="text-[0.6875rem] uppercase tracking-[0.05em] text-[color:var(--on-surface-variant)]"
-                  >
-                    Password
-                  </Label>
-                  <button
-                    type="button"
-                    className="text-[0.6875rem] uppercase tracking-[0.08em] font-semibold text-primary hover:text-primary/80 transition-colors underline-offset-4 hover:underline"
-                  >
-                    Forgot password?
-                  </button>
+          <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-xl">
+            <CardHeader className="space-y-1.5 pb-5 text-center">
+              <CardTitle className="text-lg font-semibold">Welcome back</CardTitle>
+              <CardDescription className="text-xs">
+                Sign in to manage your documentation workspace
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pb-5">
+              {error ? (
+                <div className="mb-4 text-center">
+                  <p className="text-[11px] font-medium text-destructive/80">{error}</p>
                 </div>
-                <Input
-                  id="login-password"
-                  type="password"
-                  value={password}
-                  onChange={handlePasswordChange}
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  required
-                  className="bg-[color:var(--surface-container-lowest)] border border-[color:var(--outline-variant)]/20 focus-visible:ring-2 focus-visible:ring-primary/15 focus-visible:border-primary/50 transition-all duration-300"
-                />
-              </div>
+              ) : null}
 
-              <Button
-                type="submit"
-                className="w-full rounded-lg bg-gradient-to-br from-primary to-[color:var(--primary-container)] text-primary-foreground shadow-[0_4px_14px_rgba(173,198,255,0.2)] hover:brightness-110"
-                disabled={loading}
-              >
-                {loading ? 'Signing in…' : 'Sign in'}
-              </Button>
-            </form>
+              <form className="space-y-4" onSubmit={handleSubmit} noValidate>
+                <div className="space-y-1.5 relative">
+                  <Label htmlFor="email" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                    Email
+                  </Label>
+                  <div className="relative group">
+                    <Mail className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground transition-colors duration-300 group-focus-within:text-primary" />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="name@company.com"
+                      className="pl-8 bg-background h-9 text-sm transition-all duration-300 hover:bg-muted/30 focus:bg-card"
+                      value={email}
+                      onChange={handleEmailChange}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                      Password
+                    </Label>
+                    <Link
+                      to="/forgot-password"
+                      className="text-[11px] font-semibold text-primary transition-all duration-300 hover:text-primary/70 hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
+                  <div className="relative group">
+                    <Lock className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground transition-colors duration-300 group-focus-within:text-primary" />
+                    <Input
+                      id="password"
+                      type="password"
+                      placeholder="••••••••"
+                      className="pl-8 bg-background h-9 text-sm tracking-widest transition-all duration-300 hover:bg-muted/30 focus:bg-card"
+                      value={password}
+                      onChange={handlePasswordChange}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="pt-2">
+                  <Button className="w-full h-9 text-sm transition-all duration-300 active:scale-[0.98]" type="submit" disabled={loading}>
+                    {loading ? 'Signing in...' : 'Sign in'}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+            <CardFooter className="flex justify-center border-t border-border/50 p-4">
+              <p className="text-xs text-muted-foreground">
+                Don't have an account?{' '}
+                <Link
+                  to="/register"
+                  className="font-semibold text-primary transition-all duration-300 hover:text-primary/70 hover:underline"
+                >
+                  Create one
+                </Link>
+              </p>
+            </CardFooter>
+          </Card>
 
-            <p className="text-center text-sm text-muted-foreground">
-              Don’t have an account?{' '}
-              <Link
-                to="/register"
-                className="font-semibold text-primary hover:text-primary/80 transition-colors underline-offset-4 hover:underline"
-              >
-                Create an account
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+          <p className="mt-6 flex items-center justify-center text-[10px] text-muted-foreground tracking-widest uppercase">
+            <span className="inline-block mr-1.5 h-1 w-1 rounded-full bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]"></span>
+            Session Secure
+          </p>
+        </motion.div>
+      </main>
     </div>
   )
 }

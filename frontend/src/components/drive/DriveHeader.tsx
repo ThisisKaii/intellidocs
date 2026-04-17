@@ -40,15 +40,7 @@ export function DriveHeader({
           <span className="font-semibold tracking-tight">IntelliDocs</span>
         </div>
 
-        <div className="relative ml-2 flex-1 max-w-2xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={handleQueryChange}
-            placeholder="Search in documents"
-            className="h-9 w-full rounded-full pl-9"
-          />
-        </div>
+        <div className="flex-1" />
 
         <div className="ml-auto flex items-center gap-2 shrink-0">
           <Button size="sm" onClick={handleCreate}>

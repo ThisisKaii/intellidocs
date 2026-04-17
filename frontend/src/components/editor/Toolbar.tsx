@@ -67,7 +67,7 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
   }
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1.5">
+    <div className="mb-4 flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-2">
       <Button variant={activeFormats.has('bold') ? 'default' : 'ghost'} size="sm" onMouseDown={handleMouseDown(FormattingCommands.bold, 'bold')}>
         <Bold className="size-4" />
       </Button>

@@ -59,7 +59,7 @@
   --shadow-xl: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.05), 0 8px 10px -1px hsl(225.5172 35.8025% 15.8824% / 0.05);
   --shadow-2xl: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.13);
 
-  --spacing: 0.24rem;
+  --spacing: 0.25rem;
 
   --tracking-tighter: calc(var(--tracking-normal, 0em) - 0.05em);
   --tracking-tight: calc(var(--tracking-normal, 0em) - 0.025em);
@@ -178,6 +178,35 @@
     min-height: 100%;
     overflow-x: hidden;
   }
+}
+
+@layer components {
+  .rounded-sleek {
+    border-radius: 0.75rem;
+  }
+
+  .input-sleek {
+    background-color: var(--surface-container-lowest);
+    border: 1px solid rgba(66, 71, 84, 0.2);
+    color: var(--foreground);
+    border-radius: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    transition: border-color 300ms, box-shadow 300ms, background-color 300ms;
+  }
+
+  .input-sleek::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .input-sleek:focus {
+    outline: none;
+    border-color: rgba(173, 198, 255, 0.5);
+    box-shadow: 0 0 0 2px rgba(173, 198, 255, 0.15);
+  }
+
+
 }
 
 @layer utilities {
