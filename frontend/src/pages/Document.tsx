@@ -84,14 +84,32 @@ function Document(): JSX.Element {
     }
   }, [id, content, lastSavedContent])
 
-  function handleFormatApplied(action: string): void {
+     function handleFormatApplied(action: string): void {
     setFormatHistory((prev) => [...prev, action])
 
     if (id) {
       const event = createBehaviorEvent(action, id)
       setBehaviorEvents((prev) => [...prev, event])
+
+      const token = localStorage.getItem('authToken')
+      if (!token) {
+        console.error('No auth token in localStorage')
+        return
+      }
+
+      fetch('http://localhost:3000/behavior/events', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(event),
+      }).catch((err) => {
+        console.error('Behavior log failed', err)
+      })
     }
   }
+
 
   function updateCounts(html: string): void {
     const text = html.replace(/<[^>]*>/g, '')

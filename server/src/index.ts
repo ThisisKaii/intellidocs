@@ -7,8 +7,8 @@ import express from 'express'
 import cors from 'cors'
 import documentRoutes from './routes/documentRoutes'
 import authRoutes from './routes/authRoutes'
+import behaviorRoutes from './routes/behaviorRoutes'
 import { authMiddleware } from './middleware/authMiddleware'
-
 
 
 const app = express()
@@ -39,6 +39,7 @@ app.get('/', (req, res) => {
 
 app.use('/documents',authMiddleware,  documentRoutes)
 app.use('/auth', authRoutes)
+app.use('/behavior', authMiddleware, behaviorRoutes)
 
 // 404 handler
 app.use((req, res) => {
