@@ -18,4 +18,10 @@ export interface UpdateDocumentRequest {
   content?: string
 }
 
+export interface BehaviorEvent {
+  action: string
+  timestamp: string
+  documentId: string
+}
+
 export type DocumentResponse = Document

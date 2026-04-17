@@ -17,6 +17,12 @@ export interface DocumentRecord {
   updated_at: string
 }
 
+export interface BehaviorEvent {
+  action: string
+  timestamp: string
+  documentId: string
+}
+
 interface LoginResponse {
   user: User
   session: { access_token: string }
@@ -116,6 +122,16 @@ export const api = {
     delete: async (id: string): Promise<null> => {
       return fetchAPI<null>(`documents/${id}`, {
         method: 'DELETE',
+      })
+    },
+  },
+
+  behavior: {
+    log: async (event: BehaviorEvent): Promise<{ status: string }> => {
+      return fetchAPI<{ status: string }>('behavior/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
       })
     },
   },
