@@ -28,7 +28,7 @@ function Document(): JSX.Element {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const [formatHistory, setFormatHistory] = useState<string[]>([])
 
-  const [title, setTitle] = useState<string>('Untitled Document')
+  const [title, setTitle] = useState<string>()
   const [content, setContent] = useState<string>('')
   const [lastSavedContent, setLastSavedContent] = useState<string>('')
   const [isSaved, setIsSaved] = useState<boolean>(true)
@@ -133,9 +133,9 @@ async function handleSave(): Promise<void> {
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-3">
-            <Button asChild variant="ghost" size="icon-sm">
+            <Button asChild variant="ghost" size="icon">
               <Link to="/" aria-label="Back to home">
-                <ArrowLeft className="size-4" />
+                <ArrowLeft className="size-5" />
               </Link>
             </Button>
             <div className="h-5 w-px bg-border" />

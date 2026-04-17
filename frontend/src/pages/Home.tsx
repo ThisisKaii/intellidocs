@@ -2,24 +2,47 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type DocumentRecord } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
-import { DriveHeader } from '@/components/drive/DriveHeader'
 import DriveSidebar from '@/components/drive/DriveSidebar'
-import {
-  DriveTable,
-  type DriveDocumentRow,
-  type DriveTableEditState,
-} from '@/components/drive/DriveTable'
+import { DriveHeader } from '@/components/drive/DriveHeader'
+import { DriveTable, type DriveDocumentRow, type DriveTableEditState } from '@/components/drive/DriveTable'
+import { DriveSearchSection } from '@/components/drive/DriveSearchSection'
+import { Folder } from 'lucide-react'
 
-type DocumentSummary = Pick<
-  DocumentRecord,
-  'id' | 'title' | 'updated_at' | 'created_at'
->
+function SuggestedFolders(): JSX.Element {
+  const folders = [
+    { id: '1', name: 'Dissertation 2024' },
+    { id: '2', name: 'Grant Proposals' },
+    { id: '3', name: 'Literature Reviews' },
+    { id: '4', name: 'Meeting Notes' },
+  ]
 
-function HomePage(): JSX.Element {
+  return (
+    <div className="mb-10">
+      <h2 className="text-sm font-medium text-foreground px-4 mb-4">
+        Suggested folders
+      </h2>
+      <div className="flex flex-wrap gap-4 px-4">
+        {folders.map((folder) => (
+          <div
+            key={folder.id}
+            className="flex items-center gap-3 rounded-xl border border-border bg-card pr-4 pl-3 py-2 transition-colors hover:bg-muted/30 cursor-pointer"
+          >
+            <Folder className="size-4 text-muted-foreground fill-muted-foreground/20" />
+            <span className="text-sm font-medium text-foreground">
+              {folder.name}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function HomePage(): JSX.Element {
   const navigate = useNavigate()
   const { logout } = useAuth()
 
-  const [documents, setDocuments] = useState<DocumentSummary[]>([])
+  const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string>('')
   const [query, setQuery] = useState<string>('')
@@ -31,14 +54,7 @@ function HomePage(): JSX.Element {
         setLoading(true)
         setError('')
         const data = await api.documents.list()
-        setDocuments(
-          data.map((doc) => ({
-            id: doc.id,
-            title: doc.title,
-            updated_at: doc.updated_at,
-            created_at: doc.created_at,
-          }))
-        )
+        setDocuments(data)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load documents')
       } finally {
@@ -49,7 +65,7 @@ function HomePage(): JSX.Element {
     loadDocuments()
   }, [])
 
-  const filteredDocs: DriveDocumentRow[] = useMemo(() => {
+  const filteredDocs = useMemo(() => {
     const q = query.trim().toLowerCase()
     const sorted = [...documents].sort((a, b) => {
       const aTime = new Date(a.updated_at).getTime()
@@ -87,48 +103,48 @@ function HomePage(): JSX.Element {
   async function handleSaveEdit(): Promise<void> {
     if (!editing) return
     try {
-      setError('')
       await api.documents.update(editing.id, { title: editing.title })
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          doc.id === editing.id ? { ...doc, title: editing.title } : doc
-        )
+      setDocuments((docs) =>
+        docs.map((d) => (d.id === editing.id ? { ...d, title: editing.title } : d))
       )
-      setEditing(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to rename document')
+    } finally {
+      setEditing(null)
+    }
+  }
+
+  function handleTitleChange(nextTitle: string): void {
+    if (editing) {
+      setEditing({ ...editing, title: nextTitle })
     }
   }
 
   async function handleDelete(id: string): Promise<void> {
     try {
-      setError('')
       await api.documents.delete(id)
-      setDocuments((prev) => prev.filter((doc) => doc.id !== id))
-      if (editing?.id === id) setEditing(null)
+      setDocuments((docs) => docs.filter((d) => d.id !== id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete document')
     }
   }
 
-  function handleTitleChange(nextTitle: string): void {
-    if (!editing) return
-    setEditing({ ...editing, title: nextTitle })
-  }
-
   return (
-    <div className="min-h-screen w-full bg-background text-foreground overflow-x-hidden">
-      <DriveHeader
-        query={query}
-        onQueryChange={setQuery}
-        onCreate={handleCreateDocument}
-        onLogout={handleLogout}
-      />
+    <div className="flex h-screen bg-background text-foreground overflow-hidden">
+      <DriveSidebar activeId="home" onCreate={handleCreateDocument} />
 
-      <div className="flex min-h-[calc(100vh-4rem)]">
-        <DriveSidebar activeId="home" onCreate={handleCreateDocument} />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <DriveHeader
+          query={query}
+          onQueryChange={setQuery}
+          onCreate={handleCreateDocument}
+          onLogout={handleLogout}
+        />
 
-        <main className="flex-1 min-w-0 px-4 md:px-8 py-6">
+        <main className="flex-1 overflow-y-auto w-full max-w-[96rem] mx-auto p-4 sm:p-6 lg:p-8">
+          <DriveSearchSection query={query} onQueryChange={setQuery} />
+          
+          <SuggestedFolders />
 
           <DriveTable
             documents={filteredDocs}
@@ -147,5 +163,3 @@ function HomePage(): JSX.Element {
     </div>
   )
 }
-
-export default HomePage

@@ -57,7 +57,7 @@ function DriveSidebar({
               className={`flex w-full items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors duration-150 border bg-transparent ${
                 isActive
                   ? 'bg-muted/50 text-foreground border-border/80'
-                  : 'text-muted-foreground border-transparent hover:bg-muted/30 hover:text-foreground'
+                  : 'text-muted-foreground border-transparent hover:bg-muted/10 hover:text-foreground'
               }`}
             >
               <Icon className={`size-5 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />

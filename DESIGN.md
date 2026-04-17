@@ -27,7 +27,7 @@ Treat the UI as physical layers. Each step "up" in the hierarchy uses a lighter 
 ### The "Glass & Gradient" Rule
 To prevent the dark mode from feeling "flat" or "muddy":
 - **Floating Elements:** Use `surface-container-lowest` (#0b0e14) at 80% opacity with a `20px` backdrop-blur for a frosted glass effect on menus.
-- **Signature Accents:** Apply a subtle linear gradient to primary CTAs (e.g., `primary` #adc6ff to `primary-container` #4d8eff at 135°) to give buttons a machined, metallic sheen.
+- **Signature Accents:** Use a solid background for primary CTAs (e.g., `primary` #adc6ff) to give buttons a clean, modern look.
 
 ---
 
@@ -57,7 +57,7 @@ Depth is communicated through **Tonal Layering** rather than traditional structu
 5. Components
 
 ### Primary Buttons
-- **Style:** Gradient fill (`primary` to `primary-container`), `md` (12px) rounded corners.
+- **Style:** Solid background (`primary`), `md` (12px) rounded corners.
 - **States:** On hover, increase the `surface-tint` overlay by 10%.
 - **Typography:** `title-sm` (Inter, Semibold).
 

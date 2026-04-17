@@ -97,7 +97,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        className="min-h-[560px] rounded-lg border border-dashed border-border bg-card p-8 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+        className="min-h-[560px] rounded-lg border border-border bg-background shadow-sm p-8 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
         style={{ wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}
       />
     )
