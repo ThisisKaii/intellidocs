@@ -1,8 +1,8 @@
 # IntelliDocs Progress Summary
 
 **Last Updated:** Current Thread  
-**Phase:** Phase 1 — Foundation (Steps 1–6)  
-**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Step 2 (Autosave + Formatting History) ✅ Complete.
+**Phase:** Phase 2 — Behavior Pipeline (Steps 7–9) ✅ Complete  
+**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete (Redis + DuckDB + feature extraction + exports).
 
 ---
 
@@ -41,6 +41,14 @@
 - ✅ Document list with inline rename + delete
 - ✅ Row actions use shadcn dropdown
 
+### Behavior Pipeline (Phase 2)
+- ✅ Behavior events captured from editor and sent to backend
+- ✅ Redis buffer active for real-time event capture
+- ✅ DuckDB schema + aggregator pipeline
+- ✅ Feature extraction to `formatting_features`
+- ✅ CSV/Parquet feature exports
+- ✅ Manual API triggers: `/behavior/aggregate`, `/behavior/features`, `/behavior/export`
+
 ---
 
 ## ✅ Testing Confirmed
@@ -49,6 +57,9 @@
 - Autosave persists updates
 - Formatting history saved to `formatting_history`
 - Drive-style Home UI loads documents and actions work
+- Redis buffer receives behavior events
+- DuckDB aggregation and feature extraction complete
+- Feature export to CSV/Parquet succeeds
 
 ---
 
@@ -57,25 +68,29 @@
 
 ---
 
-## 🚀 Next Step (Phase 2: Behavior Pipeline)
-- Implement BehaviorListener (frontend)
-- Add Redis buffer (backend)
-- Add DuckDB schema + aggregator
+## 🚀 Next Step (Pre-Phase 3: Editor Polish)
+- Polish document editor UI/UX (layout, spacing, typography)
+- Verify formatting actions + autosave after UI changes
 
 ---
 
 ## 📁 Key Files (Recent)
 - `frontend/src/pages/Home.tsx`
-- `frontend/src/components/drive/DriveHeader.tsx`
-- `frontend/src/components/drive/DriveSidebar.tsx`
-- `frontend/src/components/drive/DriveSearchSection.tsx`
-- `frontend/src/components/drive/DriveTable.tsx`
 - `frontend/src/pages/Document.tsx`
 - `frontend/src/components/editor/*`
+- `server/src/controllers/behaviorController.ts`
+- `server/src/routes/behaviorRoutes.ts`
+- `server/src/skills/runAggregator.ts`
+- `server/src/skills/featureExtractor.ts`
+- `server/src/skills/featureExport.ts`
+- `ml/aggregator.py`
+- `ml/feature_extractor.py`
+- `ml/export_features.py`
+- `db/duckdb/behavior.duckdb`
 
 ---
 
 ## ✅ Next Thread Checklist
-- [ ] Start Phase 2: BehaviorListener + Redis + DuckDB
-- [ ] Wire formatting events to Redis buffer
-- [ ] Aggregate to DuckDB for training
+- [ ] Polish document editor UI/UX
+- [ ] Re-check formatting behavior + autosave after UI updates
+- [ ] Prepare Phase 3 (dataset download + base model training)

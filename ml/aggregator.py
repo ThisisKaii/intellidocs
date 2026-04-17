@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
@@ -28,7 +29,6 @@ def ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
     """)
 
 
-
 def collect_events(r: redis.Redis, key: str) -> List[Dict[str, Any]]:
     raw_items = r.lrange(key, 0, -1)
     if not raw_items:
@@ -43,7 +43,7 @@ def collect_events(r: redis.Redis, key: str) -> List[Dict[str, Any]]:
     return events
 
 
-def main() -> None:
+def run_once() -> int:
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
     duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
 
@@ -82,7 +82,24 @@ def main() -> None:
             total += 1
 
     conn.close()
-    print(f"✅ Aggregation complete: {total} events inserted.")
+    return total
+
+
+def main() -> None:
+    run_once_flag = os.getenv("AGGREGATOR_RUN_ONCE", "").lower() in ("1", "true", "yes")
+    if run_once_flag:
+        count = run_once()
+        print(f"✅ Aggregation complete: {count} events inserted.")
+        return
+
+    interval = int(os.getenv("AGGREGATOR_INTERVAL_SECONDS", "30"))
+    print(f"✅ Aggregator running every {interval}s")
+
+    while True:
+        count = run_once()
+        if count:
+            print(f"✅ Aggregation complete: {count} events inserted.")
+        time.sleep(interval)
 
 
 if __name__ == "__main__":
