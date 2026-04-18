@@ -1,8 +1,8 @@
 # IntelliDocs Progress Summary
 
 **Last Updated:** Current Thread  
-**Phase:** Phase 2 — Behavior Pipeline (Steps 7–9) ✅ Complete  
-**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete (Redis + DuckDB + feature extraction + exports).
+**Phase:** Phase 3 — Dataset + Base ML Model (Steps 10–12) ✅ In Progress  
+**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete. Dataset pipeline ✅ Complete. Base formatting model ✅ Trained.
 
 ---
 
@@ -49,6 +49,16 @@
 - ✅ CSV/Parquet feature exports
 - ✅ Manual API triggers: `/behavior/aggregate`, `/behavior/features`, `/behavior/export`
 
+### Dataset + Base ML Model (Phase 3)
+- ✅ WikiText-103 downloaded with Hugging Face datasets
+- ✅ JFLEG downloaded with Hugging Face datasets
+- ✅ Raw dataset snapshots saved under `ml/dataset/raw/`
+- ✅ Preprocessing pipeline writes:
+  - `formatting_examples.csv`
+  - `grammar_examples.csv`
+- ✅ Base formatting model trained and saved to `ml/models/base_model.pkl`
+- ⚠️ Baseline validation accuracy is very high because labels are currently heuristic and should be refined later
+
 ---
 
 ## ✅ Testing Confirmed
@@ -60,6 +70,9 @@
 - Redis buffer receives behavior events
 - DuckDB aggregation and feature extraction complete
 - Feature export to CSV/Parquet succeeds
+- WikiText-103 and JFLEG download successfully
+- Preprocessing produces formatting and grammar datasets
+- Base model training completes and saves `ml/models/base_model.pkl`
 
 ---
 
@@ -68,9 +81,10 @@
 
 ---
 
-## 🚀 Next Step (Pre-Phase 3: Editor Polish)
-- Polish document editor UI/UX (layout, spacing, typography)
-- Verify formatting actions + autosave after UI changes
+## 🚀 Next Step (Phase 3: Steps 13–14)
+- Add FastAPI prediction endpoint for the base model
+- Wire the Python bridge into Express
+- Expose prediction through backend routes/controllers
 
 ---
 
@@ -86,11 +100,16 @@
 - `ml/aggregator.py`
 - `ml/feature_extractor.py`
 - `ml/export_features.py`
+- `ml/dataset/download.py`
+- `ml/dataset/preprocess.py`
+- `ml/training/base_trainer.py`
+- `ml/models/base_model.pkl`
 - `db/duckdb/behavior.duckdb`
 
 ---
 
 ## ✅ Next Thread Checklist
-- [ ] Polish document editor UI/UX
-- [ ] Re-check formatting behavior + autosave after UI updates
-- [ ] Prepare Phase 3 (dataset download + base model training)
+- [ ] Add FastAPI prediction endpoint
+- [ ] Wire Python bridge into Express
+- [ ] Expose prediction route for backend consumers
+- [ ] Revisit baseline labels/features to reduce artificial accuracy inflation

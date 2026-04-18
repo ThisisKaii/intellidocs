@@ -6,11 +6,12 @@ import { saveSelectionIfInside } from './SelectionManager'
 interface EditorCoreProps {
   onContentChange?: (content: string) => void
   initialContent?: string
+  className?: string
 }
 
 // Editor core component using forwardRef so parent can focus editor
 export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
-  ({ onContentChange, initialContent = '' }, ref) => {
+  ({ onContentChange, initialContent = '', className = '' }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null)
 
     // Sync external ref with internal ref
@@ -97,7 +98,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        className="min-h-[560px] rounded-lg border border-border bg-background shadow-sm p-8 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+        className={`intellidocs-editor min-h-[60vh] border-0 bg-transparent px-0 py-0 shadow-none focus:outline-none focus:ring-0 ${className}`}
         style={{ wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}
       />
     )
