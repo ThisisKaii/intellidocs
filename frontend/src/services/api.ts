@@ -23,6 +23,12 @@ export interface BehaviorEvent {
   documentId: string
 }
 
+export interface PredictionResponse {
+  predicted_format: string
+  confidence: number
+  feature_values: Record<string, number>
+}
+
 interface LoginResponse {
   user: User
   session: { access_token: string }
@@ -132,6 +138,16 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(event),
+      })
+    },
+  },
+
+  predictions: {
+    predict: async (text: string): Promise<PredictionResponse> => {
+      return fetchAPI<PredictionResponse>('predictions/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
       })
     },
   },

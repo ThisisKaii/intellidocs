@@ -24,4 +24,13 @@ export interface BehaviorEvent {
   documentId: string
 }
 
+export interface PredictionRequest {
+  text: string
+}
+
+export interface PredictionResponse {
+  predicted_format: string
+  confidence: number
+}
+
 export type DocumentResponse = Document

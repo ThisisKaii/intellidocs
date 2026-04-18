@@ -1,19 +1,16 @@
-
 import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
 import * as FormattingCommands from './FormattingCommands'
 import { isFormatActive, restoreSelection } from './SelectionManager'
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Bold,
   Italic,
-  Underline,
-  Heading1,
-  Heading2,
-  Heading3,
   List,
   ListOrdered,
   Quote,
-  Code,
+  Underline,
 } from 'lucide-react'
 
 interface ToolbarProps {
@@ -21,12 +18,19 @@ interface ToolbarProps {
   onFocusEditor?: () => void
 }
 
+interface ToolbarItem {
+  format: string
+  icon?: React.ElementType
+  text?: string
+  label: string
+  command: () => void
+}
 
+/** Editor formatting toolbar with ultra-minimal flat styling. */
 export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    // Update active formats when selection changes
     const updateActiveFormats = () => {
       const formats = new Set<string>()
       if (isFormatActive('bold')) formats.add('bold')
@@ -39,73 +43,75 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
     return () => document.removeEventListener('selectionchange', updateActiveFormats)
   }, [])
 
-  // Apply formatting while keeping selection
-  function handleFormat(command: () => void, action?: string) {
+  const TOOLBAR_GROUPS: ToolbarItem[][] = [
+    [
+      { format: 'bold', icon: Bold, label: 'Bold', command: FormattingCommands.bold },
+      { format: 'italic', icon: Italic, label: 'Italic', command: FormattingCommands.italic },
+      { format: 'underline', icon: Underline, label: 'Underline', command: FormattingCommands.underline },
+    ],
+    [
+      { format: 'heading1', text: 'H1', label: 'Heading 1', command: FormattingCommands.heading1 },
+      { format: 'heading2', text: 'H2', label: 'Heading 2', command: FormattingCommands.heading2 },
+      { format: 'heading3', text: 'H3', label: 'Heading 3', command: FormattingCommands.heading3 },
+    ],
+    [
+      { format: 'blockquote', icon: Quote, label: 'Blockquote', command: FormattingCommands.blockquote },
+      { format: 'unordered_list', icon: List, label: 'Bullet list', command: FormattingCommands.bulletList },
+      { format: 'ordered_list', icon: ListOrdered, label: 'Numbered list', command: FormattingCommands.numberedList },
+    ],
+    [
+      { format: 'align-left', icon: AlignLeft, label: 'Align left', command: () => document.execCommand('justifyLeft', false) },
+      { format: 'align-center', icon: AlignCenter, label: 'Align center', command: () => document.execCommand('justifyCenter', false) },
+      { format: 'align-right', icon: AlignRight, label: 'Align right', command: () => document.execCommand('justifyRight', false) },
+    ],
+  ]
+
+  function handleClick(item: ToolbarItem) {
     onFocusEditor?.()
     restoreSelection()
-    command()
-    if (action) onFormatApplied?.(action)
+    item.command()
+    if (item.format) onFormatApplied?.(item.format)
 
-    if (action) {
-      setActiveFormats((prev) => {
-        const next = new Set(prev)
-        if (next.has(action)) {
-          next.delete(action)
-        } else {
-          next.add(action)
-        }
-        return next
-      })
-    }
-  }
-
-  function handleMouseDown(command: () => void, action?: string) {
-    return (event: React.MouseEvent<HTMLButtonElement>) => {
-      event.preventDefault()
-      handleFormat(command, action)
-    }
+    setActiveFormats((prev) => {
+      const next = new Set(prev)
+      if (next.has(item.format)) next.delete(item.format)
+      else next.add(item.format)
+      return next
+    })
   }
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-2">
-      <Button variant={activeFormats.has('bold') ? 'default' : 'ghost'} size="sm" onMouseDown={handleMouseDown(FormattingCommands.bold, 'bold')}>
-        <Bold className="size-4" />
-      </Button>
-
-      <Button variant={activeFormats.has('italic') ? 'default' : 'ghost'} size="sm" onMouseDown={handleMouseDown(FormattingCommands.italic, 'italic')}>
-        <Italic className="size-4" />
-      </Button>
-
-      <Button variant={activeFormats.has('underline') ? 'default' : 'ghost'} size="sm" onMouseDown={handleMouseDown(FormattingCommands.underline, 'underline')}>
-        <Underline className="size-4" />
-      </Button>
-
-      <div className="mx-1 h-5 w-px bg-border" />
-
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading1, 'heading1')}>
-        <Heading1 className="size-4" />
-      </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading2, 'heading2')}>
-        <Heading2 className="size-4" />
-      </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.heading3, 'heading3')}>
-        <Heading3 className="size-4" />
-      </Button>
-
-      <div className="mx-1 h-5 w-px bg-border" />
-
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.bulletList, 'unordered_list')}>
-        <List className="size-4" />
-      </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.numberedList, 'ordered_list')}>
-        <ListOrdered className="size-4" />
-      </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.blockquote, 'blockquote')}>
-        <Quote className="size-4" />
-      </Button>
-      <Button variant="ghost" size="sm" onMouseDown={handleMouseDown(FormattingCommands.codeBlock, 'code_block')}>
-        <Code className="size-4" />
-      </Button>
+    <div className="flex items-center gap-1.5 flex-wrap px-2">
+      {TOOLBAR_GROUPS.map((group, gi) => (
+        <div key={gi} className="flex items-center gap-1">
+          {gi > 0 && <div className="w-px h-5 bg-border/60 mx-3" />}
+          {group.map((item) => {
+            const active = activeFormats.has(item.format)
+            return (
+              <button
+                key={item.format}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  handleClick(item)
+                }}
+                title={item.label}
+                className={`flex items-center justify-center min-w-7 h-7 rounded bg-transparent border-0 shadow-none outline-none focus:outline-none transition-colors ${
+                  active
+                    ? 'bg-secondary/80 text-foreground'
+                    : 'text-muted-foreground/80 hover:text-foreground hover:bg-secondary/40'
+                }`}
+              >
+                {item.icon ? (
+                  <item.icon className="w-4 h-4" />
+                ) : (
+                  <span className="font-sans text-xs font-semibold">{item.text}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }

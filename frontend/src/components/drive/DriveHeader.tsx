@@ -1,7 +1,6 @@
-import { type ChangeEvent } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { FileText, LogOut, Plus, Search } from 'lucide-react'
+import ThemeToggle from '@/components/ThemeToggle'
+import { FileText, LogOut, Plus } from 'lucide-react'
 
 interface DriveHeaderProps {
   query: string
@@ -12,16 +11,11 @@ interface DriveHeaderProps {
 
 /** Drive-style top header with search and actions. */
 export function DriveHeader({
-  query,
-  onQueryChange,
+  query: _query,
+  onQueryChange: _onQueryChange,
   onCreate,
   onLogout,
 }: DriveHeaderProps): JSX.Element {
-  /** Handle search input changes. */
-  function handleQueryChange(event: ChangeEvent<HTMLInputElement>): void {
-    onQueryChange(event.target.value)
-  }
-
   /** Create a new document. */
   function handleCreate(): void {
     onCreate()
@@ -43,6 +37,7 @@ export function DriveHeader({
         <div className="flex-1" />
 
         <div className="ml-auto flex items-center gap-2 shrink-0">
+          <ThemeToggle />
           <Button size="sm" onClick={handleCreate}>
             <Plus className="mr-1 size-3.5" />
             New
