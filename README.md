@@ -146,7 +146,7 @@ This is a **capstone research system** designed to validate 5 key research quest
 - **[MVC Architecture](./AGENTS.md#mvc-architecture)** - Strict separation of concerns
 - **[Coding Conventions](./AGENTS.md#coding-conventions)** - Standards and rules
 
----
+
 
 ## Development Roadmap
 
