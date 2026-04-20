@@ -12,6 +12,7 @@ import SuggestionPanel, { type Suggestion } from '@/components/editor/Suggestion
 import GrammarPanel from '@/components/editor/GrammarPanel'
 import FormatPrompt, { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import AIChatbot from '@/components/editor/AIChatbot'
+import SuggestionOverlay, { type GrammarIssue } from '@/components/editor/SuggestionOverlay'
 import { Sparkles, ArrowLeft, Save, Brain, Moon, Sun } from 'lucide-react'
 
 const AUTOSAVE_DELAY = 8000
@@ -21,6 +22,10 @@ export default function Document(): JSX.Element {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef<boolean>(false)
+  const latestTitleRef = useRef<string>('Untitled Document')
+  const latestContentRef = useRef<string>('')
+  const latestFormatHistoryRef = useRef<string[]>([])
+  const pendingSaveRef = useRef<boolean>(false)
   const sessionId = useRef(`session_${Date.now()}`)
 
   const [title, setTitle] = useState<string>('Untitled Document')
@@ -36,6 +41,7 @@ export default function Document(): JSX.Element {
   const [suggestions, _setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
+  const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
   const [isDark, setIsDark] = useState<boolean>(() => document.documentElement.classList.contains('dark'))
 
   const toggleTheme = useCallback(() => {
@@ -59,6 +65,8 @@ export default function Document(): JSX.Element {
         const nextContent = doc.content || ''
         setTitle(nextTitle)
         setContent(nextContent)
+        latestTitleRef.current = nextTitle
+        latestContentRef.current = nextContent
         setLastSavedTitle(nextTitle)
         setLastSavedContent(nextContent)
         setSaveStatus('saved')
@@ -70,6 +78,18 @@ export default function Document(): JSX.Element {
     loadDocument()
   }, [id])
 
+  useEffect(() => {
+    latestTitleRef.current = title
+  }, [title])
+
+  useEffect(() => {
+    latestContentRef.current = content
+  }, [content])
+
+  useEffect(() => {
+    latestFormatHistoryRef.current = formatHistory
+  }, [formatHistory])
+
   /* ── Helpers ── */
   function updateWordCount(html: string): void {
     const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -77,41 +97,80 @@ export default function Document(): JSX.Element {
   }
 
   function scheduleSave(): void {
+    pendingSaveRef.current = true
     setSaveStatus('unsaved')
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
-    autosaveTimer.current = setTimeout(saveDocument, AUTOSAVE_DELAY)
+    autosaveTimer.current = setTimeout(() => {
+      void saveDocument()
+    }, AUTOSAVE_DELAY)
   }
 
   async function saveDocument(): Promise<void> {
-    if (!id || savingRef.current) return
+    if (!id) return
+
+    if (savingRef.current) {
+      pendingSaveRef.current = true
+      return
+    }
+
+    const nextTitle = latestTitleRef.current
+    const nextContent = editorRef.current?.innerHTML ?? latestContentRef.current
+    const nextFormatHistory = latestFormatHistoryRef.current
+
     savingRef.current = true
+    pendingSaveRef.current = false
     setSaveStatus('saving')
+
     try {
-      await api.documents.update(id, { title, content, formatting_history: formatHistory })
-      setLastSavedTitle(title)
-      setLastSavedContent(content)
+      await api.documents.update(id, {
+        title: nextTitle,
+        content: nextContent,
+        formatting_history: nextFormatHistory,
+      })
+      latestContentRef.current = nextContent
+      setContent(nextContent)
+      setLastSavedTitle(nextTitle)
+      setLastSavedContent(nextContent)
       setSaveStatus('saved')
     } catch (error) {
       console.error('Autosave failed', error)
+      pendingSaveRef.current = true
       setSaveStatus('unsaved')
     } finally {
       savingRef.current = false
+
+      if (pendingSaveRef.current) {
+        if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+        autosaveTimer.current = setTimeout(() => {
+          void saveDocument()
+        }, AUTOSAVE_DELAY)
+      }
     }
   }
 
   function handleContentChange(newContent: string): void {
+    latestContentRef.current = newContent
     setContent(newContent)
     updateWordCount(newContent)
     scheduleSave()
   }
 
   function handleTitleChange(event: ChangeEvent<HTMLInputElement>): void {
-    setTitle(event.target.value)
+    const nextTitle = event.target.value
+    latestTitleRef.current = nextTitle
+    setTitle(nextTitle)
     scheduleSave()
   }
 
   function handleFormat(formatType: string): void {
-    setFormatHistory((prev) => [...prev, formatType])
+    const nextContent = editorRef.current?.innerHTML || content
+    latestContentRef.current = nextContent
+    setContent(nextContent)
+    setFormatHistory((prev) => {
+      const nextHistory = [...prev, formatType]
+      latestFormatHistoryRef.current = nextHistory
+      return nextHistory
+    })
     if (id) {
       const event = createBehaviorEvent(formatType, id)
       setBehaviorEvents((prev) => [...prev, event])
@@ -119,7 +178,7 @@ export default function Document(): JSX.Element {
     }
     setShowSuggestions(false)
     scheduleSave()
-    updateWordCount(editorRef.current?.innerHTML || '')
+    updateWordCount(nextContent)
   }
 
   function handlePromptAccept(format: string): void {
@@ -146,8 +205,55 @@ export default function Document(): JSX.Element {
     setShowSuggestions(false)
   }
 
+  function handleGrammarApply(issue: GrammarIssue): void {
+    if (!editorRef.current) return
+    const editor = editorRef.current
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null)
+    let node = walker.nextNode()
+    let applied = false
+
+    while (node && !applied) {
+      const text = node.nodeValue || ''
+      const index = text.indexOf(issue.original)
+      if (index !== -1) {
+        node.nodeValue =
+          text.substring(0, index) +
+          issue.suggestion +
+          text.substring(index + issue.original.length)
+        applied = true
+      }
+      node = walker.nextNode()
+    }
+
+    if (applied) {
+      handleContentChange(editor.innerHTML)
+    }
+    setGrammarIssues((prev) => prev.filter((i) => i !== issue))
+  }
+
+  function handleGrammarDismiss(issue: GrammarIssue): void {
+    setGrammarIssues((prev) => prev.filter((i) => i !== issue))
+  }
+
+  useEffect(() => {
+    return () => {
+      if (autosaveTimer.current) {
+        clearTimeout(autosaveTimer.current)
+      }
+    }
+  }, [])
+
   const getEditorText = useCallback(() => editorRef.current?.innerText || '', [])
   function focusEditor(): void { editorRef.current?.focus() }
+
+  async function handleManualSave(): Promise<void> {
+    if (autosaveTimer.current) {
+      clearTimeout(autosaveTimer.current)
+      autosaveTimer.current = null
+    }
+    pendingSaveRef.current = true
+    await saveDocument()
+  }
 
   /* ── Render ── */
   return (
@@ -197,6 +303,18 @@ export default function Document(): JSX.Element {
 
             <button
               type="button"
+              onClick={() => {
+                void handleManualSave()
+              }}
+              disabled={saveStatus === 'saving'}
+              className="flex items-center gap-1.5 text-[13px] font-inter font-medium text-foreground hover:bg-secondary/40 transition-colors px-3 py-2 rounded-xl border border-border/70 disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              Save now
+            </button>
+
+            <button
+              type="button"
               onClick={toggleTheme}
               className="flex items-center justify-center w-9 h-9 border border-border/80 rounded-[14px] text-muted-foreground hover:text-foreground bg-white dark:bg-[#272a31] transition-colors"
               title="Toggle Theme"
@@ -225,12 +343,19 @@ export default function Document(): JSX.Element {
       <div className="flex flex-1 min-h-0">
 
         {/* Editor canvas */}
-        <main className="flex-1 overflow-y-auto min-w-0">
-          <div className="max-w-2xl mx-auto px-8 py-12">
+        <main className="flex-1 overflow-y-auto min-w-0 relative">
+          <div className="max-w-2xl mx-auto px-8 py-12 relative">
             <EditorCore
               ref={editorRef}
               onContentChange={handleContentChange}
               initialContent={content}
+            />
+            <SuggestionOverlay
+              editorRef={editorRef}
+              issues={grammarIssues}
+              content={content}
+              onApply={handleGrammarApply}
+              onDismiss={handleGrammarDismiss}
             />
           </div>
         </main>
@@ -278,7 +403,7 @@ export default function Document(): JSX.Element {
                 </div>
 
                 {/* ── Grammar panel ── */}
-                <GrammarPanel text={getEditorText()} />
+                <GrammarPanel text={content} onCheckComplete={setGrammarIssues} />
 
                 {/* ── Session stats ── */}
                 <div className="bg-transparent border border-border/50 rounded-md p-4 max-w-full">

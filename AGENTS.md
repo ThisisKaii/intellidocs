@@ -4,6 +4,28 @@
 
 ---
 
+## Agent Operating Rules
+
+- Ship working code only. Plausibility is not correctness.
+- Read the files you will touch before editing them.
+- Touch only what the task requires. No drive-by refactors or cleanup outside the request.
+- If the request is ambiguous in a way that changes the output, ask before proceeding.
+- Verify claims by reading files, running code, or checking command output instead of guessing.
+- Never fabricate paths, APIs, test results, or implementation details.
+- Keep solutions simple. Do not add abstraction or configurability that was not requested.
+- Match existing patterns in this repository even if you would structure it differently in a greenfield project.
+- Do not report success based only on a plausible diff. Verify the result.
+
+### Working Approach
+
+1. Read the relevant files and the calling code around them.
+2. Define success in a way that can be checked.
+3. Make the smallest change that satisfies the request.
+4. Run the most relevant verification available.
+5. If the same issue fails twice, stop and reassess instead of layering guesses.
+
+---
+
 ## What is IntelliDocs?
 
 IntelliDocs is a capstone research system — an intelligent web-based document
@@ -356,6 +378,54 @@ interface AIClient {
 
 ---
 
+## Project Context
+
+### Stack
+- Frontend: React 18 + Vite + TypeScript + TSX
+- Backend: Node.js 20 + Express + TypeScript
+- ML Service: Python + FastAPI + scikit-learn + PyTorch
+- Databases: Supabase, Redis, DuckDB
+- Package managers: npm for frontend/backend, pip for ML
+
+### Commands
+
+#### Frontend
+- Install: `cd frontend && npm install`
+- Run locally: `cd frontend && npm run dev`
+- Build: `cd frontend && npm run build`
+- Lint: `cd frontend && npm run lint`
+- Typecheck: `cd frontend && npm run type-check`
+
+#### Backend
+- Install: `cd server && npm install`
+- Run locally: `cd server && npm run dev`
+- Run locally with ML Python path: `cd server && npm run dev:ml`
+- Build: `cd server && npm run build`
+- Test: `cd server && npm test`
+- Lint: `cd server && npm run lint`
+
+#### ML
+- Install: `cd ml && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt`
+- Run locally: `cd ml && source venv/bin/activate && python src/main.py`
+- Dataset download: `ml/venv/bin/python ml/dataset/download.py`
+- Preprocess: `ml/venv/bin/python ml/dataset/preprocess.py`
+- Train base model: `ml/venv/bin/python ml/training/base_trainer.py`
+
+### Layout
+- Frontend source lives in: `frontend/src`
+- Backend source lives in: `server/src`
+- ML source lives in: `ml/src`
+- Tests live in: `tests/`
+- Generated ML artifacts live under: `ml/dataset/raw`, `ml/dataset/processed`, `ml/models`
+- Do not commit generated datasets or training artifacts unless explicitly requested
+
+### Repo-Specific Conventions
+- React must call the backend only through `frontend/src/services/api.ts`
+- Controllers must not call Python directly; use the Python bridge path
+- Keep route files thin and move logic into controllers/skills/models as appropriate
+- The custom editor must stay `contentEditable`-based
+- Match the existing TypeScript style: explicit types, no `any`, minimal changes
+
 ## Coding Conventions
 
 - No `any` types in TypeScript — ever
@@ -470,3 +540,5 @@ formatting behavior and predicts it automatically.
 - Keep Ollama off when not testing the chatbot to save RAM
 - Run nvidia-smi to verify Ollama is using GPU not RAM
 - sync-ai script: cp AGENTS.md .github/copilot-instructions.md
+- Generated ML data should stay local unless explicitly needed: `ml/dataset/raw/`, `ml/dataset/processed/`, `ml/models/*.pkl`
+- Prefer Gemini on low-spec demo/test machines and Ollama on the local development machine

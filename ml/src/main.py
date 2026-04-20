@@ -1,5 +1,7 @@
 import os
 import pickle
+import sys
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -7,6 +9,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
+
+from grammar.grammar_checker import evaluate_text
+from grammar.spell_checker import check_spelling
 
 load_dotenv()
 
@@ -36,6 +45,10 @@ class PredictResponse(BaseModel):
     confidence: float
     model_path: str
     feature_values: dict[str, float]
+
+
+class TextCheckRequest(BaseModel):
+    text: str
 
 
 def load_model_payload() -> dict[str, Any]:
@@ -134,6 +147,30 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
         model_path=MODEL_PATH,
         feature_values=feature_values,
     )
+
+
+@app.post("/grammar/check")
+async def grammar_check(request: TextCheckRequest) -> dict[str, Any]:
+    """Run the grammar quality checker on the given text."""
+    try:
+        return evaluate_text(request.text)
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Grammar check failed: {error}",
+        ) from error
+
+
+@app.post("/spelling/check")
+async def spelling_check(request: TextCheckRequest) -> dict[str, Any]:
+    """Run the spelling checker on the given text."""
+    try:
+        return check_spelling(request.text)
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Spelling check failed: {error}",
+        ) from error
 
 
 if __name__ == "__main__":

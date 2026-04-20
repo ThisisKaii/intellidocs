@@ -1,8 +1,8 @@
 # IntelliDocs Progress Summary
 
 **Last Updated:** Current Thread  
-**Phase:** Phase 3 — Dataset + Base ML Model (Steps 10–12) ✅ In Progress  
-**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete. Dataset pipeline ✅ Complete. Base formatting model ✅ Trained.
+**Phase:** Phase 4 — Grammar + Spell Check ✅ In Progress  
+**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete. Dataset pipeline ✅ Complete. Base formatting model ✅ Trained. Prediction API ✅ Wired end-to-end. Grammar/spelling ML API ✅ Working. Express grammar/spelling wiring ✅ In progress.
 
 ---
 
@@ -57,7 +57,20 @@
   - `formatting_examples.csv`
   - `grammar_examples.csv`
 - ✅ Base formatting model trained and saved to `ml/models/base_model.pkl`
+- ✅ FastAPI prediction endpoint added in `ml/src/main.py`
+- ✅ Python bridge wired into Express
+- ✅ Backend prediction route exposed for frontend/backend consumers
 - ⚠️ Baseline validation accuracy is very high because labels are currently heuristic and should be refined later
+
+### Grammar + Spell Check (Phase 4)
+- ✅ `ml/grammar/grammar_checker.py` created
+- ✅ `ml/grammar/spell_checker.py` created
+- ✅ FastAPI endpoints added:
+  - `/grammar/check`
+  - `/spelling/check`
+- ✅ ML-side curl testing works
+- ⚠️ Grammar model quality still needs improvement (current scoring is too weak for obviously incorrect sentences)
+- ⏳ Express grammar/spelling route verification still in progress
 
 ---
 
@@ -73,6 +86,10 @@
 - WikiText-103 and JFLEG download successfully
 - Preprocessing produces formatting and grammar datasets
 - Base model training completes and saves `ml/models/base_model.pkl`
+- FastAPI prediction endpoint returns formatting predictions
+- Express prediction route successfully calls the Python bridge
+- Grammar endpoint returns grammar scoring payloads
+- Spelling endpoint returns structured issue lists
 
 ---
 
@@ -81,10 +98,10 @@
 
 ---
 
-## 🚀 Next Step (Phase 3: Steps 13–14)
-- Add FastAPI prediction endpoint for the base model
-- Wire the Python bridge into Express
-- Expose prediction through backend routes/controllers
+## 🚀 Next Step (Phase 4 continuation)
+- Verify Express grammar/spelling routes end-to-end
+- Wire grammar/spelling checks into the editor UI
+- Improve grammar model quality after full integration
 
 ---
 
@@ -103,13 +120,21 @@
 - `ml/dataset/download.py`
 - `ml/dataset/preprocess.py`
 - `ml/training/base_trainer.py`
+- `ml/src/main.py`
+- `ml/grammar/grammar_checker.py`
+- `ml/grammar/spell_checker.py`
+- `server/src/ai/bridge/pythonBridge.ts`
+- `server/src/skills/predictFormat.ts`
+- `server/src/controllers/predictionController.ts`
+- `server/src/routes/predictionRoutes.ts`
 - `ml/models/base_model.pkl`
+- `ml/models/grammar_model.pkl`
 - `db/duckdb/behavior.duckdb`
 
 ---
 
 ## ✅ Next Thread Checklist
-- [ ] Add FastAPI prediction endpoint
-- [ ] Wire Python bridge into Express
-- [ ] Expose prediction route for backend consumers
+- [ ] Verify Express grammar/spelling routes
+- [ ] Wire grammar/spelling into the editor UI
+- [ ] Improve grammar scoring quality
 - [ ] Revisit baseline labels/features to reduce artificial accuracy inflation

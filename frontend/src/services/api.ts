@@ -46,6 +46,34 @@ interface UpdateDocumentRequest {
   formatting_history?: string[]
 }
 
+export interface GrammarIssue {
+  type: string
+  original: string
+  suggestion: string
+  explanation: string
+}
+
+export interface GrammarCheckResponse {
+  score: number
+  status: string
+  message: string
+  issues: GrammarIssue[]
+}
+
+export interface SpellingIssue{ 
+  word: string
+  suggestion: string | null
+  type: string
+  
+}
+
+export interface SpellCheckResponse {
+  issues: SpellingIssue[]
+  count: number
+  message: string
+}
+
+
 function getAuthToken(): string | null {
   return localStorage.getItem('authToken')
 }
@@ -145,6 +173,20 @@ export const api = {
   predictions: {
     predict: async (text: string): Promise<PredictionResponse> => {
       return fetchAPI<PredictionResponse>('predictions/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+    },
+    grammarCheck: async (text: string): Promise<GrammarCheckResponse> => {
+      return fetchAPI<GrammarCheckResponse>('predictions/grammar-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+    },
+    spellCheck: async (text: string): Promise<SpellCheckResponse> => {
+      return fetchAPI<SpellCheckResponse>('predictions/spelling-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
