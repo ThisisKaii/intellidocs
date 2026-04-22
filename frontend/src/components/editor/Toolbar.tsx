@@ -81,10 +81,10 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
   }
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap px-2">
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0 0.5rem' }}>
       {TOOLBAR_GROUPS.map((group, gi) => (
-        <div key={gi} className="flex items-center gap-1">
-          {gi > 0 && <div className="w-px h-5 bg-border/60 mx-3" />}
+        <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+          {gi > 0 && <div style={{ width: '1px', height: '1.25rem', backgroundColor: 'var(--border)', margin: '0 0.5rem', opacity: 0.6 }} />}
           {group.map((item) => {
             const active = activeFormats.has(item.format)
             return (
@@ -96,16 +96,39 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
                   handleClick(item)
                 }}
                 title={item.label}
-                className={`flex items-center justify-center min-w-7 h-7 rounded bg-transparent border-0 shadow-none outline-none focus:outline-none transition-colors ${
-                  active
-                    ? 'bg-secondary/80 text-foreground'
-                    : 'text-muted-foreground/80 hover:text-foreground hover:bg-secondary/40'
-                }`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: '32px',
+                  height: '32px',
+                  borderRadius: '0.375rem',
+                  border: 'none',
+                  backgroundColor: active ? 'var(--secondary)' : 'transparent',
+                  color: active ? 'var(--foreground)' : 'var(--muted-foreground)',
+                  boxShadow: active ? '0px 0px 0px 1px var(--border-shadow)' : 'none',
+                  cursor: 'pointer',
+                  transition: 'background-color 150ms, color 150ms',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)';
+                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) {
+                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)';
+                  }
+                }}
               >
                 {item.icon ? (
-                  <item.icon className="w-4 h-4" />
+                  <item.icon style={{ width: '16px', height: '16px' }} />
                 ) : (
-                  <span className="font-sans text-xs font-semibold">{item.text}</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{item.text}</span>
                 )}
               </button>
             )

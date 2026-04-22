@@ -12,13 +12,15 @@
     "dev:ml": "PYTHON_BIN=/home/josh/school/codes/intellidocs/ml/venv/bin/python tsx watch src/index.ts"
   },
   "dependencies": {
+    "@arcjet/node": "^1.3.0",
     "@supabase/supabase-js": "^2.38.0",
     "axios": "^1.6.0",
     "cors": "^2.8.0",
     "dotenv": "^16.6.1",
     "express": "^4.18.0",
     "jsonwebtoken": "^9.0.2",
-    "redis": "^4.6.0"
+    "redis": "^4.6.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/cors": "^2.8.0",

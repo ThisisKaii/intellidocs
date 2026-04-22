@@ -16,6 +16,7 @@ export interface CreateDocumentRequest {
 export interface UpdateDocumentRequest {
   title?: string
   content?: string
+  formatting_history?: string[]
 }
 
 export interface BehaviorEvent {

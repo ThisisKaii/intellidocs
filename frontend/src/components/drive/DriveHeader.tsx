@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button'
-import ThemeToggle from '@/components/ThemeToggle'
-import { FileText, LogOut, Plus } from 'lucide-react'
+import { FileText, LogOut, Plus, Search } from 'lucide-react'
 
 interface DriveHeaderProps {
   query: string
@@ -9,40 +8,38 @@ interface DriveHeaderProps {
   onLogout: () => void
 }
 
-/** Drive-style top header with search and actions. */
 export function DriveHeader({
-  query: _query,
-  onQueryChange: _onQueryChange,
+  query,
+  onQueryChange,
   onCreate,
   onLogout,
 }: DriveHeaderProps): JSX.Element {
-  /** Create a new document. */
-  function handleCreate(): void {
-    onCreate()
-  }
-
-  /** Log out of the session. */
-  function handleLogout(): void {
-    onLogout()
-  }
-
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-[96rem] items-center gap-3 px-4">
+    <header className="sticky top-0 z-30 border-b border-border bg-background">
+      <div className="flex h-14 items-center justify-between px-4">
         <div className="flex items-center gap-2 shrink-0">
-          <FileText className="size-5 text-primary" />
-          <span className="font-semibold tracking-tight">IntelliDocs</span>
+          <FileText className="size-5 text-foreground" />
+          <span className="font-semibold tracking-tight text-foreground">IntelliDocs</span>
         </div>
 
-        <div className="flex-1" />
+        <div className="flex-1 max-w-md mx-8">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/80" />
+            <input
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              placeholder="Search documents..."
+              className="h-9 w-full rounded-md bg-secondary pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground/80 outline-none transition-colors focus:bg-background focus:border-shadow"
+            />
+          </div>
+        </div>
 
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <ThemeToggle />
-          <Button size="sm" onClick={handleCreate}>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button size="sm" onClick={onCreate}>
             <Plus className="mr-1 size-3.5" />
             New
           </Button>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
+          <Button variant="outline" size="sm" onClick={onLogout}>
             <LogOut className="mr-1 size-3.5" />
             Log out
           </Button>

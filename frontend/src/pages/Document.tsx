@@ -13,7 +13,7 @@ import GrammarPanel from '@/components/editor/GrammarPanel'
 import FormatPrompt, { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import AIChatbot from '@/components/editor/AIChatbot'
 import SuggestionOverlay, { type GrammarIssue } from '@/components/editor/SuggestionOverlay'
-import { Sparkles, ArrowLeft, Save, Brain, Moon, Sun } from 'lucide-react'
+import { ArrowLeft, Save, Moon, Sun } from 'lucide-react'
 
 const AUTOSAVE_DELAY = 8000
 
@@ -26,7 +26,6 @@ export default function Document(): JSX.Element {
   const latestContentRef = useRef<string>('')
   const latestFormatHistoryRef = useRef<string[]>([])
   const pendingSaveRef = useRef<boolean>(false)
-  const sessionId = useRef(`session_${Date.now()}`)
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
@@ -37,25 +36,27 @@ export default function Document(): JSX.Element {
   const [formatHistory, setFormatHistory] = useState<string[]>([])
   const [_behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([])
 
-  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(true)
+  const [rightPanelOpen] = useState<boolean>(true)
   const [suggestions, _setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
-  const [isDark, setIsDark] = useState<boolean>(() => document.documentElement.classList.contains('dark'))
 
-  const toggleTheme = useCallback(() => {
-    const root = document.documentElement
-    if (root.classList.contains('dark')) {
-      root.classList.remove('dark')
-      setIsDark(false)
-    } else {
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    return document.documentElement.classList.contains('dark')
+  })
+
+  function toggleTheme() {
+    const nextDark = !isDark
+    setIsDark(nextDark)
+    const root = window.document.documentElement
+    if (nextDark) {
       root.classList.add('dark')
-      setIsDark(true)
+    } else {
+      root.classList.remove('dark')
     }
-  }, [])
+  }
 
-  /* ── Load document ── */
   useEffect(() => {
     if (!id) return
     async function loadDocument(): Promise<void> {
@@ -90,7 +91,6 @@ export default function Document(): JSX.Element {
     latestFormatHistoryRef.current = formatHistory
   }, [formatHistory])
 
-  /* ── Helpers ── */
   function updateWordCount(html: string): void {
     const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
     setWordCount(text ? text.split(' ').filter((w) => w.length > 0).length : 0)
@@ -255,96 +255,189 @@ export default function Document(): JSX.Element {
     await saveDocument()
   }
 
-  /* ── Render ── */
+
   return (
-    <div className="h-screen w-full overflow-hidden bg-background flex flex-col">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'hidden', backgroundColor: 'var(--background)' }}>
 
-      {/* ═══ TOP BAR ═══ */}
-      <header className="border-b border-border bg-card sticky top-0 z-40">
-        <div className="flex items-center justify-between pl-6 pr-8 py-4">
-
-          {/* Left: ← IntelliDocs */}
-          <div className="flex items-center gap-4 shrink-0">
-            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" />
+      {/* ── Header ─────────────────────────────────────────── */}
+      <header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 40,
+          backgroundColor: 'var(--background)',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}
+      >
+        {/* Main nav row */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            height: '56px',
+            padding: '0 1.5rem',
+            gap: '1rem',
+          }}
+        >
+          {/* Left: back + brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+            <Link
+              to="/"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                borderRadius: '0.5rem',
+                color: 'var(--muted-foreground)',
+                backgroundColor: 'transparent',
+                textDecoration: 'none',
+                transition: 'background-color 150ms, color 150ms',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'var(--secondary)'
+                ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--foreground)'
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'transparent'
+                ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--muted-foreground)'
+              }}
+            >
+              <ArrowLeft style={{ width: '16px', height: '16px' }} />
             </Link>
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-foreground rounded flex items-center justify-center">
-                <Sparkles className="w-3 h-3 text-background" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '5px',
+                  backgroundColor: 'var(--primary)',
+                }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary-foreground)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '12px', height: '12px' }}>
+                  <path d="M12 2L2 22h20L12 2z" />
+                </svg>
               </div>
-              <span className="font-fraunces font-semibold text-sm tracking-tight">IntelliDocs</span>
+              <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--foreground)' }}>IntelliDocs</span>
             </div>
           </div>
 
-          {/* Center: title */}
-          <div className="flex-1 max-w-xl mx-auto">
+          {/* Center: inline document title */}
+          <div style={{ flex: 1, maxWidth: '480px', margin: '0 auto' }}>
             <input
               value={title}
               onChange={handleTitleChange}
-              className="w-full font-fraunces text-lg font-bold bg-transparent border-none outline-none focus:outline-none focus:ring-0 shadow-none text-foreground placeholder:text-muted-foreground text-center"
               placeholder="Untitled Document"
-              style={{ boxShadow: 'none' }}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                backgroundColor: 'transparent',
+                border: 'none',
+                outline: 'none',
+                fontSize: '0.9375rem',
+                fontWeight: 500,
+                color: 'var(--foreground)',
+                textAlign: 'center',
+                fontFamily: 'inherit',
+                padding: '0.25rem 0.5rem',
+                borderRadius: '0.375rem',
+                transition: 'background-color 150ms',
+              }}
+              onFocus={(e) => { e.currentTarget.style.backgroundColor = 'var(--secondary)' }}
+              onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
             />
           </div>
 
-          {/* Right: word count · saved · theme · AI Panel */}
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="flex items-center gap-3 pr-2 border-r border-border/50">
-              <span className="font-inter text-xs text-muted-foreground whitespace-nowrap">
-                {wordCount} words
-              </span>
-              <span className={`font-inter text-xs flex items-center gap-1 whitespace-nowrap ${
-                saveStatus === 'saving' ? 'text-accent' : 'text-muted-foreground'
-              }`}>
-                <Save className="w-3 h-3" />
-                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}
-              </span>
-            </div>
+          {/* Right: save status + actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+            <span
+              style={{
+                fontSize: '0.75rem',
+                color: saveStatus === 'saving' ? 'var(--foreground)' : 'var(--muted-foreground)',
+                transition: 'color 200ms',
+              }}
+            >
+              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}
+            </span>
 
             <button
               type="button"
-              onClick={() => {
-                void handleManualSave()
-              }}
+              onClick={() => { void handleManualSave() }}
               disabled={saveStatus === 'saving'}
-              className="flex items-center gap-1.5 text-[13px] font-inter font-medium text-foreground hover:bg-secondary/40 transition-colors px-3 py-2 rounded-xl border border-border/70 disabled:opacity-50"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                height: '32px',
+                padding: '0 0.75rem',
+                borderRadius: '0.5rem',
+                border: 'none',
+                boxShadow: '0 0 0 1px var(--border-shadow)',
+                backgroundColor: 'transparent',
+                color: 'var(--foreground)',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+                cursor: saveStatus === 'saving' ? 'not-allowed' : 'pointer',
+                opacity: saveStatus === 'saving' ? 0.5 : 1,
+                fontFamily: 'inherit',
+                transition: 'background-color 150ms',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
             >
-              <Save className="w-4 h-4" />
-              Save now
+              <Save style={{ width: '14px', height: '14px' }} />
+              Save
             </button>
 
             <button
               type="button"
               onClick={toggleTheme}
-              className="flex items-center justify-center w-9 h-9 border border-border/80 rounded-[14px] text-muted-foreground hover:text-foreground bg-white dark:bg-[#272a31] transition-colors"
-              title="Toggle Theme"
+              title="Toggle theme"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                borderRadius: '0.5rem',
+                border: 'none',
+                boxShadow: '0 0 0 1px var(--border-shadow)',
+                backgroundColor: 'transparent',
+                color: 'var(--muted-foreground)',
+                cursor: 'pointer',
+                transition: 'background-color 150ms, color 150ms',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)'
+                ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)'
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
+                ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'
+              }}
             >
-              {isDark ? <Sun className="w-4 h-4" strokeWidth={1.5} /> : <Moon className="w-4 h-4" strokeWidth={1.5} />}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setRightPanelOpen((o) => !o)}
-              className="flex items-center gap-1.5 text-[13px] font-inter font-medium text-primary-foreground hover:brightness-110 transition-all px-4 py-2 rounded-xl bg-primary shadow-none"
-            >
-              <Brain className="w-4 h-4" />
-              AI Panel
+              {isDark ? <Sun style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <Moon style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
             </button>
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="px-6 py-2 border-t border-border/40 bg-card">
+        {/* Toolbar row */}
+        <div style={{ padding: '0 1.5rem', borderTop: '1px solid var(--border)' }}>
           <Toolbar onFormatApplied={handleFormat} onFocusEditor={focusEditor} />
         </div>
       </header>
 
-      {/* ═══ MAIN LAYOUT ═══ */}
-      <div className="flex flex-1 min-h-0">
+      {/* ── Body ──────────────────────────────────────────── */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
-        {/* Editor canvas */}
-        <main className="flex-1 overflow-y-auto min-w-0 relative">
-          <div className="max-w-2xl mx-auto px-8 py-12 relative">
+        {/* Editor area */}
+        <main style={{ flex: 1, overflowY: 'auto', minWidth: 0, position: 'relative' }}>
+          <div style={{ maxWidth: '680px', margin: '0 auto', padding: '3rem 2rem', position: 'relative' }}>
             <EditorCore
               ref={editorRef}
               onContentChange={handleContentChange}
@@ -360,68 +453,87 @@ export default function Document(): JSX.Element {
           </div>
         </main>
 
-        {/* Right AI panel */}
+        {/* Right panel */}
         <AnimatePresence>
           {rightPanelOpen && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 310, opacity: 1 }}
+              animate={{ width: 272, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className="border-l border-border bg-card shrink-0 flex flex-col"
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                borderLeft: '1px solid var(--border)',
+                backgroundColor: 'var(--card)',
+                flexShrink: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+              }}
             >
-              <div className="flex-1 w-full overflow-y-auto overflow-x-hidden">
-                <div className="p-5 pr-6 space-y-5">
+              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-                  {/* ── Predictions section ── */}
+                {/* Predictions section */}
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-inter text-xs font-bold tracking-wider text-muted-foreground/80">
-                      PREDICTIONS
-                    </span>
-                    {!showSuggestions && (
-                      <span className="font-inter text-xs text-muted-foreground/60">Type to activate...</span>
-                    )}
-                  </div>
-
-                  {/* SuggestionPanel renders when there are suggestions */}
+                  <p
+                    style={{
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: 'var(--muted-foreground)',
+                      margin: '0 0 0.625rem',
+                    }}
+                  >
+                    Predictions
+                  </p>
                   <SuggestionPanel
                     suggestions={suggestions}
                     onApply={(fmt) => handlePromptAccept(fmt)}
                     onDismiss={() => setShowSuggestions(false)}
                   />
-
-                  {/* Empty state when no suggestions */}
                   {!showSuggestions && (
-                    <div className="bg-secondary/40 rounded-lg p-6 py-8 text-center">
-                      <Brain className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" strokeWidth={1.5} />
-                      <p className="font-inter text-xs text-muted-foreground/70 px-4 leading-relaxed">
+                    <div
+                      style={{
+                        borderRadius: '0.5rem',
+                        padding: '0.875rem',
+                        textAlign: 'center',
+                        backgroundColor: 'var(--secondary)',
+                      }}
+                    >
+                      <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: 0 }}>
                         Predictions appear as you type and format
                       </p>
                     </div>
                   )}
                 </div>
 
-                {/* ── Grammar panel ── */}
+                {/* Grammar panel */}
                 <GrammarPanel text={content} onCheckComplete={setGrammarIssues} />
 
-                {/* ── Session stats ── */}
-                <div className="bg-transparent border border-border/50 rounded-md p-4 max-w-full">
-                  <p className="font-inter text-xs font-bold tracking-wider text-muted-foreground/80 mb-3">
-                    SESSION
+                {/* Session stats */}
+                <div
+                  style={{
+                    borderRadius: '0.5rem',
+                    border: '1px solid var(--border)',
+                    padding: '0.75rem',
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: 'var(--muted-foreground)',
+                      margin: '0 0 0.5rem',
+                    }}
+                  >
+                    Session
                   </p>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between">
-                      <span className="font-inter text-xs text-muted-foreground">Words</span>
-                      <span className="font-inter text-xs font-semibold">{wordCount}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="font-inter text-xs text-muted-foreground">Session ID</span>
-                      <span className="font-inter text-xs font-medium font-mono opacity-50">
-                        {sessionId.current.slice(-6)}
-                      </span>
-                    </div>
-                    </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Words</span>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{wordCount}</span>
                   </div>
                 </div>
 
@@ -431,8 +543,17 @@ export default function Document(): JSX.Element {
         </AnimatePresence>
       </div>
 
-      {/* ═══ FORMAT PROMPT (floating) ═══ */}
-      <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50" style={{ pointerEvents: formatPrompt ? 'all' : 'none' }}>
+      {/* Format prompt (float) */}
+      <div
+        style={{
+          position: 'fixed',
+          bottom: '1.5rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 50,
+          pointerEvents: formatPrompt ? 'all' : 'none',
+        }}
+      >
         <FormatPrompt
           suggestion={formatPrompt}
           onAccept={handlePromptAccept}
@@ -440,15 +561,14 @@ export default function Document(): JSX.Element {
         />
       </div>
 
-      {/* ═══ AI CHATBOT (floating) ═══ */}
-      <div className="fixed bottom-6 right-8 z-50">
-        <div className="relative">
-          <AIChatbot
-            documentId={id}
-            documentContent={getEditorText()}
-            onFormatApplied={handleFormat}
-          />
-        </div>
+      {/* AI Chatbot (float) */}
+      <div style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 50 }}>
+        <AIChatbot
+          documentId={id}
+          documentTitle={title}
+          documentContent={getEditorText()}
+          onFormatApplied={handleFormat}
+        />
       </div>
     </div>
   )

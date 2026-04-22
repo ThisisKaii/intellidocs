@@ -1,6 +1,4 @@
 import { Link } from 'react-router-dom'
-import { useMemo } from 'react'
-import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +12,6 @@ import {
   Pencil,
   Plus,
   Trash2,
-  X,
 } from 'lucide-react'
 
 export interface DriveDocumentRow {
@@ -42,7 +39,7 @@ interface DriveTableProps {
   onTitleChange: (nextTitle: string) => void
 }
 
-/** Format ISO date string to a human-friendly label. */
+/** Format a date string into a friendly label like "Today", "2 days ago", etc. */
 function formatDate(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -62,29 +59,38 @@ function formatDate(value: string): string {
   })
 }
 
-/** Render a loading skeleton for the document list. */
-function TableSkeleton(): JSX.Element {
+/** Skeleton placeholder shown while documents are loading. */
+function GridSkeleton(): JSX.Element {
   return (
-    <div className="space-y-1">
-      {[1, 2, 3, 4, 5].map((i) => (
+    <div
+      style={{
+        display: 'grid',
+        width: '100%',
+        minWidth: 0,
+        gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
+        gap: '1rem',
+        boxSizing: 'border-box',
+      }}
+    >
+      {[1, 2, 3, 4, 5, 6].map((i) => (
         <div
           key={i}
-          className="flex items-center gap-4 rounded-lg px-4 py-3 animate-pulse"
-        >
-          <div className="size-9 rounded-md bg-muted/60" />
-          <div className="h-4 flex-1 rounded bg-muted/60 max-w-[280px]" />
-          <div className="h-4 w-24 rounded bg-muted/60 ml-auto" />
-        </div>
+          style={{
+            height: '148px',
+            borderRadius: '0.75rem',
+            backgroundColor: 'var(--secondary)',
+            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          }}
+        />
       ))}
     </div>
   )
 }
 
-/** Drive-style document table with inline rename and dropdown actions. */
+/** Render documents as a Vercel-style project card grid. */
 export function DriveTable({
   documents,
   loading,
-  error,
   editing,
   onCreate,
   onStartEdit,
@@ -93,154 +99,298 @@ export function DriveTable({
   onDelete,
   onTitleChange,
 }: DriveTableProps): JSX.Element {
-  const countLabel = useMemo(() => {
-    return `${documents.length} document${documents.length !== 1 ? 's' : ''}`
-  }, [documents.length])
+  if (loading) return <GridSkeleton />
 
-  if (loading) {
-    return <TableSkeleton />
+  if (documents.length === 0) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '0.75rem',
+          border: '1px dashed var(--border)',
+          padding: '5rem 2rem',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '52px',
+            height: '52px',
+            borderRadius: '0.75rem',
+            backgroundColor: 'var(--secondary)',
+            marginBottom: '1.25rem',
+          }}
+        >
+          <FileText style={{ width: '24px', height: '24px', color: 'var(--muted-foreground)' }} />
+        </div>
+        <p
+          style={{
+            fontSize: '1rem',
+            fontWeight: 500,
+            color: 'var(--foreground)',
+            margin: '0 0 0.375rem',
+          }}
+        >
+          No projects yet
+        </p>
+        <p
+          style={{
+            fontSize: '0.875rem',
+            color: 'var(--muted-foreground)',
+            margin: '0 0 1.5rem',
+          }}
+        >
+          Create your first document to get started
+        </p>
+        <button
+          onClick={onCreate}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.375rem',
+            height: '38px',
+            padding: '0 1rem',
+            borderRadius: '0.5rem',
+            border: 'none',
+            backgroundColor: 'var(--primary)',
+            color: 'var(--primary-foreground)',
+            fontSize: '0.875rem',
+            fontWeight: 500,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          <Plus style={{ width: '14px', height: '14px' }} />
+          New document
+        </button>
+      </div>
+    )
   }
 
   return (
-    <div className="w-full min-w-0 space-y-1">
-      {error ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive mb-3">
-          {error}
-        </div>
-      ) : null}
-
-      {documents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16 px-6">
-          <div className="flex size-16 items-center justify-center rounded-full bg-muted/60 mb-4">
-            <FileText className="size-8 text-muted-foreground" />
-          </div>
-          <p className="text-base font-medium text-foreground mb-1">
-            No documents yet
-          </p>
-          <p className="text-sm text-muted-foreground mb-5">
-            Create your first document to get started
-          </p>
-          <Button
-            onClick={onCreate}
-            className="rounded-full px-5 bg-primary text-primary-foreground hover:bg-primary/80"
+    <div
+      style={{
+        display: 'grid',
+        width: '100%',
+        minWidth: 0,
+        gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))',
+        gap: '1rem',
+        boxSizing: 'border-box',
+      }}
+    >
+      {documents.map((doc) => {
+        const isEditing = editing?.id === doc.id
+        return (
+          <div
+            key={doc.id}
+            style={{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              minWidth: 0,
+              height: '148px',
+              overflow: 'hidden',
+              boxSizing: 'border-box',
+              borderRadius: '0.75rem',
+              backgroundColor: 'var(--card)',
+              padding: '1.125rem 1.25rem',
+              boxShadow:
+                'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px, inset 0px 0px 0px 1px var(--card-shadow-inner)',
+              transition: 'box-shadow 200ms',
+              cursor: 'default',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLDivElement).style.boxShadow =
+                'rgba(0,0,0,0.12) 0px 0px 0px 1px, rgba(0,0,0,0.08) 0px 4px 12px, inset 0px 0px 0px 1px var(--card-shadow-inner)'
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLDivElement).style.boxShadow =
+                'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px, inset 0px 0px 0px 1px var(--card-shadow-inner)'
+            }}
           >
-            <Plus className="mr-1.5 size-4" />
-            Create document
-          </Button>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between px-4 py-2">
-            <h2 className="text-sm font-medium text-foreground">
-              Suggested files
-            </h2>
-            <span className="text-xs text-muted-foreground">{countLabel}</span>
-          </div>
-
-          <div className="flex items-center px-4 py-1.5 text-xs font-medium text-muted-foreground border-b border-border">
-            <div className="flex-1 min-w-0">Name</div>
-            <div className="w-40 shrink-0 text-left hidden sm:block">
-              Last modified
-            </div>
-            <div className="w-10 shrink-0" />
-          </div>
-
-          {documents.map((doc) => {
-            const isEditing = editing?.id === doc.id
-            return (
+            {/* Top row: icon + title + menu */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', minWidth: 0 }}>
               <div
-                key={doc.id}
-                className="group flex items-center gap-3 rounded-xl px-4 py-2.5 transition-colors duration-100 hover:bg-muted/30"
+                style={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  backgroundColor: 'var(--secondary)',
+                  border: '1px solid var(--border)',
+                }}
               >
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15">
-                  <FileText className="size-5 text-primary" />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  {isEditing ? (
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        className="h-8 flex-1 rounded-md border border-primary bg-card px-2.5 text-sm text-foreground outline-none ring-2 ring-primary/30"
-                        value={editing.title}
-                        onChange={(e) => onTitleChange(e.target.value)}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') onSaveEdit()
-                          if (e.key === 'Escape') onCancelEdit()
-                        }}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={onSaveEdit}
-                        className="rounded-full hover:bg-muted/60"
-                        title="Save"
-                      >
-                        <Check className="size-4 text-primary" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={onCancelEdit}
-                        className="rounded-full hover:bg-muted/60"
-                        title="Cancel"
-                      >
-                        <X className="size-4 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <Link
-                      to={`/document/${doc.id}`}
-                      className="block truncate text-sm font-medium text-foreground hover:text-primary transition-colors"
-                      title={doc.title}
-                    >
-                      {doc.title}
-                    </Link>
-                  )}
-                </div>
-
-                <div className="w-40 shrink-0 text-sm text-muted-foreground hidden sm:block">
-                  You opened · {formatDate(doc.updated_at)}
-                </div>
-
-                {!isEditing ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="rounded-full opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity bg-muted/40 hover:bg-muted/60 focus-visible:ring-0 focus-visible:ring-offset-0"
-                        title={`Actions for ${doc.title}`}
-                      >
-                        <MoreVertical className="size-4 text-muted-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className="min-w-[160px] bg-muted/90 border-border/60 shadow-2xl backdrop-blur"
-                    >
-                      <DropdownMenuItem
-                        onSelect={() => onStartEdit(doc)}
-                        className="cursor-pointer gap-2"
-                      >
-                        <Pencil className="size-4 text-muted-foreground" />
-                        Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => onDelete(doc.id)}
-                        className="cursor-pointer gap-2 text-destructive focus:text-destructive"
-                      >
-                        <Trash2 className="size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
+                <FileText style={{ width: '16px', height: '16px', color: 'var(--foreground)' }} />
               </div>
-            )
-          })}
-        </>
-      )}
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {isEditing ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                    <input
+                      value={editing.title}
+                      onChange={(e) => onTitleChange(e.target.value)}
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') onSaveEdit()
+                        if (e.key === 'Escape') onCancelEdit()
+                      }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        height: '32px',
+                        borderRadius: '0.5rem',
+                        border: 'none',
+                        boxShadow:
+                          '0 0 0 1px var(--border), 0 8px 24px rgba(15,23,42,0.08)',
+                        backgroundColor: 'var(--popover)',
+                        color: 'var(--popover-foreground)',
+                        fontSize: '0.875rem',
+                        padding: '0 0.625rem',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                    <button
+                      onClick={onSaveEdit}
+                      style={{
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '0.5rem',
+                        border: 'none',
+                        backgroundColor: 'var(--foreground)',
+                        color: 'var(--background)',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(15,23,42,0.12)',
+                      }}
+                    >
+                      <Check style={{ width: '13px', height: '13px' }} />
+                    </button>
+                  </div>
+                ) : (
+                  <Link
+                    to={`/document/${doc.id}`}
+                    style={{
+                      display: 'block',
+                      fontSize: '0.9375rem',
+                      fontWeight: 600,
+                      letterSpacing: '-0.01em',
+                      color: 'var(--foreground)',
+                      textDecoration: 'none',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.3,
+                    }}
+                    title={doc.title}
+                  >
+                    {doc.title}
+                  </Link>
+                )}
+              </div>
+
+              {!isEditing && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      style={{
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '0.5rem',
+                        border: 'none',
+                        backgroundColor: 'transparent',
+                        color: 'var(--muted-foreground)',
+                        cursor: 'pointer',
+                        opacity: 0,
+                        transition: 'opacity 150ms, background-color 150ms',
+                      }}
+                      className="card-menu-btn"
+                    >
+                      <MoreVertical style={{ width: '14px', height: '14px' }} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="rounded-xl"
+                    style={{
+                      minWidth: '156px',
+                    }}
+                  >
+                    <DropdownMenuItem
+                      onSelect={() => onStartEdit(doc)}
+                      className="cursor-pointer gap-2 text-sm text-foreground"
+                    >
+                      <Pencil style={{ width: '14px', height: '14px' }} />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => onDelete(doc.id)}
+                      className="cursor-pointer gap-2 text-sm text-destructive"
+                    >
+                      <Trash2 style={{ width: '14px', height: '14px' }} />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+
+            {/* Bottom row: date + badge */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingTop: '0.75rem',
+                borderTop: '1px solid var(--border)',
+                marginTop: 'auto',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                  letterSpacing: '0.01em',
+                }}
+              >
+                {formatDate(doc.updated_at)}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  padding: '0.175rem 0.5rem',
+                  borderRadius: '9999px',
+                  backgroundColor: 'var(--secondary)',
+                  color: 'var(--muted-foreground)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                Document
+              </span>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

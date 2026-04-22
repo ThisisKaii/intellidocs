@@ -1,4 +1,12 @@
 import axios from 'axios'
+import {
+  pythonGrammarCheckResponseSchema,
+  pythonPredictionResponseSchema,
+  pythonSpellingCheckResponseSchema,
+  type PythonGrammarCheckResponse,
+  type PythonPredictionResponse,
+  type PythonSpellingCheckResponse,
+} from '../../../schemas/predictionSchemas'
 
 export interface PredictionResponse {
   predictedFormat: string
@@ -38,16 +46,16 @@ export async function requestFormatPrediction(
 ): Promise<PredictionResponse> {
   const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
 
-  const response = await axios.post<{
-    predicted_format: string
-    confidence: number
-    feature_values?: Record<string, number>
-  }>(`${mlApiUrl}/predict`, { text })
+  const response = await axios.post<PythonPredictionResponse>(
+    `${mlApiUrl}/predict`,
+    { text }
+  )
+  const data = pythonPredictionResponseSchema.parse(response.data)
 
   return {
-    predictedFormat: response.data.predicted_format,
-    confidence: response.data.confidence,
-    featureValues: response.data.feature_values ?? {},
+    predictedFormat: data.predicted_format,
+    confidence: data.confidence,
+    featureValues: data.feature_values ?? {},
   }
 }
 
@@ -57,12 +65,12 @@ export async function requestGrammarCheck(
 ): Promise<GrammarCheckResponse> {
   const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
 
-  const response = await axios.post<GrammarCheckResponse>(
+  const response = await axios.post<PythonGrammarCheckResponse>(
     `${mlApiUrl}/grammar/check`,
     { text }
   )
 
-  return response.data
+  return pythonGrammarCheckResponseSchema.parse(response.data)
 }
 
 /** Send a spelling check request to the FastAPI service. */
@@ -71,10 +79,10 @@ export async function requestSpellingCheck(
 ): Promise<SpellingCheckResponse> {
   const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
 
-  const response = await axios.post<SpellingCheckResponse>(
+  const response = await axios.post<PythonSpellingCheckResponse>(
     `${mlApiUrl}/spelling/check`,
     { text }
   )
 
-  return response.data
+  return pythonSpellingCheckResponseSchema.parse(response.data)
 }

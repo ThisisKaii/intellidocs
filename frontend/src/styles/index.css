@@ -1,158 +1,102 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,300;1,9..144,400&family=Inter:wght@400;500;600&family=Manrope:wght@400;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Geist:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import "tw-animate-css";
-
-@custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: var(--font-inter, "Inter", ui-sans-serif, system-ui, sans-serif);
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  --font-serif: var(--font-manrope, "Manrope", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif);
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, Arial, Apple Color Emoji, "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "Roboto Mono", Menlo, Monaco, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
 
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+  --color-background: #ffffff;
+  --color-foreground: #171717;
+  --color-card: #ffffff;
+  --color-card-foreground: #171717;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #171717;
+  --color-primary: #171717;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f6f3ed;
+  --color-secondary-foreground: #42362b;
+  --color-muted: #f6f3ed;
+  --color-muted-foreground: #666666;
+  --color-accent: #f6f3ed;
+  --color-accent-foreground: #171717;
+  --color-destructive: #ff5b4f;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #ebebeb;
+  --color-input: #ebebeb;
+  --color-ring: #171717;
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
+  --radius: 0.5rem;
 
-  --shadow-2xs: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.03);
-  --shadow-xs: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.03);
-  --shadow-sm: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.05), 0 1px 2px -1px hsl(225.5172 35.8025% 15.8824% / 0.05);
-  --shadow: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.05), 0 1px 2px -1px hsl(225.5172 35.8025% 15.8824% / 0.05);
-  --shadow-md: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.05), 0 2px 4px -1px hsl(225.5172 35.8025% 15.8824% / 0.05);
-  --shadow-lg: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.05), 0 4px 6px -1px hsl(225.5172 35.8025% 15.8824% / 0.05);
-  --shadow-xl: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.05), 0 8px 10px -1px hsl(225.5172 35.8025% 15.8824% / 0.05);
-  --shadow-2xl: 0 1px 2px 0px hsl(225.5172 35.8025% 15.8824% / 0.13);
+  --shadow-2xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 8px 10px -1px rgba(0, 0, 0, 0.05);
+  --shadow-2xl: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 
-  --spacing: 0.25rem;
-
-  --tracking-tighter: calc(var(--tracking-normal, 0em) - 0.05em);
-  --tracking-tight: calc(var(--tracking-normal, 0em) - 0.025em);
+  --tracking-tighter: -0.05em;
+  --tracking-tight: -0.025em;
   --tracking-normal: 0em;
-  --tracking-wide: calc(var(--tracking-normal, 0em) + 0.025em);
-  --tracking-wider: calc(var(--tracking-normal, 0em) + 0.05em);
-  --tracking-widest: calc(var(--tracking-normal, 0em) + 0.1em);
+  --tracking-wide: 0.025em;
+  --tracking-wider: 0.05em;
+  --tracking-widest: 0.1em;
 }
 
 @layer base {
   :root {
-    --font-inter: "Inter";
-    --font-manrope: "Manrope";
-    --background: #fbfaf8;
-    --surface: #fbfaf8;
-    --surface-container-lowest: #ffffff;
-    --surface-container-low: #f5f2ec;
-    --surface-container: #efebe4;
-    --surface-container-high: #e9e4db;
-    --surface-container-highest: #dcd6cb;
-    --surface-bright: #ffffff;
-    --surface-dim: #f3efe9;
-    --outline-variant: #dfd8cf;
-    --on-surface-variant: #7c7265;
-    --primary-container: #937651;
-    --foreground: #221c15;
+    --background: #ffffff;
+    --foreground: #171717;
     --card: #ffffff;
-    --card-foreground: #221c15;
+    --card-foreground: #171717;
     --popover: #ffffff;
-    --popover-foreground: #221c15;
-    --primary: #382c20;
-    --primary-foreground: #fcf9f5;
-    --secondary: #f5f1eb;
-    --secondary-foreground: #42362b;
+    --popover-foreground: #171717;
+    --primary: #171717;
+    --primary-foreground: #ffffff;
+    --secondary: #f6f3ed;
+    --secondary-foreground: #171717;
     --muted: #f6f3ed;
-    --muted-foreground: #82786b;
-    --accent: #a47d53;
-    --accent-foreground: #fcf9f5;
-    --destructive: #b95046;
-    --destructive-foreground: #fcf9f5;
-    --border: #e3dcd1;
-    --input: #fdfcf9;
-    --ring: #a47d53;
-    --radius: 0.75rem;
-    --sidebar: #f3efe9;
-    --sidebar-foreground: #221c15;
-    --sidebar-primary: #382c20;
-    --sidebar-primary-foreground: #fcf9f5;
-    --sidebar-accent: #e9e4db;
-    --sidebar-accent-foreground: #221c15;
-    --sidebar-border: #e3dcd1;
-    --sidebar-ring: #a47d53;
+    --muted-foreground: #666666;
+    --accent: #f6f3ed;
+    --accent-foreground: #171717;
+    --destructive: #ff5b4f;
+    --destructive-foreground: #ffffff;
+    --border: #ebebeb;
+    --input: #ebebeb;
+    --ring: hsla(212, 100%, 48%, 1);
+    --radius: 0.375rem;
+    --border-shadow: rgba(0, 0, 0, 0.08);
+    --border-shadow-light: rgb(235, 235, 235);
+    --card-shadow-inner: #fafafa;
   }
 
   .dark {
-    --background: #10131a;
-    --surface: #10131a;
-    --surface-container-lowest: #0b0e14;
-    --surface-container-low: #191c22;
-    --surface-container: #1d2026;
-    --surface-container-high: #272a31;
-    --surface-container-highest: #32353c;
-    --surface-bright: #363940;
-    --surface-dim: #10131a;
-    --outline-variant: #424754;
-    --on-surface-variant: #c2c6d6;
-    --primary-container: #4d8eff;
-    --foreground: #e1e2eb;
-    --card: #1d2026;
-    --card-foreground: #e1e2eb;
-    --popover: #272a31;
-    --popover-foreground: #e1e2eb;
-    --primary: #adc6ff;
-    --primary-foreground: #00285d;
-    --secondary: #c2c7d0;
-    --secondary-foreground: #2c3138;
-    --muted: #191c22;
-    --muted-foreground: #c2c6d6;
-    --accent: #32353c;
-    --accent-foreground: #e1e2eb;
-    --destructive: #ffb4ab;
-    --destructive-foreground: #690005;
-    --border: #424754;
-    --input: #0b0e14;
-    --ring: #adc6ff;
-    --sidebar: #191c22;
-    --sidebar-foreground: #e1e2eb;
-    --sidebar-primary: #adc6ff;
-    --sidebar-primary-foreground: #00285d;
-    --sidebar-accent: #1d2026;
-    --sidebar-accent-foreground: #e1e2eb;
-    --sidebar-border: #424754;
-    --sidebar-ring: #adc6ff;
+    --background: #000000;
+    --foreground: #ededed;
+    --card: #0a0a0a;
+    --card-foreground: #ededed;
+    --popover: #0a0a0a;
+    --popover-foreground: #ededed;
+    --primary: #ededed;
+    --primary-foreground: #000000;
+    --secondary: #111111;
+    --secondary-foreground: #ededed;
+    --muted: #111111;
+    --muted-foreground: #888888;
+    --accent: #111111;
+    --accent-foreground: #ededed;
+    --destructive: #ff5b4f;
+    --destructive-foreground: #000000;
+    --border: #333333;
+    --input: #111111;
+    --ring: hsla(212, 100%, 48%, 1);
+    --border-shadow: rgba(255, 255, 255, 0.14);
+    --border-shadow-light: rgba(255, 255, 255, 0.1);
+    --card-shadow-inner: rgba(255, 255, 255, 0.04);
   }
 
   * {
@@ -170,7 +114,9 @@
     margin: 0;
     min-height: 100%;
     font-family: var(--font-sans);
-    letter-spacing: var(--tracking-normal);
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: normal;
     overflow-x: hidden;
   }
 
@@ -182,18 +128,31 @@
 
 @layer components {
   .rounded-sleek {
-    border-radius: 0.75rem;
+    border-radius: 0.5rem;
+  }
+
+  .border-shadow {
+    box-shadow: 0px 0px 0px 1px var(--border-shadow);
+  }
+
+  .border-shadow-light {
+    box-shadow: 0px 0px 0px 1px var(--border-shadow-light);
+  }
+
+  .card-shadow {
+    box-shadow: var(--border-shadow) 0px 0px 0px 1px, rgba(0, 0, 0, 0.04) 0px 2px 2px, inset 0px 0px 0px 1px var(--card-shadow-inner);
   }
 
   .input-sleek {
-    background-color: var(--surface-container-lowest);
-    border: 1px solid rgba(66, 71, 84, 0.2);
+    background-color: var(--background);
+    border: none;
+    box-shadow: 0px 0px 0px 1px var(--border-shadow);
     color: var(--foreground);
-    border-radius: 0.5rem;
-    padding: 0.625rem 0.875rem;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     line-height: 1.25rem;
-    transition: border-color 300ms, box-shadow 300ms, background-color 300ms;
+    transition: box-shadow 200ms;
   }
 
   .input-sleek::placeholder {
@@ -202,21 +161,18 @@
 
   .input-sleek:focus {
     outline: none;
-    border-color: rgba(173, 198, 255, 0.5);
-    box-shadow: 0 0 0 2px rgba(173, 198, 255, 0.15);
+    box-shadow: 0px 0px 0px 1px var(--border-shadow), 0 0 0 2px var(--ring);
   }
-
-
 }
 
 .intellidocs-editor {
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 1.0625rem;
-  line-height: 1.9;
+  font-family: "Geist", "Inter", sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.75;
   color: var(--foreground);
   min-height: 100%;
   outline: none;
-  caret-color: var(--accent);
+  caret-color: #171717;
 }
 
 .intellidocs-editor:focus {
@@ -224,32 +180,33 @@
 }
 
 .intellidocs-editor h1 {
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 2.35rem;
+  font-family: "Geist", "Inter", sans-serif;
+  font-size: 2.25rem;
   font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: -0.03em;
-  margin: 1.75rem 0 0.85rem;
+  line-height: 1.17;
+  letter-spacing: -0.025em;
+  margin: 2rem 0 1rem;
   color: var(--foreground);
 }
 
 .intellidocs-editor h2 {
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 1.7rem;
-  font-weight: 500;
-  line-height: 1.25;
-  margin: 1.35rem 0 0.7rem;
+  font-family: "Geist", "Inter", sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.33;
+  letter-spacing: -0.025em;
+  margin: 1.5rem 0 0.75rem;
   color: var(--foreground);
 }
 
 .intellidocs-editor h3 {
-  font-family: "Inter", sans-serif;
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-family: "Geist Mono", monospace;
+  font-size: 0.875rem;
+  font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  margin: 1.1rem 0 0.55rem;
-  color: var(--accent);
+  margin: 1.25rem 0 0.625rem;
+  color: var(--muted-foreground);
 }
 
 .intellidocs-editor p {
@@ -257,33 +214,33 @@
 }
 
 .intellidocs-editor blockquote {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid #171717;
   margin: 1.25rem 0;
-  padding: 0.35rem 0 0.35rem 1.35rem;
-  font-style: italic;
-  color: var(--muted-foreground);
+  padding: 0.25rem 0 0.25rem 1rem;
+  color: #666666;
 }
 
 .intellidocs-editor ul,
 .intellidocs-editor ol {
-  margin: 0.85rem 0;
-  padding-left: 1.75rem;
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
 }
 
 .intellidocs-editor li {
-  margin: 0.3rem 0;
+  margin: 0.25rem 0;
 }
 
 .intellidocs-editor pre {
-  background-color: color-mix(in srgb, var(--surface-container-lowest) 88%, black 12%);
-  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent 40%);
-  border-radius: 0.75rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.9rem;
+  background-color: var(--muted);
+  border: none;
+  box-shadow: 0px 0px 0px 1px var(--border-shadow);
+  border-radius: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
   line-height: 1.65;
   margin: 1rem 0;
   overflow-x: auto;
-  padding: 1rem 1.1rem;
+  padding: 1rem;
   white-space: pre-wrap;
 }
 
@@ -301,53 +258,104 @@
 }
 
 .intellidocs-editor:empty::before {
-  content: "Begin writing…";
-  color: var(--muted-foreground);
+  content: "Start writing...";
+  color: #808080;
   font-style: italic;
   pointer-events: none;
 }
 
-/* Suggestion highlight */
 .suggestion-highlight {
-  background: hsl(40 70% 92% / 0.7);
-  border-bottom: 1.5px solid hsl(35 50% 50% / 0.6);
+  background: rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.2);
   cursor: pointer;
-  border-radius: 2px;
 }
 
-/* Grammar underline */
 .grammar-error {
-  border-bottom: 2px solid hsl(0 70% 55% / 0.7);
+  border-bottom: 2px solid rgba(255, 91, 79, 0.6);
   text-decoration: none;
 }
 
 .spell-error {
-  border-bottom: 2px dashed hsl(0 70% 55% / 0.6);
+  border-bottom: 2px dashed rgba(255, 91, 79, 0.5);
 }
 
-/* Confidence badge */
+/* Show the card action button on card hover */
+div:hover > div > .card-menu-btn,
+div:hover > .card-menu-btn,
+.card-menu-btn[data-state="open"] {
+  opacity: 1 !important;
+}
+
+.card-menu-btn[data-state="open"] {
+  background-color: var(--secondary) !important;
+  color: var(--foreground) !important;
+}
+
 .confidence-badge {
-  font-family: "Inter", sans-serif;
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(36 15% 80%); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(36 15% 70%); }
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d4d4;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a3a3a3;
+}
 
 @layer utilities {
-  .border-border {
-    border-color: var(--color-border);
+  .font-geist {
+    font-family: "Geist", "Inter", sans-serif;
   }
-  .font-fraunces {
-    font-family: "Fraunces", Georgia, serif;
+
+  .font-geist-mono {
+    font-family: "Geist Mono", ui-monospace, monospace;
   }
-  .font-inter {
-    font-family: "Inter", sans-serif;
+
+  .text-display-hero {
+    font-size: 3rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -2.4px;
+  }
+
+  .text-section-heading {
+    font-size: 2.5rem;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -2.4px;
+  }
+
+  .text-subheading-large {
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -1.28px;
+  }
+
+  .text-card-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.33;
+    letter-spacing: -0.96px;
+  }
+
+  .text-button {
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.43;
   }
 }

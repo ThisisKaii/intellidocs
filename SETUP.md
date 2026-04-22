@@ -35,7 +35,7 @@ IntelliDocs currently runs as three main local services:
 It also uses two local data services:
 
 4. **Redis**
-   - used as the real-time behavior event buffer
+   - used for behavior buffering, short-lived suggestion caching, per-user AI quota tracking, and autosave coordination
    - default URL: `redis://localhost:6379`
 
 5. **DuckDB**
@@ -146,6 +146,14 @@ SUPABASE_SERVICE_KEY=YOUR_SUPABASE_SERVICE_KEY
 ML_API_URL=http://localhost:8000
 REDIS_URL=redis://localhost:6379
 PYTHON_BIN=/absolute/path/to/intellidocs/ml/venv/bin/python
+
+AI_PROVIDER=gemini
+AI_API_KEY=YOUR_PROVIDER_API_KEY
+AI_MODEL=gemini-2.0-flash
+
+ARCJET_KEY=YOUR_ARCJET_SITE_KEY
+AI_REQUEST_QUOTA_LIMIT=30
+AI_REQUEST_QUOTA_WINDOW_SECONDS=60
 ```
 
 Important notes:
@@ -154,6 +162,9 @@ Important notes:
 - `ML_API_URL` defaults to `http://localhost:8000` if unset.
 - `REDIS_URL` must use the `redis://` protocol, not `http://`.
 - `PYTHON_BIN` should point to the Python inside your ML virtual environment.
+- `AI_PROVIDER`, `AI_API_KEY`, and `AI_MODEL` are now the only AI provider config values the backend should rely on.
+- Do not add `OLLAMA_HOST` back into the backend env.
+- `ARCJET_KEY` is optional for local development, but required if you want Arcjet protection active.
 
 ### Run backend
 Normal backend run:
@@ -183,6 +194,8 @@ Also verify:
 - login works
 - protected routes require auth
 - prediction routes respond after ML service is running
+- AI routes respond under both `/predictions/*` and `/ai/*`
+- auth and AI-facing routes can be protected by Arcjet when `ARCJET_KEY` is set
 
 ---
 
@@ -231,7 +244,11 @@ These all have defaults in code, so the ML service can still run without setting
 
 ## 7. Redis setup
 
-Redis is required for the behavior pipeline.
+Redis is required for the behavior pipeline and now also supports:
+- short-lived suggestion caching
+- per-user AI quota tracking
+- autosave dirty-flag / debounce coordination
+- NLP command deduplication
 
 ### Verify Redis is installed
 ```bash
@@ -428,6 +445,17 @@ curl http://localhost:8000/health
 - `POST /grammar/check`
 - `POST /spelling/check`
 
+### Express AI routes currently available
+Protected AI-facing routes are exposed by the backend under:
+- `POST /predictions/predict`
+- `POST /predictions/grammar-check`
+- `POST /predictions/spelling-check`
+
+The same handlers are also available under:
+- `POST /ai/predict`
+- `POST /ai/grammar-check`
+- `POST /ai/spelling-check`
+
 ### Verify prediction route
 ```bash
 curl -X POST http://localhost:8000/predict \
@@ -457,10 +485,11 @@ The current behavior pipeline is:
 
 1. formatting action happens in the editor
 2. frontend sends behavior event to backend
-3. backend writes event to Redis
-4. aggregator moves Redis events into DuckDB
-5. feature extractor writes `formatting_features`
-6. export script writes CSV/Parquet if needed
+3. backend validates the payload before controller execution
+4. backend writes event to Redis
+5. aggregator moves Redis events into DuckDB
+6. feature extractor writes `formatting_features`
+7. export script writes CSV/Parquet if needed
 
 ### Verify Redis events exist
 ```bash
@@ -557,6 +586,15 @@ Use three terminals.
 cd frontend
 npm run dev
 ```
+
+### Notes on backend protection and validation
+- Request bodies are validated at HTTP boundaries before controllers run.
+- Python FastAPI responses are validated before the backend uses them.
+- Route-level protection is applied per router, not globally.
+- Arcjet currently belongs on auth-facing and AI-facing backend routes.
+- Redis and Arcjet are complementary:
+  - Arcjet = request-layer protection
+  - Redis = application-layer state, cache, quota, and debounce support
 
 ### Terminal 2 — backend
 Use the ML-aware backend command if available:
