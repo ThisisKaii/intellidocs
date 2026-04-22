@@ -73,6 +73,17 @@ export interface SpellCheckResponse {
   message: string
 }
 
+export interface AIChatHistoryMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface AIChatResponse {
+  reply: string
+  provider: string
+  model: string
+}
+
 
 function getAuthToken(): string | null {
   return localStorage.getItem('authToken')
@@ -190,6 +201,28 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
+      })
+    },
+  },
+
+  ai: {
+    chat: async (
+      message: string,
+      documentId?: string,
+      documentTitle?: string,
+      documentContent?: string,
+      history?: AIChatHistoryMessage[]
+    ): Promise<AIChatResponse> => {
+      return fetchAPI<AIChatResponse>('ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          documentId,
+          documentTitle,
+          documentContent,
+          history,
+        }),
       })
     },
   },

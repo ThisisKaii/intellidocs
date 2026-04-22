@@ -9,6 +9,7 @@ import documentRoutes from './routes/documentRoutes'
 import authRoutes from './routes/authRoutes'
 import behaviorRoutes from './routes/behaviorRoutes'
 import predictionRoutes from './routes/predictionRoutes'
+import aiRoutes from './routes/aiRoutes'
 import { authMiddleware } from './middleware/authMiddleware'
 
 
@@ -42,6 +43,7 @@ app.use('/documents',authMiddleware,  documentRoutes)
 app.use('/auth', authRoutes)
 app.use('/behavior', authMiddleware, behaviorRoutes)
 app.use('/predictions', authMiddleware, predictionRoutes)
+app.use('/ai', authMiddleware, aiRoutes)
 
 // 404 handler
 app.use((req, res) => {

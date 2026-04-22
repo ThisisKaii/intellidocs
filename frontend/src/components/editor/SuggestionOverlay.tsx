@@ -100,20 +100,26 @@ export default function SuggestionOverlay({
   }, [issues, content, editorRef])
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-10">
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 10 }}>
       {rects.map((rect) => (
         <div
           key={rect.id}
-          className={`absolute cursor-pointer pointer-events-auto border-b-2 border-dashed ${
-            rect.issue.type === 'grammar'
-              ? 'border-orange-500/70 hover:bg-orange-500/10'
-              : 'border-red-500/70 hover:bg-red-500/10'
-          } transition-colors`}
           style={{
+            position: 'absolute',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+            borderBottom: rect.issue.type === 'grammar' ? '2px dashed rgba(249, 115, 22, 0.7)' : '2px dashed rgba(239, 68, 68, 0.7)',
+            transition: 'background-color 150ms',
             top: rect.top,
             left: rect.left,
             width: rect.width,
             height: rect.height,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.backgroundColor = rect.issue.type === 'grammar' ? 'rgba(249, 115, 22, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent'
           }}
           onClick={() => setActiveRect(activeRect?.id === rect.id ? null : rect)}
         />
@@ -126,49 +132,86 @@ export default function SuggestionOverlay({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 5, scale: 0.98 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="absolute z-50 pointer-events-auto bg-card border border-border/80 rounded-xl p-4 w-80 shadow-xs"
             style={{
+              position: 'absolute',
+              zIndex: 50,
+              pointerEvents: 'auto',
+              backgroundColor: 'var(--card)',
+              color: 'var(--foreground)',
+              boxShadow: 'var(--border-shadow) 0px 0px 0px 1px, rgba(0, 0, 0, 0.08) 0px 4px 12px, inset 0px 0px 0px 1px var(--card-shadow-inner)',
+              borderRadius: '0.5rem',
+              padding: '1rem',
+              width: '320px',
               top: activeRect.top + activeRect.height + 8,
               left: Math.max(0, activeRect.left - 40),
             }}
           >
-            <div className="flex items-start justify-between mb-3">
-              <span className={`text-[10px] font-inter font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                activeRect.issue.type === 'grammar'
-                  ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
-                  : 'bg-red-500/10 text-red-600 dark:text-red-400'
-              }`}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <span style={{
+                 fontSize: '0.625rem',
+                 fontWeight: 700,
+                 textTransform: 'uppercase',
+                 letterSpacing: '0.05em',
+                 padding: '0.125rem 0.5rem',
+                 borderRadius: '0.25rem',
+                 backgroundColor: activeRect.issue.type === 'grammar' ? 'rgba(249, 115, 22, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                 color: activeRect.issue.type === 'grammar' ? '#ea580c' : '#dc2626'
+              }}>
                 {activeRect.issue.type}
               </span>
               <button
                 onClick={() => setActiveRect(null)}
-                className="text-muted-foreground hover:text-foreground p-1 rounded-md transition-colors"
+                style={{
+                  color: 'var(--muted-foreground)',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  padding: '0.25rem',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  transition: 'color 150ms',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)' }}
               >
-                <X className="w-4 h-4" />
+                <X style={{ width: '16px', height: '16px' }} />
               </button>
             </div>
             
-            <div className="bg-secondary/20 rounded-lg p-3 mb-3 border border-border/40">
-              <p className="font-inter text-[13px] line-through text-muted-foreground mb-1.5 opacity-80 decoration-muted-foreground/50">
+            <div style={{ backgroundColor: 'var(--secondary)', borderRadius: '0.375rem', padding: '0.75rem', marginBottom: '0.75rem', border: '1px solid var(--border)' }}>
+              <p style={{ fontSize: '0.8125rem', textDecoration: 'line-through', color: 'var(--muted-foreground)', marginBottom: '0.375rem', opacity: 0.8, textDecorationColor: 'rgba(115, 115, 115, 0.5)' }}>
                 {activeRect.issue.original}
               </p>
-              <p className="font-inter text-sm font-medium text-foreground flex items-center gap-2">
-                <span className="text-emerald-600 dark:text-emerald-400">→</span>
+              <p style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--foreground)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                <span style={{ color: '#10b981' }}>→</span>
                 {activeRect.issue.suggestion}
               </p>
             </div>
 
-            <p className="font-inter text-xs text-muted-foreground/90 mb-4 leading-relaxed">
+            <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '1rem', lineHeight: 1.5 }}>
               {activeRect.issue.explanation}
             </p>
 
-            <div className="flex gap-2">
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
                 onClick={() => {
                   onApply(activeRect.issue)
                   setActiveRect(null)
                 }}
-                className="flex-1 text-[13px] font-inter font-medium py-2 rounded-lg bg-primary text-primary-foreground hover:brightness-110 transition-all border-0 shadow-none"
+                style={{
+                  flex: 1,
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  padding: '0.5rem 0',
+                  borderRadius: '0.375rem',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--primary-foreground)',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'opacity 150ms',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
               >
                 Accept
               </button>
@@ -177,7 +220,27 @@ export default function SuggestionOverlay({
                   onDismiss(activeRect.issue)
                   setActiveRect(null)
                 }}
-                className="flex-[0.5] text-[13px] font-inter font-medium py-2 rounded-lg text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-all border border-border/50 bg-transparent"
+                style={{
+                  flex: 0.5,
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  padding: '0.5rem 0',
+                  borderRadius: '0.375rem',
+                  color: 'var(--muted-foreground)',
+                  backgroundColor: 'transparent',
+                  border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'background-color 150ms, color 150ms',
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)';
+                }}
               >
                 Ignore
               </button>

@@ -2,41 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type DocumentRecord } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
-import DriveSidebar from '@/components/drive/DriveSidebar'
-import { DriveHeader } from '@/components/drive/DriveHeader'
 import { DriveTable, type DriveDocumentRow, type DriveTableEditState } from '@/components/drive/DriveTable'
-import { DriveSearchSection } from '@/components/drive/DriveSearchSection'
-import { Folder } from 'lucide-react'
-
-function SuggestedFolders(): JSX.Element {
-  const folders = [
-    { id: '1', name: 'Dissertation 2024' },
-    { id: '2', name: 'Grant Proposals' },
-    { id: '3', name: 'Literature Reviews' },
-    { id: '4', name: 'Meeting Notes' },
-  ]
-
-  return (
-    <div className="mb-10">
-      <h2 className="text-sm font-medium text-foreground px-4 mb-4">
-        Suggested folders
-      </h2>
-      <div className="flex flex-wrap gap-4 px-4">
-        {folders.map((folder) => (
-          <div
-            key={folder.id}
-            className="flex items-center gap-3 rounded-xl border border-border bg-card pr-4 pl-3 py-2 transition-colors hover:bg-muted/30 cursor-pointer"
-          >
-            <Folder className="size-4 text-muted-foreground fill-muted-foreground/20" />
-            <span className="text-sm font-medium text-foreground">
-              {folder.name}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+import DriveSidebar from '@/components/drive/DriveSidebar'
+import { LogOut } from 'lucide-react'
 
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate()
@@ -61,18 +29,14 @@ export default function HomePage(): JSX.Element {
         setLoading(false)
       }
     }
-
     loadDocuments()
   }, [])
 
   const filteredDocs = useMemo(() => {
     const q = query.trim().toLowerCase()
     const sorted = [...documents].sort((a, b) => {
-      const aTime = new Date(a.updated_at).getTime()
-      const bTime = new Date(b.updated_at).getTime()
-      return bTime - aTime
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     })
-
     if (!q) return sorted
     return sorted.filter((doc) => doc.title.toLowerCase().includes(q))
   }, [documents, query])
@@ -115,9 +79,7 @@ export default function HomePage(): JSX.Element {
   }
 
   function handleTitleChange(nextTitle: string): void {
-    if (editing) {
-      setEditing({ ...editing, title: nextTitle })
-    }
+    if (editing) setEditing({ ...editing, title: nextTitle })
   }
 
   async function handleDelete(id: string): Promise<void> {
@@ -130,26 +92,143 @@ export default function HomePage(): JSX.Element {
   }
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      <DriveSidebar activeId="home" onCreate={handleCreateDocument} />
+    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--background)', color: 'var(--foreground)' }}>
+      {/* ── Sidebar ────────────────────────────────────────── */}
+      <DriveSidebar activeId="drive" onCreate={handleCreateDocument} />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <DriveHeader
-          query={query}
-          onQueryChange={setQuery}
-          onCreate={handleCreateDocument}
-          onLogout={handleLogout}
-        />
+      {/* ── Main Content Area ──────────────────────────────── */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+        
+        {/* ── Top Header (Search & Actions) ─────────────── */}
+        <header
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 40,
+            width: '100%',
+            borderBottom: '1px solid var(--border)',
+            backgroundColor: 'var(--background)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              height: '64px',
+              padding: '0 2rem',
+              gap: '1rem',
+            }}
+          >
+            {/* Search */}
+            <div style={{ flex: 1, maxWidth: '600px' }}>
+              <input
+                type="text"
+                placeholder="Search in Drive…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  height: '40px',
+                  borderRadius: '20px',
+                  border: 'none',
+                  backgroundColor: 'var(--secondary)',
+                  color: 'var(--foreground)',
+                  fontSize: '0.9375rem',
+                  padding: '0 1.25rem',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  transition: 'background-color 150ms, box-shadow 150ms',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--background)'
+                  e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow), 0 0 0 3px rgba(59,130,246,0.15)'
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--secondary)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+              />
+            </div>
 
-        <main className="flex-1 overflow-y-auto w-full max-w-[96rem] mx-auto p-4 sm:p-6 lg:p-8">
-          <DriveSearchSection query={query} onQueryChange={setQuery} />
-          
-          <SuggestedFolders />
+            {/* Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                onClick={handleLogout}
+                title="Sign out"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: 'var(--muted-foreground)',
+                  cursor: 'pointer',
+                  transition: 'color 150ms, background-color 150ms',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--secondary)'
+                  e.currentTarget.style.color = 'var(--foreground)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent'
+                  e.currentTarget.style.color = 'var(--muted-foreground)'
+                }}
+              >
+                <LogOut style={{ width: '16px', height: '16px' }} />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* ── Document Grid ───────────────────────────────── */}
+        <main
+          style={{
+            flex: 1,
+            width: '100%',
+            padding: '2rem',
+            boxSizing: 'border-box',
+          }}
+        >
+          {/* Section header */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h1
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: 600,
+                color: 'var(--foreground)',
+                margin: '0 0 0.25rem 0',
+              }}
+            >
+              My Documents
+            </h1>
+          </div>
+
+          {/* Error banner */}
+          {error && (
+            <div
+              style={{
+                backgroundColor: 'rgba(255,91,79,0.08)',
+                border: '1px solid rgba(255,91,79,0.25)',
+                borderRadius: '0.5rem',
+                padding: '0.625rem 0.875rem',
+                marginBottom: '1.5rem',
+                fontSize: '0.875rem',
+                color: 'var(--destructive)',
+              }}
+            >
+              {error}
+            </div>
+          )}
 
           <DriveTable
             documents={filteredDocs}
             loading={loading}
-            error={error}
+            error=""
             editing={editing}
             onCreate={handleCreateDocument}
             onStartEdit={handleStartEdit}

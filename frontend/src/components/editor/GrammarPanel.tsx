@@ -116,27 +116,46 @@ export default function GrammarPanel({
   }
 
   return (
-    <div className="bg-transparent border border-border/50 rounded-md overflow-hidden">
+    <div style={{ backgroundColor: 'transparent', border: '1px solid var(--border)', borderRadius: '0.375rem', overflow: 'hidden' }}>
       <button
         type="button"
         onMouseDown={(event) => {
           event.preventDefault()
           setExpanded((value) => !value)
         }}
-        className="w-full flex items-center justify-between px-4 py-3 bg-transparent text-foreground hover:bg-secondary/30 transition-colors border-0 shadow-none outline-none focus:outline-none"
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.75rem 1rem',
+          backgroundColor: 'transparent',
+          color: 'var(--foreground)',
+          border: 'none',
+          cursor: 'pointer',
+          outline: 'none',
+          fontFamily: 'inherit',
+          transition: 'background-color 150ms',
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
       >
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-          <AlertCircle className="w-4 h-4 text-muted-foreground/60 shrink-0" />
-          <span className="font-inter text-sm font-semibold tracking-tight text-left truncate">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1, minWidth: 0 }}>
+          <AlertCircle style={{ width: '16px', height: '16px', color: 'var(--muted-foreground)', opacity: 0.6, flexShrink: 0 }} />
+          <span style={{ fontSize: '0.875rem', fontWeight: 600, letterSpacing: '-0.02em', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Grammar & Spell Check
           </span>
           {issues ? (
             <span
-              className={`text-[10px] font-inter font-bold px-2 py-0.5 rounded shrink-0 ${
-                issues.issues.length === 0
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'bg-destructive/10 text-destructive dark:text-red-400'
-              }`}
+              style={{
+                fontSize: '0.625rem',
+                fontWeight: 700,
+                padding: '0.125rem 0.5rem',
+                borderRadius: '0.25rem',
+                flexShrink: 0,
+                backgroundColor: issues.issues.length === 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 91, 79, 0.1)',
+                color: issues.issues.length === 0 ? '#10b981' : '#ff5b4f'
+              }}
             >
               {issues.issues.length === 0
                 ? 'CLEAN'
@@ -145,9 +164,9 @@ export default function GrammarPanel({
           ) : null}
         </div>
         {expanded ? (
-          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+          <ChevronUp style={{ width: '16px', height: '16px', color: 'var(--muted-foreground)' }} />
         ) : (
-          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          <ChevronDown style={{ width: '16px', height: '16px', color: 'var(--muted-foreground)' }} />
         )}
       </button>
 
@@ -157,9 +176,9 @@ export default function GrammarPanel({
             initial={{ height: 0 }}
             animate={{ height: 'auto' }}
             exit={{ height: 0 }}
-            className="overflow-hidden"
+            style={{ overflow: 'hidden' }}
           >
-            <div className="px-3 pb-3 border-t border-border/50 pt-3">
+            <div style={{ padding: '0.75rem', borderTop: '1px solid var(--border)' }}>
               <button
                 type="button"
                 onMouseDown={(event) => {
@@ -167,11 +186,43 @@ export default function GrammarPanel({
                   runCheck()
                 }}
                 disabled={loading || plainText.length < 5}
-                className="w-full flex items-center justify-center gap-2 bg-secondary/30 hover:bg-secondary/50 transition-colors text-xs font-inter font-semibold px-4 py-2.5 rounded disabled:opacity-50 text-muted-foreground/80 border-0 shadow-none"
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--primary-foreground)',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  padding: '0.625rem 1rem',
+                  borderRadius: '0.375rem',
+                  border: 'none',
+                  cursor: loading || plainText.length < 5 ? 'not-allowed' : 'pointer',
+                  opacity: loading || plainText.length < 5 ? 0.5 : 1,
+                  transition: 'opacity 150ms, box-shadow 150ms',
+                }}
+                onMouseEnter={(e) => {
+                  if (!loading && plainText.length >= 5) {
+                    (e.currentTarget as HTMLButtonElement).style.opacity = '0.9'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!loading && plainText.length >= 5) {
+                    (e.currentTarget as HTMLButtonElement).style.opacity = '1'
+                  }
+                }}
+                onFocus={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 0 2px var(--ring)'
+                }}
+                onBlur={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'
+                }}
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 style={{ width: '14px', height: '14px' }} className="animate-spin" />
                     Checking…
                   </>
                 ) : (
@@ -180,23 +231,23 @@ export default function GrammarPanel({
               </button>
 
               {issues ? (
-                <div className="mt-3 space-y-2">
-                  <p className="font-inter text-xs text-muted-foreground italic">
+                <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontStyle: 'italic', margin: 0 }}>
                     {issues.overall}
                   </p>
 
                   {issues.issues.length === 0 ? (
-                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span className="font-inter text-sm">No issues found</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981' }}>
+                      <CheckCircle2 style={{ width: '16px', height: '16px' }} />
+                      <span style={{ fontSize: '0.875rem' }}>No issues found</span>
                     </div>
                   ) : (
-                    <div className="bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-400 rounded-md p-3 flex flex-col gap-2">
-                      <div className="flex items-center gap-2 font-inter text-sm font-medium">
-                        <AlertCircle className="w-4 h-4" />
+                    <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', color: '#3b82f6', borderRadius: '0.375rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                        <AlertCircle style={{ width: '16px', height: '16px' }} />
                         <span>{issues.issues.length} {issues.issues.length === 1 ? 'Issue' : 'Issues'} Highlighted</span>
                       </div>
-                      <p className="font-inter text-xs opacity-90">
+                      <p style={{ fontSize: '0.75rem', opacity: 0.9, margin: 0 }}>
                         Review the dashed underlines directly in your document to apply or dismiss suggestions.
                       </p>
                     </div>

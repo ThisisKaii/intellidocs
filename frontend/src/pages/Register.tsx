@@ -1,21 +1,8 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Lock, Mail, FileText } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
-import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import ThemeToggle from '@/components/ThemeToggle'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 
 function Register(): JSX.Element {
   const navigate = useNavigate()
@@ -44,13 +31,11 @@ function Register(): JSX.Element {
 
     try {
       await api.auth.register(email, password)
-
       const loginResponse = await api.auth.login(email, password)
       login(
         { id: loginResponse.user.id, email: loginResponse.user.email },
         loginResponse.session.access_token
       )
-
       setSuccess('Account created. Redirecting…')
       setTimeout(() => navigate('/'), 1200)
     } catch (err) {
@@ -68,108 +53,237 @@ function Register(): JSX.Element {
     setPassword(event.target.value)
   }
 
+  const inputStyle: React.CSSProperties = {
+    display: 'block',
+    width: '100%',
+    boxSizing: 'border-box',
+    height: '38px',
+    borderRadius: '0.5rem',
+    border: 'none',
+    boxShadow: '0px 0px 0px 1px var(--border-shadow)',
+    backgroundColor: 'var(--background)',
+    color: 'var(--foreground)',
+    fontSize: '0.875rem',
+    padding: '0 0.75rem',
+    outline: 'none',
+    transition: 'box-shadow 150ms',
+    fontFamily: 'inherit',
+  }
+
+  function onFocus(e: React.FocusEvent<HTMLInputElement>) {
+    e.currentTarget.style.boxShadow =
+      '0px 0px 0px 1px var(--border-shadow), 0 0 0 3px rgba(59,130,246,0.15)'
+  }
+  function onBlur(e: React.FocusEvent<HTMLInputElement>) {
+    e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow)'
+  }
+
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-background text-foreground bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background px-4">
-      <div className="absolute right-4 top-4">
-        <ThemeToggle />
-      </div>
-      <main className="w-full max-w-[440px]">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-        >
-          <div className="mb-6 flex flex-col items-center justify-center gap-2">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-primary">
-              <FileText className="size-5 text-primary-foreground" />
-            </div>
-            <h1 className="text-xl font-semibold tracking-tight">IntelliDocs</h1>
+    <div
+      style={{
+        display: 'flex',
+        minHeight: '100vh',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'var(--background)',
+        padding: '1.5rem',
+      }}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
+        style={{ width: '100%', maxWidth: '360px' }}
+      >
+        {/* Logo + heading */}
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '40px',
+              height: '40px',
+              borderRadius: '10px',
+              backgroundColor: 'var(--primary)',
+              marginBottom: '1.25rem',
+            }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--primary-foreground)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ width: '18px', height: '18px' }}
+            >
+              <path d="M12 2L2 22h20L12 2z" />
+            </svg>
           </div>
-
-          <Card className="border-border/50 bg-card/50 backdrop-blur-sm shadow-xl">
-            <CardHeader className="space-y-1.5 pb-5 text-center">
-              <CardTitle className="text-lg font-semibold">Create an account</CardTitle>
-              <CardDescription className="text-xs">
-                Get started with IntelliDocs in seconds
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pb-5">
-              {error ? (
-                <div className="mb-4 text-center">
-                  <p className="text-[11px] font-medium text-destructive/80">{error}</p>
-                </div>
-              ) : null}
-
-              {success ? (
-                <div className="mb-4 text-center">
-                  <p className="text-[11px] font-medium text-emerald-500/80">{success}</p>
-                </div>
-              ) : null}
-
-              <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-                <div className="space-y-1.5 relative">
-                  <Label htmlFor="email" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    Email
-                  </Label>
-                  <div className="relative group">
-                    <Mail className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground transition-colors duration-300 group-focus-within:text-primary" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="name@company.com"
-                      className="pl-8 bg-background h-9 text-sm transition-all duration-300 hover:bg-muted/30 focus:bg-card"
-                      value={email}
-                      onChange={handleEmailChange}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="password" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    Password
-                  </Label>
-                  <div className="relative group">
-                    <Lock className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground transition-colors duration-300 group-focus-within:text-primary" />
-                    <Input
-                      id="password"
-                      type="password"
-                      placeholder="••••••••"
-                      className="pl-8 bg-background h-9 text-sm tracking-widest transition-all duration-300 hover:bg-muted/30 focus:bg-card"
-                      value={password}
-                      onChange={handlePasswordChange}
-                      required
-                    />
-                  </div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                    Must be at least 6 characters
-                  </p>
-                </div>
-                <div className="pt-2">
-                  <Button className="w-full h-9 text-sm transition-all duration-300 active:scale-[0.98]" type="submit" disabled={loading}>
-                    {loading ? 'Creating account...' : 'Create account'}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-            <CardFooter className="flex justify-center border-t border-border/50 p-4">
-              <p className="text-xs text-muted-foreground">
-                Already have an account?{' '}
-                <Link
-                  to="/login"
-                  className="font-semibold text-primary transition-all duration-300 hover:text-primary/70 hover:underline"
-                >
-                  Sign in
-                </Link>
-              </p>
-            </CardFooter>
-          </Card>
-
-          <p className="mt-6 flex items-center justify-center text-[10px] text-muted-foreground tracking-widest uppercase">
-            <span className="inline-block mr-1.5 h-1 w-1 rounded-full bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]"></span>
-            Session Secure
+          <h1
+            style={{
+              fontSize: '1.375rem',
+              fontWeight: 600,
+              letterSpacing: '-0.025em',
+              color: 'var(--foreground)',
+              margin: '0 0 0.375rem',
+            }}
+          >
+            IntelliDocs
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', margin: 0 }}>
+            Create your account
           </p>
-        </motion.div>
-      </main>
+        </div>
+
+        {/* Card */}
+        <div
+          style={{
+            backgroundColor: 'var(--card)',
+            borderRadius: '0.75rem',
+            padding: '1.75rem',
+            boxShadow:
+              'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px',
+          }}
+        >
+          {error && (
+            <div
+              style={{
+                backgroundColor: 'rgba(255,91,79,0.08)',
+                border: '1px solid rgba(255,91,79,0.25)',
+                borderRadius: '0.5rem',
+                padding: '0.625rem 0.875rem',
+                marginBottom: '1.25rem',
+              }}
+            >
+              <p style={{ fontSize: '0.8125rem', color: 'var(--destructive)', margin: 0 }}>
+                {error}
+              </p>
+            </div>
+          )}
+
+          {success && (
+            <div
+              style={{
+                backgroundColor: 'rgba(34,197,94,0.08)',
+                border: '1px solid rgba(34,197,94,0.25)',
+                borderRadius: '0.5rem',
+                padding: '0.625rem 0.875rem',
+                marginBottom: '1.25rem',
+              }}
+            >
+              <p style={{ fontSize: '0.8125rem', color: '#16a34a', margin: 0 }}>{success}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} noValidate>
+            {/* Email */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label
+                htmlFor="reg-email"
+                style={{
+                  display: 'block',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  color: 'var(--foreground)',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                Email
+              </label>
+              <input
+                id="reg-email"
+                type="email"
+                placeholder="name@company.com"
+                value={email}
+                onChange={handleEmailChange}
+                required
+                style={inputStyle}
+                onFocus={onFocus}
+                onBlur={onBlur}
+              />
+            </div>
+
+            {/* Password */}
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label
+                htmlFor="reg-password"
+                style={{
+                  display: 'block',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  color: 'var(--foreground)',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                Password
+              </label>
+              <input
+                id="reg-password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={handlePasswordChange}
+                required
+                style={inputStyle}
+                onFocus={onFocus}
+                onBlur={onBlur}
+              />
+              <p
+                style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                  margin: '0.375rem 0 0',
+                }}
+              >
+                Must be at least 6 characters
+              </p>
+            </div>
+
+            <div style={{ marginTop: '1.25rem' }}>
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  height: '38px',
+                  borderRadius: '0.5rem',
+                  border: 'none',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--primary-foreground)',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.65 : 1,
+                  transition: 'opacity 150ms',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {loading ? 'Creating account…' : 'Create account'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <p
+          style={{
+            textAlign: 'center',
+            marginTop: '1.25rem',
+            fontSize: '0.8125rem',
+            color: 'var(--muted-foreground)',
+          }}
+        >
+          Already have an account?{' '}
+          <Link
+            to="/login"
+            style={{ color: 'var(--foreground)', fontWeight: 500, textDecoration: 'none' }}
+          >
+            Sign in
+          </Link>
+        </p>
+      </motion.div>
     </div>
   )
 }

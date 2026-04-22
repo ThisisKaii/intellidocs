@@ -66,15 +66,18 @@ behavior and predicts it automatically.
   pgvector enabled for embedding storage
   Realtime for auto-save functionality
   Never commit Supabase URL or anon key
-- Redis — live behavior buffer (real-time formatting events)
+- Redis — behavior buffer, suggestion cache, debounced auto-save dirty flags,
+  per-user AI quota tracking, and NLP command deduplication
 - DuckDB — analytical store for ML training data
 
 ### AI / ML
 - Python 3 + FastAPI — ML prediction microservice
 - scikit-learn + PyTorch — hybrid rule-based + neural model
-- Ollama (qwen2.5:7b) — local AI brain during development
-- Claude API / Gemini API — AI brain for research demo and production
+- External AI provider via `server/src/ai/aiClient.ts`
+  (currently provider-abstracted; provider is selected by env)
 - MCP server (Express) — exposes app tools to AI brain
+- Python ML service remains responsible for formatting prediction,
+  grammar checks, spelling checks, and confidence scoring
 
 ### Python handles
 - ML training and prediction (predict.py)
@@ -183,7 +186,9 @@ intellidocs/
 │   │   ├── documentRoutes.ts
 │   │   └── aiRoutes.ts
 │   ├── ai/
-│   │   ├── aiClient.ts               ← Ollama/Gemini provider abstraction
+│   │   ├── aiClient.ts               ← external provider abstraction
+│   │   ├── bridge/
+│   │   │   └── pythonBridge.ts       ← HTTP calls to FastAPI only
 │   │   ├── skills/                   ← single-purpose async functions
 │   │   │   ├── behaviorTracker.ts
 │   │   │   ├── formatPredictor.ts
@@ -191,12 +196,15 @@ intellidocs/
 │   │   │   ├── feedbackLoop.ts
 │   │   │   ├── featureExtractor.ts
 │   │   │   └── stream.ts
-│   │   ├── bridge/
-│   │   │   └── pythonBridge.ts       ← HTTP calls to FastAPI only
 │   │   ├── memory/
 │   │   │   └── vectorStore.ts        ← pgvector RAG queries
 │   │   └── prompts/
 │   │       └── systemPrompts.ts      ← ALL prompt strings live here
+│   ├── middleware/
+│   │   ├── arcjet.ts                 ← Arcjet per-router protection
+│   │   ├── authMiddleware.ts         ← verify Supabase JWT
+│   │   ├── errorHandler.ts           ← global error handling
+│   │   └── validate.ts               ← Zod request validation middleware
 │   ├── mcp/
 │   │   ├── mcpServer.ts              ← MCP server setup
 │   │   └── tools/                    ← tools exposed to AI brain
@@ -208,12 +216,14 @@ intellidocs/
 │   │       └── explainSuggestion.ts
 │   ├── redis/
 │   │   └── behaviorBuffer.ts         ← real-time event capture
+│   ├── schemas/                      ← Zod schemas for external boundaries
+│   │   ├── authSchemas.ts
+│   │   ├── behaviorSchemas.ts
+│   │   ├── documentSchemas.ts
+│   │   └── predictionSchemas.ts
 │   ├── config/
 │   │   ├── db.ts                     ← Supabase client setup
 │   │   └── env.ts                    ← environment variables
-│   ├── middleware/
-│   │   ├── authMiddleware.ts         ← verify Supabase JWT
-│   │   └── errorHandler.ts          ← global error handling
 │   ├── app.ts                        ← Express setup + middleware
 │   └── server.ts                     ← HTTP entry point
 │
@@ -298,83 +308,94 @@ intellidocs/
 #### 1. AI Client File
 `filepath: server/src/ai/aiClient.ts`
 
-Support two providers via `AI_PROVIDER` env variable:
-- `"ollama"` → development (local GPU, free)
-- `"gemini"` → production (Gemini free tier)
+The provider must be abstracted behind `aiClient.ts` so switching providers
+only requires changing that one file.
 
 #### 2. Environment Variables
 
-**server/.env.development**
-```
-AI_PROVIDER=ollama
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b
-```
+Use these env variables for all external AI providers:
 
-**server/.env.production**
-```
+```env
 AI_PROVIDER=gemini
-GEMINI_API_KEY=your_key_from_aistudio.google.com
-GEMINI_MODEL=gemini-1.5-flash
+AI_API_KEY=your_provider_key
+AI_MODEL=gemini-2.0-flash
 ```
 
-#### 3. Dependencies
-- Ollama: `ollama` (npm package)
-- Gemini: `@google/generative-ai`
+Do NOT use:
+- `OLLAMA_HOST`
+- provider-specific env naming like `GEMINI_API_KEY` inside app logic
 
-#### 4. AI Client Interface
+#### 3. Provider Requirements
+- Provider must support native function calling / tool use
+- Provider must work with MCP tool definitions
+- Provider selection is controlled only by `AI_PROVIDER`
+- `aiClient.ts` is the only provider switch point
 
-```typescript
-interface Message {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-}
+#### 4. Current Provider Direction
+IntelliDocs has moved away from Ollama and ngrok.
 
-interface AIResponse {
-  text: string
-  provider: 'ollama' | 'gemini'
-  model: string
-}
+Providers under evaluation include:
+- Gemini Flash
+- Groq
+- OpenRouter
+- Mistral
+- Cohere
 
-type AIProvider = 'ollama' | 'gemini'
-
-interface AIClient {
-  // Send a message and get a response
-  chat(
-    messages: Message[],
-    systemPrompt?: string
-  ): Promise<string>
-
-  // Send a message and stream the response
-  // for real-time chatbot responses
-  stream(
-    messages: Message[],
-    systemPrompt?: string,
-    onChunk: (chunk: string) => void
-  ): Promise<void>
-}
-```
-
-#### 5. Rules
+#### 5. AI Client Rules
 - No `any` types
 - Every function explicitly typed
 - Comment every function in plain English
-- Keep `aiClient.ts` under 80 lines
+- Keep `aiClient.ts` small and provider-focused
 - Handle errors with try/catch
-- Log which provider is active on server start:
-  ```
-  console.log(`AI Provider: ${process.env.AI_PROVIDER}`)
-  console.log(`Model: ${process.env.AI_PROVIDER === 'ollama' 
-    ? process.env.OLLAMA_MODEL 
-    : process.env.GEMINI_MODEL}`)
-  ```
-- Throw a clear error if `AI_PROVIDER` is not set
+- Throw a clear error if `AI_PROVIDER`, `AI_API_KEY`, or `AI_MODEL` is not set
 - Never hardcode API keys
 
 #### 6. Provider Transparency
 - MCP tools in `server/src/mcp/tools/` must work identically regardless of provider
 - Skill files in `server/src/ai/skills/` must work identically regardless of provider
-- Provider switch is invisible to them — they only call `aiClient`
+- Provider switching must be invisible to the rest of the backend
+
+---
+
+## Security Middleware
+
+### Arcjet
+- Arcjet provides entry-level protection for auth and AI-facing routes
+- Arcjet lives in `server/src/middleware/arcjet.ts`
+- Apply Arcjet per-router, not globally
+- Use it on:
+  - `/auth/*`
+  - `/ai/*`
+  - other AI-facing routes like `/predictions/*` while legacy routes still exist
+
+### Arcjet Scope
+- Rate limiting on auth and AI routes
+- Shield protection for basic SQL injection / XSS style attacks
+- Bot detection on signup routes
+- This is capstone-level protection, not a full enterprise security program
+
+### Relationship to Redis
+- Arcjet = request-layer protection
+- Redis = application-layer state, caching, quota tracking, and deduplication
+
+---
+
+## Validation
+
+### Zod Rules
+- Use Zod at runtime for all external boundaries
+- Do NOT use Zod for internal function-to-function calls inside the TypeScript app
+- Let TypeScript handle internal typing
+
+### Where Zod Must Be Used
+- HTTP request bodies validated in routes before controllers
+- MCP tool call arguments validated with Zod schemas
+- Python FastAPI responses parsed through Zod before use
+- Redis behavior events validated before ingestion
+
+### Schema Locations
+- Backend schemas live in `server/schemas/`
+- Frontend schemas live in `frontend/src/schemas/`
 
 ---
 
@@ -423,6 +444,7 @@ interface AIClient {
 - React must call the backend only through `frontend/src/services/api.ts`
 - Controllers must not call Python directly; use the Python bridge path
 - Keep route files thin and move logic into controllers/skills/models as appropriate
+- Route files should handle Zod validation before controllers
 - The custom editor must stay `contentEditable`-based
 - Match the existing TypeScript style: explicit types, no `any`, minimal changes
 
@@ -435,7 +457,8 @@ interface AIClient {
 - Keep files under 80 lines where possible
 - Controllers never call DB directly — always through models
 - Controllers never call Python directly — always through pythonBridge.ts
-- No logic in route files
+- No business logic in route files
+- Route files are responsible for request validation
 - Skills are single-purpose — one export per file
 - New skills need a matching test in __tests__/
 - All prompt strings in systemPrompts.ts — never inline
@@ -450,8 +473,10 @@ interface AIClient {
 - OS: Nobara Linux (NVIDIA drivers pre-installed)
 - RAM: 16GB
 - GPU: RTX 3050 desktop, 6GB VRAM
-- Ollama model: qwen2.5:7b (~4.7GB VRAM, runs fully on GPU)
-- RAM stays free for all services when Ollama runs on GPU
+
+Note:
+- IntelliDocs no longer depends on Ollama for local development
+- External provider selection now happens through `AI_PROVIDER`, `AI_API_KEY`, and `AI_MODEL`
 
 ---
 
@@ -494,7 +519,7 @@ Phase 6 — MCP Chatbot
   23. MCP server setup (mcpServer.ts)
   24. All 6 MCP tools
   25. Wire ChatOverlay to MCP server
-  26. Ollama + OpenClaw for local dev testing
+  26. External AI provider integration + tool-calling verification
 
 Phase 7 — Learning Loop
   27. Accept/reject feedback capture
@@ -537,8 +562,9 @@ formatting behavior and predicts it automatically.
 - ML must be pre-trained on a real dataset before user fine-tuning
 - MVC is strictly enforced — panel will check this
 - Supabase free tier pauses after 1 week of inactivity
-- Keep Ollama off when not testing the chatbot to save RAM
-- Run nvidia-smi to verify Ollama is using GPU not RAM
+- Arcjet is entry-level protection only; keep it scoped to the routes that need it
+- Redis now serves both behavior-pipeline and app-layer AI responsibilities
+- Zod belongs at external boundaries, not internal TypeScript calls
 - sync-ai script: cp AGENTS.md .github/copilot-instructions.md
 - Generated ML data should stay local unless explicitly needed: `ml/dataset/raw/`, `ml/dataset/processed/`, `ml/models/*.pkl`
-- Prefer Gemini on low-spec demo/test machines and Ollama on the local development machine
+- Keep provider-specific logic isolated inside `server/src/ai/aiClient.ts`

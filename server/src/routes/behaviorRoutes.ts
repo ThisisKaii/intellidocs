@@ -1,9 +1,11 @@
 import { Router } from 'express'
 import { logBehaviorEvent, triggerAggregation, triggerFeatureExtraction, triggerFeatureExport } from '../controllers/behaviorController'
+import { validateBody } from '../middleware/validate'
+import { behaviorEventSchema } from '../../schemas/behaviorSchemas'
 
 const router = Router()
 
-router.post('/events', logBehaviorEvent)
+router.post('/events', validateBody(behaviorEventSchema), logBehaviorEvent)
 router.post('/aggregate', triggerAggregation)
 router.post('/features', triggerFeatureExtraction)
 router.post('/export', triggerFeatureExport)
