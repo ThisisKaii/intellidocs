@@ -99,7 +99,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         className={`intellidocs-editor min-h-[60vh] border-0 bg-transparent px-0 py-0 shadow-none focus:outline-none focus:ring-0 ${className}`}
-        style={{ wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}
+        style={{ wordWrap: 'break-word', whiteSpace: 'pre-wrap'}}
       />
     )
   }

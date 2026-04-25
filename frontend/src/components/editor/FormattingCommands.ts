@@ -44,6 +44,19 @@ export function heading3() {
   document.execCommand('formatBlock', false, '<h3>')
 }
 
+export function heading4() {
+  normalizeBlock()
+  document.execCommand('formatBlock', false, '<h4>')
+}
+export function heading5() {
+  normalizeBlock()
+  document.execCommand('formatBlock', false, '<h5>')
+}
+export function heading6() {
+  normalizeBlock()
+  document.execCommand('formatBlock', false, '<h6>')
+}
+
 export function bulletList() {
   if (document.queryCommandState('insertUnorderedList')) {
 
@@ -77,6 +90,42 @@ export function blockquote() {
   document.execCommand('formatBlock', false, '<blockquote>')
 }
 
+export function strikethrough() { 
+  document.execCommand('strikeThrough', false, undefined)
+}
+
+export function fontsize(size: string) { 
+  document.execCommand('fontSize', false, size)
+}
+
+export function fontcolor(color: string) { 
+  document.execCommand('foreColor', false, color)
+}
+
+export function superscript() {
+  document.execCommand('superscript', false, undefined)
+}
+
+export function subscript() {
+  document.execCommand('subscript', false, undefined)
+}
+
+export function indent() {
+  document.execCommand('indent', false, undefined)
+}
+
+export function outdent() {
+  document.execCommand('outdent', false, undefined)
+}
+
+export function undo() {
+  document.execCommand('undo', false, undefined)
+}
+
+export function redo() {
+  document.execCommand('redo', false, undefined)
+}
+
 export function codeBlock() {
   const current = getCurrentBlockTag()
   if (current === 'pre') {
@@ -92,3 +141,5 @@ export function clearFormatting() {
   document.execCommand('removeFormat', false, undefined)
   normalizeBlock()
 }
+
+
