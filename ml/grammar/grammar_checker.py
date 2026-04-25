@@ -1,7 +1,7 @@
 import os
 import pickle
 import re
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -36,19 +36,24 @@ def load_dataset(csv_path: str) -> pd.DataFrame:
 
 def build_training_frame(dataframe: pd.DataFrame) -> pd.DataFrame:
     """Build a binary grammar-quality dataset from source and corrected text."""
-    positive_rows = dataframe[["target"]].copy()
-    positive_rows["label"] = 1
-    positive_rows = positive_rows.rename(columns={"target": "text"})
-
-    negative_rows = dataframe[["source"]].copy()
-    negative_rows["label"] = 0
-    negative_rows = negative_rows.rename(columns={"source": "text"})
+    positive_rows = pd.DataFrame(
+        {
+            "text": dataframe["target"].astype(str),
+            "label": 1,
+        }
+    )
+    negative_rows = pd.DataFrame(
+        {
+            "text": dataframe["source"].astype(str),
+            "label": 0,
+        }
+    )
 
     training_frame = pd.concat([positive_rows, negative_rows], ignore_index=True)
-    training_frame = training_frame.dropna()
+    training_frame = training_frame.dropna(subset=["text"])
     training_frame["text"] = training_frame["text"].astype(str).str.strip()
-    training_frame = training_frame[training_frame["text"] != ""]
-    return training_frame
+    filtered_frame = training_frame[training_frame["text"] != ""].copy()
+    return cast(pd.DataFrame, filtered_frame)
 
 
 def train_model(dataframe: pd.DataFrame) -> dict[str, Any]:
@@ -205,48 +210,64 @@ def detect_subject_verb_mismatch(text: str) -> list[dict[str, str]]:
     return issues
 
 
-def detect_sentence_capitalization(text: str) -> list[dict[str, str]]:
-    """Detect sentences that start with a lowercase letter."""
+def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
+    """Detect sentence capitalization and punctuation as grouped issues."""
     issues: list[dict[str, str]] = []
-    sentences = [segment.strip() for segment in SENTENCE_SPLIT_PATTERN.split(text.strip())]
+    normalized = text.strip()
+    if not normalized:
+        return issues
+
+    sentences = [segment.strip() for segment in SENTENCE_SPLIT_PATTERN.split(normalized)]
     if not sentences:
-        sentences = [text.strip()]
+        sentences = [normalized]
+
+    needs_terminal_punctuation = not normalized.endswith((".", "!", "?"))
+    final_sentence = sentences[-1] if sentences else normalized
+    found_boundary_issue = False
 
     for sentence in sentences:
         if not sentence:
             continue
 
         first_alpha = next((char for char in sentence if char.isalpha()), "")
-        if first_alpha and first_alpha.islower():
-            issues.append(
-                build_issue(
-                    "grammar",
-                    sentence[: min(len(sentence), 40)],
-                    first_alpha.upper() + sentence[sentence.index(first_alpha) + 1 :],
-                    "Sentences should usually start with a capital letter.",
-                )
+        if not first_alpha or not first_alpha.islower():
+            continue
+
+        first_alpha_index = sentence.index(first_alpha)
+        suggestion = (
+            sentence[:first_alpha_index]
+            + first_alpha.upper()
+            + sentence[first_alpha_index + 1 :]
+        )
+        explanation = "Sentences should usually start with a capital letter."
+
+        if sentence == final_sentence and needs_terminal_punctuation:
+            suggestion = f"{suggestion}."
+            explanation = (
+                "Sentence should start with a capital letter and end with punctuation."
             )
 
-    return issues
-
-
-def detect_missing_terminal_punctuation(text: str) -> list[dict[str, str]]:
-    """Detect text that appears to be missing ending punctuation."""
-    normalized = text.strip()
-    if not normalized:
-        return []
-
-    if normalized.endswith((".", "!", "?")):
-        return []
-
-    return [
-        build_issue(
-            "grammar",
-            normalized[-40:] if len(normalized) > 40 else normalized,
-            f"{normalized}.",
-            "Sentence may be missing ending punctuation.",
+        found_boundary_issue = True
+        issues.append(
+            build_issue(
+                "grammar",
+                sentence,
+                suggestion,
+                explanation,
+            )
         )
-    ]
+
+    if needs_terminal_punctuation and not found_boundary_issue:
+        issues.append(
+            build_issue(
+                "grammar",
+                final_sentence,
+                f"{final_sentence}.",
+                "Sentence may be missing ending punctuation.",
+            )
+        )
+
+    return issues
 
 
 def detect_issues(text: str) -> list[dict[str, str]]:
@@ -255,8 +276,7 @@ def detect_issues(text: str) -> list[dict[str, str]]:
     issues.extend(detect_repeated_words(text))
     issues.extend(detect_article_mismatch(text))
     issues.extend(detect_subject_verb_mismatch(text))
-    issues.extend(detect_sentence_capitalization(text))
-    issues.extend(detect_missing_terminal_punctuation(text))
+    issues.extend(detect_sentence_boundary_issues(text))
 
     deduped: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()

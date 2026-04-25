@@ -54,17 +54,26 @@ export default function SuggestionOverlay({
     while (node) {
       const textNode = node as Text
       const text = textNode.nodeValue || ''
+      const lowerText = text.toLowerCase()
+
       if (text.trim()) {
         issues.forEach((issue) => {
-          let index = text.indexOf(issue.original)
+          const original = issue.original.trim()
+
+          if (!original) {
+            return
+          }
+
+          const lowerOriginal = original.toLowerCase()
+          let index = lowerText.indexOf(lowerOriginal)
+
           while (index !== -1) {
-            // Make sure it's a word boundary match if it's spelling, but for grammar it might be multi-word.
-            // For simplicity, we just check exact substring match.
-            // Better: use Range to get bounding box
+            // Match case-insensitively so grammar issues like "this are"
+            // still highlight document text like "This are".
             const range = document.createRange()
             try {
               range.setStart(textNode, index)
-              range.setEnd(textNode, index + issue.original.length)
+              range.setEnd(textNode, index + original.length)
               const rect = range.getBoundingClientRect()
               const editorRect = editor.getBoundingClientRect()
 
@@ -77,12 +86,12 @@ export default function SuggestionOverlay({
                 height: rect.height,
                 node: textNode,
                 startOffset: index,
-                endOffset: index + issue.original.length,
+                endOffset: index + original.length,
               })
             } catch (e) {
               // Ignore range errors
             }
-            index = text.indexOf(issue.original, index + 1)
+            index = lowerText.indexOf(lowerOriginal, index + 1)
           }
         })
       }
@@ -194,9 +203,14 @@ export default function SuggestionOverlay({
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
                 onClick={() => {
+                  if (activeRect.issue.actionable === false) {
+                    return
+                  }
+
                   onApply(activeRect.issue)
                   setActiveRect(null)
                 }}
+                disabled={activeRect.issue.actionable === false}
                 style={{
                   flex: 1,
                   fontSize: '0.8125rem',
@@ -206,14 +220,23 @@ export default function SuggestionOverlay({
                   backgroundColor: 'var(--primary)',
                   color: 'var(--primary-foreground)',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: activeRect.issue.actionable === false ? 'not-allowed' : 'pointer',
+                  opacity: activeRect.issue.actionable === false ? 0.5 : 1,
                   fontFamily: 'inherit',
                   transition: 'opacity 150ms',
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
+                onMouseEnter={(e) => {
+                  if (activeRect.issue.actionable !== false) {
+                    (e.currentTarget as HTMLButtonElement).style.opacity = '0.9'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeRect.issue.actionable !== false) {
+                    (e.currentTarget as HTMLButtonElement).style.opacity = '1'
+                  }
+                }}
               >
-                Accept
+                {activeRect.issue.actionable === false ? 'Review manually' : 'Accept'}
               </button>
               <button
                 onClick={() => {

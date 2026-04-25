@@ -14,6 +14,7 @@ export interface GrammarIssue {
   original: string
   suggestion: string
   explanation: string
+  actionable?: boolean
 }
 
 interface GrammarResult {
@@ -23,6 +24,7 @@ interface GrammarResult {
 
 interface GrammarPanelProps {
   text: string
+  activeIssues?: GrammarIssue[]
   onCheckComplete?: (issues: GrammarIssue[]) => void
 }
 
@@ -50,13 +52,17 @@ function buildGrammarResult(
     original: issue.original,
     suggestion: issue.suggestion,
     explanation: issue.explanation,
+    actionable: true,
   }))
 
   const spellingIssues: GrammarIssue[] = spelling.issues.map((issue) => ({
-    type: issue.type,
+    type: issue.suggestion ? issue.type : 'spelling-review',
     original: issue.word,
-    suggestion: issue.suggestion ?? issue.word,
-    explanation: 'Possible spelling issue detected by the spell checker.',
+    suggestion: issue.suggestion ?? 'Review spelling manually',
+    explanation: issue.suggestion
+      ? 'Possible spelling issue detected by the spell checker.'
+      : 'Possible non-word detected, but no safe automatic replacement was found.',
+    actionable: Boolean(issue.suggestion),
   }))
 
   const issues = [...grammarIssues, ...spellingIssues]
@@ -75,6 +81,7 @@ function buildGrammarResult(
 /** Collapsible Grammar & Spell Check panel wired to backend APIs. */
 export default function GrammarPanel({
   text,
+  activeIssues,
   onCheckComplete,
 }: GrammarPanelProps): JSX.Element {
   const [issues, setIssues] = useState<GrammarResult | null>(null)
@@ -83,6 +90,11 @@ export default function GrammarPanel({
 
   // Strip HTML tags so the panel works whether it receives plain text or raw HTML
   const plainText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  const displayedIssues = activeIssues ?? issues?.issues ?? []
+  const overallMessage =
+    issues && activeIssues !== undefined && activeIssues.length === 0
+      ? 'All visible issues have been resolved.'
+      : issues?.overall
 
   /** Run grammar and spelling checks against the current text. */
   async function runCheck(): Promise<void> {
@@ -153,13 +165,13 @@ export default function GrammarPanel({
                 padding: '0.125rem 0.5rem',
                 borderRadius: '0.25rem',
                 flexShrink: 0,
-                backgroundColor: issues.issues.length === 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 91, 79, 0.1)',
-                color: issues.issues.length === 0 ? '#10b981' : '#ff5b4f'
+                backgroundColor: displayedIssues.length === 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 91, 79, 0.1)',
+                color: displayedIssues.length === 0 ? '#10b981' : '#ff5b4f'
               }}
             >
-              {issues.issues.length === 0
+              {displayedIssues.length === 0
                 ? 'CLEAN'
-                : `${issues.issues.length} ISSUE${issues.issues.length !== 1 ? 'S' : ''}`}
+                : `${displayedIssues.length} ISSUE${displayedIssues.length !== 1 ? 'S' : ''}`}
             </span>
           ) : null}
         </div>
@@ -233,10 +245,10 @@ export default function GrammarPanel({
               {issues ? (
                 <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontStyle: 'italic', margin: 0 }}>
-                    {issues.overall}
+                    {overallMessage}
                   </p>
 
-                  {issues.issues.length === 0 ? (
+                  {displayedIssues.length === 0 ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981' }}>
                       <CheckCircle2 style={{ width: '16px', height: '16px' }} />
                       <span style={{ fontSize: '0.875rem' }}>No issues found</span>
@@ -245,7 +257,7 @@ export default function GrammarPanel({
                     <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', color: '#3b82f6', borderRadius: '0.375rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
                         <AlertCircle style={{ width: '16px', height: '16px' }} />
-                        <span>{issues.issues.length} {issues.issues.length === 1 ? 'Issue' : 'Issues'} Highlighted</span>
+                        <span>{displayedIssues.length} {displayedIssues.length === 1 ? 'Issue' : 'Issues'} Highlighted</span>
                       </div>
                       <p style={{ fontSize: '0.75rem', opacity: 0.9, margin: 0 }}>
                         Review the dashed underlines directly in your document to apply or dismiss suggestions.

@@ -1,12 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
-import { api } from '@/services/api'
+import { api, type RejectedFormattingPreview } from '@/services/api'
+import * as FormattingCommands from './FormattingCommands'
+import { restoreSelection } from './SelectionManager'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   command_applied?: string | null
+  preview_format?: string | null
+  preview_reason?: string | null
+  preview_status?: 'pending' | 'applied' | 'rejected' | null
 }
 
 interface ChatHistoryEntry {
@@ -19,6 +24,7 @@ interface AIChatbotProps {
   documentTitle?: string
   documentContent: string
   onFormatApplied?: (format: string) => void
+  onFocusEditor?: () => void
 }
 
 /** Floating AI chatbot for natural language document help. */
@@ -26,7 +32,8 @@ export default function AIChatbot({
   documentId,
   documentTitle,
   documentContent,
-  onFormatApplied: _onFormatApplied,
+  onFormatApplied,
+  onFocusEditor,
 }: AIChatbotProps): JSX.Element {
   const [open, setOpen] = useState<boolean>(false)
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -37,11 +44,126 @@ export default function AIChatbot({
   ])
   const [input, setInput] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(false)
+  const [rejectedPreviews, setRejectedPreviews] = useState<RejectedFormattingPreview[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  /** Format a machine-readable format key into a user-facing label. */
+  function formatPreviewLabel(format: string): string {
+    const labels: Record<string, string> = {
+      bold: 'Bold',
+      italic: 'Italic',
+      underline: 'Underline',
+      heading1: 'Heading 1',
+      heading2: 'Heading 2',
+      heading3: 'Heading 3',
+      h1: 'Heading 1',
+      h2: 'Heading 2',
+      h3: 'Heading 3',
+      blockquote: 'Blockquote',
+      unordered_list: 'Bullet List',
+      ordered_list: 'Numbered List',
+      ul: 'Bullet List',
+      ol: 'Numbered List',
+    }
+
+    return labels[format] ?? format
+  }
+
+  /** Return true when a format was already rejected in this chat session. */
+  function hasRejectedPreview(format: string): boolean {
+    return rejectedPreviews.some((preview) => preview.format === format)
+  }
+
+  /** Apply a confirmed formatting preview to the current editor selection. */
+  function handlePreviewApply(messageIndex: number, format: string): void {
+    const commands: Record<string, (() => void) | undefined> = {
+      bold: FormattingCommands.bold,
+      italic: FormattingCommands.italic,
+      underline: FormattingCommands.underline,
+      heading1: FormattingCommands.heading1,
+      heading2: FormattingCommands.heading2,
+      heading3: FormattingCommands.heading3,
+      blockquote: FormattingCommands.blockquote,
+      unordered_list: FormattingCommands.bulletList,
+      ordered_list: FormattingCommands.numberedList,
+    }
+
+    const command = commands[format]
+    if (!command) return
+
+    onFocusEditor?.()
+    restoreSelection()
+    command()
+    onFormatApplied?.(format)
+
+    if (documentId) {
+      api.behavior
+        .log({
+          action: `chat_preview_accepted:${format}`,
+          timestamp: new Date().toISOString(),
+          documentId,
+        })
+        .catch((error) => console.error('Chat preview acceptance log failed', error))
+    }
+
+    setMessages((current) =>
+      current.map((message, index) =>
+        index === messageIndex
+          ? {
+              ...message,
+              preview_status: 'applied',
+              command_applied: formatPreviewLabel(format),
+            }
+          : message
+      )
+    )
+  }
+
+  /** Reject a formatting preview without changing the document. */
+  function handlePreviewReject(
+    messageIndex: number,
+    format: string,
+    reason?: string | null
+  ): void {
+    const rejectedPreview: RejectedFormattingPreview = {
+      format,
+      reason: reason ?? 'User rejected the preview suggestion.',
+      rejectedAt: new Date().toISOString(),
+    }
+
+    setRejectedPreviews((current) => {
+      if (current.some((preview) => preview.format === format)) {
+        return current
+      }
+
+      return [...current, rejectedPreview]
+    })
+
+    if (documentId) {
+      api.behavior
+        .log({
+          action: `chat_preview_rejected:${format}`,
+          timestamp: rejectedPreview.rejectedAt ?? new Date().toISOString(),
+          documentId,
+        })
+        .catch((error) => console.error('Chat preview rejection log failed', error))
+    }
+
+    setMessages((current) =>
+      current.map((message, index) =>
+        index === messageIndex
+          ? {
+              ...message,
+              preview_status: 'rejected',
+            }
+          : message
+      )
+    )
+  }
 
   /** Send a message to the backend AI chat endpoint. */
   async function send(): Promise<void> {
@@ -66,12 +188,35 @@ export default function AIChatbot({
         documentId,
         documentTitle,
         documentContent,
-        history
+        history,
+        rejectedPreviews
       )
+
+      const previewFormat =
+        response.preview && typeof response.preview.format === 'string'
+          ? response.preview.format
+          : null
+      const previewWasRejected =
+        previewFormat !== null && hasRejectedPreview(previewFormat)
+      const basePreviewReason =
+        response.preview && typeof response.preview.reason === 'string'
+          ? response.preview.reason
+          : null
+      const reconfirmationNote =
+        previewWasRejected && previewFormat
+          ? `\n\nYou previously rejected ${formatPreviewLabel(previewFormat)} in this chat. I’m showing it again because you asked for it; confirm only if you want to apply it now.`
+          : ''
+      const previewReason =
+        previewWasRejected && previewFormat
+          ? `${basePreviewReason ?? 'Detected a repeated formatting request.'} Previously rejected in this chat; confirm again before applying.`
+          : basePreviewReason
 
       const assistantMsg: ChatMessage = {
         role: 'assistant',
-        content: response.reply,
+        content: `${response.reply}${reconfirmationNote}`,
+        preview_format: previewFormat,
+        preview_reason: previewFormat ? previewReason : null,
+        preview_status: previewFormat ? 'pending' : null,
       }
 
       setMessages((current) => [...current, assistantMsg])
@@ -167,6 +312,104 @@ export default function AIChatbot({
                     }}
                   >
                     {m.content}
+                    {m.preview_format && (
+                      <div
+                        style={{
+                          marginTop: '0.5rem',
+                          padding: '0.5rem 0.625rem',
+                          borderRadius: '0.5rem',
+                          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                          border: '1px solid rgba(59, 130, 246, 0.16)',
+                          color: m.role === 'user' ? 'var(--primary-foreground)' : 'var(--foreground)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '0.6875rem',
+                            fontWeight: 700,
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            opacity: 0.75,
+                            marginBottom: '0.25rem',
+                          }}
+                        >
+                          Preview suggestion
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                            marginBottom: m.preview_reason ? '0.25rem' : 0,
+                          }}
+                        >
+                          {formatPreviewLabel(m.preview_format)}
+                        </div>
+                        {m.preview_reason && (
+                          <div
+                            style={{
+                              fontSize: '0.75rem',
+                              lineHeight: 1.45,
+                              opacity: 0.8,
+                            }}
+                          >
+                            {m.preview_reason}
+                          </div>
+                        )}
+
+                        {m.preview_status === 'pending' && (
+                          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.625rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => handlePreviewApply(i, m.preview_format as string)}
+                              style={{
+                                flex: 1,
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                padding: '0.375rem 0.5rem',
+                                borderRadius: '0.375rem',
+                                border: 'none',
+                                backgroundColor: 'var(--primary)',
+                                color: 'var(--primary-foreground)',
+                                cursor: 'pointer',
+                                fontFamily: 'inherit',
+                              }}
+                            >
+                              Apply
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handlePreviewReject(i, m.preview_format as string, m.preview_reason)}
+                              style={{
+                                flex: 1,
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                padding: '0.375rem 0.5rem',
+                                borderRadius: '0.375rem',
+                                border: '1px solid var(--border)',
+                                backgroundColor: 'transparent',
+                                color: 'var(--muted-foreground)',
+                                cursor: 'pointer',
+                                fontFamily: 'inherit',
+                              }}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+
+                        {m.preview_status === 'rejected' && (
+                          <div
+                            style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: 'var(--muted-foreground)',
+                            }}
+                          >
+                            Rejected
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {m.command_applied && (
                       <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', opacity: 0.7, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <span style={{ color: '#10b981' }}>✓</span> Applied: {m.command_applied}

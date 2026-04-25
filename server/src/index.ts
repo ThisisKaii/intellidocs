@@ -16,6 +16,8 @@ import { authMiddleware } from './middleware/authMiddleware'
 const app = express()
 const PORT = process.env.PORT || 3000
 
+app.set('trust proxy', true)
+
 // Middleware
 app.use(cors())
 app.use(express.json())

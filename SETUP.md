@@ -42,6 +42,35 @@ It also uses two local data services:
    - local analytical store
    - stored as a file under `db/duckdb/`
 
+### Hosting strategy
+
+Development and groupmate testing use **Cloudflare Tunnel**. Temporary random URLs are acceptable during development. The local machine can also act as a hot spare through Cloudflare Tunnel only.
+
+Production and capstone defense target **Oracle Cloud Free Tier**, preferably one ARM Ampere A1 VPS instance. The intended production stack is:
+
+1. **Nginx**
+   - public reverse proxy
+   - routes frontend/API traffic to Express
+
+2. **Express**
+   - serves the React production build
+   - serves the backend API
+   - runs under PM2
+
+3. **FastAPI**
+   - runs locally on the VPS at `localhost:8000`
+   - called only by Express through the Python bridge
+   - runs under PM2
+
+4. **Redis**
+   - runs locally on the VPS at `localhost:6379`
+
+5. **DuckDB**
+   - remains file-based
+   - does not need a server process
+
+Supabase remains the hosted provider for Auth, PostgreSQL, and pgvector.
+
 ---
 
 ## 2. Prerequisites
@@ -313,7 +342,17 @@ If login/register works and document CRUD works, your Supabase wiring is likely 
 This project uses:
 
 - **WikiText-103**
+  - raw formatting pre-training data
+  - currently about 539MB raw
+  - produces `base_model.pkl`
 - **JFLEG**
+  - grammar correction pre-training data
+  - currently about 780KB raw
+  - produces `grammar_model.pkl`
+- **Academic capstone papers**
+  - extracted from completed capstone research paper PDFs
+  - used to improve academic formatting metadata beyond WikiText heuristics
+  - extracted with PyMuPDF
 
 ### Download datasets
 From repo root:
@@ -371,6 +410,51 @@ ls ml/dataset/processed
 ```
 
 ---
+
+### Optional: academic paper extraction
+
+Academic-paper extraction adds capstone-specific formatting examples from completed research paper PDFs. This is intended to improve the formatting model with real paper structure such as title pages, signature pages, tables of contents, chapter starts, body text, and bibliography pages.
+
+Put source PDFs here:
+
+```bash
+ml/dataset/raw/academic-papers/
+```
+
+Run extraction from the repo root:
+
+```bash
+ml/venv/bin/python ml/dataset/extract_academic_papers.py
+```
+
+Expected outputs:
+
+- `ml/dataset/processed/academic_paper_formatting_examples.csv`
+- `ml/dataset/processed/formatting_examples_merged.csv`
+
+The extractor reads PDF line metadata such as:
+
+- font size
+- bold flag
+- italic flag
+- page number
+- page type
+- nearby line context
+- inferred format label
+
+If you only want the academic-paper CSV and do not want to merge it with WikiText yet, run:
+
+```bash
+ml/venv/bin/python ml/dataset/extract_academic_papers.py --no-merge
+```
+
+To train the formatting model with the merged dataset:
+
+```bash
+FORMATTING_DATASET_PATH=ml/dataset/processed/formatting_examples_merged.csv ml/venv/bin/python ml/training/base_trainer.py
+```
+
+Keep source PDFs and generated extraction CSVs local unless they are explicitly needed in version control.
 
 ## 11. Train the base formatting model
 
@@ -827,3 +911,14 @@ If something breaks, verify each layer separately instead of guessing:
 5. Redis or DuckDB output
 
 Do not assume a plausible diff means the system works. Run it and check.
+
+For deployment-specific checks, verify each service separately before exposing the VPS publicly:
+
+1. Nginx reverse proxy route
+2. Express health route and API routes
+3. React production build served by Express
+4. FastAPI health route on `localhost:8000`
+5. Redis connection on `localhost:6379`
+6. PM2 process status for Express and FastAPI
+7. Supabase Auth and document access
+8. Arcjet-protected auth and AI-facing routes when `ARCJET_KEY` is configured
