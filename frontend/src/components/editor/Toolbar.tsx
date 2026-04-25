@@ -11,6 +11,13 @@ import {
   ListOrdered,
   Quote,
   Underline,
+  Undo,
+  Redo,
+  Strikethrough,
+  Superscript,
+  Subscript,
+  Indent,
+  Outdent,
 } from 'lucide-react'
 
 interface ToolbarProps {
@@ -36,6 +43,11 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
       if (isFormatActive('bold')) formats.add('bold')
       if (isFormatActive('italic')) formats.add('italic')
       if (isFormatActive('underline')) formats.add('underline')
+      if (isFormatActive('strikethrough')) formats.add('strikethrough')
+      if (isFormatActive('superscript')) formats.add('superscript')
+      if (isFormatActive('subscript')) formats.add('subscript')
+      if (isFormatActive('indent')) formats.add('indent')
+      if (isFormatActive('outdent')) formats.add('outdent')
       setActiveFormats(formats)
     }
 
@@ -48,11 +60,15 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
       { format: 'bold', icon: Bold, label: 'Bold', command: FormattingCommands.bold },
       { format: 'italic', icon: Italic, label: 'Italic', command: FormattingCommands.italic },
       { format: 'underline', icon: Underline, label: 'Underline', command: FormattingCommands.underline },
+      { format: 'strikethrough', icon: Strikethrough, label: 'Strikethrough', command: FormattingCommands.strikethrough },
     ],
     [
       { format: 'heading1', text: 'H1', label: 'Heading 1', command: FormattingCommands.heading1 },
       { format: 'heading2', text: 'H2', label: 'Heading 2', command: FormattingCommands.heading2 },
       { format: 'heading3', text: 'H3', label: 'Heading 3', command: FormattingCommands.heading3 },
+      { format: 'heading4', text: 'H4', label: 'Heading 4', command: FormattingCommands.heading4 },
+      { format: 'heading5', text: 'H5', label: 'Heading 5', command: FormattingCommands.heading5 },
+      { format: 'heading6', text: 'H6', label: 'Heading 6', command: FormattingCommands.heading6 },
     ],
     [
       { format: 'blockquote', icon: Quote, label: 'Blockquote', command: FormattingCommands.blockquote },
@@ -63,6 +79,16 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
       { format: 'align-left', icon: AlignLeft, label: 'Align left', command: () => document.execCommand('justifyLeft', false) },
       { format: 'align-center', icon: AlignCenter, label: 'Align center', command: () => document.execCommand('justifyCenter', false) },
       { format: 'align-right', icon: AlignRight, label: 'Align right', command: () => document.execCommand('justifyRight', false) },
+    ],
+    [
+      { format: 'superscript', icon: Superscript, label: 'Superscript', command: FormattingCommands.superscript },
+      { format: 'subscript', icon: Subscript, label: 'Subscript', command: FormattingCommands.subscript },
+      { format: 'indent', icon: Indent, label: 'Indent', command: FormattingCommands.indent },
+      { format: 'outdent', icon: Outdent, label: 'Outdent', command: FormattingCommands.outdent },
+    ],
+    [
+      { format: 'redo', icon: Redo, label: 'Redo', command: FormattingCommands.redo },
+      { format: 'undo', icon: Undo, label: 'Undo', command: FormattingCommands.undo },
     ],
   ]
 
@@ -81,7 +107,7 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0 0.5rem' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0 0.5rem', justifyContent: 'center' }}>
       {TOOLBAR_GROUPS.map((group, gi) => (
         <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
           {gi > 0 && <div style={{ width: '1px', height: '1.25rem', backgroundColor: 'var(--border)', margin: '0 0.5rem', opacity: 0.6 }} />}
