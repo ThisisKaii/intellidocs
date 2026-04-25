@@ -207,21 +207,42 @@ export default function Document(): JSX.Element {
 
   function handleGrammarApply(issue: GrammarIssue): void {
     if (!editorRef.current) return
+
+    function preserveReplacementCase(originalText: string, suggestion: string): string {
+      if (!originalText || !suggestion) return suggestion
+
+      if (originalText === originalText.toUpperCase()) {
+        return suggestion.toUpperCase()
+      }
+
+      if (originalText[0] === originalText[0].toUpperCase()) {
+        return suggestion[0].toUpperCase() + suggestion.slice(1)
+      }
+
+      return suggestion
+    }
+
     const editor = editorRef.current
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null)
+    const originalNeedle = issue.original.toLowerCase()
     let node = walker.nextNode()
     let applied = false
 
     while (node && !applied) {
       const text = node.nodeValue || ''
-      const index = text.indexOf(issue.original)
+      const index = text.toLowerCase().indexOf(originalNeedle)
+
       if (index !== -1) {
+        const matchedText = text.substring(index, index + issue.original.length)
+        const replacement = preserveReplacementCase(matchedText, issue.suggestion)
+
         node.nodeValue =
           text.substring(0, index) +
-          issue.suggestion +
+          replacement +
           text.substring(index + issue.original.length)
         applied = true
       }
+
       node = walker.nextNode()
     }
 
@@ -509,7 +530,11 @@ export default function Document(): JSX.Element {
                 </div>
 
                 {/* Grammar panel */}
-                <GrammarPanel text={content} onCheckComplete={setGrammarIssues} />
+                <GrammarPanel
+                  text={content}
+                  activeIssues={grammarIssues}
+                  onCheckComplete={setGrammarIssues}
+                />
 
                 {/* Session stats */}
                 <div
@@ -568,6 +593,7 @@ export default function Document(): JSX.Element {
           documentTitle={title}
           documentContent={getEditorText()}
           onFormatApplied={handleFormat}
+          onFocusEditor={focusEditor}
         />
       </div>
     </div>

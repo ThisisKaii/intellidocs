@@ -13,7 +13,7 @@ Unlike Word or Google Docs, IntelliDocs fills a specific gap: it's the first edi
 - Custom Editor - Built from scratch with the contentEditable API (no pre-built editor libraries)
 - ML-Powered Predictions - Learns your formatting patterns over time
 - Grammar & Spell Check - Real-time writing assistance
-- AI Chatbot - Natural language commands to format your document
+- AI Chatbot - Provider-backed document assistant with document context
 - Behavioral Insights - Understand how you format and why
 - Real-Time Sync - Auto-save to cloud with Supabase
 - Research-Ready - Built for academic validation and user studies
@@ -27,7 +27,9 @@ Unlike Word or Google Docs, IntelliDocs fills a specific gap: it's the first edi
 - Node.js 20+
 - Python 3.10+
 - Git
+- Redis
 - A Supabase account (free tier works)
+- An external AI provider API key for chatbot features
 
 ### Installation
 
@@ -93,8 +95,10 @@ IntelliDocs is built with **strict MVC separation** across three main services:
 - Document CRUD operations
 - User behavior tracking
 - ML prediction orchestration
-- MCP server for AI tool integration
-- JWT-based authentication
+- Provider-abstracted AI chat through `AI_PROVIDER`, `AI_API_KEY`, and `AI_MODEL`
+- Zod request validation at HTTP boundaries
+- Arcjet protection on auth and AI-facing routes
+- Supabase JWT authentication
 
 ### ML Service (Python + FastAPI)
 - Formatting prediction model (pre-trained on WikiText-103)
@@ -103,8 +107,8 @@ IntelliDocs is built with **strict MVC separation** across three main services:
 - Real-time spell checking
 
 ### Database Layer
-- **Supabase** - PostgreSQL + pgvector for embeddings
-- **Redis** - Real-time behavior buffering
+- **Supabase** - PostgreSQL + pgvector for embeddings, Auth, and document storage
+- **Redis** - Behavior buffering, suggestion caching, AI quota tracking, autosave state, and command deduplication
 - **DuckDB** - Analytical data storage for ML training
 
 ---
@@ -134,7 +138,7 @@ This is a **capstone research system** designed to validate 5 key research quest
 | ML | Python + scikit-learn | Best ML libraries available |
 | Prediction | PyTorch | Neural networks for pattern recognition |
 | Grammar | pyspellchecker + JFLEG | Pre-trained models ready to use |
-| AI Chat | Ollama / Gemini API | Local dev (Ollama) + cloud production (Gemini) |
+| AI Chat | Provider-abstracted external AI API | Tool-capable provider selected by `AI_PROVIDER`, currently targeting Gemini Flash and similar providers |
 
 ---
 
@@ -216,10 +220,14 @@ IntelliDocs is designed to be a complete research platform:
 ## Security & Privacy
 
 - **No custom auth** - Delegated to Supabase Auth
-- **RLS policies** - Row-level security on all tables
-- **No API keys in code** - All keys in `.env` (gitignored)
+- **RLS policies** - Row-level security on all user-owned tables
+- **No API keys in code** - Provider keys use `AI_API_KEY` in local `.env` files only
+- **Provider abstraction** - AI provider switching happens through `AI_PROVIDER` and `AI_MODEL`
+- **Arcjet protection** - Auth and AI-facing routes receive scoped request-layer protection
+- **Zod validation** - External request and service boundaries are validated at runtime
+- **Redis quotas and cache** - AI quota tracking and suggestion caching are handled outside request handlers
 - **pgvector embeddings** - Secure embedding storage
-- **JWT tokens** - Secure session management
+- **JWT tokens** - Supabase-issued session tokens protect backend routes
 
 ---
 
@@ -232,11 +240,22 @@ IntelliDocs is designed to be a complete research platform:
 - Node.js: 20+
 - Python: 3.10+
 
-### Production Deployment
-- Frontend: Vercel (free)
-- Backend: DigitalOcean or similar
-- ML Service: Azure or similar
-- Database: Supabase (free tier)
+### Development / Groupmate Testing
+- Temporary external access uses Cloudflare Tunnel
+- Random tunnel URLs are acceptable during development and groupmate testing
+- Local machine can act as a hot-spare environment through Cloudflare Tunnel only
+
+### Production / Capstone Defense
+- Production target is Oracle Cloud Free Tier
+- Preferred instance: ARM Ampere A1
+- Free tier capacity can support up to 4 VMs / 24GB RAM total, but IntelliDocs targets one VPS instance for simplicity
+- Nginx acts as the public reverse proxy
+- Express serves the React production build and backend API
+- FastAPI runs locally on the VPS at `localhost:8000`
+- Redis runs locally on the VPS at `localhost:6379`
+- DuckDB remains file-based and does not require a server process
+- PM2 keeps the Express and FastAPI processes alive
+- Supabase remains the hosted Auth/PostgreSQL/pgvector provider
 
 ---
 

@@ -1,6 +1,6 @@
 import os
 import pickle
-from typing import Tuple
+from typing import cast
 
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
@@ -35,18 +35,19 @@ def select_feature_columns(dataframe: pd.DataFrame) -> list[str]:
 
 def split_data(
     dataframe: pd.DataFrame, feature_columns: list[str]
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """Split the dataset into train and validation sets."""
     features = dataframe[feature_columns]
     labels = dataframe["label"]
 
-    return train_test_split(
+    split = train_test_split(
         features,
         labels,
         test_size=0.2,
         random_state=42,
         stratify=labels,
     )
+    return cast(tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], tuple(split))
 
 
 def train_model(
@@ -114,7 +115,7 @@ def main() -> None:
 
     save_model(model, feature_columns, output_path)
 
-    print(f"✅ Base formatting model trained.")
+    print("✅ Base formatting model trained.")
     print(f"Validation accuracy: {accuracy:.4f}")
     print(f"Saved model to: {output_path}")
 

@@ -2,7 +2,7 @@
 
 **Last Updated:** Current Thread  
 **Phase:** Phase 5 — AI Suggestion UI / Chatbot ✅ In Progress  
-**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete. Dataset pipeline ✅ Complete. Base formatting model ✅ Trained. Prediction API ✅ Wired end-to-end. Grammar/spelling ML API ✅ Working. Inline grammar suggestion UI ✅ Working. Backend validation + Arcjet + Redis AI cache/quota ✅ Implemented. Gemini-backed read-only chatbot ✅ Working.
+**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete. Dataset pipeline ✅ Complete. Base formatting model ✅ Trained. Prediction API ✅ Wired end-to-end. Grammar/spelling ML API ✅ Working. Inline grammar suggestion UI ✅ Working. Grammar/spell quality refinement ✅ In Progress. Backend validation + Arcjet + Redis AI cache/quota ✅ Implemented. Gemini-backed read-only chatbot ✅ Working. Improved chatbot context shaping ✅ Implemented. Backend chat-context test coverage ✅ Added. Chatbot rejection feedback loop ✅ Implemented. Accepted chatbot preview feedback ✅ Logged. Broader chatbot formatting preview support ✅ Covered. Hosting strategy ✅ Defined. Academic paper extraction scaffold ✅ Implemented.
 
 ---
 
@@ -14,6 +14,18 @@
 - ✅ Auth routes (login/register)
 - ✅ Auth middleware protects `/documents`
 - ✅ Types defined for documents
+
+### Hosting / Deployment Strategy
+- ✅ Development and groupmate testing will use Cloudflare Tunnel with temporary random URLs
+- ✅ Production/capstone defense target is Oracle Cloud Free Tier on ARM Ampere A1
+- ✅ Production stack is planned as one VPS instance:
+  - Nginx reverse proxy
+  - Express serving React build + API
+  - FastAPI on `localhost:8000`
+  - Redis on `localhost:6379`
+  - DuckDB as a local file-based analytical store
+- ✅ PM2 will keep Express and FastAPI processes alive
+- ✅ Local machine remains a Cloudflare Tunnel hot spare only
 
 ### Frontend (React + Vite)
 - ✅ AuthContext + useAuth hook
@@ -62,6 +74,11 @@
 - ✅ FastAPI prediction endpoint added in `ml/src/main.py`
 - ✅ Python bridge wired into Express
 - ✅ Backend prediction route exposed for frontend/backend consumers
+- ✅ Academic paper extraction scaffold implemented:
+  - `ml/dataset/extract_academic_papers.py` extracts formatting metadata from completed capstone research paper PDFs
+  - uses PyMuPDF for font size, bold/italic flags, coordinates, and line context
+  - classifies page types such as title, signature, TOC, chapter start, body, and bibliography
+  - builds context → format pairs and can merge them with WikiText formatting examples
 - ⚠️ Baseline validation accuracy is very high because labels are currently heuristic and should be refined later
 
 ### Grammar + Spell Check (Phase 4)
@@ -75,7 +92,11 @@
 - ✅ Inline editor suggestion overlay added for grammar/spelling issues
 - ✅ Suggestion apply/dismiss flow implemented in the editor UI
 - ✅ Existing document grammar checks now work without requiring a fresh edit first
-- ⚠️ Grammar model quality still needs improvement (current scoring is too weak for obviously incorrect sentences)
+- ✅ Grammar/spell quality pass started:
+  - obvious unknown words like `asda` / `asdas` are now flagged without unsafe auto-corrections
+  - capitalization + missing punctuation are grouped into one sentence-boundary issue when possible
+  - non-actionable spelling flags are shown as manual review items instead of one-click replacements
+- ⚠️ Grammar model scoring still needs improvement beyond the current baseline rules
 
 ### AI Chatbot (Phase 5)
 - ✅ `server/src/ai/aiClient.ts` now supports Gemini-backed chat requests
@@ -86,8 +107,19 @@
 - ✅ Short conversation history is sent with chat requests
 - ✅ Current chatbot behavior is read-only / advisory only
 - ✅ Chatbot uses current document content as context
+- ✅ Document context shaping moved into `server/src/skills/buildChatContext.ts`
+- ✅ Chatbot system prompt moved into `server/src/ai/prompts/systemPrompts.ts`
+- ✅ Chat context now normalizes saved editor HTML into readable excerpts
+- ✅ Chat context includes title, document ID, word count, paragraph count, heading count, detected headings, opening excerpt, and recent excerpt
+- ✅ Focused Jest coverage added for chat context shaping
+- ✅ Chatbot preview rejection feedback loop added for current chat sessions
+- ✅ Rejected formatting previews are logged as behavior events such as `chat_preview_rejected:bold`
+- ✅ Accepted formatting previews are logged as behavior events such as `chat_preview_accepted:bold`
+- ✅ Rejected preview formats are sent back to `/ai/chat` so the prompt can acknowledge prior rejection
+- ✅ Repeated rejected previews should be shown again when the user explicitly asks, with copy that reconfirms they want to apply the previously rejected action
+- ✅ Chatbot formatting preview apply path now focuses the editor before restoring selection and running formatting commands
+- ✅ Non-bold formatting intents now have focused backend test coverage for underline, italic, headings, lists, blockquote, and no-intent messages
 - ⚠️ Tool-backed formatting actions are not wired yet
-- ⚠️ Document context shaping still needs improvement beyond the current raw content pass-through
 
 ---
 
@@ -108,35 +140,52 @@
 - Express prediction route successfully calls the Python bridge
 - Grammar endpoint returns grammar scoring payloads
 - Spelling endpoint returns structured issue lists
+- Spell checker flags obvious unknown non-words while suppressing low-confidence replacement suggestions
+- Grammar checker groups related capitalization and terminal punctuation issues into a single actionable issue
 - Server build passes after adding Zod validation, Arcjet middleware, `/ai` route alias, and Redis AI cache/quota models
 - Gemini-backed chatbot replies successfully through the real backend AI route
 - Chatbot now maintains short conversation history across recent turns
+- Chatbot document context shaping now has backend unit coverage
+- Backend Jest is configured for TypeScript skill tests and ignores generated `dist/` output
+- Chatbot rejected-preview loop now logs behavior feedback and reconfirms repeated current-session preview requests
+- Chatbot accepted-preview path now logs behavior feedback for applied formatting previews
+- Chatbot preview apply now follows the toolbar pattern by focusing the editor before restoring selection
+- `npm --prefix server test -- --runInBand` passes for the chat-context and formatting-intent skill tests
+- `npm --prefix server run build` passes after the chatbot context refactor, rejection feedback loop, and broader formatting preview support
+- `npm --prefix frontend run type-check` passes after the chatbot rejection feedback and editor-focus preview changes
 - Provider-side quota/rate-limit errors now return readable messages to the UI
 
 ---
 
 ## 🐛 Known Issues
 - Grammar rule quality still needs improvement beyond the current baseline heuristics
-- Grammar/spell quality work is intentionally deferred until after the first chatbot pass
+- Grammar/spell quality work has resumed as a focused quality + overlay pass
 - Current chatbot is advisory only and cannot apply formatting yet
-- Document context shaping for chat is still basic and should be improved next
+- Chatbot replies still need live provider QA against real documents after context shaping improvements
+- Chatbot rejection feedback is currently session-level and behavior-log based; persistent server-side feedback modeling is still future work
+- Rejected chat previews should not make a requested action disappear; only automatic suggestions should suppress previously rejected actions without user re-confirmation
 
 ---
 
 ## 🚀 Next Step (resume point)
 - Continue Phase 5 work from the updated backend foundation
-- Improve chatbot document context shaping on top of:
-  - `server/src/ai/aiClient.ts`
+- Chatbot document context shaping now lives in:
+  - `server/src/skills/buildChatContext.ts`
+  - `server/src/ai/prompts/systemPrompts.ts`
   - `server/src/controllers/aiController.ts`
-  - `server/src/routes/aiRoutes.ts`
   - Arcjet-protected AI routes
   - Zod-validated route boundaries
 - Keep the chatbot read-only until preview/confirm formatting flows exist
-- Delay grammar-quality improvements until after the first chatbot pass
-- When grammar work resumes, handle it as a combined quality + overlay pass:
-  - improve unknown-word detection (example: `asda`)
+- Next chatbot pass should verify provider output quality against real saved documents
+- Later chatbot feedback work should persist accepted/rejected preview outcomes beyond the current frontend session
+- Repeated chat requests for a previously rejected preview should prompt for explicit confirmation instead of treating the suggestion as unavailable
+- Next ML/data pass should place the completed paper PDFs under `ml/dataset/raw/academic-papers/`, run the implemented extraction scaffold locally, inspect generated labels, then train against the merged formatting dataset
+- Future grammar improvement should synthetically corrupt clean WikiText sentences to generate 50,000+ bad → good pairs, but only after the formatting model baseline is improved
+- Continue grammar/spell quality as a combined quality + overlay pass:
+  - improve unknown-word detection and safe correction filtering
   - group related sentence issues into one actionable flag
   - reduce noisy multi-flag output in the editor panel/overlay
+  - keep unsafe replacements as manual review items instead of accepting them automatically
 - Expand Redis usage later for autosave dirty-flag coordination and NLP deduplication
 
 ---
@@ -152,6 +201,11 @@
 - `server/src/routes/predictionRoutes.ts`
 - `server/src/routes/aiRoutes.ts`
 - `server/src/controllers/aiController.ts`
+- `server/src/skills/buildChatContext.ts`
+- `server/src/skills/__tests__/buildChatContext.test.ts`
+- `server/src/skills/__tests__/parseFormattingIntent.test.ts`
+- `server/src/ai/prompts/systemPrompts.ts`
+- `server/jest.config.cjs`
 - `server/src/middleware/arcjet.ts`
 - `server/src/middleware/validate.ts`
 - `server/src/models/aiCacheModel.ts`
@@ -174,6 +228,7 @@
 - `ml/export_features.py`
 - `ml/dataset/download.py`
 - `ml/dataset/preprocess.py`
+- `ml/dataset/extract_academic_papers.py`
 - `ml/training/base_trainer.py`
 - `ml/src/main.py`
 - `ml/grammar/grammar_checker.py`
@@ -195,9 +250,14 @@
 - [x] Wire frontend chatbot to the real backend AI route
 - [x] Add short conversation history support to chat
 - [x] Verify Gemini-backed read-only chatbot works
-- [ ] Improve chatbot document context shaping
+- [x] Improve chatbot document context shaping
+- [x] Add backend test coverage for chatbot context shaping
+- [x] Add current-session rejection feedback for chatbot formatting previews
+- [x] Add accepted feedback logging for chatbot formatting previews
+- [x] Add tests for non-bold chatbot formatting intents
+- [x] Focus the editor before applying chatbot formatting previews
 - [ ] Keep chatbot read-only until preview/confirm formatting flow is ready
-- [ ] Improve grammar scoring quality later as a grouped overlay-quality pass
-- [ ] Add unknown-word detection for obvious non-words like `asda`
-- [ ] Merge related punctuation/capitalization issues into a single actionable issue where appropriate
+- [ ] Continue improving grammar scoring quality as a grouped overlay-quality pass
+- [x] Add unknown-word detection for obvious non-words like `asda`
+- [x] Merge related punctuation/capitalization issues into a single actionable issue where appropriate
 - [ ] Revisit baseline labels/features to reduce artificial accuracy inflation

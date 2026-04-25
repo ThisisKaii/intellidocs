@@ -78,10 +78,25 @@ export interface AIChatHistoryMessage {
   content: string
 }
 
+export interface RejectedFormattingPreview {
+  format: string
+  reason?: string
+  rejectedAt?: string
+}
+
+export interface AIChatPreview {
+  format: string
+  label: string
+  confidence: number
+  reason?: string
+}
+
 export interface AIChatResponse {
   reply: string
   provider: string
   model: string
+  mode?: 'chat' | 'preview'
+  preview?: AIChatPreview | null
 }
 
 
@@ -211,7 +226,8 @@ export const api = {
       documentId?: string,
       documentTitle?: string,
       documentContent?: string,
-      history?: AIChatHistoryMessage[]
+      history?: AIChatHistoryMessage[],
+      rejectedFormattingPreviews?: RejectedFormattingPreview[]
     ): Promise<AIChatResponse> => {
       return fetchAPI<AIChatResponse>('ai/chat', {
         method: 'POST',
@@ -222,6 +238,7 @@ export const api = {
           documentTitle,
           documentContent,
           history,
+          rejectedFormattingPreviews,
         }),
       })
     },

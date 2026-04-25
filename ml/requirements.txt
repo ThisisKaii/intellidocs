@@ -5,6 +5,7 @@ scikit-learn>=1.4.0
 torch>=2.2.0
 numpy>=1.26.0
 pandas>=2.1.4
+PyMuPDF>=1.24.0
 redis==5.0.1
 supabase==2.0.3
 python-dotenv==1.0.0
