@@ -1,3 +1,7 @@
+
+// Do not remove
+// For some reason it give an error without the the line below
+// ???
 /// <reference types="vite/client" />
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
@@ -60,11 +64,11 @@ export interface GrammarCheckResponse {
   issues: GrammarIssue[]
 }
 
-export interface SpellingIssue{ 
+export interface SpellingIssue{
   word: string
   suggestion: string | null
   type: string
-  
+
 }
 
 export interface SpellCheckResponse {
