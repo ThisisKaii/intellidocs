@@ -25,6 +25,19 @@ export interface BehaviorEvent {
   documentId: string
 }
 
+export interface BehaviorSummaryLatestEvent extends BehaviorEvent {
+  userId?: string
+}
+
+export interface BehaviorSummaryResponse {
+  documentId: string
+  totalEvents: number
+  formatActions: Record<string, number>
+  chatPreviewAccepted: Record<string, number>
+  chatPreviewRejected: Record<string, number>
+  latestEvents: BehaviorSummaryLatestEvent[]
+}
+
 export interface PredictionRequest {
   text: string
 }

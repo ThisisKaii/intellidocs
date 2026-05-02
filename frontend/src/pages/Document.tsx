@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback, type ChangeEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { api } from '@/services/api'
+import { api, type BehaviorSummaryResponse } from '@/services/api'
 import { Toolbar } from '@/components/editor/Toolbar'
 import { EditorCore } from '@/components/editor/EditorCore'
+import { restoreSelection } from '@/components/editor/SelectionManager'
 import {
   type BehaviorEvent,
   createBehaviorEvent,
@@ -17,6 +18,10 @@ import { ArrowLeft, Save, Moon, Sun } from 'lucide-react'
 
 const AUTOSAVE_DELAY = 8000
 
+const AUTO_FORMAT_DELAY = 1800
+const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.7
+const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
+
 export default function Document(): JSX.Element {
   const { id } = useParams()
   const editorRef = useRef<HTMLDivElement | null>(null)
@@ -26,6 +31,9 @@ export default function Document(): JSX.Element {
   const latestContentRef = useRef<string>('')
   const latestFormatHistoryRef = useRef<string[]>([])
   const pendingSaveRef = useRef<boolean>(false)
+  const autoFormatTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suppressedAutoFormatsRef = useRef<Record<string, number>>({})
+
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
@@ -35,6 +43,8 @@ export default function Document(): JSX.Element {
   const [wordCount, setWordCount] = useState<number>(0)
   const [formatHistory, setFormatHistory] = useState<string[]>([])
   const [_behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([])
+  const [behaviorSummary, setBehaviorSummary] = useState<BehaviorSummaryResponse | null>(null)
+  const [behaviorSummaryLoading, setBehaviorSummaryLoading] = useState<boolean>(false)
 
   const [rightPanelOpen] = useState<boolean>(true)
   const [suggestions, _setSuggestions] = useState<Suggestion[]>([])
@@ -79,6 +89,25 @@ export default function Document(): JSX.Element {
     loadDocument()
   }, [id])
 
+  async function loadBehaviorSummary(): Promise<void> {
+    if (!id) return
+
+    setBehaviorSummaryLoading(true)
+
+    try {
+      const summary = await api.behavior.summary(id)
+      setBehaviorSummary(summary)
+    } catch (error) {
+      console.error('Behavior summary load failed', error)
+    } finally {
+      setBehaviorSummaryLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadBehaviorSummary()
+  }, [id])
+
   useEffect(() => {
     latestTitleRef.current = title
   }, [title])
@@ -94,6 +123,161 @@ export default function Document(): JSX.Element {
   function updateWordCount(html: string): void {
     const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
     setWordCount(text ? text.split(' ').filter((w) => w.length > 0).length : 0)
+  }
+
+  function getPlainText(html: string): string {
+    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+
+
+
+  function isAutoFormatSuppressed(format: string): boolean {
+    const suppressedUntil = suppressedAutoFormatsRef.current[format]
+
+    if (!suppressedUntil) return false
+
+    if (Date.now() > suppressedUntil) {
+      delete suppressedAutoFormatsRef.current[format]
+      return false
+    }
+
+    return true
+  }
+
+  function hasVisibleTextSelection(): boolean {
+    const selection = window.getSelection()
+    return Boolean(selection && selection.rangeCount > 0 && selection.toString().trim())
+  }
+
+  function findEditableBlock(node: Node | null, editor: HTMLElement): HTMLElement | null {
+    let current =
+      node instanceof HTMLElement ? node : node?.parentElement ?? null
+
+    while (current && current !== editor) {
+      if (
+        ['P', 'DIV', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(
+          current.tagName
+        )
+      ) {
+        return current
+      }
+
+      current = current.parentElement
+    }
+
+    return null
+  }
+
+  function selectCurrentBlockForInlineFormat(editor: HTMLElement): void {
+    const selection = window.getSelection()
+
+    if (!selection || selection.rangeCount === 0) {
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    const block = findEditableBlock(range.startContainer, editor)
+
+    if (!block) {
+      return
+    }
+
+    const nextRange = document.createRange()
+    nextRange.selectNodeContents(block)
+
+    selection.removeAllRanges()
+    selection.addRange(nextRange)
+  }
+
+  function applyPromptFormat(format: string): void {
+    const editor = editorRef.current
+    if (!editor) return
+
+    editor.focus()
+    restoreSelection()
+
+    const inlineFormats = new Set(['bold', 'italic', 'underline'])
+
+    if (inlineFormats.has(format) && !hasVisibleTextSelection()) {
+      selectCurrentBlockForInlineFormat(editor)
+    }
+
+    switch (format) {
+      case 'bold':
+        document.execCommand('bold', false)
+        break
+      case 'italic':
+        document.execCommand('italic', false)
+        break
+      case 'underline':
+        document.execCommand('underline', false)
+        break
+      case 'heading1':
+      case 'h1':
+        document.execCommand('formatBlock', false, '<h1>')
+        break
+      case 'heading2':
+      case 'h2':
+        document.execCommand('formatBlock', false, '<h2>')
+        break
+      case 'heading3':
+      case 'h3':
+        document.execCommand('formatBlock', false, '<h3>')
+        break
+      case 'unordered_list':
+      case 'ul':
+        document.execCommand('insertUnorderedList', false)
+        break
+      case 'ordered_list':
+      case 'ol':
+        document.execCommand('insertOrderedList', false)
+        break
+      case 'blockquote':
+        document.execCommand('formatBlock', false, '<blockquote>')
+        break
+      default:
+        break
+    }
+  }
+
+  function scheduleAutoFormatPrediction(nextContent: string): void {
+    if (autoFormatTimer.current) {
+      clearTimeout(autoFormatTimer.current)
+    }
+
+    autoFormatTimer.current = setTimeout(() => {
+      void runAutoFormatPrediction(nextContent)
+    }, AUTO_FORMAT_DELAY)
+  }
+
+  async function runAutoFormatPrediction(nextContent: string): Promise<void> {
+   const plainText = getPlainText(nextContent)
+
+    if (plainText.length < 12) return
+
+    try {
+      const prediction = await api.predictions.predict(plainText)
+      const predictedFormat = prediction.predicted_format
+      const confidence = prediction.confidence
+
+      if (confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) return
+
+      if (isAutoFormatSuppressed(predictedFormat)) return
+
+      setFormatPrompt({
+        format: predictedFormat,
+        confidence: Math.round(confidence * 100),
+      })
+      setShowSuggestions(true)
+    } catch (error) {
+      console.error('Auto-format prediction failed', error)
+    }
+  }
+
+
+
+  function countBehaviorBucket(bucket: Record<string, number> | undefined): number {
+    return Object.values(bucket ?? {}).reduce((total, count) => total + count, 0)
   }
 
   function scheduleSave(): void {
@@ -148,12 +332,13 @@ export default function Document(): JSX.Element {
     }
   }
 
-  function handleContentChange(newContent: string): void {
-    latestContentRef.current = newContent
-    setContent(newContent)
-    updateWordCount(newContent)
-    scheduleSave()
-  }
+ function handleContentChange(newContent: string): void {
+  latestContentRef.current = newContent
+  setContent(newContent)
+  updateWordCount(newContent)
+  scheduleSave()
+  scheduleAutoFormatPrediction(newContent)
+ }
 
   function handleTitleChange(event: ChangeEvent<HTMLInputElement>): void {
     const nextTitle = event.target.value
@@ -182,25 +367,39 @@ export default function Document(): JSX.Element {
   }
 
   function handlePromptAccept(format: string): void {
-    editorRef.current?.focus()
-    switch (format) {
-      case 'bold': document.execCommand('bold', false); break
-      case 'italic': document.execCommand('italic', false); break
-      case 'underline': document.execCommand('underline', false); break
-      case 'heading1': case 'h1': document.execCommand('formatBlock', false, '<h1>'); break
-      case 'heading2': case 'h2': document.execCommand('formatBlock', false, '<h2>'); break
-      case 'heading3': case 'h3': document.execCommand('formatBlock', false, '<h3>'); break
-      case 'unordered_list': case 'ul': document.execCommand('insertUnorderedList', false); break
-      case 'ordered_list': case 'ol': document.execCommand('insertOrderedList', false); break
-      case 'blockquote': document.execCommand('formatBlock', false, '<blockquote>'); break
-      default: break
-    }
+    applyPromptFormat(format)
     handleFormat(format)
+
+    if (id) {
+      api.behavior
+        .log({
+          action: `auto_preview_accepted:${format}`,
+          timestamp: new Date().toISOString(),
+          documentId: id,
+        })
+        .catch((error) => console.error('Auto-format acceptance log failed', error))
+    }
+
     setFormatPrompt(null)
     setShowSuggestions(false)
   }
 
   function handlePromptReject(): void {
+    const rejectedFormat = formatPrompt?.format
+
+    if (rejectedFormat) {
+      suppressedAutoFormatsRef.current[rejectedFormat] =
+        Date.now() + AUTO_FORMAT_SUPPRESSION_MS
+
+      if (id) {
+        api.behavior.log({
+          action: `auto_preview_rejected:${rejectedFormat}`,
+          timestamp: new Date().toISOString(),
+          documentId: id,
+        }).catch((error) => console.error('Auto-format rejected log failed', error))
+      }
+    }
+
     setFormatPrompt(null)
     setShowSuggestions(false)
   }
@@ -257,12 +456,16 @@ export default function Document(): JSX.Element {
   }
 
   useEffect(() => {
-    return () => {
-      if (autosaveTimer.current) {
-        clearTimeout(autosaveTimer.current)
-      }
+  return () => {
+    if (autosaveTimer.current) {
+      clearTimeout(autosaveTimer.current)
     }
-  }, [])
+
+    if (autoFormatTimer.current) {
+      clearTimeout(autoFormatTimer.current)
+    }
+  }
+}, [])
 
   const getEditorText = useCallback(() => editorRef.current?.innerText || '', [])
   function focusEditor(): void { editorRef.current?.focus() }
@@ -544,22 +747,90 @@ export default function Document(): JSX.Element {
                     padding: '0.75rem',
                   }}
                 >
-                  <p
-                    style={{
-                      fontSize: '0.6875rem',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      color: 'var(--muted-foreground)',
-                      margin: '0 0 0.5rem',
-                    }}
-                  >
-                    Session
-                  </p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <p
+                      style={{
+                        fontSize: '0.6875rem',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        color: 'var(--muted-foreground)',
+                        margin: 0,
+                      }}
+                    >
+                      Session
+                    </p>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault()
+                        void loadBehaviorSummary()
+                      }}
+                      disabled={behaviorSummaryLoading}
+                      style={{
+                        fontSize: '0.6875rem',
+                        fontWeight: 600,
+                        color: 'var(--muted-foreground)',
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        cursor: behaviorSummaryLoading ? 'not-allowed' : 'pointer',
+                        opacity: behaviorSummaryLoading ? 0.5 : 1,
+                        padding: 0,
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      {behaviorSummaryLoading ? 'Loading…' : 'Refresh'}
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
                     <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Words</span>
                     <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{wordCount}</span>
                   </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Behavior events</span>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{behaviorSummary?.totalEvents ?? 0}</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.625rem' }}>
+                    <div style={{ borderRadius: '0.375rem', backgroundColor: 'var(--secondary)', padding: '0.625rem' }}>
+                      <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
+                        Accepted
+                      </p>
+                      <p style={{ fontSize: '1rem', fontWeight: 600, color: '#10b981', margin: 0 }}>
+                        {countBehaviorBucket(behaviorSummary?.chatPreviewAccepted)}
+                      </p>
+                    </div>
+                    <div style={{ borderRadius: '0.375rem', backgroundColor: 'var(--secondary)', padding: '0.625rem' }}>
+                      <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
+                        Rejected
+                      </p>
+                      <p style={{ fontSize: '1rem', fontWeight: 600, color: '#ff5b4f', margin: 0 }}>
+                        {countBehaviorBucket(behaviorSummary?.chatPreviewRejected)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {behaviorSummary && behaviorSummary.latestEvents.length > 0 ? (
+                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                      <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.5rem' }}>
+                        Latest feedback
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                        {behaviorSummary.latestEvents.slice(0, 3).map((event) => (
+                          <div key={`${event.action}-${event.timestamp}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {event.action}
+                            </span>
+                            <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', flexShrink: 0 }}>
+                              {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
               </div>
