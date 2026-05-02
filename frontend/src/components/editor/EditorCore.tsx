@@ -1,5 +1,4 @@
 
-
 import { useRef, useEffect, forwardRef } from 'react'
 import { saveSelectionIfInside } from './SelectionManager'
 

@@ -2,7 +2,7 @@
 
 **Last Updated:** Current Thread  
 **Phase:** Phase 5 — AI Suggestion UI / Chatbot ✅ In Progress  
-**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete. Dataset pipeline ✅ Complete. Base formatting model ✅ Trained. Prediction API ✅ Wired end-to-end. Grammar/spelling ML API ✅ Working. Inline grammar suggestion UI ✅ Working. Grammar/spell quality refinement ✅ In Progress. Backend validation + Arcjet + Redis AI cache/quota ✅ Implemented. Gemini-backed read-only chatbot ✅ Working. Improved chatbot context shaping ✅ Implemented. Backend chat-context test coverage ✅ Added. Chatbot rejection feedback loop ✅ Implemented. Accepted chatbot preview feedback ✅ Logged. Broader chatbot formatting preview support ✅ Covered. Hosting strategy ✅ Defined. Academic paper extraction scaffold ✅ Implemented.
+**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete. Dataset pipeline ✅ Complete. Base formatting model ✅ Trained. Prediction API ✅ Wired end-to-end. Grammar/spelling ML API ✅ Working. Inline grammar suggestion UI ✅ Working. Grammar/spell quality refinement ✅ In Progress. Backend validation + Arcjet + Redis AI cache/quota ✅ Implemented. Gemini-backed read-only chatbot ✅ Working. Improved chatbot context shaping ✅ Implemented. Backend chat-context test coverage ✅ Added. Chatbot rejection feedback loop ✅ Implemented. Accepted chatbot preview feedback ✅ Logged. Broader chatbot formatting preview support ✅ Covered. Hosting strategy ✅ Defined. Academic paper extraction scaffold ✅ Implemented. Behavior summary endpoint + UI ✅ Implemented. Auto-format prompt apply targeting ✅ Fixed.
 
 ---
 
@@ -62,6 +62,10 @@
 - ✅ Feature extraction to `formatting_features`
 - ✅ CSV/Parquet feature exports
 - ✅ Manual API triggers: `/behavior/aggregate`, `/behavior/features`, `/behavior/export`
+- ✅ Behavior summary endpoint added at `GET /behavior/summary/:documentId`
+- ✅ Behavior summary reads Redis events for the current authenticated user/document
+- ✅ Behavior summary groups regular format actions, chatbot preview accepts, and chatbot preview rejects
+- ✅ Document side panel now shows behavior event totals, accepted preview count, rejected preview count, and latest feedback
 
 ### Dataset + Base ML Model (Phase 3)
 - ✅ WikiText-103 downloaded with Hugging Face datasets
@@ -150,9 +154,12 @@
 - Chatbot rejected-preview loop now logs behavior feedback and reconfirms repeated current-session preview requests
 - Chatbot accepted-preview path now logs behavior feedback for applied formatting previews
 - Chatbot preview apply now follows the toolbar pattern by focusing the editor before restoring selection
+- Behavior summary endpoint and side-panel UI were added for classmate testing visibility
+- Auto-format prompt apply now focuses the editor, restores the saved selection, and selects the current block for inline formats when no text is actively selected
 - `npm --prefix server test -- --runInBand` passes for the chat-context and formatting-intent skill tests
-- `npm --prefix server run build` passes after the chatbot context refactor, rejection feedback loop, and broader formatting preview support
-- `npm --prefix frontend run type-check` passes after the chatbot rejection feedback and editor-focus preview changes
+- `npm --prefix server run build` passes after the chatbot context refactor, rejection feedback loop, broader formatting preview support, and behavior summary endpoint
+- `npm --prefix frontend run type-check` passes after the chatbot rejection feedback, editor-focus preview changes, behavior summary UI, and auto-format apply targeting fix
+- `npm --prefix frontend run build` passes after the auto-format apply targeting fix
 - Provider-side quota/rate-limit errors now return readable messages to the UI
 
 ---
@@ -256,6 +263,9 @@
 - [x] Add accepted feedback logging for chatbot formatting previews
 - [x] Add tests for non-bold chatbot formatting intents
 - [x] Focus the editor before applying chatbot formatting previews
+- [x] Add behavior summary endpoint for accepted/rejected feedback visibility
+- [x] Add behavior summary display to the document side panel
+- [x] Fix auto-format prompt apply targeting when no text is selected
 - [ ] Keep chatbot read-only until preview/confirm formatting flow is ready
 - [ ] Continue improving grammar scoring quality as a grouped overlay-quality pass
 - [x] Add unknown-word detection for obvious non-words like `asda`
