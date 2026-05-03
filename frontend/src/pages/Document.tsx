@@ -660,8 +660,18 @@ export default function Document(): JSX.Element {
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
         {/* Editor area */}
-        <main style={{ flex: 1, overflowY: 'auto', minWidth: 0, position: 'relative' }}>
-          <div style={{ maxWidth: '680px', margin: '0 auto', padding: '3rem 2rem' }}>
+        <main style={{ flex: 1, overflowY: 'auto', minWidth: 0, position: 'relative', backgroundColor: 'var(--secondary)' }}>
+          <div style={{
+            maxWidth: '816px',
+            minHeight: '1056px',
+            margin: '2rem auto',
+            padding: '4rem 4.5rem',
+            backgroundColor: 'var(--background)',
+            boxShadow: 'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px, rgba(0,0,0,0.03) 0px 8px 16px',
+            borderRadius: '2px',
+            boxSizing: 'border-box',
+            backgroundImage: `repeating-linear-gradient(to bottom, transparent 0px, transparent 1055px, var(--border) 1055px, var(--border) 1056px)`,
+          }}>
             <div style={{ position: 'relative' }}>
               <EditorCore
                 ref={editorRef}

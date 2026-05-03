@@ -39,3 +39,7 @@ ml/dataset/raw/
 ml/dataset/processed/
 ml/models/*.pkl
 ml/models/user_models/
+
+#Graphify
+graphify-out/
+.agents/

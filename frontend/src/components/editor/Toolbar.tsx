@@ -40,14 +40,15 @@ export function Toolbar({ onFormatApplied, onFocusEditor }: ToolbarProps) {
   useEffect(() => {
     const updateActiveFormats = () => {
       const formats = new Set<string>()
-      if (isFormatActive('bold')) formats.add('bold')
-      if (isFormatActive('italic')) formats.add('italic')
-      if (isFormatActive('underline')) formats.add('underline')
-      if (isFormatActive('strikethrough')) formats.add('strikethrough')
-      if (isFormatActive('superscript')) formats.add('superscript')
-      if (isFormatActive('subscript')) formats.add('subscript')
-      if (isFormatActive('indent')) formats.add('indent')
-      if (isFormatActive('outdent')) formats.add('outdent')
+      const allToggleable = [
+        'bold', 'italic', 'underline', 'strikethrough', 'superscript', 'subscript',
+        'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6',
+        'blockquote', 'unordered_list', 'ordered_list',
+        'align-left', 'align-center', 'align-right',
+      ]
+      allToggleable.forEach(f => {
+        if (isFormatActive(f)) formats.add(f)
+      })
       setActiveFormats(formats)
     }
 
