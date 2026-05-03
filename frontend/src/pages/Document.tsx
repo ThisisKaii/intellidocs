@@ -507,7 +507,7 @@ export default function Document(): JSX.Element {
           {/* Left: back + brand */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
             <Link
-              to="/"
+              to="/dashboard"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -661,19 +661,21 @@ export default function Document(): JSX.Element {
 
         {/* Editor area */}
         <main style={{ flex: 1, overflowY: 'auto', minWidth: 0, position: 'relative' }}>
-          <div style={{ maxWidth: '680px', margin: '0 auto', padding: '3rem 2rem', position: 'relative' }}>
-            <EditorCore
-              ref={editorRef}
-              onContentChange={handleContentChange}
-              initialContent={content}
-            />
-            <SuggestionOverlay
-              editorRef={editorRef}
-              issues={grammarIssues}
-              content={content}
-              onApply={handleGrammarApply}
-              onDismiss={handleGrammarDismiss}
-            />
+          <div style={{ maxWidth: '680px', margin: '0 auto', padding: '3rem 2rem' }}>
+            <div style={{ position: 'relative' }}>
+              <EditorCore
+                ref={editorRef}
+                onContentChange={handleContentChange}
+                initialContent={content}
+              />
+              <SuggestionOverlay
+                editorRef={editorRef}
+                issues={grammarIssues}
+                content={content}
+                onApply={handleGrammarApply}
+                onDismiss={handleGrammarDismiss}
+              />
+            </div>
           </div>
         </main>
 
