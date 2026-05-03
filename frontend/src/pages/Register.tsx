@@ -37,7 +37,7 @@ function Register(): JSX.Element {
         loginResponse.session.access_token
       )
       setSuccess('Account created. Redirecting…')
-      setTimeout(() => navigate('/'), 1200)
+      setTimeout(() => navigate('/dashboard'), 1200)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
     } finally {

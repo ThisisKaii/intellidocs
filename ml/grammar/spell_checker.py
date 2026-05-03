@@ -69,6 +69,9 @@ def check_spelling(text: str) -> dict[str, Any]:
       }
 
     words = extract_words(normalized)
+    # Skip single-character fragments — they are either valid (a, I)
+    # or artifacts from stripped HTML entities (&#9; → t).
+    words = [w for w in words if len(w) >= 2]
     misspelled = sorted(spellchecker.unknown(words))
 
     issues: list[dict[str, Any]] = []

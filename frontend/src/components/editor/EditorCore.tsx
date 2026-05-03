@@ -97,8 +97,21 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        className={`intellidocs-editor min-h-[60vh] border-0 bg-transparent px-0 py-0 shadow-none focus:outline-none focus:ring-0 ${className}`}
-        style={{ wordWrap: 'break-word', whiteSpace: 'pre-wrap'}}
+        className={className}
+        style={{
+          minHeight: '60vh',
+          border: 'none',
+          backgroundColor: 'transparent',
+          padding: 0,
+          boxShadow: 'none',
+          outline: 'none',
+          wordWrap: 'break-word',
+          whiteSpace: 'pre-wrap',
+          fontSize: '1rem',
+          lineHeight: 1.7,
+          color: 'var(--foreground)',
+          fontFamily: 'var(--font-sans)',
+        }}
       />
     )
   }

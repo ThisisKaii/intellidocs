@@ -1,0 +1,454 @@
+{
+  "/home/josh/school/codes/intellidocs/fix_hex_codes.py": {
+    "mtime": 1776828541.614624,
+    "hash": "72f38e84525114430541f60f43a3da6d"
+  },
+  "/home/josh/school/codes/intellidocs/fix_white_bg.py": {
+    "mtime": 1776828571.3535645,
+    "hash": "b9dfd4aecf4f75f2b91a35c22202b4c2"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/vite.config.ts": {
+    "mtime": 1777320882.6180925,
+    "hash": "40827662b8c50adbe9e71e3b7fce7385"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/main.tsx": {
+    "mtime": 1776172418.7897456,
+    "hash": "c58990f729f3cd4740716f9aea304c86"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/App.tsx": {
+    "mtime": 1776537373.9773502,
+    "hash": "1aa3b73c43a3efbd371100b59ecf6fed"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/ProtectedRoute.tsx": {
+    "mtime": 1775976197.6968973,
+    "hash": "72ddec08a5ded1b5d677b234dcdb229c"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/ThemeToggle.tsx": {
+    "mtime": 1776537371.37036,
+    "hash": "73647d5ba0953788ae1ccc27728db993"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/ui/button.tsx": {
+    "mtime": 1776828571.3681893,
+    "hash": "9e1fa1938e0de9494193ab039b8a5889"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/ui/alert.tsx": {
+    "mtime": 1775842476.6258225,
+    "hash": "cdb08d0146416f8f890c9ab5a66d76a1"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/ui/input.tsx": {
+    "mtime": 1776828571.3683624,
+    "hash": "1b56ae7faa65799c79b8c27812b337e7"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/ui/label.tsx": {
+    "mtime": 1775842476.7988224,
+    "hash": "84c1875f4b045f280ff7e6947cab726b"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/ui/card.tsx": {
+    "mtime": 1775842476.8568223,
+    "hash": "77a10bd948ca424972a28e704a3df604"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/ui/dropdown-menu.tsx": {
+    "mtime": 1776864186.5523233,
+    "hash": "aeea46fe06f30d7bfd8712eae60de280"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/FormattingCommands.ts": {
+    "mtime": 1777140307.2410812,
+    "hash": "17979553b1c3619d12a02ae43297b651"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/EditorCore.tsx": {
+    "mtime": 1777326078.830575,
+    "hash": "5fb340b9c611cd5866efd35316249568"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/Toolbar.tsx": {
+    "mtime": 1777140846.635261,
+    "hash": "1fd11f4fd14de906789024a3ce723909"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/SelectionManager.ts": {
+    "mtime": 1776012194.6948998,
+    "hash": "f78bf9d7b7332a37958574f68336bee0"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/behaviorListener.ts": {
+    "mtime": 1776341251.1318414,
+    "hash": "3fbb4bf1d7cb3c552dd4a316915f7682"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/FormatPrompt.tsx": {
+    "mtime": 1776539088.5950785,
+    "hash": "46bde738505cd9a6f7026f3d967e839a"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/SuggestionPanel.tsx": {
+    "mtime": 1776540115.62316,
+    "hash": "cd4aff6d0de70765d60fea0e87628c20"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/GrammarPanel.tsx": {
+    "mtime": 1777084292.4563813,
+    "hash": "00441e2e402f21aca6ddc44301f3b3e7"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/AIChatbot.tsx": {
+    "mtime": 1777089277.4802382,
+    "hash": "6bca7a9a0ec85fbf83eb58ed81ee3ef6"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/editor/SuggestionOverlay.tsx": {
+    "mtime": 1777084314.1602552,
+    "hash": "8d3b57584c4797c035d2de153909e5c2"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/drive/DriveSidebar.tsx": {
+    "mtime": 1776859687.6037438,
+    "hash": "b5ae02d29b45346c8fe0f346106d07bd"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/drive/DriveHeader.tsx": {
+    "mtime": 1776828571.3694665,
+    "hash": "ae3afbbdc28b0731cc812169093439d5"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/drive/DriveTable.tsx": {
+    "mtime": 1776864074.6715765,
+    "hash": "73cfb9ad3f2b1ecd954da3a0e5c69129"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/components/drive/DriveSearchSection.tsx": {
+    "mtime": 1776829653.0701394,
+    "hash": "3db39c28d8380f6825f4546120bd48ba"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/pages/Login.tsx": {
+    "mtime": 1776829610.791234,
+    "hash": "12410aa58d4cfd3566b47021be08b674"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/pages/Register.tsx": {
+    "mtime": 1776829643.0551617,
+    "hash": "94d98a8e897fe80f0b8e324a22a5b4fa"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/pages/Home.tsx": {
+    "mtime": 1776862471.4414592,
+    "hash": "c21329b20107641fabf7561c2c6b090e"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/pages/Document.tsx": {
+    "mtime": 1777325389.0412788,
+    "hash": "9d49a76daf01333c0e6a2f6e2680fc4e"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/services/api.ts": {
+    "mtime": 1777322994.3225052,
+    "hash": "cd02741c758c4bb6b4ab76d27672a3ea"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/hooks/useAuth.ts": {
+    "mtime": 1775976027.3219287,
+    "hash": "f2c507ab8a018c5968ee15649cf1beae"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/lib/utils.ts": {
+    "mtime": 1775842118.4242156,
+    "hash": "5a6fd53fdcf2be529e9cc0b718fde352"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/context/AuthContext.tsx": {
+    "mtime": 1775976733.7857983,
+    "hash": "d27def782684fdeb26537736853fc803"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/src/context/ThemeContext.tsx": {
+    "mtime": 1776537373.516352,
+    "hash": "275ce7ee4f8a80cf45b9059db9e14f2f"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/index.ts": {
+    "mtime": 1777138923.4011018,
+    "hash": "2ea5e2aacecda6b51c7454b2ff0c2578"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/models/documentModel.ts": {
+    "mtime": 1775823571.8968225,
+    "hash": "c9580bc4b2643925fad86e2ed288f071"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/models/behaviorModel.ts": {
+    "mtime": 1777322886.5348632,
+    "hash": "e89d71b31d41f0c9d0bab82fe810d03e"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/models/aiCacheModel.ts": {
+    "mtime": 1776778310.9314985,
+    "hash": "ce5eff8e59346d1429c446916ad9c06f"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/models/aiQuotaModel.ts": {
+    "mtime": 1776778311.409498,
+    "hash": "6a68c3243cb397c468cb54cc26547804"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/middleware/authMiddleware.ts": {
+    "mtime": 1775974261.064561,
+    "hash": "9968b400c131748c4cf7407853f9b22f"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/middleware/validate.ts": {
+    "mtime": 1776829005.240591,
+    "hash": "9d9f84d85f62aed6bd553d541f40a006"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/middleware/arcjet.ts": {
+    "mtime": 1777138691.9743996,
+    "hash": "52d081e1f3096b8bd18d34a1dab0bbf3"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/routes/documentRoutes.ts": {
+    "mtime": 1776778107.8557658,
+    "hash": "1bf86c42db5c1829ef14b5684fffbe64"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/routes/authRoutes.ts": {
+    "mtime": 1776778108.8397644,
+    "hash": "d3ac856e53942649d0055faf71d13c72"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/routes/behaviorRoutes.ts": {
+    "mtime": 1777322968.6615906,
+    "hash": "3f026f1e9291dfd8c313b2ff3dc53430"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/routes/predictionRoutes.ts": {
+    "mtime": 1776778105.355769,
+    "hash": "8c8facf82ed07ccdee6d69cbcb3767ff"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/routes/aiRoutes.ts": {
+    "mtime": 1776779225.8237484,
+    "hash": "dda93e3626b30f4b3bece9089a49838c"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/utils/redisClient.ts": {
+    "mtime": 1776409984.3029711,
+    "hash": "9dd154383384c31c62a58db1b86ed481"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/controllers/documentController.ts": {
+    "mtime": 1775798361.8192399,
+    "hash": "3e3ec7ea9abf961fe9250168506ff7e2"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/controllers/authController.ts": {
+    "mtime": 1775825177.1837223,
+    "hash": "6ae137c14dc8867abfeec4c6c5d2e058"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/controllers/behaviorController.ts": {
+    "mtime": 1777322944.3426714,
+    "hash": "1fdc58e6db42d07a3353341d05c249f4"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/controllers/predictionController.ts": {
+    "mtime": 1776778347.91445,
+    "hash": "4806aa73e9affa4a9d9c35cbc8f9d595"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/controllers/aiController.ts": {
+    "mtime": 1777087603.4190617,
+    "hash": "6aedea33aec10c96f04575df5e6e7c09"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/types/index.ts": {
+    "mtime": 1777322909.7437863,
+    "hash": "0f105f3b2ac82d8aa91c6c72b3307ecf"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/types/express.ts": {
+    "mtime": 1775797843.1767018,
+    "hash": "efad2a2bfff91220591cebc736c85d42"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/skills/featureExport.ts": {
+    "mtime": 1776433867.4212465,
+    "hash": "64fb270b382a3645bcd6b7dab127ead0"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/skills/featureExtractor.ts": {
+    "mtime": 1776433867.4219518,
+    "hash": "d90b06989a4a75859862789f0d212663"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/skills/runAggregator.ts": {
+    "mtime": 1776433867.4219518,
+    "hash": "ec81669609614d146c25bee09555f27d"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/skills/predictFormat.ts": {
+    "mtime": 1776508072.1097188,
+    "hash": "bf32983375727127eb718f13760ddfd3"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/skills/parseFormattingIntent.ts": {
+    "mtime": 1777082646.475032,
+    "hash": "91124a55628ba29acc9fb595f87db799"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/skills/buildChatContext.ts": {
+    "mtime": 1777085654.3788593,
+    "hash": "8533c1e0420c86e80179ac489b4a9db7"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/skills/__tests__/buildChatContext.test.ts": {
+    "mtime": 1777085886.7859643,
+    "hash": "1de1efc07e1b14b9464282127986ee37"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/skills/__tests__/parseFormattingIntent.test.ts": {
+    "mtime": 1777089121.2388046,
+    "hash": "a8f00a9adaccb4fd6372c4c784bc4f8f"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/ai/aiClient.ts": {
+    "mtime": 1776864471.4916787,
+    "hash": "cab4b106adf5f1047f0aceb14c108d90"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/ai/bridge/pythonBridge.ts": {
+    "mtime": 1776778130.7017357,
+    "hash": "704450b2c2b54c15740bc5eb6df8c68e"
+  },
+  "/home/josh/school/codes/intellidocs/server/src/ai/prompts/systemPrompts.ts": {
+    "mtime": 1777088047.070756,
+    "hash": "be980538d745dd5632b7ff4df7eaeaea"
+  },
+  "/home/josh/school/codes/intellidocs/server/schemas/authSchemas.ts": {
+    "mtime": 1776828995.1346138,
+    "hash": "392236c5e92e26a3ff7d453d8c4276b4"
+  },
+  "/home/josh/school/codes/intellidocs/server/schemas/behaviorSchemas.ts": {
+    "mtime": 1776778078.572809,
+    "hash": "36adc9d71f3d8a02744e00a0f80dfff2"
+  },
+  "/home/josh/school/codes/intellidocs/server/schemas/predictionSchemas.ts": {
+    "mtime": 1776778081.6278043,
+    "hash": "f64b1f48336a09001530c85d15c7e3b5"
+  },
+  "/home/josh/school/codes/intellidocs/server/schemas/documentSchemas.ts": {
+    "mtime": 1776778085.8877978,
+    "hash": "04105cc85f351a28826687ef607474e4"
+  },
+  "/home/josh/school/codes/intellidocs/server/schemas/aiSchemas.ts": {
+    "mtime": 1777087550.9483366,
+    "hash": "aa15b16a4c8fada8160a855cdd646f61"
+  },
+  "/home/josh/school/codes/intellidocs/ml/setup.py": {
+    "mtime": 1775736310.3125129,
+    "hash": "66bbf2f7eaf7dbbce7afe4f0f9ed4d1b"
+  },
+  "/home/josh/school/codes/intellidocs/ml/aggregator.py": {
+    "mtime": 1776433867.4104927,
+    "hash": "8fcf3da25971e3dd630f22cd07bcef35"
+  },
+  "/home/josh/school/codes/intellidocs/ml/export_features.py": {
+    "mtime": 1776433867.4104927,
+    "hash": "baf25122075cf20995ad3880cda29e7e"
+  },
+  "/home/josh/school/codes/intellidocs/ml/feature_extractor.py": {
+    "mtime": 1776433867.4104927,
+    "hash": "e45b6e35a209cb9939f8fe2620589f12"
+  },
+  "/home/josh/school/codes/intellidocs/ml/src/main.py": {
+    "mtime": 1776603248.8392217,
+    "hash": "c136bfaa52d7482ffbd753bec8d7f0f2"
+  },
+  "/home/josh/school/codes/intellidocs/ml/dataset/download.py": {
+    "mtime": 1776507047.477461,
+    "hash": "b2e62bbce870c2e62becd4ec17137064"
+  },
+  "/home/josh/school/codes/intellidocs/ml/dataset/preprocess.py": {
+    "mtime": 1776507054.8494484,
+    "hash": "bdd780732319635b0a0f210587c7b90d"
+  },
+  "/home/josh/school/codes/intellidocs/ml/dataset/extract_academic_papers.py": {
+    "mtime": 1777138465.1246715,
+    "hash": "6823f54c5e91a039508fe387f4849be5"
+  },
+  "/home/josh/school/codes/intellidocs/ml/training/base_trainer.py": {
+    "mtime": 1777138572.8000677,
+    "hash": "d2cd93c47be9f8b51be92e94ccfba87e"
+  },
+  "/home/josh/school/codes/intellidocs/ml/grammar/grammar_checker.py": {
+    "mtime": 1777084343.9240823,
+    "hash": "86eef645ce3c2b691f27bb3c902bc506"
+  },
+  "/home/josh/school/codes/intellidocs/ml/grammar/spell_checker.py": {
+    "mtime": 1777084264.5175438,
+    "hash": "a165b9b3e598c7022565afe3d0fe670a"
+  },
+  "/home/josh/school/codes/intellidocs/db/supabase/001_create_documents.sql": {
+    "mtime": 1776167521.5841043,
+    "hash": "9ac2c1fdb376624fdc133421de12cdcb"
+  },
+  "/home/josh/school/codes/intellidocs/etc/app.jsx": {
+    "mtime": 1776537107.453387,
+    "hash": "be572187aff51e3b88426e5da575bcdd"
+  },
+  "/home/josh/school/codes/intellidocs/etc/main.jsx": {
+    "mtime": 1776537132.749287,
+    "hash": "ae1d804167de5a0807609075f0810e44"
+  },
+  "/home/josh/school/codes/intellidocs/etc/components/AIChatbot.jsx": {
+    "mtime": 1776536805.195609,
+    "hash": "502c09a911008ba71f2629b16acd65b4"
+  },
+  "/home/josh/school/codes/intellidocs/etc/components/grammarPanel.jsx": {
+    "mtime": 1776536863.8553708,
+    "hash": "d26b51e7b167e8768bf2013ff72b67c4"
+  },
+  "/home/josh/school/codes/intellidocs/etc/components/formatPrompt.jsx": {
+    "mtime": 1776536847.1464386,
+    "hash": "885ec18fc646564c55531dfd3c1d9baa"
+  },
+  "/home/josh/school/codes/intellidocs/etc/components/editorToolbar.jsx": {
+    "mtime": 1776536828.581514,
+    "hash": "fd8c7958588954aa9caf7b32f318be16"
+  },
+  "/home/josh/school/codes/intellidocs/etc/components/suggestionPanel.jsx": {
+    "mtime": 1776536873.9913294,
+    "hash": "6579810ad5fba9728f2e3c0a7d552028"
+  },
+  "/home/josh/school/codes/intellidocs/etc/lib/app-params.js": {
+    "mtime": 1776536926.8951147,
+    "hash": "541d65985dd395967e9df2e833788fe2"
+  },
+  "/home/josh/school/codes/intellidocs/etc/lib/authContext.jsx": {
+    "mtime": 1776536935.8040783,
+    "hash": "6cecda6e80faae23c711101a6192dd0e"
+  },
+  "/home/josh/school/codes/intellidocs/etc/lib/formatCommands.js": {
+    "mtime": 1776536952.7870095,
+    "hash": "71a68abf180951554616b0b857e2ac24"
+  },
+  "/home/josh/school/codes/intellidocs/etc/lib/pageNotFound.jsx": {
+    "mtime": 1776536968.3019464,
+    "hash": "59b754a8269322792459dea5ae089e9c"
+  },
+  "/home/josh/school/codes/intellidocs/etc/lib/query-client.js": {
+    "mtime": 1776536992.8808465,
+    "hash": "81ef87c5e7e5600589c206ccf0c2cb0c"
+  },
+  "/home/josh/school/codes/intellidocs/etc/lib/utils.js": {
+    "mtime": 1776537009.8887773,
+    "hash": "ee1e5b44669863255076e441a6649d99"
+  },
+  "/home/josh/school/codes/intellidocs/etc/pages/Documents.jsx": {
+    "mtime": 1776537054.9875944,
+    "hash": "214870748b7fc07fe5792f88dae4a958"
+  },
+  "/home/josh/school/codes/intellidocs/etc/pages/Editor.jsx": {
+    "mtime": 1776537059.660576,
+    "hash": "1cd71603142e767e2e168b0f744fb129"
+  },
+  "/home/josh/school/codes/intellidocs/etc/pages/Home.jsx": {
+    "mtime": 1776537065.1255543,
+    "hash": "d7b001bcd51761ead64cc9d5993523b9"
+  },
+  "/home/josh/school/codes/intellidocs/etc/pages/Insights.jsx": {
+    "mtime": 1776537072.590525,
+    "hash": "936a14acc49b0f4c6e0f5d02d26cce57"
+  },
+  "/home/josh/school/codes/intellidocs/etc/utils/index.ts": {
+    "mtime": 1776537086.0454717,
+    "hash": "14077539d669df88cfd82521081fdac2"
+  },
+  "/home/josh/school/codes/intellidocs/README.md": {
+    "mtime": 1777138178.3022752,
+    "hash": "68a69a89123074657ef47b55eb202724"
+  },
+  "/home/josh/school/codes/intellidocs/AGENTS.md": {
+    "mtime": 1776778568.2861516,
+    "hash": "43f10a14b1ab9cfd379bc796f9a78cce"
+  },
+  "/home/josh/school/codes/intellidocs/DESIGN.md": {
+    "mtime": 1776824692.3392859,
+    "hash": "3ade5339d5a47bf38c3fd81c7613dea0"
+  },
+  "/home/josh/school/codes/intellidocs/SETUP.md": {
+    "mtime": 1777138215.5340672,
+    "hash": "fdb084091c805ca528883a6c91ac7eca"
+  },
+  "/home/josh/school/codes/intellidocs/frontend/index.html": {
+    "mtime": 1776537698.784279,
+    "hash": "7c9dbe82c163847b7d7b19ec74efb646"
+  },
+  "/home/josh/school/codes/intellidocs/ml/requirements.txt": {
+    "mtime": 1777138160.2883759,
+    "hash": "21c155c030d0f99b555837f06c51eac3"
+  },
+  "/home/josh/school/codes/intellidocs/ml/dataset/raw/wikitext-103/README.txt": {
+    "mtime": 1776507637.5537386,
+    "hash": "78f31a11385863817a96c7fc9aa11e9c"
+  },
+  "/home/josh/school/codes/intellidocs/ml/dataset/raw/jfleg/README.txt": {
+    "mtime": 1776507643.1035945,
+    "hash": "bee886056249db73762226ad45fe01d5"
+  },
+  "/home/josh/school/codes/intellidocs/docs/PROGRESS.md": {
+    "mtime": 1777325111.1719651,
+    "hash": "5c5ce05ef2d866c79d4871b503fd93d5"
+  },
+  "/home/josh/school/codes/intellidocs/db/README.md": {
+    "mtime": 1776167442.4042938,
+    "hash": "acf961765834adc58d6f8beb5b30cfab"
+  }
+}

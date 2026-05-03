@@ -37,7 +37,7 @@ function Login(): JSX.Element {
         { id: response.user.id, email: response.user.email },
         response.session.access_token
       )
-      navigate('/')
+      navigate('/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {

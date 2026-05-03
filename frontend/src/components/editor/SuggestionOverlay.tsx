@@ -60,7 +60,7 @@ export default function SuggestionOverlay({
         issues.forEach((issue) => {
           const original = issue.original.trim()
 
-          if (!original) {
+          if (!original || original.length < 2) {
             return
           }
 

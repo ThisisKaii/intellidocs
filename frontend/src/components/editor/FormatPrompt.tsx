@@ -27,47 +27,131 @@ export default function FormatPrompt({ suggestion, onAccept, onReject }: FormatP
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 10, scale: 0.96 }}
           transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="flex items-center gap-3 bg-card border border-accent/30 shadow-lg rounded-xl px-4 py-3"
-          style={{ pointerEvents: 'all' }}
+          style={{
+            pointerEvents: 'all',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            backgroundColor: 'var(--card)',
+            boxShadow: 'var(--border-shadow) 0px 0px 0px 1px, rgba(0,0,0,0.08) 0px 4px 12px, var(--card-shadow-inner) 0px 0px 0px 1px inset',
+            borderRadius: '0.75rem',
+            padding: '0.625rem 1rem',
+            fontFamily: 'var(--font-sans)',
+          }}
         >
-          {/* Scanning pulse dot */}
-          <div className="relative shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center">
-              <Brain className="w-3.5 h-3.5 text-accent" />
+          {/* Brain icon with pulse */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: 'rgba(121, 40, 202, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Brain style={{ width: '16px', height: '16px', color: '#7928ca' }} />
             </div>
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-accent animate-ping opacity-60" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-accent" />
+            <span style={{
+              position: 'absolute',
+              top: '-3px',
+              right: '-3px',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#7928ca',
+            }} />
           </div>
 
           {/* Label */}
-          <div className="flex-1">
-            <p className="font-inter text-xs text-muted-foreground leading-none mb-0.5">Apply format?</p>
-            <p className="font-fraunces text-sm font-medium text-foreground">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{
+              fontSize: '0.6875rem',
+              fontWeight: 500,
+              color: 'var(--muted-foreground)',
+              margin: '0 0 0.125rem',
+              lineHeight: 1,
+            }}>Apply format?</p>
+            <p style={{
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: 'var(--foreground)',
+              margin: 0,
+              letterSpacing: '-0.32px',
+            }}>
               {FORMAT_LABELS[suggestion.format] || suggestion.format}
             </p>
           </div>
 
-          {/* Confidence */}
-          <span className="font-inter text-[10px] font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full">
+          {/* Confidence badge */}
+          <span style={{
+            fontSize: '0.625rem',
+            fontWeight: 700,
+            color: '#7928ca',
+            backgroundColor: 'rgba(121, 40, 202, 0.1)',
+            padding: '0.125rem 0.5rem',
+            borderRadius: '9999px',
+            whiteSpace: 'nowrap',
+            fontFamily: 'var(--font-mono)',
+          }}>
             {suggestion.confidence}%
           </span>
 
-          {/* YES */}
+          {/* Yes button */}
           <button
             type="button"
             onMouseDown={(e) => { e.preventDefault(); onAccept(suggestion.format) }}
-            className="flex items-center gap-1.5 bg-accent text-accent-foreground text-xs font-inter font-semibold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              fontSize: '0.8125rem',
+              fontWeight: 500,
+              padding: '0.375rem 0.75rem',
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: 'var(--primary)',
+              color: 'var(--primary-foreground)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              transition: 'opacity 150ms',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
           >
-            <Check className="w-3 h-3" /> Yes
+            <Check style={{ width: '12px', height: '12px' }} /> Yes
           </button>
 
-          {/* NO */}
+          {/* No button */}
           <button
             type="button"
             onMouseDown={(e) => { e.preventDefault(); onReject() }}
-            className="flex items-center gap-1.5 border border-border text-muted-foreground text-xs font-inter font-medium px-3 py-1.5 rounded-lg hover:bg-secondary transition-colors"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              fontSize: '0.8125rem',
+              fontWeight: 500,
+              padding: '0.375rem 0.75rem',
+              borderRadius: '6px',
+              border: 'none',
+              boxShadow: 'var(--border-shadow) 0px 0px 0px 1px',
+              backgroundColor: 'transparent',
+              color: 'var(--muted-foreground)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              transition: 'background-color 150ms, color 150ms',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)';
+              (e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+              (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)';
+            }}
           >
-            <X className="w-3 h-3" /> No
+            <X style={{ width: '12px', height: '12px' }} /> No
           </button>
         </motion.div>
       )}
