@@ -43,27 +43,66 @@ export default function SuggestionPanel({ suggestions, onApply, onDismiss }: Sug
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 8 }}
         transition={{ duration: 0.2 }}
-        className="bg-transparent border border-border rounded-lg overflow-hidden"
+        style={{
+          backgroundColor: 'transparent',
+          borderRadius: '0.5rem',
+          overflow: 'hidden',
+          boxShadow: 'var(--border-shadow) 0px 0px 0px 1px',
+          fontFamily: 'var(--font-sans)',
+        }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/20">
-          <div className="flex items-center gap-2">
-            <Brain className="w-4 h-4 text-muted-foreground/60" />
-            <span className="font-inter text-[11px] font-bold tracking-wider text-muted-foreground/80">
-              ML PREDICTIONS
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.75rem 1rem',
+          backgroundColor: 'var(--secondary)',
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Brain style={{ width: '16px', height: '16px', color: 'var(--muted-foreground)' }} />
+            <span style={{
+              fontFamily: 'var(--font-sans)',
+              fontSize: '0.6875rem',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              color: 'var(--muted-foreground)',
+              textTransform: 'uppercase',
+            }}>
+              ML Predictions
             </span>
           </div>
           <button
             type="button"
             onMouseDown={(e) => { e.preventDefault(); onDismiss() }}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            style={{
+              backgroundColor: 'transparent',
+              border: 'none',
+              color: 'var(--muted-foreground)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0.25rem',
+              borderRadius: '0.25rem',
+              transition: 'background-color 150ms, color 150ms',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--background)';
+              (e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+              (e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)';
+            }}
           >
-            <X className="w-3.5 h-3.5" />
+            <X style={{ width: '14px', height: '14px' }} />
           </button>
         </div>
 
         {/* Suggestions list */}
-        <div className="p-2 space-y-1">
+        <div style={{ padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           {suggestions.map((s, i) => (
             <button
               key={i}
@@ -72,31 +111,85 @@ export default function SuggestionPanel({ suggestions, onApply, onDismiss }: Sug
                 e.preventDefault()
                 onApply(s.format)
               }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-secondary transition-colors text-left group"
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.625rem 0.75rem',
+                borderRadius: '0.375rem',
+                backgroundColor: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'background-color 150ms',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
             >
-              <div className="shrink-0 w-8 h-8 rounded-md bg-accent/10 flex items-center justify-center">
-                <span className="font-inter text-[10px] font-bold text-accent">{s.confidence}%</span>
+              <div style={{
+                flexShrink: 0,
+                width: '32px',
+                height: '32px',
+                borderRadius: '0.375rem',
+                backgroundColor: 'rgba(121, 40, 202, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', fontWeight: 700, color: '#7928ca' }}>
+                  {s.confidence}%
+                </span>
               </div>
 
-              <div className="flex-1 min-w-0">
-                <p className="font-inter text-sm font-medium text-foreground">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  color: 'var(--foreground)',
+                  margin: '0 0 0.125rem',
+                  letterSpacing: '-0.01em',
+                }}>
                   {FORMAT_LABELS[s.format] || s.format}
                 </p>
-                <p className="font-inter text-xs text-muted-foreground truncate">{s.reason}</p>
+                <p style={{
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: '0.75rem',
+                  color: 'var(--muted-foreground)',
+                  margin: 0,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {s.reason}
+                </p>
               </div>
 
-              <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden shrink-0">
+              <div style={{
+                width: '64px',
+                height: '6px',
+                backgroundColor: 'var(--border)',
+                borderRadius: '9999px',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}>
                 <div
-                  className="h-full bg-accent rounded-full transition-all"
-                  style={{ width: `${s.confidence}%` }}
+                  style={{
+                    height: '100%',
+                    backgroundColor: '#7928ca',
+                    borderRadius: '9999px',
+                    transition: 'width 300ms ease',
+                    width: `${s.confidence}%`,
+                  }}
                 />
               </div>
             </button>
           ))}
         </div>
 
-        <div className="px-4 py-2 border-t border-border">
-          <p className="font-inter text-xs text-muted-foreground italic">
+        <div style={{ padding: '0.5rem 1rem', borderTop: '1px solid var(--border)' }}>
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.6875rem', color: 'var(--muted-foreground)', fontStyle: 'italic', margin: 0 }}>
             Learned from your formatting history
           </p>
         </div>

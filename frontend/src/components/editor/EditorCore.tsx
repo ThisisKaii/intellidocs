@@ -22,13 +22,14 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
       }
     }, [ref])
 
-    // Load initial content once
+    // Load initial content only on first mount or when switching documents
+    const hasLoaded = useRef(false)
     useEffect(() => {
-
-      if(!editorRef.current) return
-      if (editorRef.current.innerHTML !== initialContent) {
-      editorRef.current.innerHTML = initialContent
-    }
+      if (!editorRef.current) return
+      if (!hasLoaded.current && initialContent) {
+        editorRef.current.innerHTML = initialContent
+        hasLoaded.current = true
+      }
     }, [initialContent])
 
     // Track selection changes globally

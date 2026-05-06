@@ -156,10 +156,11 @@
 - Chatbot preview apply now follows the toolbar pattern by focusing the editor before restoring selection
 - Behavior summary endpoint and side-panel UI were added for classmate testing visibility
 - Auto-format prompt apply now focuses the editor, restores the saved selection, and selects the current block for inline formats when no text is actively selected
+- Auto-format prediction results now populate the side-panel SuggestionPanel with confidence + reason, and clear stale predictions on accept/reject
 - `npm --prefix server test -- --runInBand` passes for the chat-context and formatting-intent skill tests
 - `npm --prefix server run build` passes after the chatbot context refactor, rejection feedback loop, broader formatting preview support, and behavior summary endpoint
-- `npm --prefix frontend run type-check` passes after the chatbot rejection feedback, editor-focus preview changes, behavior summary UI, and auto-format apply targeting fix
-- `npm --prefix frontend run build` passes after the auto-format apply targeting fix
+- `npm --prefix frontend run type-check` passes after the chatbot rejection feedback, editor-focus preview changes, behavior summary UI, auto-format apply targeting fix, and suggestion panel wiring
+- `npm --prefix frontend run build` passes after the auto-format apply targeting fix and suggestion panel wiring
 - Provider-side quota/rate-limit errors now return readable messages to the UI
 
 ---
@@ -266,6 +267,7 @@
 - [x] Add behavior summary endpoint for accepted/rejected feedback visibility
 - [x] Add behavior summary display to the document side panel
 - [x] Fix auto-format prompt apply targeting when no text is selected
+- [x] Wire auto-format predictions into the right-panel SuggestionPanel
 - [ ] Keep chatbot read-only until preview/confirm formatting flow is ready
 - [ ] Continue improving grammar scoring quality as a grouped overlay-quality pass
 - [x] Add unknown-word detection for obvious non-words like `asda`

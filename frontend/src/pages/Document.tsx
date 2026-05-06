@@ -22,6 +22,157 @@ const AUTO_FORMAT_DELAY = 1800
 const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.7
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
 
+/* Page dimensions at 96dpi (US Letter 8.5" x 11") */
+const PAGE_WIDTH = 816
+const PAGE_HEIGHT = 1056
+const PAGE_PAD_Y = 64   // 4rem
+const PAGE_PAD_X = 72   // 4.5rem
+const PAGE_GAP = 24
+const CONTENT_HEIGHT = PAGE_HEIGHT - PAGE_PAD_Y * 2 // 928px
+const SPACER_ATTR = 'data-page-break'
+
+interface EditorPagesProps {
+  editorRef: React.RefObject<HTMLDivElement>
+  content: string
+  onContentChange: (html: string) => void
+  grammarIssues: GrammarIssue[]
+  onGrammarApply: (issue: GrammarIssue) => void
+  onGrammarDismiss: (issue: GrammarIssue) => void
+}
+
+/** Strip page-break spacer elements from HTML before saving. */
+function stripSpacers(html: string): string {
+  const div = document.createElement('div')
+  div.innerHTML = html
+  div.querySelectorAll(`[${SPACER_ATTR}]`).forEach(el => el.remove())
+  return div.innerHTML
+}
+
+/** Insert page-break spacers into the editor DOM at page boundaries. */
+function insertPageBreaks(editor: HTMLElement): number {
+  // Remove old spacers
+  editor.querySelectorAll(`[${SPACER_ATTR}]`).forEach(el => el.remove())
+
+  const children = Array.from(editor.children) as HTMLElement[]
+  if (children.length === 0) return 1
+
+  let pageBottom = CONTENT_HEIGHT // first page content limit
+  let pages = 1
+
+  for (const child of children) {
+    const childTop = child.offsetTop
+    const childBottom = childTop + child.offsetHeight
+
+    if (childBottom > pageBottom && childTop < pageBottom) {
+      // Child crosses the page boundary — insert spacer before it
+      const remaining = pageBottom - childTop
+      const spacerH = remaining + PAGE_PAD_Y + PAGE_GAP + PAGE_PAD_Y
+      const spacer = document.createElement('div')
+      spacer.setAttribute(SPACER_ATTR, 'true')
+      spacer.contentEditable = 'false'
+      spacer.style.cssText = `height:${spacerH}px;pointer-events:none;user-select:none;margin:0;padding:0;border:none;`
+      child.parentNode?.insertBefore(spacer, child)
+      pages++
+      pageBottom = spacer.offsetTop + spacerH + CONTENT_HEIGHT
+    } else if (childTop >= pageBottom) {
+      // Child starts past the boundary — insert spacer before it
+      const spacerH = PAGE_PAD_Y + PAGE_GAP + PAGE_PAD_Y
+      const spacer = document.createElement('div')
+      spacer.setAttribute(SPACER_ATTR, 'true')
+      spacer.contentEditable = 'false'
+      spacer.style.cssText = `height:${spacerH}px;pointer-events:none;user-select:none;margin:0;padding:0;border:none;`
+      child.parentNode?.insertBefore(spacer, child)
+      pages++
+      pageBottom = spacer.offsetTop + spacerH + CONTENT_HEIGHT
+    }
+  }
+
+  return pages
+}
+
+/** Multi-page editor container that renders paper-like pages. */
+function EditorPages({
+  editorRef,
+  content,
+  onContentChange,
+  grammarIssues,
+  onGrammarApply,
+  onGrammarDismiss,
+}: EditorPagesProps): JSX.Element {
+  const [numPages, setNumPages] = useState(1)
+
+  /** Recalculate page breaks after content changes. */
+  const recalcPages = useCallback(() => {
+    if (!editorRef.current) return
+    const p = insertPageBreaks(editorRef.current)
+    setNumPages(p)
+  }, [editorRef])
+
+  /* Run page-break calculation on content change. */
+  useEffect(() => {
+    const t = setTimeout(recalcPages, 50)
+    return () => clearTimeout(t)
+  }, [content, recalcPages])
+
+  /** Wrap onContentChange to strip spacers before saving. */
+  const handleContentChange = useCallback((html: string) => {
+    onContentChange(stripSpacers(html))
+  }, [onContentChange])
+
+  const totalHeight = numPages * PAGE_HEIGHT + (numPages - 1) * PAGE_GAP
+
+  return (
+    <main style={{ flex: 1, overflowY: 'auto', minWidth: 0, position: 'relative', backgroundColor: 'var(--secondary)' }}>
+      <div style={{
+        maxWidth: `${PAGE_WIDTH}px`,
+        minHeight: `${totalHeight}px`,
+        margin: '2rem auto',
+        position: 'relative',
+      }}>
+        {/* Page backgrounds */}
+        {Array.from({ length: numPages }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              top: `${i * (PAGE_HEIGHT + PAGE_GAP)}px`,
+              left: 0,
+              right: 0,
+              height: `${PAGE_HEIGHT}px`,
+              backgroundColor: 'var(--background)',
+              boxShadow: 'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px, rgba(0,0,0,0.03) 0px 8px 16px',
+              borderRadius: '2px',
+              pointerEvents: 'none',
+            }}
+          />
+        ))}
+
+        {/* Content layer */}
+        <div style={{
+          position: 'relative',
+          padding: `${PAGE_PAD_Y}px ${PAGE_PAD_X}px`,
+          minHeight: `${CONTENT_HEIGHT}px`,
+        }}>
+          <div style={{ position: 'relative' }}>
+            <EditorCore
+              ref={editorRef}
+              onContentChange={handleContentChange}
+              initialContent={content}
+            />
+            <SuggestionOverlay
+              editorRef={editorRef}
+              issues={grammarIssues}
+              content={content}
+              onApply={onGrammarApply}
+              onDismiss={onGrammarDismiss}
+            />
+          </div>
+        </div>
+      </div>
+    </main>
+  )
+}
+
 export default function Document(): JSX.Element {
   const { id } = useParams()
   const editorRef = useRef<HTMLDivElement | null>(null)
@@ -47,7 +198,7 @@ export default function Document(): JSX.Element {
   const [behaviorSummaryLoading, setBehaviorSummaryLoading] = useState<boolean>(false)
 
   const [rightPanelOpen] = useState<boolean>(true)
-  const [suggestions, _setSuggestions] = useState<Suggestion[]>([])
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
@@ -129,7 +280,25 @@ export default function Document(): JSX.Element {
     return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
   }
 
+  function formatSuggestionLabel(format: string): string {
+    const labels: Record<string, string> = {
+      bold: 'Bold',
+      italic: 'Italic',
+      underline: 'Underline',
+      heading1: 'Heading 1',
+      heading2: 'Heading 2',
+      heading3: 'Heading 3',
+      h1: 'Heading 1',
+      h2: 'Heading 2',
+      h3: 'Heading 3',
+      blockquote: 'Blockquote',
+      unordered_list: 'Bullet List',
+      ordered_list: 'Numbered List',
+      paragraph: 'Paragraph',
+    }
 
+    return labels[format] ?? format
+  }
 
   function isAutoFormatSuppressed(format: string): boolean {
     const suppressedUntil = suppressedAutoFormatsRef.current[format]
@@ -253,21 +422,44 @@ export default function Document(): JSX.Element {
   async function runAutoFormatPrediction(nextContent: string): Promise<void> {
    const plainText = getPlainText(nextContent)
 
-    if (plainText.length < 12) return
+    if (plainText.length < 12) {
+      setFormatPrompt(null)
+      setSuggestions([])
+      setShowSuggestions(false)
+      return
+    }
 
     try {
       const prediction = await api.predictions.predict(plainText)
       const predictedFormat = prediction.predicted_format
       const confidence = prediction.confidence
 
-      if (confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) return
+      if (confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) {
+        setFormatPrompt(null)
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
 
-      if (isAutoFormatSuppressed(predictedFormat)) return
+      if (isAutoFormatSuppressed(predictedFormat)) {
+        setFormatPrompt(null)
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
+
+      const confidencePercent = Math.round(confidence * 100)
+      const suggestion = {
+        format: predictedFormat,
+        confidence: confidencePercent,
+        reason: `Predicted ${formatSuggestionLabel(predictedFormat)} based on your recent writing context.`,
+      }
 
       setFormatPrompt({
         format: predictedFormat,
-        confidence: Math.round(confidence * 100),
+        confidence: confidencePercent,
       })
+      setSuggestions([suggestion])
       setShowSuggestions(true)
     } catch (error) {
       console.error('Auto-format prediction failed', error)
@@ -362,6 +554,7 @@ export default function Document(): JSX.Element {
       api.behavior.log(event).catch((err) => console.error('Behavior log failed', err))
     }
     setShowSuggestions(false)
+    setSuggestions([])
     scheduleSave()
     updateWordCount(nextContent)
   }
@@ -381,6 +574,7 @@ export default function Document(): JSX.Element {
     }
 
     setFormatPrompt(null)
+    setSuggestions([])
     setShowSuggestions(false)
   }
 
@@ -401,6 +595,7 @@ export default function Document(): JSX.Element {
     }
 
     setFormatPrompt(null)
+    setSuggestions([])
     setShowSuggestions(false)
   }
 
@@ -660,34 +855,14 @@ export default function Document(): JSX.Element {
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
         {/* Editor area */}
-        <main style={{ flex: 1, overflowY: 'auto', minWidth: 0, position: 'relative', backgroundColor: 'var(--secondary)' }}>
-          <div style={{
-            maxWidth: '816px',
-            minHeight: '1056px',
-            margin: '2rem auto',
-            padding: '4rem 4.5rem',
-            backgroundColor: 'var(--background)',
-            boxShadow: 'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px, rgba(0,0,0,0.03) 0px 8px 16px',
-            borderRadius: '2px',
-            boxSizing: 'border-box',
-            backgroundImage: `repeating-linear-gradient(to bottom, transparent 0px, transparent 1055px, var(--border) 1055px, var(--border) 1056px)`,
-          }}>
-            <div style={{ position: 'relative' }}>
-              <EditorCore
-                ref={editorRef}
-                onContentChange={handleContentChange}
-                initialContent={content}
-              />
-              <SuggestionOverlay
-                editorRef={editorRef}
-                issues={grammarIssues}
-                content={content}
-                onApply={handleGrammarApply}
-                onDismiss={handleGrammarDismiss}
-              />
-            </div>
-          </div>
-        </main>
+        <EditorPages
+          editorRef={editorRef}
+          content={content}
+          onContentChange={handleContentChange}
+          grammarIssues={grammarIssues}
+          onGrammarApply={handleGrammarApply}
+          onGrammarDismiss={handleGrammarDismiss}
+        />
 
         {/* Right panel */}
         <AnimatePresence>
