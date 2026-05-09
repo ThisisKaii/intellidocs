@@ -86,3 +86,48 @@ export async function requestSpellingCheck(
 
   return pythonSpellingCheckResponseSchema.parse(response.data)
 }
+
+export interface PipelineAggregateResponse {
+  status: string
+  events_inserted: number
+}
+
+export interface PipelineExtractResponse {
+  status: string
+  rows_written: number
+}
+
+export interface PipelineExportResponse {
+  status: string
+  export_dir: string
+}
+
+/** Trigger Redis → DuckDB aggregation via the ML FastAPI service. */
+export async function requestAggregation(): Promise<PipelineAggregateResponse> {
+  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+
+  const response = await axios.post<PipelineAggregateResponse>(
+    `${mlApiUrl}/pipeline/aggregate`
+  )
+  return response.data
+}
+
+/** Trigger feature extraction via the ML FastAPI service. */
+export async function requestFeatureExtraction(): Promise<PipelineExtractResponse> {
+  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+
+  const response = await axios.post<PipelineExtractResponse>(
+    `${mlApiUrl}/pipeline/extract-features`
+  )
+  return response.data
+}
+
+/** Trigger feature export via the ML FastAPI service. */
+export async function requestFeatureExport(): Promise<PipelineExportResponse> {
+  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+
+  const response = await axios.post<PipelineExportResponse>(
+    `${mlApiUrl}/pipeline/export-features`
+  )
+  return response.data
+}

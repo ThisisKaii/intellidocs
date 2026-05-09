@@ -19,7 +19,7 @@ from grammar.spell_checker import check_spelling
 
 load_dotenv()
 
-MODEL_PATH = os.getenv("BASE_MODEL_PATH", "ml/models/base_model.pkl")
+MODEL_PATH = os.getenv("BASE_MODEL_PATH", "models/base_model.pkl")
 
 app = FastAPI(
     title="IntelliDocs ML API",
@@ -172,6 +172,75 @@ async def spelling_check(request: TextCheckRequest) -> dict[str, Any]:
             detail=f"Spelling check failed: {error}",
         ) from error
 
+
+@app.post("/pipeline/aggregate")
+async def trigger_aggregation() -> dict[str, str | int]:
+    """Flush Redis behavior events into DuckDB (one-shot)."""
+    try:
+        from aggregator import run_once
+
+        count = run_once()
+        return {"status": "ok", "events_inserted": count}
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Aggregation failed: {error}",
+        ) from error
+
+
+@app.post("/pipeline/extract-features")
+async def trigger_feature_extraction() -> dict[str, str | int]:
+    """Run feature extraction on DuckDB behavior_events table."""
+    try:
+        import duckdb
+
+        from feature_extractor import ensure_feature_table, extract_features, overwrite_features
+
+        duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
+        conn = duckdb.connect(duckdb_path)
+        ensure_feature_table(conn)
+        rows = extract_features(conn)
+        count = overwrite_features(conn, rows)
+        conn.close()
+        return {"status": "ok", "rows_written": count}
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Feature extraction failed: {error}",
+        ) from error
+
+
+@app.post("/pipeline/export-features")
+async def trigger_feature_export() -> dict[str, str]:
+    """Export formatting_features table to CSV and Parquet."""
+    try:
+        import duckdb
+
+        from export_features import ensure_export_dir, export_features, table_exists
+
+        duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
+        export_dir = os.getenv("FEATURE_EXPORT_DIR", "db/duckdb/exports")
+
+        ensure_export_dir(export_dir)
+        conn = duckdb.connect(duckdb_path)
+
+        if not table_exists(conn, "formatting_features"):
+            conn.close()
+            raise HTTPException(
+                status_code=400,
+                detail="formatting_features table does not exist.",
+            )
+
+        export_features(conn, export_dir)
+        conn.close()
+        return {"status": "ok", "export_dir": export_dir}
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Feature export failed: {error}",
+        ) from error
 
 if __name__ == "__main__":
     import uvicorn

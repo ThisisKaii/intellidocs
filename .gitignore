@@ -38,6 +38,8 @@ etc/
 ml/dataset/raw/
 ml/dataset/processed/
 ml/models/user_models/
+!ml/models/base_model.pkl
+!ml/models/grammar_model.pkl
 
 #Graphify
 graphify-out/

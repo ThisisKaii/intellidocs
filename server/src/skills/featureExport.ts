@@ -1,41 +1,12 @@
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { requestFeatureExport } from '../ai/bridge/pythonBridge'
+import type { PipelineExportResponse } from '../ai/bridge/pythonBridge'
 
-const execFileAsync = promisify(execFile)
-
-interface FeatureExportResult {
-  stdout: string
-  stderr: string
-}
-
-interface ExecFileFailure extends Error {
-  stdout?: string
-  stderr?: string
-  code?: number | string
-}
-
-// Resolve the absolute path to ml/export_features.py
-function resolveFeatureExportPath(): string {
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = path.dirname(__filename)
-  return path.resolve(__dirname, '../../../ml/export_features.py')
-}
-
-// Run the feature exporter in one-shot mode
-export async function runFeatureExportOnce(): Promise<FeatureExportResult> {
-  const pythonBin = process.env.PYTHON_BIN || 'python'
-  const exporterPath = resolveFeatureExportPath()
-
+/** Trigger feature export (CSV + Parquet) via the ML service. */
+export async function runFeatureExportOnce(): Promise<PipelineExportResponse> {
   try {
-    const { stdout, stderr } = await execFileAsync(pythonBin, [exporterPath], {
-      env: { ...process.env },
-    })
-    return { stdout, stderr }
+    return await requestFeatureExport()
   } catch (error: unknown) {
-    const failure = error as ExecFileFailure
-    const details = failure.stderr || failure.message
-    throw new Error(`Feature export failed: ${details}`)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    throw new Error(`Feature export failed: ${message}`)
   }
 }

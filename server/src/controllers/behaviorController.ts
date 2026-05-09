@@ -123,12 +123,10 @@ export async function triggerAggregation(req: Request, res: Response): Promise<v
     res.status(200).json({
       status: 'ok',
       aggregation: {
-        stdout: aggregation.stdout.trim(),
-        stderr: aggregation.stderr.trim(),
+        events_inserted: aggregation.events_inserted,
       },
       features: {
-        stdout: features.stdout.trim(),
-        stderr: features.stderr.trim(),
+        rows_written: features.rows_written,
       },
     })
   } catch (error) {
@@ -143,8 +141,7 @@ export async function triggerFeatureExtraction(req: Request, res: Response): Pro
     const result = await runFeatureExtractorOnce()
     res.status(200).json({
       status: 'ok',
-      stdout: result.stdout.trim(),
-      stderr: result.stderr.trim(),
+      rows_written: result.rows_written,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -158,8 +155,7 @@ export async function triggerFeatureExport(req: Request, res: Response): Promise
     const result = await runFeatureExportOnce()
     res.status(200).json({
       status: 'ok',
-      stdout: result.stdout.trim(),
-      stderr: result.stderr.trim(),
+      export_dir: result.export_dir,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
