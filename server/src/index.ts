@@ -62,9 +62,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 })
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
-  console.log(`📊 Health check: http://localhost:${PORT}/health`)
+app.listen(PORT as number, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`)
+  console.log(`📊 Health check: http://0.0.0.0:${PORT}/health`)
 })
 
 export default app
