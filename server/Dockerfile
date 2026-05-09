@@ -2,13 +2,16 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Install dependencies first (layer caching)
+# Install all dependencies first (including dev for tsc)
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 # Copy source and build
 COPY . .
 RUN npm run build
+
+# Prune dev dependencies to keep image small
+RUN npm prune --omit=dev
 
 EXPOSE 3000
 
