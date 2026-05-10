@@ -29,6 +29,10 @@ const dotenvParse = require('./../helpers/dotenvParse')
 const detectEncoding = require('./../helpers/detectEncoding')
 const detectEncodingSync = require('./../helpers/detectEncodingSync')
 
+function allValuesForKey (envSrc, key) {
+  return dotenvParse(envSrc, false, false, true)[key] || []
+}
+
 class Sets {
   constructor (key, value, envs = [], encrypt = true, envKeysFilepath = null, noOps = false, noCreate = false) {
     this.envs = determine(envs, process.env)
@@ -163,13 +167,14 @@ class Sets {
 
       const goingFromPlainTextToEncrypted = wasPlainText && this.encrypt
       const valueChanged = this.value !== row.originalValue
+      const duplicateKey = allValuesForKey(envSrc, row.key).length > 1
       const shouldPersistSeededPlainValue = seededWithInitialKey && !this.encrypt
 
       if (shouldPersistSeededPlainValue) {
         row.envSrc = envSrc
         this.changedFilepaths.add(envFilepath)
         row.changed = true
-      } else if (goingFromPlainTextToEncrypted || valueChanged) {
+      } else if (goingFromPlainTextToEncrypted || valueChanged || duplicateKey) {
         row.envSrc = replace(envSrc, this.key, row.encryptedValue || this.value)
         this.changedFilepaths.add(envFilepath)
         row.changed = true
@@ -269,13 +274,14 @@ class Sets {
 
       const goingFromPlainTextToEncrypted = wasPlainText && this.encrypt
       const valueChanged = this.value !== row.originalValue
+      const duplicateKey = allValuesForKey(envSrc, row.key).length > 1
       const shouldPersistSeededPlainValue = seededWithInitialKey && !this.encrypt
 
       if (shouldPersistSeededPlainValue) {
         row.envSrc = envSrc
         this.changedFilepaths.add(envFilepath)
         row.changed = true
-      } else if (goingFromPlainTextToEncrypted || valueChanged) {
+      } else if (goingFromPlainTextToEncrypted || valueChanged || duplicateKey) {
         row.envSrc = replace(envSrc, this.key, row.encryptedValue || this.value)
         this.changedFilepaths.add(envFilepath)
         row.changed = true

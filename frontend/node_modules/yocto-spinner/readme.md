@@ -96,6 +96,15 @@ Default: `process.stderr`
 
 The stream to which the spinner is written.
 
+##### handleSignals
+
+Type: `boolean`\
+Default: `true`
+
+Whether to register `SIGINT` and `SIGTERM` listeners that stop the spinner and explicitly exit the process.
+
+Disable this when the application needs to manage those signals itself.
+
 ### Instance methods
 
 #### .start(text?)

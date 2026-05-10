@@ -74,7 +74,7 @@ class Decrypt {
     try {
       const encoding = await detectEncoding(filepath)
       let envSrc = await fsx.readFileX(filepath, { encoding })
-      const envParsed = dotenvParse(envSrc)
+      const envParsed = dotenvParse(envSrc, false, false, true)
 
       const { privateKeyName } = keyNames(envFilepath)
       const { privateKeyValue } = await keyValues(envFilepath, { keysFilepath: this.envKeysFilepath, noOps: this.noOps })
@@ -83,7 +83,7 @@ class Decrypt {
       row.privateKeyName = privateKeyName
       row.changed = false // track possible changes
 
-      for (const [key, value] of Object.entries(envParsed)) {
+      for (const [key, values] of Object.entries(envParsed)) {
         // key excluded - don't decrypt it
         if (this.exclude(key)) {
           continue
@@ -94,13 +94,20 @@ class Decrypt {
           continue
         }
 
-        const encrypted = isEncrypted(value)
+        const encrypted = values.some(value => isEncrypted(value))
         if (encrypted) {
           row.keys.push(key) // track key(s)
 
-          const decryptedValue = decryptKeyValue(key, value, privateKeyName, privateKeyValue)
+          const decryptedValues = values.map(value => {
+            if (!isEncrypted(value)) {
+              return value
+            }
+
+            return decryptKeyValue(key, value, privateKeyName, privateKeyValue)
+          })
+
           // once newSrc is built write it out
-          envSrc = replace(envSrc, key, decryptedValue)
+          envSrc = replace(envSrc, key, decryptedValues)
 
           row.changed = true // track change
         }

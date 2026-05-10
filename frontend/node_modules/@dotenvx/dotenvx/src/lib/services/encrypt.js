@@ -91,7 +91,7 @@ class Encrypt {
         row.kitCreated = 'sample'
         row.changed = true
       }
-      const envParsed = dotenvParse(envSrc)
+      const envParsed = dotenvParse(envSrc, false, false, true)
 
       let publicKey
       let privateKey
@@ -122,7 +122,7 @@ class Encrypt {
       row.privateKeyName = privateKeyName
 
       // iterate over all non-encrypted values and encrypt them
-      for (const [key, value] of Object.entries(envParsed)) {
+      for (const [key, values] of Object.entries(envParsed)) {
         // key excluded - don't encrypt it
         if (this.exclude(key)) {
           continue
@@ -133,19 +133,24 @@ class Encrypt {
           continue
         }
 
-        const encrypted = isEncrypted(value) || isPublicKey(key)
+        const encrypted = values.every(value => isEncrypted(value) || isPublicKey(key))
         if (!encrypted) {
           row.keys.push(key) // track key(s)
 
-          let encryptedValue
-          try {
-            encryptedValue = encryptValue(value, publicKey)
-          } catch {
-            throw new Errors({ publicKeyName, publicKey }).invalidPublicKey()
-          }
+          const encryptedValues = values.map(value => {
+            if (isEncrypted(value) || isPublicKey(key)) {
+              return value
+            }
+
+            try {
+              return encryptValue(value, publicKey)
+            } catch {
+              throw new Errors({ publicKeyName, publicKey }).invalidPublicKey()
+            }
+          })
 
           // once newSrc is built write it out
-          envSrc = replace(envSrc, key, encryptedValue)
+          envSrc = replace(envSrc, key, encryptedValues)
 
           row.changed = true // track change
         }

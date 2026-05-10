@@ -80,7 +80,7 @@ class Rotate {
     try {
       const encoding = await detectEncoding(filepath)
       let envSrc = await fsx.readFileX(filepath, { encoding })
-      const envParsed = dotenvParse(envSrc)
+      const envParsed = dotenvParse(envSrc, false, false, true)
 
       const { publicKeyName, privateKeyName } = keyNames(envFilepath)
       const { privateKeyValue } = await keyValues(envFilepath, { keysFilepath: this.envKeysFilepath, noOps: this.noOps })
@@ -116,7 +116,7 @@ class Rotate {
       envSrc = replace(envSrc, publicKeyName, newPublicKey) // replace publicKey
       row.changed = true // track change
 
-      for (const [key, value] of Object.entries(envParsed)) { // re-encrypt each individual key
+      for (const [key, values] of Object.entries(envParsed)) { // re-encrypt each individual key
         // key excluded - don't re-encrypt it
         if (this.exclude(key)) {
           continue
@@ -127,7 +127,8 @@ class Rotate {
           continue
         }
 
-        if (isEncrypted(value)) { // only re-encrypt those already encrypted
+        const value = [...values].reverse().find(value => isEncrypted(value))
+        if (value) { // only re-encrypt those already encrypted
           row.keys.push(key) // track key(s)
 
           const decryptedValue = decryptKeyValue(key, value, privateKeyName, privateKeyValue) // get decrypted value
