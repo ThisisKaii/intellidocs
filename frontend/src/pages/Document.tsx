@@ -21,6 +21,7 @@ const AUTOSAVE_DELAY = 8000
 const AUTO_FORMAT_DELAY = 1800
 const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.7
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
+const AUTO_FORMAT_MIN_INTERVAL_MS = 30 * 1000
 
 /* Page dimensions at 96dpi (US Letter 8.5" x 11") */
 const PAGE_WIDTH = 816
@@ -184,7 +185,7 @@ export default function Document(): JSX.Element {
   const pendingSaveRef = useRef<boolean>(false)
   const autoFormatTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressedAutoFormatsRef = useRef<Record<string, number>>({})
-
+  const lastAutoFormatRef = useRef<{format : string; shownAt: number} | null>(null)
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
@@ -274,6 +275,16 @@ export default function Document(): JSX.Element {
   function updateWordCount(html: string): void {
     const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
     setWordCount(text ? text.split(' ').filter((w) => w.length > 0).length : 0)
+  }
+
+  function shouldSkipAutoFormatSuggestion(format: string): boolean {
+    const last = lastAutoFormatRef.current
+
+    if (!last) return false
+
+    if (last.format !== format) return false
+
+    return Date.now() - last.shownAt < AUTO_FORMAT_MIN_INTERVAL_MS
   }
 
   function getPlainText(html: string): string {
@@ -448,6 +459,15 @@ export default function Document(): JSX.Element {
         return
       }
 
+      if (shouldSkipAutoFormatSuggestion(predictedFormat)){
+        setFormatPrompt(null)
+        setSuggestions([])
+        setShowSuggestions(false)
+
+        return
+
+      }
+
       const confidencePercent = Math.round(confidence * 100)
       const suggestion = {
         format: predictedFormat,
@@ -461,6 +481,11 @@ export default function Document(): JSX.Element {
       })
       setSuggestions([suggestion])
       setShowSuggestions(true)
+
+      lastAutoFormatRef.current = {
+        format: predictedFormat,
+        shownAt: Date.now(),
+      }
     } catch (error) {
       console.error('Auto-format prediction failed', error)
     }
@@ -578,20 +603,26 @@ export default function Document(): JSX.Element {
     setShowSuggestions(false)
   }
 
-  function handlePromptReject(): void {
-    const rejectedFormat = formatPrompt?.format
+  function rejectAutoSuggestion(format: string): void {
+    suppressedAutoFormatsRef.current[format] =
+      Date.now() + AUTO_FORMAT_SUPPRESSION_MS
 
-    if (rejectedFormat) {
-      suppressedAutoFormatsRef.current[rejectedFormat] =
-        Date.now() + AUTO_FORMAT_SUPPRESSION_MS
-
-      if (id) {
-        api.behavior.log({
-          action: `auto_preview_rejected:${rejectedFormat}`,
+    if (id) {
+      api.behavior
+        .log({
+          action: `auto_preview_rejected:${format}`,
           timestamp: new Date().toISOString(),
           documentId: id,
-        }).catch((error) => console.error('Auto-format rejected log failed', error))
-      }
+        })
+        .catch((error) => console.error('Auto-format rejected log failed', error))
+    }
+  }
+
+  function handlePromptReject(): void {
+    const rejectedFormat = formatPrompt?.format ?? suggestions[0]?.format
+
+    if (rejectedFormat) {
+      rejectAutoSuggestion(rejectedFormat)
     }
 
     setFormatPrompt(null)
@@ -901,7 +932,7 @@ export default function Document(): JSX.Element {
                   <SuggestionPanel
                     suggestions={suggestions}
                     onApply={(fmt) => handlePromptAccept(fmt)}
-                    onDismiss={() => setShowSuggestions(false)}
+                    onDismiss={() => handlePromptReject()}
                   />
                   {!showSuggestions && (
                     <div

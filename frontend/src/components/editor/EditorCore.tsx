@@ -95,6 +95,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
+        spellcheck="false"
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
