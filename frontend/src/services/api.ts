@@ -116,6 +116,22 @@ export interface AIChatResponse {
   preview?: AIChatPreview | null
 }
 
+export type MCPToolName =
+  | 'getDocumentContent'
+  | 'applyFormatting'
+  | 'getUserProfile'
+  | 'predictNextFormat'
+  | 'getBehaviorSummary'
+  | 'explainSuggestion'
+
+export interface MCPToolCall { 
+  tool: MCPToolName
+  args: Record<string, unknown>
+}
+
+export interface MCPToolListResponse { 
+  tools: { name: MCPToolName }[]
+}
 
 function getAuthToken(): string | null {
   return localStorage.getItem('authToken')
@@ -263,4 +279,20 @@ export const api = {
       })
     },
   },
+    mcp: {
+    listTools: async (): Promise<MCPToolListResponse> => {
+      return fetchAPI<MCPToolListResponse>('mcp/tools')
+    },
+    callTool: async <T>(
+      tool: MCPToolName,
+      args: Record<string, unknown>
+    ): Promise<T> => {
+      return fetchAPI<T>('mcp/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool, args }),
+      })
+    },
+  },
+
 }

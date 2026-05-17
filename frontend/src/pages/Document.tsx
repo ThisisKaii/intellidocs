@@ -14,6 +14,8 @@ import GrammarPanel from '@/components/editor/GrammarPanel'
 import FormatPrompt, { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import AIChatbot from '@/components/editor/AIChatbot'
 import SuggestionOverlay, { type GrammarIssue } from '@/components/editor/SuggestionOverlay'
+import McpDebugPanel from '@/components/editor/McpDebugPanel'
+
 import { ArrowLeft, Save, Moon, Sun } from 'lucide-react'
 
 const AUTOSAVE_DELAY = 8000
@@ -597,7 +599,7 @@ export default function Document(): JSX.Element {
         })
         .catch((error) => console.error('Auto-format acceptance log failed', error))
     }
-    
+
     void loadBehaviorSummary()
 
     setFormatPrompt(null)
@@ -618,7 +620,7 @@ export default function Document(): JSX.Element {
         })
         .catch((error) => console.error('Auto-format rejected log failed', error))
     }
-    
+
     void loadBehaviorSummary()
   }
 
@@ -1054,6 +1056,8 @@ export default function Document(): JSX.Element {
                     </div>
                   ) : null}
                 </div>
+
+                <McpDebugPanel documentId={id} documentContent={getEditorText()} />
 
               </div>
             </motion.aside>
