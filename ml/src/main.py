@@ -68,6 +68,17 @@ def load_model_payload() -> dict[str, Any]:
 def build_feature_row(text: str) -> pd.DataFrame:
     """Build the same numeric features used during base model training."""
     normalized = text.strip()
+
+    # Count leading '=' and spaces for heading depth
+    heading_depth = 0
+    for c in normalized:
+        if c == "=":
+            heading_depth += 1
+        elif c == " " and heading_depth > 0:
+            heading_depth += 1
+        else:
+            break
+
     features = {
         "char_count": len(normalized),
         "word_count": len(normalized.split()),
@@ -85,6 +96,9 @@ def build_feature_row(text: str) -> pd.DataFrame:
         "starts_with_marker": int(
             normalized.startswith(("=", "*", "#", ">", "`", "    "))
         ),
+        "heading_depth": heading_depth,
+        "starts_with_bullet": int(normalized.startswith("* ")),
+        "starts_with_number_sign": int(normalized.startswith("# ")),
     }
     return pd.DataFrame([features])
 

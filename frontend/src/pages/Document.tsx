@@ -206,6 +206,8 @@ export default function Document(): JSX.Element {
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
 
+  const chatContent = getPlainText(content)
+
   const [isDark, setIsDark] = useState<boolean>(() => {
     return document.documentElement.classList.contains('dark')
   })
@@ -711,7 +713,6 @@ export default function Document(): JSX.Element {
     await saveDocument()
   }
 
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'hidden', backgroundColor: 'var(--background)' }}>
 
@@ -1057,7 +1058,7 @@ export default function Document(): JSX.Element {
                   ) : null}
                 </div>
 
-                <McpDebugPanel documentId={id} documentContent={getEditorText()} />
+                <McpDebugPanel documentId={id} documentContent={chatContent} />
 
               </div>
             </motion.aside>
@@ -1088,7 +1089,7 @@ export default function Document(): JSX.Element {
         <AIChatbot
           documentId={id}
           documentTitle={title}
-          documentContent={getEditorText()}
+          documentContent={chatContent}
           onFormatApplied={handleFormat}
           onFocusEditor={focusEditor}
           onFeedbackLogged={() => void loadBehaviorSummary()}

@@ -8,7 +8,7 @@ export async function getRedisClient(): Promise<RedisClientType> {
   }
 
   const url = process.env.REDIS_URL || 'redis://localhost:6379'
-    console.log('Redis URL:', url)
+  console.log('Redis URL:', url)
   client = createClient({ url })
 
   client.on('error', (err) => {

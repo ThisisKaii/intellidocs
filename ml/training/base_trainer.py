@@ -59,6 +59,7 @@ def train_model(
         max_depth=12,
         min_samples_split=4,
         min_samples_leaf=2,
+        class_weight="balanced",
         random_state=42,
     )
     model.fit(x_train, y_train)
@@ -96,11 +97,11 @@ def main() -> None:
     """Train and save the base formatting model."""
     dataset_path = os.getenv(
         "FORMATTING_DATASET_PATH",
-        "ml/dataset/processed/formatting_examples.csv",
+        "dataset/processed/formatting_examples.csv",
     )
     output_path = os.getenv(
         "BASE_MODEL_PATH",
-        "ml/models/base_model.pkl",
+        "models/base_model.pkl",
     )
 
     dataframe = load_training_data(dataset_path)

@@ -80,6 +80,36 @@ export default function AIChatbot({
     return rejectedPreviews.some((preview) => preview.format === format)
   }
 
+  /** Parse key=value arguments for MCP tool calls. */
+  function parseMcpArgs(raw: string): Record<string, string> {
+    const args: Record<string, string> = {}
+    const parts = raw.split(/\s+/).filter(Boolean)
+
+    for (const part of parts) {
+      const [key, ...rest] = part.split('=')
+      if (!key || rest.length === 0) continue
+      args[key] = rest.join('=')
+    }
+
+    return args
+  }
+
+  /** Parse /mcp tool calls from chat input. */
+  function parseMcpCommand(
+    input: string
+  ): { tool: string; args: Record<string, string> } | null {
+    const trimmed = input.trim()
+    if (!trimmed.startsWith('/mcp ')) return null
+
+    const body = trimmed.slice(5).trim()
+    if (!body) return null
+
+    const [tool, ...rest] = body.split(/\s+/)
+    const args = parseMcpArgs(rest.join(' '))
+
+    return { tool, args }
+  }
+
   /** Apply a confirmed formatting preview to the current editor selection. */
   function handlePreviewApply(messageIndex: number, format: string): void {
     const commands: Record<string, (() => void) | undefined> = {
@@ -179,6 +209,50 @@ export default function AIChatbot({
     setInput('')
     setMessages((current) => [...current, { role: 'user', content: userMsg }])
     setLoading(true)
+
+    const mcpCommand = parseMcpCommand(userMsg)
+    if (mcpCommand) {
+      try {
+        const toolArgs: Record<string, unknown> = { ...mcpCommand.args }
+
+        if (mcpCommand.tool === 'getDocumentContent' && documentId) {
+          toolArgs.documentId = documentId
+        }
+
+        if (mcpCommand.tool === 'getBehaviorSummary' && documentId) {
+          toolArgs.documentId = documentId
+        }
+
+        if (mcpCommand.tool === 'predictNextFormat') {
+          toolArgs.text = documentContent
+        }
+
+        if (mcpCommand.tool === 'applyFormatting') {
+          if (documentId) toolArgs.documentId = documentId
+          if (!toolArgs.mode) toolArgs.mode = 'preview'
+        }
+
+        const result = await api.mcp.callTool(mcpCommand.tool as never, toolArgs)
+        setMessages((current) => [
+          ...current,
+          {
+            role: 'assistant',
+            content: `MCP ${mcpCommand.tool} result:\n${JSON.stringify(result, null, 2)}`,
+          },
+        ])
+      } catch (error) {
+        setMessages((current) => [
+          ...current,
+          {
+            role: 'assistant',
+            content: error instanceof Error ? error.message : 'MCP tool call failed.',
+          },
+        ])
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
 
     try {
       const history: ChatHistoryEntry[] = messages
