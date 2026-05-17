@@ -701,7 +701,7 @@ export default function Document(): JSX.Element {
   }
 }, [])
 
-  const getEditorText = useCallback(() => editorRef.current?.innerText || '', [])
+  // const getEditorText = useCallback(() => editorRef.current?.innerText || '', [])
   function focusEditor(): void { editorRef.current?.focus() }
 
   async function handleManualSave(): Promise<void> {
