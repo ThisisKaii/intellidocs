@@ -10,6 +10,7 @@ import authRoutes from './routes/authRoutes'
 import behaviorRoutes from './routes/behaviorRoutes'
 import predictionRoutes from './routes/predictionRoutes'
 import aiRoutes from './routes/aiRoutes'
+import mcpRouter from './mcp/mcpServer'
 import { authMiddleware } from './middleware/authMiddleware'
 
 
@@ -49,6 +50,7 @@ app.use('/auth', authRoutes)
 app.use('/behavior', authMiddleware, behaviorRoutes)
 app.use('/predictions', authMiddleware, predictionRoutes)
 app.use('/ai', authMiddleware, aiRoutes)
+app.use('/mcp', authMiddleware, mcpRouter)
 
 // 404 handler
 app.use((req, res) => {

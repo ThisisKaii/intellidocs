@@ -597,6 +597,8 @@ export default function Document(): JSX.Element {
         })
         .catch((error) => console.error('Auto-format acceptance log failed', error))
     }
+    
+    void loadBehaviorSummary()
 
     setFormatPrompt(null)
     setSuggestions([])
@@ -616,6 +618,8 @@ export default function Document(): JSX.Element {
         })
         .catch((error) => console.error('Auto-format rejected log failed', error))
     }
+    
+    void loadBehaviorSummary()
   }
 
   function handlePromptReject(): void {
@@ -1083,6 +1087,7 @@ export default function Document(): JSX.Element {
           documentContent={getEditorText()}
           onFormatApplied={handleFormat}
           onFocusEditor={focusEditor}
+          onFeedbackLogged={() => void loadBehaviorSummary()}
         />
       </div>
     </div>

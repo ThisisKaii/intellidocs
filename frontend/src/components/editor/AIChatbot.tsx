@@ -24,6 +24,7 @@ interface AIChatbotProps {
   documentTitle?: string
   documentContent: string
   onFormatApplied?: (format: string) => void
+  onFeedbackLogged?: () => void
   onFocusEditor?: () => void
 }
 
@@ -33,6 +34,7 @@ export default function AIChatbot({
   documentTitle,
   documentContent,
   onFormatApplied,
+  onFeedbackLogged,
   onFocusEditor,
 }: AIChatbotProps): JSX.Element {
   const [open, setOpen] = useState<boolean>(false)
@@ -109,6 +111,8 @@ export default function AIChatbot({
         })
         .catch((error) => console.error('Chat preview acceptance log failed', error))
     }
+    
+    onFeedbackLogged?.()
 
     setMessages((current) =>
       current.map((message, index) =>
@@ -152,6 +156,8 @@ export default function AIChatbot({
         })
         .catch((error) => console.error('Chat preview rejection log failed', error))
     }
+
+    onFeedbackLogged?.()
 
     setMessages((current) =>
       current.map((message, index) =>

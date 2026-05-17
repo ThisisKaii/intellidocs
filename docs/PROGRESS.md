@@ -271,6 +271,7 @@
 - [x] Wire auto-format predictions into the right-panel SuggestionPanel
 - [ ] Keep chatbot read-only until preview/confirm formatting flow is ready
 - [ ] Continue improving grammar scoring quality as a grouped overlay-quality pass
+- [x] Finalize Supabase schema + RLS + default folder trigger (aligned with DBSYS project)
 - [x] Add unknown-word detection for obvious non-words like `asda`
 - [x] Merge related punctuation/capitalization issues into a single actionable issue where appropriate
 - [ ] Revisit baseline labels/features to reduce artificial accuracy inflation
