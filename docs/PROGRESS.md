@@ -158,6 +158,7 @@
 - Auto-format prompt apply now focuses the editor, restores the saved selection, and selects the current block for inline formats when no text is actively selected
 - Auto-format prediction results now populate the side-panel SuggestionPanel with confidence + reason, and clear stale predictions on accept/reject
 - Dismissing a side-panel suggestion now logs a rejection and suppresses that format temporarily
+- Grammar panel now supports debounced auto-checks (manual button still available)
 - `npm --prefix server test -- --runInBand` passes for the chat-context and formatting-intent skill tests
 - `npm --prefix server run build` passes after the chatbot context refactor, rejection feedback loop, broader formatting preview support, and behavior summary endpoint
 - `npm --prefix frontend run type-check` passes after the chatbot rejection feedback, editor-focus preview changes, behavior summary UI, auto-format apply targeting fix, and suggestion panel wiring

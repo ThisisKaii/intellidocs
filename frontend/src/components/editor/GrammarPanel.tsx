@@ -1,11 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertCircle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Loader2,
 } from 'lucide-react'
 import { api } from '@/services/api'
 
@@ -26,6 +25,10 @@ interface GrammarPanelProps {
   text: string
   activeIssues?: GrammarIssue[]
   onCheckComplete?: (issues: GrammarIssue[]) => void
+  autoCheck?: boolean
+  autoCheckDelayMs?: number
+  autoCheckCooldownMs?: number
+  showPanel?: boolean
 }
 
 /** Build a user-facing grammar result from grammar and spelling API responses. */
@@ -83,10 +86,17 @@ export default function GrammarPanel({
   text,
   activeIssues,
   onCheckComplete,
-}: GrammarPanelProps): JSX.Element {
+  autoCheck = false,
+  autoCheckDelayMs = 2500,
+  autoCheckCooldownMs = 12000,
+  showPanel = true,
+}: GrammarPanelProps): JSX.Element | null {
   const [issues, setIssues] = useState<GrammarResult | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [expanded, setExpanded] = useState<boolean>(true)
+  const autoCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastAutoCheckAtRef = useRef<number>(0)
+  const lastCheckedTextRef = useRef<string>('')
 
   // Strip HTML tags so the panel works whether it receives plain text or raw HTML
   const plainText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -125,6 +135,50 @@ export default function GrammarPanel({
     } finally {
       setLoading(false)
     }
+  }
+
+  /** Auto-run grammar/spell checks after typing pauses. */
+  useEffect(() => {
+    if (!autoCheck) {
+      return
+    }
+
+    if (loading) {
+      return
+    }
+
+    if (plainText.length < 20) {
+      return
+    }
+
+    if (plainText === lastCheckedTextRef.current) {
+      return
+    }
+
+    if (autoCheckTimerRef.current) {
+      clearTimeout(autoCheckTimerRef.current)
+    }
+
+    autoCheckTimerRef.current = setTimeout(() => {
+      const now = Date.now()
+      if (now - lastAutoCheckAtRef.current < autoCheckCooldownMs) {
+        return
+      }
+
+      lastAutoCheckAtRef.current = now
+      lastCheckedTextRef.current = plainText
+      void runCheck()
+    }, autoCheckDelayMs)
+
+    return () => {
+      if (autoCheckTimerRef.current) {
+        clearTimeout(autoCheckTimerRef.current)
+      }
+    }
+  }, [autoCheck, autoCheckDelayMs, autoCheckCooldownMs, loading, plainText])
+
+  if (!showPanel) {
+    return null
   }
 
   return (
@@ -191,57 +245,6 @@ export default function GrammarPanel({
             style={{ overflow: 'hidden' }}
           >
             <div style={{ padding: '0.75rem', borderTop: '1px solid var(--border)' }}>
-              <button
-                type="button"
-                onMouseDown={(event) => {
-                  event.preventDefault()
-                  runCheck()
-                }}
-                disabled={loading || plainText.length < 5}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem',
-                  backgroundColor: 'var(--primary)',
-                  color: 'var(--primary-foreground)',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  padding: '0.625rem 1rem',
-                  borderRadius: '0.375rem',
-                  border: 'none',
-                  cursor: loading || plainText.length < 5 ? 'not-allowed' : 'pointer',
-                  opacity: loading || plainText.length < 5 ? 0.5 : 1,
-                  transition: 'opacity 150ms, box-shadow 150ms',
-                }}
-                onMouseEnter={(e) => {
-                  if (!loading && plainText.length >= 5) {
-                    (e.currentTarget as HTMLButtonElement).style.opacity = '0.9'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!loading && plainText.length >= 5) {
-                    (e.currentTarget as HTMLButtonElement).style.opacity = '1'
-                  }
-                }}
-                onFocus={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 0 2px var(--ring)'
-                }}
-                onBlur={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'
-                }}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 style={{ width: '14px', height: '14px' }} className="animate-spin" />
-                    Checking…
-                  </>
-                ) : (
-                  <>Check document</>
-                )}
-              </button>
-
               {issues ? (
                 <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontStyle: 'italic', margin: 0 }}>

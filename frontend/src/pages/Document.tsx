@@ -957,11 +957,15 @@ export default function Document(): JSX.Element {
                   )}
                 </div>
 
-                {/* Grammar panel */}
+                {/* Grammar auto-check (panel hidden) */}
                 <GrammarPanel
                   text={content}
                   activeIssues={grammarIssues}
                   onCheckComplete={setGrammarIssues}
+                  autoCheck
+                  autoCheckDelayMs={2500}
+                  autoCheckCooldownMs={12000}
+                  showPanel={false}
                 />
 
                 {/* Session stats */}
