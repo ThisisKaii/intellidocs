@@ -1,54 +1,137 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, type DocumentRecord } from '@/services/api'
+import { api, type DocumentRecord, type FolderRecord } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
-import { DriveTable, type DriveDocumentRow, type DriveTableEditState } from '@/components/drive/DriveTable'
-import DriveSidebar from '@/components/drive/DriveSidebar'
-import { LogOut } from 'lucide-react'
+import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
+import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
+import { LogOut, Search } from 'lucide-react'
+
+/** One day in milliseconds — used for the "Recent" filter. */
+const RECENT_MS = 7 * 24 * 60 * 60 * 1000
 
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate()
   const { logout } = useAuth()
 
-  const [documents, setDocuments] = useState<DocumentRecord[]>([])
+  /* ── Core data ─────────────────────────────────────── */
+  const [allDocuments, setAllDocuments] = useState<DocumentRecord[]>([])
+  const [folderDocuments, setFolderDocuments] = useState<DocumentRecord[]>([])
+  const [folders, setFolders] = useState<FolderRecord[]>([])
+  const [currentFolderChildren, setCurrentFolderChildren] = useState<FolderRecord[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string>('')
+
+  /* ── UI state ──────────────────────────────────────── */
   const [query, setQuery] = useState<string>('')
   const [editing, setEditing] = useState<DriveTableEditState | null>(null)
+  const [selection, setSelection] = useState<FolderSelection>({ type: 'all' })
+  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
+  /* ── Load all documents once ───────────────────────── */
   useEffect(() => {
-    async function loadDocuments(): Promise<void> {
+    async function loadAll(): Promise<void> {
       try {
         setLoading(true)
-        setError('')
-        const data = await api.documents.list()
-        setDocuments(data)
+        const docs = await api.documents.list()
+        setAllDocuments(docs)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load documents')
       } finally {
         setLoading(false)
       }
     }
-    loadDocuments()
+    loadAll()
   }, [])
 
-  const filteredDocs = useMemo(() => {
+  /* ── Load folder-specific documents when navigating into a folder ── */
+  useEffect(() => {
+    if (selection.type !== 'folder' || !selection.folderId) {
+      setFolderDocuments([])
+      setCurrentFolderChildren([])
+      return
+    }
+
+    async function loadFolder(): Promise<void> {
+      try {
+        setLoading(true)
+        const docs = await api.folders.documents(selection.folderId!)
+        setFolderDocuments(docs)
+        // We don't have a sub-folders endpoint yet, so clear children
+        setCurrentFolderChildren([])
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load folder')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadFolder()
+  }, [selection])
+
+  /* ── Derived: which documents to show ──────────────── */
+  const visibleDocuments = useMemo(() => {
+    let docs: DocumentRecord[]
+
+    switch (selection.type) {
+      case 'folder':
+        docs = folderDocuments
+        break
+      case 'recent': {
+        const cutoff = Date.now() - RECENT_MS
+        docs = allDocuments.filter((d) => new Date(d.updated_at).getTime() > cutoff)
+        break
+      }
+      case 'trash':
+        docs = [] // No soft-delete support yet — empty state
+        break
+      default:
+        docs = allDocuments
+    }
+
+    const sorted = [...docs].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    )
+
     const q = query.trim().toLowerCase()
-    const sorted = [...documents].sort((a, b) => {
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    })
     if (!q) return sorted
-    return sorted.filter((doc) => doc.title.toLowerCase().includes(q))
-  }, [documents, query])
+    return sorted.filter((d) => d.title.toLowerCase().includes(q))
+  }, [allDocuments, folderDocuments, selection, query])
+
+  /** Folders to display in the main content area (top-level or sub-folders). */
+  const visibleFolders = useMemo((): FolderRecord[] => {
+    if (selection.type === 'folder') return currentFolderChildren
+    if (selection.type === 'all') {
+      const q = query.trim().toLowerCase()
+      if (!q) return folders
+      return folders.filter((f) => f.name.toLowerCase().includes(q))
+    }
+    return []
+  }, [selection, folders, currentFolderChildren, query])
+
+  /* ── Actions ───────────────────────────────────────── */
 
   async function handleCreateDocument(): Promise<void> {
     try {
       setError('')
       const doc = await api.documents.create('Untitled document')
+      if (selection.type === 'folder' && selection.folderId) {
+        try {
+          await api.folders.addDocument(selection.folderId, doc.id)
+        } catch { /* best-effort */ }
+      }
       navigate(`/document/${doc.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create document')
     }
+  }
+
+  function handleCreateFolder(): void {
+    // Trigger the sidebar inline create — we simply create via API and refresh
+    const name = prompt('Folder name:')
+    if (!name?.trim()) return
+    api.folders.create(name.trim())
+      .then((created) => setFolders((prev) => [...prev, created]))
+      .catch(() => setError('Failed to create folder'))
   }
 
   function handleLogout(): void {
@@ -56,8 +139,51 @@ export default function HomePage(): JSX.Element {
     navigate('/login')
   }
 
-  function handleStartEdit(doc: DriveDocumentRow): void {
-    setEditing({ id: doc.id, title: doc.title })
+  /** Sidebar navigation. */
+  function handleSelectView(sel: FolderSelection): void {
+    setSelection(sel)
+    setSelectedIds(new Set())
+    setEditing(null)
+    if (sel.type === 'folder' && sel.folderId && sel.folderName) {
+      setBreadcrumbs([{ id: sel.folderId, name: sel.folderName }])
+    } else {
+      setBreadcrumbs([])
+    }
+  }
+
+  /** Navigate into a folder from the main content area. */
+  function handleOpenFolder(folder: FolderRecord): void {
+    const newSel: FolderSelection = {
+      type: 'folder',
+      folderId: folder.folder_id,
+      folderName: folder.name,
+    }
+    setSelection(newSel)
+    setSelectedIds(new Set())
+    setEditing(null)
+    setBreadcrumbs((prev) => [...prev, { id: folder.folder_id, name: folder.name }])
+  }
+
+  /** Breadcrumb navigation — click a crumb to go back. */
+  function handleBreadcrumbNavigate(crumb: BreadcrumbEntry | null): void {
+    if (!crumb) {
+      setSelection({ type: 'all' })
+      setBreadcrumbs([])
+      setSelectedIds(new Set())
+      return
+    }
+    const idx = breadcrumbs.findIndex((b) => b.id === crumb.id)
+    if (idx < 0) return
+    const newCrumbs = breadcrumbs.slice(0, idx + 1)
+    setBreadcrumbs(newCrumbs)
+    setSelection({ type: 'folder', folderId: crumb.id, folderName: crumb.name })
+    setSelectedIds(new Set())
+  }
+
+  /* ── Editing ───────────────────────────────────────── */
+
+  function handleStartEdit(id: string, title: string, kind: 'file' | 'folder'): void {
+    setEditing({ id, title, kind })
   }
 
   function handleCancelEdit(): void {
@@ -67,12 +193,22 @@ export default function HomePage(): JSX.Element {
   async function handleSaveEdit(): Promise<void> {
     if (!editing) return
     try {
-      await api.documents.update(editing.id, { title: editing.title })
-      setDocuments((docs) =>
-        docs.map((d) => (d.id === editing.id ? { ...d, title: editing.title } : d))
-      )
+      if (editing.kind === 'file') {
+        await api.documents.update(editing.id, { title: editing.title })
+        setAllDocuments((docs) =>
+          docs.map((d) => (d.id === editing.id ? { ...d, title: editing.title } : d))
+        )
+        setFolderDocuments((docs) =>
+          docs.map((d) => (d.id === editing.id ? { ...d, title: editing.title } : d))
+        )
+      } else {
+        await api.folders.rename(editing.id, editing.title)
+        setFolders((prev) =>
+          prev.map((f) => (f.folder_id === editing.id ? { ...f, name: editing.title } : f))
+        )
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to rename document')
+      setError(err instanceof Error ? err.message : 'Failed to rename')
     } finally {
       setEditing(null)
     }
@@ -82,160 +218,169 @@ export default function HomePage(): JSX.Element {
     if (editing) setEditing({ ...editing, title: nextTitle })
   }
 
-  async function handleDelete(id: string): Promise<void> {
+  /* ── Delete ────────────────────────────────────────── */
+
+  async function handleDelete(id: string, kind: 'file' | 'folder'): Promise<void> {
     try {
-      await api.documents.delete(id)
-      setDocuments((docs) => docs.filter((d) => d.id !== id))
+      if (kind === 'file') {
+        await api.documents.delete(id)
+        setAllDocuments((docs) => docs.filter((d) => d.id !== id))
+        setFolderDocuments((docs) => docs.filter((d) => d.id !== id))
+      } else {
+        await api.folders.delete(id)
+        setFolders((prev) => prev.filter((f) => f.folder_id !== id))
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete document')
+      setError(err instanceof Error ? err.message : 'Failed to delete')
     }
   }
 
-  return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--background)', color: 'var(--foreground)' }}>
-      {/* ── Sidebar ────────────────────────────────────────── */}
-      <DriveSidebar activeId="drive" onCreate={handleCreateDocument} />
+  /* ── Selection ─────────────────────────────────────── */
 
-      {/* ── Main Content Area ──────────────────────────────── */}
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-        
-        {/* ── Top Header (Search & Actions) ─────────────── */}
-        <header
-          style={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 40,
-            width: '100%',
-            borderBottom: '1px solid var(--border)',
-            backgroundColor: 'var(--background)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              height: '64px',
-              padding: '0 2rem',
-              gap: '1rem',
-            }}
-          >
+  const handleSelect = useCallback((id: string, event: React.MouseEvent) => {
+    if (event.ctrlKey || event.metaKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    } else if (event.shiftKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.add(id)
+        return next
+      })
+    } else {
+      setSelectedIds(new Set([id]))
+    }
+  }, [])
+
+  function handleClearSelection(): void {
+    setSelectedIds(new Set())
+  }
+
+  /* ── Drag and Drop ─────────────────────────────────── */
+
+  function handleDragStart(e: React.DragEvent, id: string): void {
+    e.dataTransfer.setData('text/document-id', id)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  async function handleMoveToFolder(docId: string, folderId: string): Promise<void> {
+    try {
+      await api.folders.addDocument(folderId, docId)
+      // Remove from the current visible list if we're at root
+      if (selection.type === 'all') {
+        // Document is still in allDocuments but now inside a folder
+        // Optionally we could remove it from root view — depends on desired behavior
+      }
+    } catch {
+      setError('Failed to move document')
+    }
+  }
+
+  /* ── Page title ────────────────────────────────────── */
+  const pageTitle = useMemo((): string => {
+    switch (selection.type) {
+      case 'folder':
+        return selection.folderName ?? 'Folder'
+      case 'recent':
+        return 'Recent'
+      case 'trash':
+        return 'Trash'
+      default:
+        return 'My Documents'
+    }
+  }, [selection])
+
+  /* ─── Render ───────────────────────────────────────── */
+
+  return (
+    <div className="flex min-h-screen bg-background text-foreground">
+      {/* ── Sidebar ──────────────────────────────────── */}
+      <DriveSidebar
+        selection={selection}
+        onCreate={handleCreateDocument}
+        onCreateFolder={handleCreateFolder}
+        onSelectView={handleSelectView}
+      />
+
+      {/* ── Main ─────────────────────────────────────── */}
+      <div className="flex flex-col flex-1 min-w-0 bg-[#f8f9fa] h-screen overflow-hidden px-4 pb-4">
+        {/* ── Top Header ────────────────────────────── */}
+        <header className="w-full flex-shrink-0 pt-3 pb-3">
+          <div className="flex items-center justify-between h-14">
             {/* Search */}
-            <div style={{ flex: 1, maxWidth: '600px' }}>
+            <div className="flex-1 max-w-2xl relative ml-4">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-[#444746] pointer-events-none" strokeWidth={2} />
               <input
                 type="text"
-                placeholder="Search in Drive…"
+                placeholder="Search in Drive"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  height: '40px',
-                  borderRadius: '20px',
-                  border: 'none',
-                  backgroundColor: 'var(--secondary)',
-                  color: 'var(--foreground)',
-                  fontSize: '0.9375rem',
-                  padding: '0 1.25rem',
-                  outline: 'none',
-                  fontFamily: 'inherit',
-                  transition: 'background-color 150ms, box-shadow 150ms',
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--background)'
-                  e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow), 0 0 0 3px rgba(59,130,246,0.15)'
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--secondary)'
-                  e.currentTarget.style.boxShadow = 'none'
-                }}
+                className="w-full h-12 pl-12 pr-4 rounded-full bg-[#edf2fc] hover:bg-[#e9eef6] text-[#1f1f1f] text-[1rem] outline-none transition-colors focus:bg-white focus:shadow-md"
+                style={{ fontFamily: 'inherit', border: 'none' }}
               />
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="flex items-center gap-3 shrink-0 ml-4">
               <button
                 onClick={handleLogout}
                 title="Sign out"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  border: 'none',
-                  backgroundColor: 'transparent',
-                  color: 'var(--muted-foreground)',
-                  cursor: 'pointer',
-                  transition: 'color 150ms, background-color 150ms',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--secondary)'
-                  e.currentTarget.style.color = 'var(--foreground)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent'
-                  e.currentTarget.style.color = 'var(--muted-foreground)'
-                }}
+                className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-transparent text-[#444746] border-none cursor-pointer transition-colors hover:bg-black/5"
               >
-                <LogOut style={{ width: '16px', height: '16px' }} />
+                <LogOut className="size-5" />
               </button>
             </div>
           </div>
         </header>
 
-        {/* ── Document Grid ───────────────────────────────── */}
-        <main
-          style={{
-            flex: 1,
-            width: '100%',
-            padding: '2rem',
-            boxSizing: 'border-box',
-          }}
-        >
+        {/* ── Content Wrapper ───────────────────────── */}
+        <main className="flex-1 bg-white rounded-2xl overflow-y-auto px-6 py-6" style={{ boxShadow: '0 1px 2px 0 rgba(60,64,67,0.1)' }}>
           {/* Section header */}
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h1
-              style={{
-                fontSize: '1.25rem',
-                fontWeight: 600,
-                color: 'var(--foreground)',
-                margin: '0 0 0.25rem 0',
-              }}
-            >
-              My Documents
-            </h1>
+          <div className="mb-4">
+            <h1 className="text-2xl font-normal text-[#1f1f1f] m-0">{pageTitle}</h1>
+            {selection.type === 'trash' && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Items in trash are permanently deleted. Soft-delete support coming soon.
+              </p>
+            )}
           </div>
 
           {/* Error banner */}
           {error && (
-            <div
-              style={{
-                backgroundColor: 'rgba(255,91,79,0.08)',
-                border: '1px solid rgba(255,91,79,0.25)',
-                borderRadius: '0.5rem',
-                padding: '0.625rem 0.875rem',
-                marginBottom: '1.5rem',
-                fontSize: '0.875rem',
-                color: 'var(--destructive)',
-              }}
-            >
+            <div className="bg-destructive/5 border border-destructive/20 rounded-lg px-3.5 py-2.5 mb-6 text-sm text-destructive">
               {error}
             </div>
           )}
 
           <DriveTable
-            documents={filteredDocs}
+            documents={visibleDocuments}
+            folders={visibleFolders}
             loading={loading}
-            error=""
+            breadcrumbs={breadcrumbs}
             editing={editing}
+            selectedIds={selectedIds}
+            onBreadcrumbNavigate={handleBreadcrumbNavigate}
             onCreate={handleCreateDocument}
+            onCreateFolder={handleCreateFolder}
+            onOpenFolder={handleOpenFolder}
             onStartEdit={handleStartEdit}
             onCancelEdit={handleCancelEdit}
             onSaveEdit={handleSaveEdit}
             onDelete={handleDelete}
             onTitleChange={handleTitleChange}
+            onSelect={handleSelect}
+            onClearSelection={handleClearSelection}
+            onMoveToFolder={handleMoveToFolder}
+            onDragStart={handleDragStart}
           />
         </main>
       </div>

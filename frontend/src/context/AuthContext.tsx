@@ -18,8 +18,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const savedToken = localStorage.getItem('authToken')
+    const savedUser = localStorage.getItem('authUser')
     if (savedToken) {
       setToken(savedToken)
+      if (savedUser) {
+        try {
+          setUser(JSON.parse(savedUser))
+        } catch (e) {
+          console.error('Failed to parse saved user', e)
+        }
+      }
     }
     setLoading(false)
   }, [])
@@ -28,12 +36,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(userData)
     setToken(authToken)
     localStorage.setItem('authToken', authToken)
+    localStorage.setItem('authUser', JSON.stringify(userData))
   }
 
   const logout = () => {
     setUser(null)
     setToken(null)
     localStorage.removeItem('authToken')
+    localStorage.removeItem('authUser')
   }
 
   const value: AuthContextType = {

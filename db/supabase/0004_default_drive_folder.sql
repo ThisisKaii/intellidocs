@@ -1,13 +1,16 @@
 -- IntelliDocs: create default "My Drive" folder on user signup
 
 create or replace function public.create_default_drive_folder()
-returns trigger as $$
+returns trigger
+language plpgsql
+security definer
+set search_path = public as $$
 begin
   insert into public.folders (user_id, name, parent_id)
   values (new.id, 'My Drive', null);
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 drop trigger if exists trg_create_default_drive_folder on auth.users;
 

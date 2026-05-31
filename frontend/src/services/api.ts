@@ -21,6 +21,15 @@ export interface DocumentRecord {
   updated_at: string
 }
 
+export interface FolderRecord {
+  folder_id: string
+  user_id: string
+  name: string
+  parent_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface BehaviorEvent {
   action: string
   timestamp: string
@@ -279,7 +288,7 @@ export const api = {
       })
     },
   },
-    mcp: {
+  mcp: {
     listTools: async (): Promise<MCPToolListResponse> => {
       return fetchAPI<MCPToolListResponse>('mcp/tools')
     },
@@ -291,6 +300,47 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tool, args }),
+      })
+    },
+  },
+
+  folders: {
+    /** Fetch all top-level folders for the current user. */
+    list: async (): Promise<FolderRecord[]> => {
+      return fetchAPI<FolderRecord[]>('folders')
+    },
+    /** Create a new folder. */
+    create: async (name: string): Promise<FolderRecord> => {
+      return fetchAPI<FolderRecord>('folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+    },
+    /** Rename an existing folder. */
+    rename: async (id: string, name: string): Promise<FolderRecord> => {
+      return fetchAPI<FolderRecord>(`folders/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+    },
+    /** Delete a folder. */
+    delete: async (id: string): Promise<null> => {
+      return fetchAPI<null>(`folders/${id}`, {
+        method: 'DELETE',
+      })
+    },
+    /** List documents inside a folder. */
+    documents: async (id: string): Promise<DocumentRecord[]> => {
+      return fetchAPI<DocumentRecord[]>(`folders/${id}/documents`)
+    },
+    /** Move a document into a folder. */
+    addDocument: async (folderId: string, documentId: string): Promise<{ status: string }> => {
+      return fetchAPI<{ status: string }>(`folders/${folderId}/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId }),
       })
     },
   },

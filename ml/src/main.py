@@ -140,9 +140,23 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
                 feature_frame[column] = 0
 
         ordered_features = feature_frame[feature_columns]
-        prediction = model.predict(ordered_features)[0]
-        probabilities = model.predict_proba(ordered_features)[0]
-        confidence = float(max(probabilities))
+
+        # Rule-based guard: if the text does not contain formatting markers/symbols,
+        # it is automatically a paragraph. This avoids model hallucination / false positives.
+        has_marker = (
+            text.startswith("    ") or
+            text.startswith("```") or
+            text.startswith(("* ", "- ", "# ", "> ")) or
+            (text.startswith("=") and text.endswith("="))
+        )
+
+        if not has_marker:
+            prediction = "paragraph"
+            confidence = 1.0
+        else:
+            prediction = model.predict(ordered_features)[0]
+            probabilities = model.predict_proba(ordered_features)[0]
+            confidence = float(max(probabilities))
     except FileNotFoundError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
     except Exception as error:
