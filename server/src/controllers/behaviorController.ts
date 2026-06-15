@@ -4,6 +4,7 @@ import { BehaviorEvent, BehaviorSummaryLatestEvent, BehaviorSummaryResponse } fr
 import { runAggregatorOnce } from "../skills/runAggregator";
 import { runFeatureExtractorOnce } from "../skills/featureExtractor";
 import { runFeatureExportOnce } from "../skills/featureExport";
+import { getDocumentById } from "../models/documentModel";
 
 // Increment a count bucket for behavior summary values
 function incrementCount(bucket: Record<string, number>, key: string): void {
@@ -66,7 +67,7 @@ function buildBehaviorSummary(
   }
 }
 
-// Log a behavior event to Redis
+// Log a behavior event to Redis (skipped if the document is isolated)
 export async function logBehaviorEvent(req: Request, res: Response): Promise<void> {
   try {
     const userId = req.user?.id
@@ -80,6 +81,17 @@ export async function logBehaviorEvent(req: Request, res: Response): Promise<voi
     if (!body?.action || !body?.timestamp || !body?.documentId) {
       res.status(400).json({ error: 'Invalid behavior event payload' })
       return
+    }
+
+    // Check if the document is isolated before logging
+    try {
+      const doc = await getDocumentById(body.documentId, userId)
+      if (doc.is_isolated) {
+        res.status(202).json({ message: "Behavior event skipped (document isolated)" })
+        return
+      }
+    } catch {
+      // If the document can't be fetched, still allow logging
     }
 
     await appendBehaviorEvent(userId, body)

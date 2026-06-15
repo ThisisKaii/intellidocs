@@ -16,7 +16,7 @@ import AIChatbot from '@/components/editor/AIChatbot'
 import SuggestionOverlay, { type GrammarIssue } from '@/components/editor/SuggestionOverlay'
 import McpDebugPanel from '@/components/editor/McpDebugPanel'
 
-import { ArrowLeft, Save, Moon, Sun } from 'lucide-react'
+import { ArrowLeft, Save, Moon, Sun, ShieldOff, Shield } from 'lucide-react'
 
 const AUTOSAVE_DELAY = 8000
 
@@ -205,6 +205,7 @@ export default function Document(): JSX.Element {
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
+  const [isIsolated, setIsIsolated] = useState<boolean>(false)
 
   const chatContent = getPlainText(content)
 
@@ -238,6 +239,7 @@ export default function Document(): JSX.Element {
         setLastSavedContent(nextContent)
         setSaveStatus('saved')
         updateWordCount(nextContent)
+        setIsIsolated(doc.is_isolated ?? false)
       } catch (error) {
         console.error(error)
       }
@@ -879,6 +881,48 @@ export default function Document(): JSX.Element {
               }}
             >
               {isDark ? <Sun style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <Moon style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!id) return
+                const next = !isIsolated
+                setIsIsolated(next)
+                api.documents.toggleIsolation(id, next).catch((err) => {
+                  console.error('Toggle isolation failed', err)
+                  setIsIsolated(!next)
+                })
+              }}
+              title={isIsolated ? 'Document is isolated — behavioral data is NOT being collected. Click to resume learning.' : 'Document is NOT isolated — behavioral data is being collected. Click to isolate.'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                borderRadius: '0.5rem',
+                border: 'none',
+                boxShadow: '0 0 0 1px var(--border-shadow)',
+                backgroundColor: isIsolated ? 'hsl(0, 60%, 95%)' : 'transparent',
+                color: isIsolated ? 'hsl(0, 70%, 50%)' : 'var(--muted-foreground)',
+                cursor: 'pointer',
+                transition: 'background-color 150ms, color 150ms',
+              }}
+              onMouseEnter={(e) => {
+                if (!isIsolated) {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)'
+                  ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isIsolated) {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
+                  ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'
+                }
+              }}
+            >
+              {isIsolated ? <ShieldOff style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <Shield style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
             </button>
           </div>
         </div>

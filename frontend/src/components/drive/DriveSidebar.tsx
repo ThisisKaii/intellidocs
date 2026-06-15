@@ -4,6 +4,7 @@ import {
   Trash,
   Plus,
   FolderIcon,
+  HardDrive,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -34,6 +35,7 @@ interface DriveSidebarProps {
   onCreate: () => void
   onCreateFolder: () => void
   onSelectView: (sel: FolderSelection) => void
+  onImportFromDrive?: () => void
 }
 
 const NAV_ITEMS: SidebarItem[] = [
@@ -48,6 +50,7 @@ function DriveSidebar({
   onCreate,
   onCreateFolder,
   onSelectView,
+  onImportFromDrive,
 }: DriveSidebarProps): JSX.Element {
   function isNavActive(item: SidebarItem): boolean {
     if (selection.type === 'folder') return false
@@ -81,13 +84,18 @@ function DriveSidebar({
               <span>New</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" style={{ minWidth: '160px' }}>
+          <DropdownMenuContent align="start" style={{ minWidth: '180px' }}>
             <DropdownMenuItem onClick={onCreate} className="gap-2 py-2 cursor-pointer">
               <FileText className="size-4" /> New Document
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onCreateFolder} className="gap-2 py-2 cursor-pointer">
               <FolderIcon className="size-4 text-[#4285f4]" /> New Folder
             </DropdownMenuItem>
+            {onImportFromDrive && (
+              <DropdownMenuItem onClick={onImportFromDrive} className="gap-2 py-2 cursor-pointer">
+                <HardDrive className="size-4 text-[#0f9d58]" /> Import from Drive
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

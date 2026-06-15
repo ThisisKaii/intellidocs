@@ -20,12 +20,14 @@ export const updateDocumentSchema = z
       .optional(),
     content: z.string().max(200000, 'Content is too large').optional(),
     formatting_history: z.array(z.string()).max(500).optional(),
+    is_isolated: z.boolean().optional(),
   })
   .refine(
     (data) =>
       data.title !== undefined ||
       data.content !== undefined ||
-      data.formatting_history !== undefined,
+      data.formatting_history !== undefined ||
+      data.is_isolated !== undefined,
     {
       message: 'At least one field must be provided',
     }

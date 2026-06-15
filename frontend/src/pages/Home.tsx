@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
 import { LogOut, Search } from 'lucide-react'
+import DriveImportDialog from '@/components/DriveImportDialog'
 
 /** One day in milliseconds — used for the "Recent" filter. */
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
@@ -27,6 +28,7 @@ export default function HomePage(): JSX.Element {
   const [selection, setSelection] = useState<FolderSelection>({ type: 'all' })
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [driveOpen, setDriveOpen] = useState<boolean>(false)
 
   /* ── Load all documents once ───────────────────────── */
   useEffect(() => {
@@ -137,6 +139,22 @@ export default function HomePage(): JSX.Element {
   function handleLogout(): void {
     logout()
     navigate('/login')
+  }
+
+  async function handleImportDoc(title: string, html: string): Promise<void> {
+    try {
+      setError('')
+      const doc = await api.documents.create(title)
+      await api.documents.update(doc.id, { content: html })
+      if (selection.type === 'folder' && selection.folderId) {
+        try {
+          await api.folders.addDocument(selection.folderId, doc.id)
+        } catch { /* best-effort */ }
+      }
+      navigate(`/document/${doc.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import document')
+    }
   }
 
   /** Sidebar navigation. */
@@ -309,6 +327,7 @@ export default function HomePage(): JSX.Element {
         onCreate={handleCreateDocument}
         onCreateFolder={handleCreateFolder}
         onSelectView={handleSelectView}
+        onImportFromDrive={() => setDriveOpen(true)}
       />
 
       {/* ── Main ─────────────────────────────────────── */}
@@ -384,6 +403,12 @@ export default function HomePage(): JSX.Element {
           />
         </main>
       </div>
+
+      <DriveImportDialog
+        open={driveOpen}
+        onClose={() => setDriveOpen(false)}
+        onImport={handleImportDoc}
+      />
     </div>
   )
 }

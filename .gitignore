@@ -44,3 +44,6 @@ ml/models/user_models/
 #Graphify
 graphify-out/
 .agents/
+
+
+about.md

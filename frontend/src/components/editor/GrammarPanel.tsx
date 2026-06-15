@@ -147,7 +147,7 @@ export default function GrammarPanel({
       return
     }
 
-    if (plainText.length < 20) {
+    if (plainText.length < 5) {
       return
     }
 

@@ -8,6 +8,7 @@ import pandas as pd
 from scipy.sparse import hstack, csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+import nltk
 
 
 MODEL_PATH = os.getenv("GRAMMAR_MODEL_PATH", "models/grammar_model.pkl")
@@ -146,7 +147,7 @@ def train_model(dataframe: pd.DataFrame) -> dict[str, Any]:
     """Train a grammar quality classifier using TF-IDF and structural features."""
     vectorizer = TfidfVectorizer(
         lowercase=True,
-        ngram_range=(1, 2),
+        ngram_range=(1, 3),
         max_features=12000,
     )
     tfidf_features = vectorizer.fit_transform(dataframe["text"])
@@ -365,12 +366,154 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
     return issues
 
 
+def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
+    """Detect subject-verb mismatch and tense shifts using NLTK POS tagging."""
+    issues: list[dict[str, str]] = []
+
+    VERB_TO_SINGULAR = {
+        "have": "has", "go": "goes", "do": "does", "run": "runs", "write": "writes",
+        "read": "reads", "make": "makes", "say": "says", "want": "wants", "need": "needs",
+        "think": "thinks", "find": "finds", "give": "gives", "tell": "tells", "work": "works",
+        "call": "calls", "try": "tries", "ask": "asks", "feel": "feels", "leave": "leaves",
+        "keep": "keeps", "seem": "seems", "show": "shows", "know": "knows", "take": "takes",
+        "come": "comes", "are": "is", "were": "was",
+    }
+    VERB_TO_PLURAL = {v: k for k, v in VERB_TO_SINGULAR.items() if k != "were"}
+    VERB_TO_PLURAL.update({"is": "are", "was": "were"})
+
+    PAST_TO_PRESENT = {
+        "ran": "runs", "played": "plays", "wrote": "writes", "read": "reads", "made": "makes",
+        "said": "says", "wanted": "wants", "needed": "needs", "thought": "thinks", "found": "finds",
+        "gave": "gives", "told": "tells", "worked": "works", "called": "calls", "tried": "tries",
+        "asked": "asks", "felt": "feels", "left": "leaves", "kept": "keeps", "seemed": "seems",
+        "showed": "shows", "knew": "knows", "took": "takes", "came": "comes", "was": "is",
+        "were": "are", "went": "goes", "did": "does", "had": "has",
+    }
+    PRESENT_TO_PAST = {v: k for k, v in PAST_TO_PRESENT.items()}
+    PAST_TO_PRESENT_PLURAL = {
+        "ran": "run", "played": "play", "wrote": "write", "read": "read", "made": "make",
+        "said": "say", "wanted": "want", "needed": "need", "thought": "think", "found": "find",
+        "gave": "give", "told": "tell", "worked": "work", "called": "call", "tried": "try",
+        "asked": "ask", "felt": "feel", "left": "leave", "kept": "keep", "seemed": "seem",
+        "showed": "show", "knew": "know", "took": "take", "came": "come", "was": "were",
+        "were": "are", "went": "go", "did": "do", "had": "have",
+    }
+
+    try:
+        tokens = nltk.word_tokenize(text)
+        tagged = nltk.pos_tag(tokens)
+    except Exception as e:
+        print(f"[grammar_checker] NLTK tokenization/tagging failed: {e}")
+        return issues
+
+    # 1. Subject-verb agreement
+    for i in range(len(tagged) - 1):
+        w1, t1 = tagged[i]
+        w2, t2 = tagged[i+1]
+        w1_lower = w1.lower()
+        w2_lower = w2.lower()
+
+        # Singular subject + Plural/Base Verb
+        if (t1 in {"NN", "NNP"} or (t1 == "PRP" and w1_lower in {"he", "she", "it"})) and (t2 in {"VBP", "VB"}):
+            if w2_lower in VERB_TO_SINGULAR:
+                sug_verb = VERB_TO_SINGULAR[w2_lower]
+                if w2.istitle():
+                    sug_verb = sug_verb.capitalize()
+                issue = build_issue(
+                    "grammar",
+                    f"{w1} {w2}",
+                    f"{w1} {sug_verb}",
+                    f"Subject '{w1}' is singular; verb '{w2}' should be singular."
+                )
+                issue["source"] = "pos"
+                issues.append(issue)
+
+        # Plural subject + Singular Verb
+        elif (t1 in {"NNS", "NNPS"} or (t1 == "PRP" and w1_lower in {"they", "we", "you"})) and (t2 == "VBZ"):
+            if w2_lower in VERB_TO_PLURAL:
+                sug_verb = VERB_TO_PLURAL[w2_lower]
+                if w2.istitle():
+                    sug_verb = sug_verb.capitalize()
+                issue = build_issue(
+                    "grammar",
+                    f"{w1} {w2}",
+                    f"{w1} {sug_verb}",
+                    f"Subject '{w1}' is plural; verb '{w2}' should be plural."
+                )
+                issue["source"] = "pos"
+                issues.append(issue)
+
+    # 2. Coordinate structures tense shifts (e.g. "he ran and plays")
+    # 2. Coordinate structures tense shifts (e.g. "he ran and plays")
+    is_verb = lambda t: t in {"VBD", "VBZ", "VBP"}
+    for cc_idx in range(len(tagged)):
+        w_cc, t_cc = tagged[cc_idx]
+        if t_cc == "CC":
+            # Search backward for a verb (up to 8 tokens back, stop at sentence boundary or another CC)
+            v1_info = None
+            for j in range(cc_idx - 1, max(-1, cc_idx - 9), -1):
+                w_j, t_j = tagged[j]
+                if w_j in {".", ";", "?", "!"} or t_j == "CC":
+                    break
+                if is_verb(t_j):
+                    v1_info = (w_j, t_j, j)
+                    break
+            
+            # Search forward for a verb (up to 8 tokens forward, stop at sentence boundary or another CC)
+            v2_info = None
+            for j in range(cc_idx + 1, min(len(tagged), cc_idx + 9)):
+                w_j, t_j = tagged[j]
+                if w_j in {".", ";", "?", "!"} or t_j == "CC":
+                    break
+                if is_verb(t_j):
+                    v2_info = (w_j, t_j, j)
+                    break
+            
+            if v1_info and v2_info:
+                w1, t1, idx1 = v1_info
+                w3, t3, idx3 = v2_info
+                
+                # Inconsistent past/present shift
+                if (t1 == "VBD" and t3 in {"VBZ", "VBP"}) or (t1 in {"VBZ", "VBP"} and t3 == "VBD"):
+                    w3_lower = w3.lower()
+                    sug_verb = None
+                    if t1 == "VBD": # Suggest changing second to past
+                        if w3_lower in PRESENT_TO_PAST:
+                            sug_verb = PRESENT_TO_PAST[w3_lower]
+                    else: # Suggest changing second to present (match t1 singular/plural)
+                        if t1 == "VBZ":
+                            if w3_lower in PAST_TO_PRESENT:
+                                sug_verb = PAST_TO_PRESENT[w3_lower]
+                        else:
+                            if w3_lower in PAST_TO_PRESENT_PLURAL:
+                                sug_verb = PAST_TO_PRESENT_PLURAL[w3_lower]
+                    
+                    if sug_verb:
+                        if w3.istitle():
+                            sug_verb = sug_verb.capitalize()
+                        
+                        original_phrase = " ".join([tagged[k][0] for k in range(idx1, idx3 + 1)])
+                        suggestion_phrase = " ".join([tagged[k][0] if k != idx3 else sug_verb for k in range(idx1, idx3 + 1)])
+                        
+                        issue = build_issue(
+                            "grammar",
+                            original_phrase,
+                            suggestion_phrase,
+                            f"Inconsistent tense shift: '{w3}' should match the tense of '{w1}'."
+                        )
+                        issue["source"] = "pos"
+                        issues.append(issue)
+
+    return issues
+
+
 def detect_issues(text: str) -> list[dict[str, str]]:
     """Run the baseline rule-based grammar checks."""
     issues: list[dict[str, str]] = []
     issues.extend(detect_repeated_words(text))
     issues.extend(detect_article_mismatch(text))
     issues.extend(detect_subject_verb_mismatch(text))
+    issues.extend(detect_pos_syntax_issues(text))
     issues.extend(detect_sentence_boundary_issues(text))
 
     deduped: list[dict[str, str]] = []
@@ -425,7 +568,23 @@ def evaluate_text(text: str, model_path: str = MODEL_PATH) -> dict[str, Any]:
         print(f"[grammar_checker] score_text failed: {scoring_error}")
         raw_score = 0.0
 
-    score = calibrate_score(raw_score, len(issues))
+    # Separate POS and baseline rule issues
+    pos_issues = [iss for iss in issues if iss.get("source") == "pos"]
+    rule_issues = [iss for iss in issues if iss.get("source") != "pos"]
+
+    # N-gram score stretched to 0-1
+    floor = 0.0
+    ceiling = 0.60
+    ngram_score = (raw_score - floor) / max(ceiling - floor, 0.01)
+    ngram_score = max(0.0, min(1.0, ngram_score))
+
+    # Penalties
+    rule_penalty = len(rule_issues) * 0.12
+    pos_penalty = len(pos_issues) * 0.18
+
+    # Composite score
+    score = max(0.0, ngram_score - rule_penalty - pos_penalty)
+    score = round(score, 4)
 
     if issues:
         status = "issues"

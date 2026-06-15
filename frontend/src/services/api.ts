@@ -17,6 +17,7 @@ export interface DocumentRecord {
   title: string
   content: string
   formatting_history: unknown[]
+  is_isolated: boolean
   created_at: string
   updated_at: string
 }
@@ -70,6 +71,7 @@ interface UpdateDocumentRequest {
   title?: string
   content?: string
   formatting_history?: string[]
+  is_isolated?: boolean
 }
 
 export interface GrammarIssue {
@@ -140,6 +142,13 @@ export interface MCPToolCall {
 
 export interface MCPToolListResponse { 
   tools: { name: MCPToolName }[]
+}
+
+export interface DriveFile {
+  id: string
+  name: string
+  modifiedTime: string
+  iconLink: string
 }
 
 function getAuthToken(): string | null {
@@ -224,6 +233,14 @@ export const api = {
     delete: async (id: string): Promise<null> => {
       return fetchAPI<null>(`documents/${id}`, {
         method: 'DELETE',
+      })
+    },
+    /** Toggle the is_isolated flag on a document. */
+    toggleIsolation: async (id: string, isIsolated: boolean): Promise<DocumentRecord> => {
+      return fetchAPI<DocumentRecord>(`documents/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_isolated: isIsolated }),
       })
     },
   },
@@ -342,6 +359,31 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documentId }),
       })
+    },
+  },
+
+  drive: {
+    /** Get the Google OAuth2 consent URL. */
+    getAuthUrl: async (): Promise<{ url: string }> => {
+      return fetchAPI<{ url: string }>('drive/auth-url')
+    },
+    /** Check if Google Drive is connected. */
+    status: async (): Promise<{ connected: boolean }> => {
+      return fetchAPI<{ connected: boolean }>('drive/status')
+    },
+    /** Disconnect Google Drive. */
+    disconnect: async (): Promise<{ message: string }> => {
+      return fetchAPI<{ message: string }>('drive/disconnect', {
+        method: 'DELETE',
+      })
+    },
+    /** List Google Docs files. */
+    listFiles: async (): Promise<{ files: DriveFile[] }> => {
+      return fetchAPI<{ files: DriveFile[] }>('drive/files')
+    },
+    /** Export a Google Doc as HTML. */
+    exportFile: async (fileId: string): Promise<{ title: string; html: string }> => {
+      return fetchAPI<{ title: string; html: string }>(`drive/files/${fileId}/export`)
     },
   },
 

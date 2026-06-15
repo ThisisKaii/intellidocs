@@ -4,6 +4,7 @@ export interface Document {
   title: string
   content: string
   formatting_history: unknown[]
+  is_isolated: boolean
   created_at: string
   updated_at: string
 }
@@ -26,6 +27,7 @@ export interface UpdateDocumentRequest {
   title?: string
   content?: string
   formatting_history?: string[]
+  is_isolated?: boolean
 }
 
 export interface BehaviorEvent {
