@@ -1,0 +1,138 @@
+// IntelliDocs — Database Design (dbdiagram.io DBML)
+// Paste this into https://dbdiagram.io/d to generate the diagram
+
+// ============================================
+// Tier 1: Supabase PostgreSQL
+// ============================================
+
+Table users {
+  id uuid [pk]
+  display_name varchar
+  email varchar [unique]
+  phone text
+  providers text
+  provider_type text
+  created_at timestamptz
+  last_sign_in_at timestamptz
+
+  Note: 'Managed by Supabase Auth'
+}
+
+Table documents {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  title text [not null]
+  content text
+  formatting_history jsonb
+  is_isolated boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table folders {
+  folder_id uuid [pk]
+  user_id uuid [ref: > users.id]
+  name text [not null]
+  parent_id uuid [ref: > folders.folder_id]
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table folder_documents {
+  folder_id uuid [pk, ref: > folders.folder_id]
+  document_id uuid [pk, ref: > documents.id]
+  added_at timestamptz
+  updated_at timestamptz
+}
+
+Table formatting_actions {
+  action_id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  user_id uuid [ref: > users.id]
+  action_type text [not null]
+  action_source text [not null]
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table ai_suggestions {
+  suggestion_id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  user_id uuid [ref: > users.id]
+  suggested_format text [not null]
+  confidence numeric
+  reason text
+  status text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table suggestion_feedback {
+  feedback_id uuid [pk]
+  suggestion_id uuid [ref: > ai_suggestions.suggestion_id]
+  user_id uuid [ref: > users.id]
+  decision text [not null]
+  decided_at timestamptz
+  updated_at timestamptz
+}
+
+Table grammar_issues {
+  issue_id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  user_id uuid [ref: > users.id]
+  issue_type text [not null]
+  original_text text [not null]
+  suggestion_text text
+  resolved_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table google_tokens {
+  id uuid [pk]
+  user_id uuid [unique, ref: > users.id]
+  access_token text [not null]
+  refresh_token text [not null]
+  expiry_date bigint
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// ============================================
+// Tier 3: DuckDB — Analytical Database
+// ============================================
+
+Table behavior_events {
+  user_id text
+  document_id text
+  action text
+  event_ts timestamp
+  event_ts_raw text
+  ingested_at timestamp
+  source_key text
+
+  Note: 'DuckDB — aggregated from Redis'
+}
+
+Table formatting_features {
+  user_id text
+  document_id text
+  total_events integer
+  bold_count integer
+  italic_count integer
+  underline_count integer
+  heading1_count integer
+  heading2_count integer
+  heading3_count integer
+  ordered_list_count integer
+  unordered_list_count integer
+  blockquote_count integer
+  code_block_count integer
+  last_action text
+  last_event_ts timestamp
+  window_start timestamp
+  window_end timestamp
+  ingested_at timestamp
+
+  Note: 'DuckDB — ML training features'
+}
