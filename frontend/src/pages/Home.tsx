@@ -32,18 +32,22 @@ export default function HomePage(): JSX.Element {
 
   /* ── Load all documents once ───────────────────────── */
   useEffect(() => {
-    async function loadAll(): Promise<void> {
+    async function loadInitialData(): Promise<void> {
       try {
         setLoading(true)
-        const docs = await api.documents.list()
+        const [docs, loadedFolders] = await Promise.all([
+          api.documents.list(),
+          api.folders.list(),
+        ])
         setAllDocuments(docs)
+        setFolders(loadedFolders)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load documents')
+        setError(err instanceof Error ? err.message : 'Failed to load drive data')
       } finally {
         setLoading(false)
       }
     }
-    loadAll()
+    loadInitialData()
   }, [])
 
   /* ── Load folder-specific documents when navigating into a folder ── */
