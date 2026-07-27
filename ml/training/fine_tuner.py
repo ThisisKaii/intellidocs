@@ -8,11 +8,15 @@ import duckdb
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 
+# NOTE: This module performs Supervised Fine-Tuning (SFT) based on labeled user feedback events.
+# Accepted suggestions provide positive formatting labels; rejected suggestions provide negative labels.
+# This system does NOT use reinforcement learning, policy gradients, or reward functions.
+
 
 def parse_args() -> argparse.Namespace:
-    """Parse CLI arguments for fine-tuning."""
+    """Parse CLI arguments for supervised fine-tuning."""
     parser = argparse.ArgumentParser(
-        description="Fine-tune a formatting model for a specific user."
+        description="Supervised fine-tuning of a formatting model for a specific user based on historical behavior."
     )
     parser.add_argument("--user-id", required=True, help="Supabase user_id (UUID)")
     parser.add_argument(
@@ -31,7 +35,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_user_features(conn: duckdb.DuckDBPyConnection, user_id: str) -> pd.DataFrame:
-    """Load formatting_features rows for one user."""
+    """Load supervised formatting_features rows for one user."""
     query = """
     SELECT *
     FROM formatting_features
@@ -41,7 +45,7 @@ def load_user_features(conn: duckdb.DuckDBPyConnection, user_id: str) -> pd.Data
 
 
 def select_feature_columns(frame: pd.DataFrame) -> List[str]:
-    """Select numeric feature columns for training."""
+    """Select numeric feature columns for supervised training."""
     numeric_cols = []
     for col in frame.columns:
         if pd.api.types.is_numeric_dtype(frame[col]):
@@ -51,7 +55,7 @@ def select_feature_columns(frame: pd.DataFrame) -> List[str]:
 
 
 def train_user_model(frame: pd.DataFrame, feature_columns: List[str]) -> RandomForestClassifier:
-    """Train a user-specific RandomForest model."""
+    """Train a personalized user-specific RandomForest classifier via supervised learning."""
     x_train = frame[feature_columns]
     y_train = frame["last_action"]
 
@@ -71,7 +75,7 @@ def save_user_model(
     feature_columns: List[str],
     output_path: str,
 ) -> None:
-    """Save the user-specific model to disk."""
+    """Save the fine-tuned user model to disk."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     payload = {
@@ -85,7 +89,7 @@ def save_user_model(
 
 
 def main() -> None:
-    """Fine-tune a model for one user using DuckDB features."""
+    """Fine-tune a model for one user using DuckDB supervised features."""
     args = parse_args()
     duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
     output_dir = os.getenv("USER_MODEL_DIR", "ml/models/user_models")
@@ -117,7 +121,7 @@ def main() -> None:
     output_path = os.path.join(output_dir, f"user_{args.user_id}.pkl")
     save_user_model(model, feature_columns, output_path)
 
-    print(f"✅ User model saved: {output_path}")
+    print(f"✅ Supervised user model fine-tuned & saved: {output_path}")
     print(f"✅ Trained on {len(frame)} samples with labels: {frame['last_action'].nunique()}")
 
 

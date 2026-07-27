@@ -2,7 +2,6 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
-
 import express from 'express'
 import cors from 'cors'
 import documentRoutes from './routes/documentRoutes'
@@ -12,9 +11,10 @@ import predictionRoutes from './routes/predictionRoutes'
 import aiRoutes from './routes/aiRoutes'
 import folderRoutes from './routes/folderRoutes'
 import driveRoutes from './routes/driveRoutes'
+import professorRoutes from './routes/professorRoutes'
+import notificationRoutes from './routes/notificationRoutes'
 import mcpRouter from './mcp/mcpServer'
 import { authMiddleware } from './middleware/authMiddleware'
-
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -38,14 +38,23 @@ app.get('/health', (req, res) => {
   })
 })
 
-
 // Root route
 app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to IntelliDocs API',
-    version: '0.1.0'
+    version: '0.2.0'
   })
 })
+
+// TODO: Administrator Role Support — NOT YET FINALIZED
+// Scope of "Administrator" is pending clarification:
+//   (a) System-wide admin (managing all users, all documents, platform moderation)
+//   (b) Document-level admin (document owner managing collaborators/permissions)
+// Leave placeholder; do not build admin routes until scope is confirmed.
+
+// TODO: Real-Time Collaboration — Yjs CRDT + WebSocket
+// Content storage model transitions from XML/text blob to binary yjs_state.
+// WebSocket server handles live sync without polling.
 
 app.use('/documents', authMiddleware, documentRoutes)
 app.use('/auth', authRoutes)
@@ -54,6 +63,8 @@ app.use('/predictions', authMiddleware, predictionRoutes)
 app.use('/ai', authMiddleware, aiRoutes)
 app.use('/folders', authMiddleware, folderRoutes)
 app.use('/drive', authMiddleware, driveRoutes)
+app.use('/professor', authMiddleware, professorRoutes)
+app.use('/notifications', authMiddleware, notificationRoutes)
 app.use('/mcp', authMiddleware, mcpRouter)
 
 // 404 handler

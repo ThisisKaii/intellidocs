@@ -2,9 +2,10 @@ import os
 import pickle
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
+import torch
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,11 +21,12 @@ from grammar.spell_checker import check_spelling
 load_dotenv()
 
 MODEL_PATH = os.getenv("BASE_MODEL_PATH", "models/base_model.pkl")
+LSTM_DIR = os.getenv("LSTM_MODEL_DIR", "models/lstm")
 
 app = FastAPI(
     title="IntelliDocs ML API",
-    description="Machine Learning API for formatting prediction and grammar checking",
-    version="0.1.0",
+    description="Machine Learning API for hybrid RandomForest + LSTM formatting prediction and grammar checking",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -38,6 +40,7 @@ app.add_middleware(
 
 class PredictRequest(BaseModel):
     text: str
+    user_id: Optional[str] = None
 
 
 class PredictResponse(BaseModel):
@@ -45,6 +48,7 @@ class PredictResponse(BaseModel):
     confidence: float
     model_path: str
     feature_values: dict[str, float]
+    lstm_adjusted: bool = False
 
 
 class TextCheckRequest(BaseModel):
@@ -65,11 +69,62 @@ def load_model_payload() -> dict[str, Any]:
     return payload
 
 
+def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> float:
+    """Calculate sequence-level confidence reweighting from user's PyTorch LSTM weights if available."""
+    model_file = os.path.join(LSTM_DIR, f"user_{user_id}.pt")
+    if not os.path.exists(model_file):
+        return 0.0
+
+    try:
+        from training.lstm_trainer import ACTION_TO_IDX, FormattingLSTM
+
+        payload = torch.load(model_file, map_location=torch.device("cpu"))
+        model = FormattingLSTM(vocab_size=len(payload["vocab"]))
+        model.load_state_dict(payload["state_dict"])
+        model.eval()
+
+        # Target index
+        target_idx = ACTION_TO_IDX.get(predicted_format, 0)
+        if target_idx == 0:
+            return 0.0
+
+        # Query recent sequence from DuckDB
+        duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
+        if not os.path.exists(duckdb_path):
+            return 0.0
+
+        import duckdb
+
+        conn = duckdb.connect(duckdb_path)
+        df = conn.execute(
+            "SELECT action FROM behavior_events WHERE user_id = ? ORDER BY event_ts DESC LIMIT 5",
+            [user_id],
+        ).fetchdf()
+        conn.close()
+
+        if df.empty or len(df) < 5:
+            return 0.0
+
+        actions = [
+            ACTION_TO_IDX.get(a, 0) for a in reversed(df["action"].tolist())
+        ]
+        input_tensor = torch.tensor([actions], dtype=torch.long)
+
+        with torch.no_grad():
+            logits = model(input_tensor)
+            probs = torch.softmax(logits, dim=1)[0]
+            lstm_prob = float(probs[target_idx])
+
+        return lstm_prob
+    except Exception as e:
+        print(f"⚠️ LSTM inference warning for user {user_id}: {e}")
+        return 0.0
+
+
 def build_feature_row(text: str) -> pd.DataFrame:
-    """Build the same numeric features used during base model training."""
+    """Build the numeric features used during base model training."""
     normalized = text.strip()
 
-    # Count leading '=' and spaces for heading depth
     heading_depth = 0
     for c in normalized:
         if c == "=":
@@ -108,7 +163,7 @@ async def root() -> dict[str, str]:
     """Return a simple welcome payload."""
     return {
         "message": "Welcome to IntelliDocs ML API",
-        "version": "0.1.0",
+        "version": "0.2.0",
     }
 
 
@@ -124,11 +179,12 @@ async def health_check() -> dict[str, str]:
 
 @app.post("/predict", response_model=PredictResponse)
 async def predict_format(request: PredictRequest) -> PredictResponse:
-    """Predict a formatting label for the given text."""
+    """Predict a formatting label for given text combining RandomForest + LSTM sequence score."""
     text = request.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is required.")
 
+    lstm_adjusted = False
     try:
         payload = load_model_payload()
         model = payload["model"]
@@ -141,8 +197,6 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
 
         ordered_features = feature_frame[feature_columns]
 
-        # Rule-based guard: if the text does not contain formatting markers/symbols,
-        # it is automatically a paragraph. This avoids model hallucination / false positives.
         has_marker = (
             text.startswith("    ") or
             text.startswith("```") or
@@ -156,7 +210,22 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
         else:
             prediction = model.predict(ordered_features)[0]
             probabilities = model.predict_proba(ordered_features)[0]
-            confidence = float(max(probabilities))
+            rf_confidence = float(max(probabilities))
+
+            # Combine with LSTM sequential prediction if user_id is provided
+            if request.user_id:
+                lstm_score = compute_lstm_sequence_adjustment(
+                    request.user_id, str(prediction)
+                )
+                if lstm_score > 0:
+                    # Hybrid combination: 70% RandomForest + 30% LSTM sequence reweighting
+                    confidence = (0.7 * rf_confidence) + (0.3 * lstm_score)
+                    lstm_adjusted = True
+                else:
+                    confidence = rf_confidence
+            else:
+                confidence = rf_confidence
+
     except FileNotFoundError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
     except Exception as error:
@@ -171,9 +240,10 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
 
     return PredictResponse(
         predicted_format=str(prediction),
-        confidence=confidence,
+        confidence=round(confidence, 4),
         model_path=MODEL_PATH,
         feature_values=feature_values,
+        lstm_adjusted=lstm_adjusted,
     )
 
 
@@ -269,6 +339,7 @@ async def trigger_feature_export() -> dict[str, str]:
             status_code=500,
             detail=f"Feature export failed: {error}",
         ) from error
+
 
 if __name__ == "__main__":
     import uvicorn

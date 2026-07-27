@@ -1,4 +1,3 @@
-
 // Do not remove
 // For some reason it give an error without the the line below
 // ???
@@ -54,6 +53,7 @@ export interface PredictionResponse {
   predicted_format: string
   confidence: number
   feature_values: Record<string, number>
+  lstm_adjusted?: boolean
 }
 
 interface LoginResponse {
@@ -88,11 +88,10 @@ export interface GrammarCheckResponse {
   issues: GrammarIssue[]
 }
 
-export interface SpellingIssue{
+export interface SpellingIssue {
   word: string
   suggestion: string | null
   type: string
-
 }
 
 export interface SpellCheckResponse {
@@ -149,6 +148,37 @@ export interface DriveFile {
   name: string
   modifiedTime: string
   iconLink: string
+}
+
+export interface DocumentComment {
+  comment_id: string
+  document_id: string
+  user_id: string
+  highlighted_text: string | null
+  comment: string
+  created_at: string
+}
+
+export interface DocumentReview {
+  review_id: string
+  document_id: string
+  reviewer_id: string
+  student_id: string
+  grade: number | null
+  status: 'pending' | 'under_review' | 'graded' | 'returned'
+  notes: string | null
+  reviewed_at: string
+}
+
+export interface NotificationRecord {
+  notification_id: string
+  user_id: string
+  type: string
+  title: string
+  message: string
+  read: boolean
+  metadata: Record<string, unknown>
+  created_at: string
 }
 
 function getAuthToken(): string | null {
@@ -259,11 +289,11 @@ export const api = {
   },
 
   predictions: {
-    predict: async (text: string): Promise<PredictionResponse> => {
+    predict: async (text: string, userId?: string): Promise<PredictionResponse> => {
       return fetchAPI<PredictionResponse>('predictions/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, user_id: userId }),
       })
     },
     grammarCheck: async (text: string): Promise<GrammarCheckResponse> => {
@@ -305,6 +335,7 @@ export const api = {
       })
     },
   },
+
   mcp: {
     listTools: async (): Promise<MCPToolListResponse> => {
       return fetchAPI<MCPToolListResponse>('mcp/tools')
@@ -322,11 +353,9 @@ export const api = {
   },
 
   folders: {
-    /** Fetch all top-level folders for the current user. */
     list: async (): Promise<FolderRecord[]> => {
       return fetchAPI<FolderRecord[]>('folders')
     },
-    /** Create a new folder. */
     create: async (name: string): Promise<FolderRecord> => {
       return fetchAPI<FolderRecord>('folders', {
         method: 'POST',
@@ -334,7 +363,6 @@ export const api = {
         body: JSON.stringify({ name }),
       })
     },
-    /** Rename an existing folder. */
     rename: async (id: string, name: string): Promise<FolderRecord> => {
       return fetchAPI<FolderRecord>(`folders/${id}`, {
         method: 'PUT',
@@ -342,17 +370,14 @@ export const api = {
         body: JSON.stringify({ name }),
       })
     },
-    /** Delete a folder. */
     delete: async (id: string): Promise<null> => {
       return fetchAPI<null>(`folders/${id}`, {
         method: 'DELETE',
       })
     },
-    /** List documents inside a folder. */
     documents: async (id: string): Promise<DocumentRecord[]> => {
       return fetchAPI<DocumentRecord[]>(`folders/${id}/documents`)
     },
-    /** Move a document into a folder. */
     addDocument: async (folderId: string, documentId: string): Promise<{ status: string }> => {
       return fetchAPI<{ status: string }>(`folders/${folderId}/documents`, {
         method: 'POST',
@@ -363,27 +388,56 @@ export const api = {
   },
 
   drive: {
-    /** Get the Google OAuth2 consent URL. */
     getAuthUrl: async (): Promise<{ url: string }> => {
       return fetchAPI<{ url: string }>('drive/auth-url')
     },
-    /** Check if Google Drive is connected. */
     status: async (): Promise<{ connected: boolean }> => {
       return fetchAPI<{ connected: boolean }>('drive/status')
     },
-    /** Disconnect Google Drive. */
     disconnect: async (): Promise<{ message: string }> => {
       return fetchAPI<{ message: string }>('drive/disconnect', {
         method: 'DELETE',
       })
     },
-    /** List Google Docs files. */
     listFiles: async (): Promise<{ files: DriveFile[] }> => {
       return fetchAPI<{ files: DriveFile[] }>('drive/files')
     },
-    /** Export a Google Doc as HTML. */
     exportFile: async (fileId: string): Promise<{ title: string; html: string }> => {
       return fetchAPI<{ title: string; html: string }>(`drive/files/${fileId}/export`)
+    },
+  },
+
+  professor: {
+    addComment: async (documentId: string, comment: string, highlightedText?: string): Promise<DocumentComment> => {
+      return fetchAPI<DocumentComment>('professor/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId, comment, highlightedText }),
+      })
+    },
+    getComments: async (documentId: string): Promise<DocumentComment[]> => {
+      return fetchAPI<DocumentComment[]>(`professor/documents/${documentId}/comments`)
+    },
+    submitGrade: async (documentId: string, studentId: string, grade: number, notes?: string): Promise<DocumentReview> => {
+      return fetchAPI<DocumentReview>('professor/grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId, studentId, grade, notes }),
+      })
+    },
+    getReview: async (documentId: string): Promise<DocumentReview | null> => {
+      return fetchAPI<DocumentReview | null>(`professor/documents/${documentId}/review`)
+    },
+  },
+
+  notifications: {
+    list: async (): Promise<NotificationRecord[]> => {
+      return fetchAPI<NotificationRecord[]>('notifications')
+    },
+    markAsRead: async (notificationId: string): Promise<NotificationRecord> => {
+      return fetchAPI<NotificationRecord>(`notifications/${notificationId}/read`, {
+        method: 'PUT',
+      })
     },
   },
 

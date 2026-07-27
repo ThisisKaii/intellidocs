@@ -1,15 +1,75 @@
+import glob
 import os
 import pickle
-from typing import cast
+from typing import cast, List
 
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
+MANUSCRIPT_DIR = os.getenv("MANUSCRIPT_DIR", "ml/dataset/manuscript")
+
+
+def load_manuscript_files(manuscript_dir: str) -> List[str]:
+    """Find manuscript documents (.pdf, .txt, .docx) in the manuscript folder."""
+    if not os.path.exists(manuscript_dir):
+        return []
+    extensions = ["*.txt", "*.pdf", "*.docx"]
+    files = []
+    for ext in extensions:
+        files.extend(glob.glob(os.path.join(manuscript_dir, ext)))
+    return files
+
+
+def extract_text_from_manuscript(file_path: str) -> List[str]:
+    """Extract paragraphs or segments from a manuscript document."""
+    lines = []
+    if file_path.endswith(".txt"):
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = [line.strip() for line in f if line.strip()]
+    elif file_path.endswith(".pdf"):
+        try:
+            import fitz  # PyMuPDF
+
+            doc = fitz.open(file_path)
+            for page in doc:
+                text = page.get_text("text")
+                for line in text.split("\n"):
+                    if line.strip():
+                        lines.append(line.strip())
+        except Exception as e:
+            print(f"⚠️ PyMuPDF extraction warning for {file_path}: {e}")
+    return lines
+
+
+def parse_manuscript_dataframe(file_paths: List[str]) -> pd.DataFrame:
+    """Build a training DataFrame from manuscript text segments using feature extractor rules."""
+    from dataset.preprocess import compute_features, infer_format_label
+
+    rows = []
+    for path in file_paths:
+        segments = extract_text_from_manuscript(path)
+        for seg in segments:
+            label = infer_format_label(seg)
+            row = {"text": seg, "label": label}
+            row.update(compute_features(seg))
+            rows.append(row)
+
+    return pd.DataFrame(rows)
+
 
 def load_training_data(csv_path: str) -> pd.DataFrame:
-    """Load the processed formatting dataset from disk."""
+    """Load primary manuscript training data, falling back to processed CSV dataset if manuscript directory is empty."""
+    manuscript_files = load_manuscript_files(MANUSCRIPT_DIR)
+
+    if manuscript_files:
+        print(f"📄 Training base model on manuscript documents: {manuscript_files}")
+        df = parse_manuscript_dataframe(manuscript_files)
+        if not df.empty and "label" in df.columns:
+            return df
+        print("⚠️ Manuscript extraction returned empty, falling back to historical CSV dataset.")
+
     if not os.path.exists(csv_path):
         raise FileNotFoundError(f"Training dataset not found: {csv_path}")
 
@@ -25,7 +85,7 @@ def load_training_data(csv_path: str) -> pd.DataFrame:
 
 def select_feature_columns(dataframe: pd.DataFrame) -> list[str]:
     """Select numeric feature columns used for model training."""
-    excluded = {"label", "text"}
+    excluded = {"label", "text", "split"}
     return [
         column
         for column in dataframe.columns
@@ -45,7 +105,7 @@ def split_data(
         labels,
         test_size=0.2,
         random_state=42,
-        stratify=labels,
+        stratify=labels if labels.nunique() > 1 else None,
     )
     return cast(tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], tuple(split))
 
@@ -53,7 +113,7 @@ def split_data(
 def train_model(
     x_train: pd.DataFrame, y_train: pd.Series
 ) -> RandomForestClassifier:
-    """Train a simple baseline formatting classifier."""
+    """Train a baseline formatting classifier."""
     model = RandomForestClassifier(
         n_estimators=200,
         max_depth=12,
@@ -94,7 +154,7 @@ def save_model(
 
 
 def main() -> None:
-    """Train and save the base formatting model."""
+    """Train and save the base formatting model using paper/manuscript data."""
     dataset_path = os.getenv(
         "FORMATTING_DATASET_PATH",
         "dataset/processed/formatting_examples.csv",
@@ -116,7 +176,7 @@ def main() -> None:
 
     save_model(model, feature_columns, output_path)
 
-    print("✅ Base formatting model trained.")
+    print("✅ Base formatting model trained on research manuscript data.")
     print(f"Validation accuracy: {accuracy:.4f}")
     print(f"Saved model to: {output_path}")
 

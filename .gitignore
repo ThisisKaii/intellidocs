@@ -33,18 +33,32 @@ Thumbs.db
 # Misc
 coverage/
 etc/
+logs/
 
 # ML generated artifacts
 ml/dataset/raw/
 ml/dataset/processed/
 ml/models/user_models/
+ml/models/lstm/
+ml/models/*.pkl
 !ml/models/base_model.pkl
 !ml/models/grammar_model.pkl
 
-#Graphify
+# DuckDB
+db/duckdb/*.duckdb
+*.sqlite
+*.db
+
+# Antigravity agent cache (keep skills/ tracked)
+.antigravity/cache/
+
+# Graphify
 graphify-out/
 .agents/
 
+# Yjs persistence
+y-websocket-persistence/
 
+# Scratch / temp
 about.md
 about2.md
