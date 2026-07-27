@@ -8,12 +8,56 @@ interface EditorCoreProps {
   className?: string
 }
 
-// Editor core component using forwardRef so parent can focus editor
+/** Heading and paragraph styles matching the Dean's manuscript specifications. */
+const EDITOR_HEADING_STYLES = `
+  [contenteditable] h1 {
+    font-size: 12pt;
+    font-weight: 700;
+    margin: 1em 0 0.25em;
+    font-family: 'Times New Roman', Times, serif;
+  }
+  [contenteditable] h2 {
+    font-size: 12pt;
+    font-weight: 700;
+    font-style: italic;
+    margin: 1em 0 0.25em;
+    font-family: 'Times New Roman', Times, serif;
+  }
+  [contenteditable] h3,
+  [contenteditable] h4,
+  [contenteditable] h5,
+  [contenteditable] h6 {
+    font-size: 11pt;
+    font-weight: 700;
+    margin: 0.75em 0 0.25em;
+    font-family: 'Times New Roman', Times, serif;
+  }
+  [contenteditable] p,
+  [contenteditable] div,
+  [contenteditable] li {
+    font-size: 11pt;
+    font-family: 'Times New Roman', Times, serif;
+  }
+  [contenteditable] blockquote {
+    border-left: 3px solid var(--border);
+    margin: 0.75em 0;
+    padding-left: 1em;
+    color: var(--muted-foreground);
+    font-style: italic;
+  }
+  [contenteditable] hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1em 0;
+  }
+`
+
+// Editor core component using forwardRef so parent can focus the editor.
 export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
   ({ onContentChange, initialContent = '', className = '' }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null)
 
-    // Sync external ref with internal ref
+    // Sync external ref with internal ref.
     useEffect(() => {
       if (typeof ref === 'function') {
         ref(editorRef.current)
@@ -22,7 +66,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
       }
     }, [ref])
 
-    // Load initial content only on first mount or when switching documents
+    // Load initial content only on first mount or when switching documents.
     const hasLoaded = useRef(false)
     useEffect(() => {
       if (!editorRef.current) return
@@ -32,7 +76,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
       }
     }, [initialContent])
 
-    // Track selection changes globally
+    // Track selection changes globally so the toolbar can show active state.
     useEffect(() => {
       const handleSelectionChange = () => {
         saveSelectionIfInside(editorRef.current)
@@ -41,14 +85,14 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
       return () => document.removeEventListener('selectionchange', handleSelectionChange)
     }, [])
 
-    // Handle typing input
+    // Emit content on every keystroke / mutation.
     function handleInput() {
       if (editorRef.current && onContentChange) {
         onContentChange(editorRef.current.innerHTML)
       }
     }
 
-    // Handle key events (tab + backspace behavior)
+    // Handle Tab (indent) and Backspace (outdent at list/blockquote start).
     function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
       if (event.key === 'Tab') {
         event.preventDefault()
@@ -83,7 +127,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
       }
     }
 
-    // Paste as plain text
+    // Paste as plain text to avoid importing foreign styles.
     function handlePaste(event: React.ClipboardEvent<HTMLDivElement>) {
       event.preventDefault()
       const text = event.clipboardData.getData('text/plain')
@@ -91,30 +135,34 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
     }
 
     return (
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        spellCheck="false"
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        className={className}
-        style={{
-          minHeight: '60vh',
-          border: 'none',
-          backgroundColor: 'transparent',
-          padding: 0,
-          boxShadow: 'none',
-          outline: 'none',
-          wordWrap: 'break-word',
-          whiteSpace: 'pre-wrap',
-          fontSize: '1rem',
-          lineHeight: 1.7,
-          color: 'var(--foreground)',
-          fontFamily: 'var(--font-sans)',
-        }}
-      />
+      <>
+        {/* Inject manuscript heading styles once */}
+        <style>{EDITOR_HEADING_STYLES}</style>
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          spellCheck="false"
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          className={className}
+          style={{
+            minHeight: '60vh',
+            border: 'none',
+            backgroundColor: 'transparent',
+            padding: 0,
+            boxShadow: 'none',
+            outline: 'none',
+            wordWrap: 'break-word',
+            whiteSpace: 'pre-wrap',
+            fontSize: '11pt',
+            lineHeight: 1.5,
+            color: 'var(--foreground)',
+            fontFamily: "'Times New Roman', Times, serif",
+          }}
+        />
+      </>
     )
   }
 )

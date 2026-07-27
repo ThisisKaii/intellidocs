@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, type ChangeEvent } from 'reac
 import { useParams, Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api, type BehaviorSummaryResponse } from '@/services/api'
-import { Toolbar } from '@/components/editor/Toolbar'
+import { Toolbar, PAGE_SIZES, type PageSizeKey, type MarginValues } from '@/components/editor/Toolbar'
 import { EditorCore } from '@/components/editor/EditorCore'
 import { restoreSelection } from '@/components/editor/SelectionManager'
 import {
@@ -25,14 +25,14 @@ const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.7
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
 const AUTO_FORMAT_MIN_INTERVAL_MS = 30 * 1000
 
-/* Page dimensions at 96dpi (US Letter 8.5" x 11") */
-const PAGE_WIDTH = 816
-const PAGE_HEIGHT = 1056
-const PAGE_PAD_Y = 64   // 4rem
-const PAGE_PAD_X = 72   // 4.5rem
+/* Static layout constants */
 const PAGE_GAP = 24
-const CONTENT_HEIGHT = PAGE_HEIGHT - PAGE_PAD_Y * 2 // 928px
 const SPACER_ATTR = 'data-page-break'
+
+/** Convert inches to pixels at 96 dpi. */
+function inToPx(inches: number): number {
+  return Math.round(inches * 96)
+}
 
 interface EditorPagesProps {
   editorRef: React.RefObject<HTMLDivElement>
@@ -41,6 +41,15 @@ interface EditorPagesProps {
   grammarIssues: GrammarIssue[]
   onGrammarApply: (issue: GrammarIssue) => void
   onGrammarDismiss: (issue: GrammarIssue) => void
+  /** Page pixel width (from page size preset) */
+  pageWidth: number
+  /** Page pixel height (from page size preset) */
+  pageHeight: number
+  /** Padding values in pixels derived from user margin inputs */
+  padTop: number
+  padBottom: number
+  padLeft: number
+  padRight: number
 }
 
 /** Strip page-break spacer elements from HTML before saving. */
@@ -51,15 +60,15 @@ function stripSpacers(html: string): string {
   return div.innerHTML
 }
 
-/** Insert page-break spacers into the editor DOM at page boundaries. */
-function insertPageBreaks(editor: HTMLElement): number {
-  // Remove old spacers
+/** Insert page-break spacers into the editor DOM at page boundaries.
+ *  Uses dynamic content height so page size and margins are respected. */
+function insertPageBreaks(editor: HTMLElement, contentHeight: number, padTop: number, padBottom: number): number {
   editor.querySelectorAll(`[${SPACER_ATTR}]`).forEach(el => el.remove())
 
   const children = Array.from(editor.children) as HTMLElement[]
   if (children.length === 0) return 1
 
-  let pageBottom = CONTENT_HEIGHT // first page content limit
+  let pageBottom = contentHeight
   let pages = 1
 
   for (const child of children) {
@@ -67,33 +76,32 @@ function insertPageBreaks(editor: HTMLElement): number {
     const childBottom = childTop + child.offsetHeight
 
     if (childBottom > pageBottom && childTop < pageBottom) {
-      // Child crosses the page boundary — insert spacer before it
       const remaining = pageBottom - childTop
-      const spacerH = remaining + PAGE_PAD_Y + PAGE_GAP + PAGE_PAD_Y
+      const spacerH = remaining + padTop + PAGE_GAP + padBottom
       const spacer = document.createElement('div')
       spacer.setAttribute(SPACER_ATTR, 'true')
       spacer.contentEditable = 'false'
       spacer.style.cssText = `height:${spacerH}px;pointer-events:none;user-select:none;margin:0;padding:0;border:none;`
       child.parentNode?.insertBefore(spacer, child)
       pages++
-      pageBottom = spacer.offsetTop + spacerH + CONTENT_HEIGHT
+      pageBottom = spacer.offsetTop + spacerH + contentHeight
     } else if (childTop >= pageBottom) {
-      // Child starts past the boundary — insert spacer before it
-      const spacerH = PAGE_PAD_Y + PAGE_GAP + PAGE_PAD_Y
+      const spacerH = padTop + PAGE_GAP + padBottom
       const spacer = document.createElement('div')
       spacer.setAttribute(SPACER_ATTR, 'true')
       spacer.contentEditable = 'false'
       spacer.style.cssText = `height:${spacerH}px;pointer-events:none;user-select:none;margin:0;padding:0;border:none;`
       child.parentNode?.insertBefore(spacer, child)
       pages++
-      pageBottom = spacer.offsetTop + spacerH + CONTENT_HEIGHT
+      pageBottom = spacer.offsetTop + spacerH + contentHeight
     }
   }
 
   return pages
 }
 
-/** Multi-page editor container that renders paper-like pages. */
+/** Multi-page editor container that renders paper-like pages.
+ *  Accepts dynamic page dimensions and margin padding from parent state. */
 function EditorPages({
   editorRef,
   content,
@@ -101,47 +109,55 @@ function EditorPages({
   grammarIssues,
   onGrammarApply,
   onGrammarDismiss,
+  pageWidth,
+  pageHeight,
+  padTop,
+  padBottom,
+  padLeft,
+  padRight,
 }: EditorPagesProps): JSX.Element {
   const [numPages, setNumPages] = useState(1)
+  const contentHeight = pageHeight - padTop - padBottom
 
-  /** Recalculate page breaks after content changes. */
+  /** Recalculate page breaks after content or layout changes. */
   const recalcPages = useCallback(() => {
     if (!editorRef.current) return
-    const p = insertPageBreaks(editorRef.current)
+    const p = insertPageBreaks(editorRef.current, contentHeight, padTop, padBottom)
     setNumPages(p)
-  }, [editorRef])
+  }, [editorRef, contentHeight, padTop, padBottom])
 
-  /* Run page-break calculation on content change. */
   useEffect(() => {
     const t = setTimeout(recalcPages, 50)
     return () => clearTimeout(t)
   }, [content, recalcPages])
 
-  /** Wrap onContentChange to strip spacers before saving. */
+  // Re-run when layout dimensions change
+  useEffect(() => { recalcPages() }, [pageWidth, pageHeight, padTop, padBottom, padLeft, padRight, recalcPages])
+
   const handleContentChange = useCallback((html: string) => {
     onContentChange(stripSpacers(html))
   }, [onContentChange])
 
-  const totalHeight = numPages * PAGE_HEIGHT + (numPages - 1) * PAGE_GAP
+  const totalHeight = numPages * pageHeight + (numPages - 1) * PAGE_GAP
 
   return (
     <main style={{ flex: 1, overflowY: 'auto', minWidth: 0, position: 'relative', backgroundColor: 'var(--secondary)' }}>
       <div style={{
-        maxWidth: `${PAGE_WIDTH}px`,
+        maxWidth: `${pageWidth}px`,
         minHeight: `${totalHeight}px`,
         margin: '2rem auto',
         position: 'relative',
       }}>
-        {/* Page backgrounds */}
+        {/* Page shadow backgrounds */}
         {Array.from({ length: numPages }).map((_, i) => (
           <div
             key={i}
             style={{
               position: 'absolute',
-              top: `${i * (PAGE_HEIGHT + PAGE_GAP)}px`,
+              top: `${i * (pageHeight + PAGE_GAP)}px`,
               left: 0,
               right: 0,
-              height: `${PAGE_HEIGHT}px`,
+              height: `${pageHeight}px`,
               backgroundColor: 'var(--background)',
               boxShadow: 'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px, rgba(0,0,0,0.03) 0px 8px 16px',
               borderRadius: '2px',
@@ -150,11 +166,14 @@ function EditorPages({
           />
         ))}
 
-        {/* Content layer */}
+        {/* Content layer — uses user-defined margins as padding */}
         <div style={{
           position: 'relative',
-          padding: `${PAGE_PAD_Y}px ${PAGE_PAD_X}px`,
-          minHeight: `${CONTENT_HEIGHT}px`,
+          paddingTop: `${padTop}px`,
+          paddingBottom: `${padBottom}px`,
+          paddingLeft: `${padLeft}px`,
+          paddingRight: `${padRight}px`,
+          minHeight: `${contentHeight}px`,
         }}>
           <div style={{ position: 'relative' }}>
             <EditorCore
@@ -199,6 +218,10 @@ export default function Document(): JSX.Element {
   const [_behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([])
   const [behaviorSummary, setBehaviorSummary] = useState<BehaviorSummaryResponse | null>(null)
   const [behaviorSummaryLoading, setBehaviorSummaryLoading] = useState<boolean>(false)
+
+  /* ── Page layout state ─────────────────────────────────────────────── */
+  const [pageSize, setPageSize] = useState<PageSizeKey>('short')
+  const [margins, setMargins] = useState<MarginValues>({ top: 1, bottom: 1, left: 1.5, right: 1 })
 
   const [rightPanelOpen] = useState<boolean>(true)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -928,15 +951,22 @@ export default function Document(): JSX.Element {
         </div>
 
         {/* Toolbar row */}
-        <div style={{ padding: '0 1.5rem', borderTop: '1px solid var(--border)' }}>
-          <Toolbar onFormatApplied={handleFormat} onFocusEditor={focusEditor} />
+        <div style={{ borderTop: '1px solid var(--border)', overflowX: 'auto' }}>
+          <Toolbar
+            onFormatApplied={handleFormat}
+            onFocusEditor={focusEditor}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            margins={margins}
+            onMarginsChange={setMargins}
+          />
         </div>
       </header>
 
       {/* ── Body ──────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
-        {/* Editor area */}
+        {/* Editor area — page size and margins driven by toolbar state */}
         <EditorPages
           editorRef={editorRef}
           content={content}
@@ -944,6 +974,12 @@ export default function Document(): JSX.Element {
           grammarIssues={grammarIssues}
           onGrammarApply={handleGrammarApply}
           onGrammarDismiss={handleGrammarDismiss}
+          pageWidth={PAGE_SIZES[pageSize].width}
+          pageHeight={PAGE_SIZES[pageSize].height}
+          padTop={inToPx(margins.top)}
+          padBottom={inToPx(margins.bottom)}
+          padLeft={inToPx(margins.left)}
+          padRight={inToPx(margins.right)}
         />
 
         {/* Right panel */}
