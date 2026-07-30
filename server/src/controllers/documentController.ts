@@ -3,12 +3,13 @@ import * as documentModel from '../models/documentModel'
 import { CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
 import mammoth from 'mammoth'
 import path from 'path'
-// Import directly from the lib file — pdf-parse's index.js reads test files at
-// import time which breaks in production. The lib file exports the function cleanly.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (
-  buffer: Buffer
-) => Promise<{ text: string; numpages: number }>
+const { PDFParse } = require('pdf-parse') as {
+  PDFParse: new (options: { data: Buffer }) => {
+    getText: () => Promise<{ text: string }>
+    destroy: () => Promise<void>
+  }
+}
 
 
 /** Return all documents owned by the authenticated user. */
@@ -170,9 +171,11 @@ export async function importDocument(req: Request, res: Response): Promise<void>
       const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
       htmlContent = bodyMatch ? bodyMatch[1].trim() : rawHtml
     } else if (ext === '.pdf') {
-      // Extract plain text from PDF using pdf-parse
-      const pdfData = await pdfParse(file.buffer)
-      const text = pdfData.text
+      // Extract plain text from PDF using pdf-parse v2 class API
+      const parser = new PDFParse({ data: file.buffer })
+      const result = await parser.getText()
+      await parser.destroy()
+      const text = result.text
       htmlContent = text
         .split(/\r?\n/)
         .filter((line: string) => line.trim().length > 0)
