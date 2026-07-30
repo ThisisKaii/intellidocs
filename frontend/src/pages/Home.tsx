@@ -6,13 +6,14 @@ import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/co
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
 import { LogOut, Search } from 'lucide-react'
 import DriveImportDialog from '@/components/DriveImportDialog'
+import ImportFileModal from '@/components/ImportFileModal'
 
 /** One day in milliseconds — used for the "Recent" filter. */
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
 
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
 
   /* ── Core data ─────────────────────────────────────── */
   const [allDocuments, setAllDocuments] = useState<DocumentRecord[]>([])
@@ -29,6 +30,7 @@ export default function HomePage(): JSX.Element {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [driveOpen, setDriveOpen] = useState<boolean>(false)
+  const [importFileOpen, setImportFileOpen] = useState<boolean>(false)
 
   /* ── Load all documents once ───────────────────────── */
   useEffect(() => {
@@ -331,6 +333,7 @@ export default function HomePage(): JSX.Element {
         onCreate={handleCreateDocument}
         onCreateFolder={handleCreateFolder}
         onSelectView={handleSelectView}
+        onImportFromFile={() => setImportFileOpen(true)}
         onImportFromDrive={() => setDriveOpen(true)}
       />
 
@@ -354,6 +357,16 @@ export default function HomePage(): JSX.Element {
 
             {/* Actions */}
             <div className="flex items-center gap-3 shrink-0 ml-4">
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => navigate('/admin')}
+                  title="Admin Dashboard"
+                  className="inline-flex items-center gap-2 h-9 px-3.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold border-none cursor-pointer transition-opacity hover:opacity-90"
+                >
+                  Admin Dashboard
+                </button>
+              )}
+
               <button
                 onClick={handleLogout}
                 title="Sign out"
@@ -364,6 +377,15 @@ export default function HomePage(): JSX.Element {
             </div>
           </div>
         </header>
+
+        {/* Pending Professor Notification Banner */}
+        {user?.role === 'professor' && user?.verificationStatus === 'pending' && (
+          <div className="mx-4 mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-medium flex items-center justify-between">
+            <span>
+              <strong>Professor Application Pending:</strong> Your request to register as a Professor is under review by an Administrator. Document review and grading features will be unlocked once approved.
+            </span>
+          </div>
+        )}
 
         {/* ── Content Wrapper ───────────────────────── */}
         <main className="flex-1 bg-white rounded-2xl overflow-y-auto px-6 py-6" style={{ boxShadow: '0 1px 2px 0 rgba(60,64,67,0.1)' }}>
@@ -413,6 +435,16 @@ export default function HomePage(): JSX.Element {
         onClose={() => setDriveOpen(false)}
         onImport={handleImportDoc}
       />
+
+      {importFileOpen && (
+        <ImportFileModal
+          onClose={() => setImportFileOpen(false)}
+          onImported={() => {
+            // Refresh document list after successful import
+            api.documents.list().then(setAllDocuments).catch(() => {})
+          }}
+        />
+      )}
     </div>
   )
 }

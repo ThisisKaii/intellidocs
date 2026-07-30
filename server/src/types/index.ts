@@ -1,13 +1,8 @@
-// TODO: Administrator Role — Scope is NOT finalized.
-// Unclear whether "admin" means:
-//   (a) System-wide admin (managing all users, all documents, platform-wide moderation)
-//   (b) Document-level admin (document owner managing collaborators/permissions)
-// Do NOT build admin tables, RLS policies, or UI until this is clarified.
+// Administrator Role — Finalized System Architecture
+// Role Hierarchy: student, professor (requires admin approval), admin (system management)
 
-// TODO: Real-Time Collaboration — Yjs CRDT + WebSocket
-// - Replace documents.content (text blob) with yjs_state (binary/bytea)
-// - Add y-websocket server alongside Express
-// - Bind Yjs doc to frontend contentEditable editor
+export type RoleName = 'student' | 'professor' | 'admin'
+export type VerificationStatus = 'pending' | 'approved' | 'rejected'
 
 export interface Document {
   id: string
@@ -31,6 +26,7 @@ export interface Folder {
 
 export interface CreateDocumentRequest {
   title: string
+  content?: string
 }
 
 export interface UpdateDocumentRequest {
@@ -44,10 +40,27 @@ export interface UserProfile {
   id: string
   user_id: string
   role_id: number
+  role_name?: RoleName
+  verification_status: VerificationStatus
   display_name: string | null
   phone: string | null
   created_at: string
   updated_at: string
+}
+
+export interface PendingProfessorApplicant {
+  profile_id: string
+  user_id: string
+  email: string
+  display_name: string | null
+  role_name: string
+  verification_status: VerificationStatus
+  applied_at: string
+}
+
+export interface VerifyProfessorRequest {
+  status: 'approved' | 'rejected'
+  notes?: string
 }
 
 export interface DocumentComment {
@@ -85,6 +98,7 @@ export interface BehaviorEvent {
   action: string
   timestamp: string
   documentId: string
+  blockId?: string
 }
 
 export interface BehaviorSummaryLatestEvent extends BehaviorEvent {
@@ -103,6 +117,7 @@ export interface BehaviorSummaryResponse {
 export interface PredictionRequest {
   text: string
   user_id?: string
+  block_id?: string
 }
 
 export interface PredictionResponse {

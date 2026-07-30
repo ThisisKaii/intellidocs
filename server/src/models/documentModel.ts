@@ -38,7 +38,7 @@ export async function createDocument(
     .insert({
       user_id: userId,
       title: req.title,
-      content: '',
+      content: req.content ?? '',
       formatting_history: [],
     })
     .select()

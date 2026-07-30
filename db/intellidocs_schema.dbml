@@ -18,6 +18,22 @@ Table users {
   Note: 'Managed by Supabase Auth'
 }
 
+Table roles {
+  role_id integer [pk]
+  role_name varchar [unique, not null]
+}
+
+Table user_profiles {
+  id uuid [pk]
+  user_id uuid [unique, ref: > users.id]
+  role_id integer [ref: > roles.role_id]
+  verification_status text [not null, note: 'pending, approved, rejected']
+  display_name varchar
+  phone varchar
+  created_at timestamptz
+  updated_at timestamptz
+}
+
 Table documents {
   id uuid [pk]
   user_id uuid [ref: > users.id]
@@ -49,6 +65,7 @@ Table formatting_actions {
   action_id uuid [pk]
   document_id uuid [ref: > documents.id]
   user_id uuid [ref: > users.id]
+  block_id text
   action_type text [not null]
   action_source text [not null]
   created_at timestamptz
@@ -59,6 +76,7 @@ Table ai_suggestions {
   suggestion_id uuid [pk]
   document_id uuid [ref: > documents.id]
   user_id uuid [ref: > users.id]
+  block_id text
   suggested_format text [not null]
   confidence numeric
   reason text

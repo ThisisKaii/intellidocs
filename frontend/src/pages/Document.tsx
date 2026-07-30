@@ -950,8 +950,8 @@ export default function Document(): JSX.Element {
           </div>
         </div>
 
-        {/* Toolbar row */}
-        <div style={{ borderTop: '1px solid var(--border)', overflowX: 'auto' }}>
+        {/* Toolbar row — overflow visible with z-index so popovers float above canvas */}
+        <div style={{ borderTop: '1px solid var(--border)', position: 'relative', zIndex: 100 }}>
           <Toolbar
             onFormatApplied={handleFormat}
             onFocusEditor={focusEditor}

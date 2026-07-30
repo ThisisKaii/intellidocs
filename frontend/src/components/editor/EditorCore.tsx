@@ -1,4 +1,3 @@
-
 import { useRef, useEffect, forwardRef } from 'react'
 import { saveSelectionIfInside } from './SelectionManager'
 
@@ -6,6 +5,24 @@ interface EditorCoreProps {
   onContentChange?: (content: string) => void
   initialContent?: string
   className?: string
+}
+
+/** Ensure every top-level block in the editor has a unique data-block-id attribute (e.g., "h1-3f9a", "p-7b2e"). */
+export function ensureBlockIdentifiers(editor: HTMLElement | null): void {
+  if (!editor) return
+
+  const blockTags = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE'])
+  const children = Array.from(editor.children)
+
+  for (const child of children) {
+    if (child instanceof HTMLElement && blockTags.has(child.tagName)) {
+      if (!child.getAttribute('data-block-id')) {
+        const tagPrefix = child.tagName.toLowerCase()
+        const shortUuid = Math.random().toString(36).substring(2, 8)
+        child.setAttribute('data-block-id', `${tagPrefix}-${shortUuid}`)
+      }
+    }
+  }
 }
 
 /** Heading and paragraph styles matching the Dean's manuscript specifications. */
@@ -72,6 +89,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
       if (!editorRef.current) return
       if (!hasLoaded.current && initialContent) {
         editorRef.current.innerHTML = initialContent
+        ensureBlockIdentifiers(editorRef.current)
         hasLoaded.current = true
       }
     }, [initialContent])
@@ -87,8 +105,11 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
 
     // Emit content on every keystroke / mutation.
     function handleInput() {
-      if (editorRef.current && onContentChange) {
-        onContentChange(editorRef.current.innerHTML)
+      if (editorRef.current) {
+        ensureBlockIdentifiers(editorRef.current)
+        if (onContentChange) {
+          onContentChange(editorRef.current.innerHTML)
+        }
       }
     }
 
@@ -97,6 +118,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
       if (event.key === 'Tab') {
         event.preventDefault()
         document.execCommand('insertHTML', false, '&#9;')
+        if (editorRef.current) ensureBlockIdentifiers(editorRef.current)
         return
       }
 
@@ -123,6 +145,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
         if (atStart && (inList || inBlockquote)) {
           event.preventDefault()
           document.execCommand('outdent', false, undefined)
+          if (editorRef.current) ensureBlockIdentifiers(editorRef.current)
         }
       }
     }
@@ -132,6 +155,7 @@ export const EditorCore = forwardRef<HTMLDivElement, EditorCoreProps>(
       event.preventDefault()
       const text = event.clipboardData.getData('text/plain')
       document.execCommand('insertText', false, text)
+      if (editorRef.current) ensureBlockIdentifiers(editorRef.current)
     }
 
     return (

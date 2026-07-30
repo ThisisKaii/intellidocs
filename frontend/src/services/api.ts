@@ -62,6 +62,13 @@ interface LoginResponse {
   message: string
 }
 
+interface GoogleSyncResponse {
+  user: User
+  role: 'student' | 'professor' | 'admin'
+  verificationStatus: 'pending' | 'approved' | 'rejected'
+  message: string
+}
+
 interface RegisterResponse {
   user: User
   message: string
@@ -203,15 +210,30 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     const errorBody: unknown = await response.json().catch(() => null)
+    let errorMessage = 'Network response was not ok'
     if (
       typeof errorBody === 'object' &&
       errorBody !== null &&
       'error' in errorBody &&
       typeof (errorBody as { error?: unknown }).error === 'string'
     ) {
-      throw new Error((errorBody as { error: string }).error)
+      errorMessage = (errorBody as { error: string }).error
+    } else {
+      errorMessage = `HTTP ${response.status}: Request failed`
     }
-    throw new Error('Network response was not ok')
+
+    // Attach HTTP status code to error
+    const err = new Error(errorMessage) as Error & { status?: number }
+    err.status = response.status
+
+    if (response.status === 401) {
+      localStorage.removeItem('authToken')
+      window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { status: 401, message: errorMessage } }))
+    } else if (response.status === 403) {
+      window.dispatchEvent(new CustomEvent('auth:forbidden', { detail: { status: 403, message: errorMessage } }))
+    }
+
+    throw err
   }
 
   return response.json() as Promise<T>
@@ -230,11 +252,19 @@ export const api = {
         body: JSON.stringify({ email, password }),
       })
     },
-    register: async (email: string, password: string): Promise<RegisterResponse> => {
+    register: async (email: string, password: string, role: 'student' | 'professor' = 'student'): Promise<RegisterResponse> => {
       return fetchAPI<RegisterResponse>('auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, role }),
+      })
+    },
+    /** Called after Google OAuth redirect to sync profile with Express backend. */
+    googleSync: async (accessToken: string): Promise<GoogleSyncResponse> => {
+      return fetchAPI<GoogleSyncResponse>('auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken }),
       })
     },
   },
@@ -271,6 +301,16 @@ export const api = {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_isolated: isIsolated }),
+      })
+    },
+    /** Upload a local file (.docx, .txt, .html, .pdf) and create a document from it. */
+    import: async (file: File): Promise<DocumentRecord> => {
+      const formData = new FormData()
+      formData.append('file', file)
+      // Do NOT set Content-Type — browser sets the multipart boundary automatically
+      return fetchAPI<DocumentRecord>('documents/import', {
+        method: 'POST',
+        body: formData,
       })
     },
   },
@@ -441,4 +481,34 @@ export const api = {
     },
   },
 
+  admin: {
+    getPendingProfessors: async (): Promise<any[]> => {
+      return fetchAPI<any[]>('admin/professors/pending')
+    },
+    verifyProfessor: async (userId: string, status: 'approved' | 'rejected', notes?: string): Promise<{ message: string }> => {
+      return fetchAPI<{ message: string }>(`admin/professors/${userId}/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, notes }),
+      })
+    },
+    getAllUsers: async (): Promise<any[]> => {
+      return fetchAPI<any[]>('admin/users')
+    },
+    updateUserRole: async (userId: string, roleId: number): Promise<any> => {
+      return fetchAPI<any>(`admin/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleId }),
+      })
+    },
+    getSystemReports: async (): Promise<any> => {
+      return fetchAPI<any>('admin/reports')
+    },
+    deleteDocument: async (documentId: string): Promise<{ message: string }> => {
+      return fetchAPI<{ message: string }>(`admin/documents/${documentId}`, {
+        method: 'DELETE',
+      })
+    },
+  },
 }

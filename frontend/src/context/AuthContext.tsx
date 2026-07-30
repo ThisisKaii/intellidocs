@@ -1,18 +1,28 @@
 import { createContext, useState, useEffect, ReactNode } from 'react'
+import { supabase } from '../lib/supabase'
+
+export interface UserAuthData {
+  id: string
+  email: string
+  role?: 'student' | 'professor' | 'admin'
+  verificationStatus?: 'pending' | 'approved' | 'rejected'
+}
 
 interface AuthContextType {
-  user: { id: string; email: string } | null
+  user: UserAuthData | null
   token: string | null
   loading: boolean
   isAuthenticated: boolean
-  login: (user: { id: string; email: string }, token: string) => void
+  login: (user: UserAuthData, token: string) => void
   logout: () => void
+  /** Redirects to Google OAuth consent screen via Supabase. */
+  loginWithGoogle: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<{ id: string; email: string } | null>(null)
+  const [user, setUser] = useState<UserAuthData | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -32,7 +42,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false)
   }, [])
 
-  const login = (userData: { id: string; email: string }, authToken: string) => {
+  // Listen for global auth events dispatched by api.ts
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout()
+    }
+    window.addEventListener('auth:unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized)
+  }, [])
+
+  const login = (userData: UserAuthData, authToken: string) => {
     setUser(userData)
     setToken(authToken)
     localStorage.setItem('authToken', authToken)
@@ -46,6 +65,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('authUser')
   }
 
+  /**
+   * Initiates Google OAuth via Supabase.
+   * The user is redirected to Google, then back to /auth/callback.
+   */
+  const loginWithGoogle = async (): Promise<void> => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+    if (error) throw new Error(error.message)
+  }
+
   const value: AuthContextType = {
     user,
     token,
@@ -53,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!token,
     login,
     logout,
+    loginWithGoogle,
   }
 
   return (

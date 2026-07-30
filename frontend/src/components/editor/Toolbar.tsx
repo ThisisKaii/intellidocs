@@ -147,24 +147,29 @@ function ColorPicker({
   colors,
   onSelect,
   onClose,
+  anchorEl,
 }: {
   colors: string[]
   onSelect: (color: string) => void
   onClose: () => void
+  anchorEl: HTMLElement | null
 }) {
+  const rect = anchorEl?.getBoundingClientRect()
+  const top = rect ? rect.bottom + 4 : 40
+  const left = rect ? Math.min(rect.left, window.innerWidth - 180) : 0
+
   return (
     <div
       style={{
-        position: 'absolute',
-        top: '100%',
-        left: 0,
-        zIndex: 200,
-        marginTop: '4px',
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${left}px`,
+        zIndex: 9999,
         padding: '8px',
         backgroundColor: 'var(--background)',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
         display: 'grid',
         gridTemplateColumns: 'repeat(6, 1fr)',
         gap: '4px',
@@ -197,11 +202,17 @@ function MarginsPopover({
   margins,
   onChange,
   onClose,
+  anchorEl,
 }: {
   margins: MarginValues
   onChange: (m: MarginValues) => void
   onClose: () => void
+  anchorEl: HTMLElement | null
 }) {
+  const rect = anchorEl?.getBoundingClientRect()
+  const top = rect ? rect.bottom + 4 : 40
+  const left = rect ? Math.min(rect.left, window.innerWidth - 200) : 0
+
   const fields: { key: keyof MarginValues; label: string }[] = [
     { key: 'top', label: 'Top' },
     { key: 'bottom', label: 'Bottom' },
@@ -212,16 +223,15 @@ function MarginsPopover({
   return (
     <div
       style={{
-        position: 'absolute',
-        top: '100%',
-        left: 0,
-        zIndex: 200,
-        marginTop: '4px',
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${left}px`,
+        zIndex: 9999,
         padding: '12px',
         backgroundColor: 'var(--background)',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
         minWidth: '180px',
       }}
       onMouseDown={(e) => e.preventDefault()}
@@ -496,6 +506,7 @@ export function Toolbar({
         </button>
         {showFontColor && (
           <ColorPicker
+            anchorEl={fontColorRef.current}
             colors={FONT_COLORS}
             onSelect={(c) => { setFontColorActive(c); run('font_color', () => FC.fontColor(c)) }}
             onClose={() => setShowFontColor(false)}
@@ -521,6 +532,7 @@ export function Toolbar({
         </button>
         {showHighlight && (
           <ColorPicker
+            anchorEl={highlightRef.current}
             colors={HIGHLIGHT_COLORS}
             onSelect={(c) => run('highlight', () => FC.highlightColor(c))}
             onClose={() => setShowHighlight(false)}
@@ -607,6 +619,7 @@ export function Toolbar({
         </button>
         {showMargins && (
           <MarginsPopover
+            anchorEl={marginsRef.current}
             margins={margins}
             onChange={onMarginsChange}
             onClose={() => setShowMargins(false)}
