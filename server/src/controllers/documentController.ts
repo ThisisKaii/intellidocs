@@ -3,12 +3,12 @@ import * as documentModel from '../models/documentModel'
 import { CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
 import mammoth from 'mammoth'
 import path from 'path'
-// pdf-parse is a CommonJS module; access .default when loaded via tsx/ESM interop
+// Import directly from the lib file — pdf-parse's index.js reads test files at
+// import time which breaks in production. The lib file exports the function cleanly.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const pdfParseModule = require('pdf-parse')
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-const pdfParse: (buffer: Buffer) => Promise<{ text: string }> =
-  typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default
+const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (
+  buffer: Buffer
+) => Promise<{ text: string; numpages: number }>
 
 
 /** Return all documents owned by the authenticated user. */
