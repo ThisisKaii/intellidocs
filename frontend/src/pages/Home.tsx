@@ -338,19 +338,19 @@ export default function HomePage(): JSX.Element {
       />
 
       {/* ── Main ─────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 min-w-0 bg-[#f8f9fa] h-screen overflow-hidden px-4 pb-4">
+      <div className="flex flex-col flex-1 min-w-0 bg-background h-screen overflow-hidden px-4 pb-4">
         {/* ── Top Header ────────────────────────────── */}
         <header className="w-full flex-shrink-0 pt-3 pb-3">
           <div className="flex items-center justify-between h-14">
             {/* Search */}
             <div className="flex-1 max-w-2xl relative ml-4">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-[#444746] pointer-events-none" strokeWidth={2} />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground pointer-events-none" strokeWidth={2} />
               <input
                 type="text"
                 placeholder="Search in Drive"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="w-full h-12 pl-12 pr-4 rounded-full bg-[#edf2fc] hover:bg-[#e9eef6] text-[#1f1f1f] text-[1rem] outline-none transition-colors focus:bg-white focus:shadow-md"
+                className="w-full h-12 pl-12 pr-4 rounded-full bg-muted hover:bg-muted/70 text-foreground text-[1rem] outline-none transition-colors focus:bg-card focus:shadow-md dark:focus:bg-card"
                 style={{ fontFamily: 'inherit', border: 'none' }}
               />
             </div>
@@ -370,7 +370,7 @@ export default function HomePage(): JSX.Element {
               <button
                 onClick={handleLogout}
                 title="Sign out"
-                className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-transparent text-[#444746] border-none cursor-pointer transition-colors hover:bg-black/5"
+                className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer transition-colors hover:bg-foreground/5"
               >
                 <LogOut className="size-5" />
               </button>
@@ -388,10 +388,10 @@ export default function HomePage(): JSX.Element {
         )}
 
         {/* ── Content Wrapper ───────────────────────── */}
-        <main className="flex-1 bg-white rounded-2xl overflow-y-auto px-6 py-6" style={{ boxShadow: '0 1px 2px 0 rgba(60,64,67,0.1)' }}>
+        <main className="flex-1 bg-card rounded-2xl overflow-y-auto px-6 py-6" style={{ boxShadow: '0 1px 2px 0 rgba(60,64,67,0.1)' }}>
           {/* Section header */}
           <div className="mb-4">
-            <h1 className="text-2xl font-normal text-[#1f1f1f] m-0">{pageTitle}</h1>
+            <h1 className="text-2xl font-normal text-foreground m-0">{pageTitle}</h1>
             {selection.type === 'trash' && (
               <p className="text-sm text-muted-foreground mt-1">
                 Items in trash are permanently deleted. Soft-delete support coming soon.
