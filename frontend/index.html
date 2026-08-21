@@ -17,7 +17,51 @@
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@400;600;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Outfit:wght@400;500;600&family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <header style="padding: 1rem 2rem; border-bottom: 1px solid #e5e7eb;">
+        <nav style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 1.25rem; font-weight: bold;">IntelliDocs</span>
+          <div>
+            <a href="/login" style="margin-right: 1rem;">Log In</a>
+            <a href="/register">Sign Up</a>
+          </div>
+        </nav>
+      </header>
+      <main style="max-width: 800px; margin: 2rem auto; padding: 0 1rem; font-family: sans-serif; line-height: 1.6;">
+        <h1 style="font-size: 2rem; font-weight: bold; margin-bottom: 1rem;">
+          IntelliDocs — Intelligent Academic Document Editor
+        </h1>
+        <p style="font-size: 1.1rem; color: #4b5563; margin-bottom: 2rem;">
+          IntelliDocs is an intelligent academic document editor that learns user formatting behavior, provides inline grammar and spell checking, and predicts formatting preferences with machine learning confidence scoring.
+        </p>
+
+        <section style="margin-bottom: 2rem; padding: 1.5rem; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+          <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.75rem;">
+            Google Drive Integration &amp; User Data Purpose
+          </h2>
+          <p style="margin-bottom: 0.5rem; color: #374151;">
+            IntelliDocs requests access to Google Drive (<code>drive.readonly</code>) exclusively to enable users to select, open, and import their existing Google Docs into the IntelliDocs editor for academic styling, formatting predictions, and grammar analysis.
+          </p>
+          <p style="color: #374151;">
+            IntelliDocs does not sell, alter, or share your Google Drive documents or personal information with any third parties or advertisers.
+          </p>
+        </section>
+
+        <section style="margin-bottom: 2rem;">
+          <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 0.75rem;">Key Features</h2>
+          <ul style="padding-left: 1.5rem; color: #374151;">
+            <li><strong>ML Formatting Prediction:</strong> Observes and learns your formatting preferences over time.</li>
+            <li><strong>Grammar &amp; Spelling Engine:</strong> Inline academic proofreading and correction suggestions.</li>
+            <li><strong>Google Drive Document Import:</strong> Seamlessly import Google Docs into the editor.</li>
+            <li><strong>Export Capabilities:</strong> Export to Microsoft Word (.docx), HTML, and Print/PDF.</li>
+          </ul>
+        </section>
+      </main>
+      <footer style="border-top: 1px solid #e5e7eb; padding: 2rem; text-align: center; font-size: 0.875rem; color: #6b7280;">
+        <p style="margin-bottom: 0.5rem;">&copy; 2026 IntelliDocs — Capstone Research System</p>
+        <p><a href="/privacy" style="color: #2563eb; text-decoration: underline;">Privacy Policy</a></p>
+      </footer>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
