@@ -1,6 +1,8 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
+import { updateOwnProfile } from '../models/userModel'
+import { AuthenticatedRequest } from '../types/express'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
 
@@ -87,6 +89,7 @@ export async function login(req: Request, res: Response): Promise<void> {
         ...data.user,
         role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'student',
         verificationStatus: profile?.verification_status ?? 'approved',
+        displayName: data.user.user_metadata?.display_name ?? null,
       },
       session: data.session,
       message: 'Login successful',
@@ -133,7 +136,6 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
           user_id: user.id,
           role_id: studentRole.role_id,
           verification_status: 'approved',
-          display_name: user.user_metadata?.full_name ?? null,
         },
         { onConflict: 'user_id', ignoreDuplicates: true }
       )
@@ -150,6 +152,8 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
       user: {
         id: user.id,
         email: user.email ?? '',
+        displayName:
+          user.user_metadata?.display_name ?? user.user_metadata?.full_name ?? null,
       },
       role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'student',
       verificationStatus: profile?.verification_status ?? 'approved',
@@ -157,5 +161,39 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
     })
   } catch {
     res.status(500).json({ error: 'Google authentication failed.' })
+  }
+}
+
+/** Update the signed-in user's own profile fields (display name). */
+export async function updateProfile(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: '401 Unauthorized: Session required' })
+      return
+    }
+
+    const { display_name } = req.body as { display_name?: string }
+    if (typeof display_name !== 'string' || display_name.trim().length === 0) {
+      res.status(400).json({ error: 'display_name is required' })
+      return
+    }
+
+    const saved = await updateOwnProfile(userId, display_name.trim())
+    if (saved === null) {
+      res.status(500).json({ error: 'Failed to update profile' })
+      return
+    }
+
+    res.status(200).json({
+      user: {
+        id: userId,
+        email: req.user?.email ?? '',
+        displayName: saved,
+      },
+      message: 'Profile updated successfully',
+    })
+  } catch {
+    res.status(500).json({ error: 'Failed to update profile' })
   }
 }

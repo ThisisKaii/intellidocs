@@ -46,6 +46,26 @@ export const pythonPredictionResponseSchema = z.object({
   feature_values: z.record(z.number()).default({}),
 })
 
+/** Validate page setup returned by the Python document converter. */
+export const pythonPageSetupSchema = z.object({
+  page_size: z.enum(['short', 'long', 'a4', 'letter', 'legal']),
+  orientation: z.enum(['portrait', 'landscape']),
+  margins: z.object({
+    top: z.number(),
+    bottom: z.number(),
+    left: z.number(),
+    right: z.number(),
+  }),
+})
+
+/** Validate document-conversion responses returned by the Python service. */
+export const pythonConversionResponseSchema = z.object({
+  html: z.string().min(1),
+  page_setup: pythonPageSetupSchema,
+  header: z.string(),
+  footer: z.string(),
+})
+
 export type PredictionTextInput = z.infer<typeof predictionTextSchema>
 export type PythonGrammarIssue = z.infer<typeof pythonGrammarIssueSchema>
 export type PythonGrammarCheckResponse = z.infer<
@@ -57,4 +77,7 @@ export type PythonSpellingCheckResponse = z.infer<
 >
 export type PythonPredictionResponse = z.infer<
   typeof pythonPredictionResponseSchema
+>
+export type PythonConversionResponse = z.infer<
+  typeof pythonConversionResponseSchema
 >

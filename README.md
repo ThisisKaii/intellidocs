@@ -18,14 +18,16 @@ Existing editors (Microsoft Word, Google Docs, Grammarly, ChatGPT) do not learn 
 
 ## Key Features
 
-- **Custom Editor**: Built from scratch using the native browser `contentEditable` API (no TipTap, ProseMirror, Quill, or pre-built editor libraries).
+- **TipTap Document Editor**: Rebuilt with a clean single top-level `useEditor` reactive state hook, custom `EditorCanvas` presenter, and rich extensions.
+- **Glassmorphic Floating Toolbar**: Modern translucent pill toolbar featuring custom interactive popovers, font/size steppers, swatch pickers, table tools, and page layout presets.
+- **Custom `IndentExtension`**: Native TipTap indent/outdent extension supporting `Tab` / `Shift+Tab` keyboard shortcuts, paragraph margin-left levels, and list item nesting.
+- **Direct File Import Module**: Import local `.docx`, `.pdf`, `.txt`, and `.html` documents directly into the active editor instance using the toolbar import button.
 - **Hybrid ML Prediction**: Combines a **RandomForest** classifier for fast instance-level text feature classification with an **LSTM** network for sequential behavioral modeling.
 - **Supervised Fine-Tuning**: Personalizes predictions per user using supervised feedback (accepted vs. rejected suggestions).
 - **Grammar & Spell Checking**: Real-time writing assistance trained on the JFLEG dataset and `pyspellchecker`.
 - **Professor Review System**: Professors can review submitted student documents, highlight text, leave comments, and assign grades with automated student notifications.
 - **AI Chatbot Overlay**: Natural language assistant using Model Context Protocol (MCP) tool orchestration.
 - **Real-Time Collaboration**: Collaborative editing engine powered by Yjs CRDT and WebSockets (`y-websocket`).
-- **Google Drive Integration**: Import documents directly from Google Drive.
 
 ---
 
@@ -33,8 +35,8 @@ Existing editors (Microsoft Word, Google Docs, Grammarly, ChatGPT) do not learn 
 
 | Tier | Technologies |
 |---|---|
-| **Frontend** | React 18, Vite, TypeScript, Shadcn/ui, Tailwind CSS, contentEditable API, Yjs CRDT |
-| **Backend** | Node.js 20, Express, TypeScript, Zod validation, Arcjet security middleware |
+| **Frontend** | React 18, Vite, TypeScript, TipTap 3, Shadcn/ui, Tailwind CSS, Yjs CRDT |
+| **Backend** | Node.js 20, Express, TypeScript, Zod validation, Arcjet security middleware, Mammoth docx converter |
 | **ML Microservice** | Python 3, FastAPI, scikit-learn, PyTorch (LSTM), PyMuPDF, NLTK |
 | **Databases** | **Supabase** (PostgreSQL + Auth + RLS), **Redis** (Behavior buffer & quota), **DuckDB** (Analytical feature store) |
 | **AI / LLM** | Provider-abstracted API client (`aiClient.ts` targeting Gemini Flash and external providers) via MCP |

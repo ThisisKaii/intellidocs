@@ -15,10 +15,10 @@ Use this checklist to review changes against the non-negotiable architectural ru
 - [ ] **Models**: All Supabase, Redis, and DuckDB queries live strictly here. Zero req/res references.
 - [ ] **React (View)**: Calls Express backend via `frontend/src/services/api.ts` only. No direct Supabase calls.
 
-### 2. Custom Editor Rules (contentEditable)
-- [ ] **No Editor Libraries**: Uses native contentEditable API (no TipTap, ProseMirror, Quill, Draft.js).
-- [ ] **Editor Core**: `EditorCore.tsx` is the ONLY component touching contentEditable directly.
-- [ ] **Formatting & Selection**: Handled via `FormattingCommands.ts` and `SelectionManager.ts`.
+### 2. Custom Editor Rules (TipTap)
+- [ ] **TipTap-First**: Before hand-rolling editor behavior (pagination, tables, menus, commands), an official TipTap or maintained community extension was used — e.g. pagination uses `tiptap-pagination-plus` (PagedEditor.tsx), not a custom cascade.
+- [ ] **No Prebuilt Word-Processor Apps**: Editor is TipTap (ProseMirror) with custom React toolbar/commands; no prebuilt word-processor application.
+- [ ] **Editor Architecture**: Shared extensions stay in `editorExtensions` (TiptapEditor.tsx); formatting goes through TipTap's command API (`editor.chain().focus()`); behavior events fire via `onFormatApplied`.
 
 ### 3. Type Safety & Validation
 - [ ] **TypeScript**: Zero `any` types. All parameters and return types explicitly typed.

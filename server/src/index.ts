@@ -14,6 +14,7 @@ import driveRoutes from './routes/driveRoutes'
 import professorRoutes from './routes/professorRoutes'
 import notificationRoutes from './routes/notificationRoutes'
 import adminRoutes from './routes/adminRoutes'
+import formattingRoutes from './routes/formattingRoutes'
 import mcpRouter from './mcp/mcpServer'
 import { authMiddleware } from './middleware/authMiddleware'
 
@@ -54,10 +55,11 @@ app.use('/behavior', authMiddleware, behaviorRoutes)
 app.use('/predictions', authMiddleware, predictionRoutes)
 app.use('/ai', authMiddleware, aiRoutes)
 app.use('/folders', authMiddleware, folderRoutes)
-app.use('/drive', authMiddleware, driveRoutes)
+app.use('/drive', driveRoutes)
 app.use('/professor', authMiddleware, professorRoutes)
 app.use('/notifications', authMiddleware, notificationRoutes)
 app.use('/admin', adminRoutes)
+app.use('/formatting', authMiddleware, formattingRoutes)
 app.use('/mcp', authMiddleware, mcpRouter)
 
 // 404 handler
@@ -71,10 +73,13 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Internal server error' })
 })
 
-// Start server
-app.listen(PORT as number, '0.0.0.0', () => {
-  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`)
-  console.log(`📊 Health check: http://0.0.0.0:${PORT}/health`)
-})
+// Start server if not running tests
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT as number, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`)
+    console.log(`📊 Health check: http://0.0.0.0:${PORT}/health`)
+  })
+}
 
 export default app
+

@@ -18,7 +18,7 @@ from typing import Iterable, cast
 import pandas as pd
 
 
-DEFAULT_INPUT_DIR = "ml/dataset/raw/academic-papers"
+DEFAULT_INPUT_DIR = "ml/dataset/manuscript"
 DEFAULT_FORMATTING_CSV = "ml/dataset/processed/formatting_examples.csv"
 DEFAULT_ACADEMIC_OUTPUT = "ml/dataset/processed/academic_paper_formatting_examples.csv"
 DEFAULT_MERGED_OUTPUT = "ml/dataset/processed/formatting_examples_merged.csv"
@@ -38,6 +38,7 @@ CHAPTER_PATTERN = re.compile(r"^(chapter|section)\s+([0-9ivxlcdm]+|one|two|three
 BIBLIOGRAPHY_PATTERN = re.compile(r"^(references|bibliography|works cited|literature cited)\b", re.I)
 TOC_PATTERN = re.compile(r"^(table of contents|contents)\b", re.I)
 SIGNATURE_PATTERN = re.compile(r"(approval sheet|signature|panel|adviser|chairperson|accepted by)", re.I)
+CAPTION_PATTERN = re.compile(r"^(figure|table|fig\.)\s+\d+[:.]?", re.I)
 
 
 @dataclass(frozen=True)
@@ -293,10 +294,13 @@ def estimate_body_font_size(lines: list[ExtractedLine]) -> float:
 
 
 def infer_format_label(line: ExtractedLine, body_font_size: float) -> str:
-    """Infer a coarse formatting label from academic-paper metadata."""
+    """Infer an APA 7th Edition formatting label from academic-paper metadata."""
     text = line.text.strip()
     words = text.split()
     font_delta = line.font_size - body_font_size
+
+    if CAPTION_PATTERN.match(text):
+        return "caption"
 
     if BULLET_PATTERN.match(text):
         return "unordered_list"
@@ -317,16 +321,24 @@ def infer_format_label(line: ExtractedLine, body_font_size: float) -> str:
     if TOC_PATTERN.match(text):
         return "heading1"
 
-    if len(words) <= 12 and line.is_bold and font_delta >= 1.5:
+    # APA Level 1 / Major Section Header (Bold, larger font or short title line)
+    if len(words) <= 10 and line.is_bold and font_delta >= 1.5:
+        return "heading1"
+
+    # APA Level 2 / Sub-header (Bold, standard or slightly larger font, <= 14 words)
+    if len(words) <= 14 and line.is_bold and font_delta >= 0.5:
         return "heading2"
 
-    if len(words) <= 12 and (line.is_bold or font_delta >= 1.0):
+    # APA Level 3 / Sub-sub-header (Bold+Italic or Italic short header)
+    if len(words) <= 14 and (line.is_bold and line.is_italic or font_delta >= 1.0):
         return "heading3"
 
-    if text.startswith(("“", '"')) and text.endswith(("”", '"')):
+    # Blockquotes (indented margin x0 > 90 or in quotes)
+    if (text.startswith(("“", '"')) and text.endswith(("”", '"'))) or (line.x0 > 90 and len(words) > 15):
         return "blockquote"
 
     return "paragraph"
+
 
 
 def build_context(lines: list[ExtractedLine], index: int) -> str:
@@ -431,7 +443,8 @@ def merge_with_wikitext(
 ) -> pd.DataFrame:
     """Merge academic examples with the existing WikiText formatting dataset."""
     if not os.path.exists(formatting_csv):
-        raise FileNotFoundError(f"Existing formatting CSV not found: {formatting_csv}")
+        print(f"Notice: WikiText base dataset not found at {formatting_csv}, using academic paper dataset as primary.")
+        return academic_frame.copy()
 
     wikitext_frame = pd.read_csv(formatting_csv)
     all_columns = sorted(set(wikitext_frame.columns) | set(academic_frame.columns))
@@ -462,7 +475,7 @@ def main() -> None:
 
     academic_frame = extract_academic_examples(args.input_dir)
     write_csv(academic_frame, args.academic_output)
-    print(f"✅ Academic paper formatting examples: {len(academic_frame)}")
+    print(f"[OK] Academic paper formatting examples: {len(academic_frame)}")
     print(f"Saved academic examples to: {args.academic_output}")
 
     if args.no_merge:
@@ -470,9 +483,9 @@ def main() -> None:
 
     merged_frame = merge_with_wikitext(academic_frame, args.formatting_csv)
     write_csv(merged_frame, args.merged_output)
-    print(f"✅ Merged formatting examples: {len(merged_frame)}")
+    print(f"[OK] Merged formatting examples: {len(merged_frame)}")
     print(f"Saved merged dataset to: {args.merged_output}")
 
 
 if __name__ == "__main__":
-    main()
+    main()

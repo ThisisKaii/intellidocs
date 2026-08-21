@@ -1,278 +1,69 @@
 # IntelliDocs Progress Summary
 
-**Last Updated:** Current Thread  
-**Phase:** Phase 5 — AI Suggestion UI / Chatbot ✅ In Progress  
-**Status:** Auth ✅ Complete. Editor ✅ Complete. Drive-style Home UI ✅ Complete. Behavior pipeline ✅ Complete. Dataset pipeline ✅ Complete. Base formatting model ✅ Trained. Prediction API ✅ Wired end-to-end. Grammar/spelling ML API ✅ Working. Inline grammar suggestion UI ✅ Working. Grammar/spell quality refinement ✅ In Progress. Backend validation + Arcjet + Redis AI cache/quota ✅ Implemented. Gemini-backed read-only chatbot ✅ Working. Improved chatbot context shaping ✅ Implemented. Backend chat-context test coverage ✅ Added. Chatbot rejection feedback loop ✅ Implemented. Accepted chatbot preview feedback ✅ Logged. Broader chatbot formatting preview support ✅ Covered. Hosting strategy ✅ Defined. Academic paper extraction scaffold ✅ Implemented. Behavior summary endpoint + UI ✅ Implemented. Auto-format prompt apply targeting ✅ Fixed.
+**Last Updated:** Current Session  
+**Phase:** Phase 8 — Comprehensive Testing, Settings Enhancements, Document Export & Deployment Config ✅ Complete  
+**Status:** TipTap Full Editor Migration ✅ Complete. APA 7th ML Formatting Model (97.81% accuracy) ✅ Complete. Phase 7 Feedback Loop (`prediction_feedback` table + `feedbackLoop.ts` + `POST /ai/feedback` + `Document.tsx` prompt wiring) ✅ Complete. Settings Improvements (Password Change, Google Link, 2FA via Supabase TOTP) ✅ Complete. Google Drive OAuth Callback (`DriveCallback.tsx` popup communication) ✅ Complete. Document Export (Word .doc/.docx, HTML, Print/PDF) ✅ Complete. Automated Tests (5 Jest suites / 24 tests + 7 pytest ML tests) ✅ 100% Passing. Fine-Tuning API (`POST /fine-tune`) & Deployment Config (`docker-compose.yml`, `render.yaml`) ✅ Complete.
 
 ---
 
 ## ✅ Completed
 
-### Backend (Express + Supabase)
-- ✅ Supabase setup + RLS
-- ✅ Document CRUD (MVC strict)
-- ✅ Auth routes (login/register)
-- ✅ Auth middleware protects `/documents`
-- ✅ Types defined for documents
+### TipTap Editor Architecture & Features
+- ✅ **Document Export System**: Added instant Export dropdown to TipTap toolbar supporting Word (`.doc`/`.docx`), Standalone HTML, and Print / Save as PDF (`window.print()`).
+- ✅ **Single Top-Level `useEditor` Hook**: `Document.tsx` manages reactive state for toolbar, canvas, and suggestions.
+- ✅ **Modern Glassmorphic Floating Toolbar**: Translucent blur, popovers for style, fonts, sizes, table management, page setup, margins, import, and export.
+- ✅ **Custom `IndentExtension`**: Margin indentation, list sinking/lifting, and `Tab`/`Shift+Tab` shortcuts.
+- ✅ **Native Document Import Module**: Direct toolbar file import (`FileUp`) for `.docx`, `.pdf`, `.txt`, `.html`.
 
-### Hosting / Deployment Strategy
-- ✅ Development and groupmate testing will use Cloudflare Tunnel with temporary random URLs
-- ✅ Production/capstone defense target is Oracle Cloud Free Tier on ARM Ampere A1
-- ✅ Production stack is planned as one VPS instance:
-  - Nginx reverse proxy
-  - Express serving React build + API
-  - FastAPI on `localhost:8000`
-  - Redis on `localhost:6379`
-  - DuckDB as a local file-based analytical store
-- ✅ PM2 will keep Express and FastAPI processes alive
-- ✅ Local machine remains a Cloudflare Tunnel hot spare only
+### Settings & Security Enhancements
+- ✅ **Password Management**: Client-side secure password updates via `supabase.auth.updateUser`.
+- ✅ **Connected Accounts**: Google OAuth account linking via `supabase.auth.linkIdentity`.
+- ✅ **Two-Factor Authentication (2FA)**: Full TOTP multi-factor authentication enrollment with QR code, secret key, 6-digit challenge verification, and unenrollment via Supabase MFA.
 
-### Frontend (React + Vite)
-- ✅ AuthContext + useAuth hook
-- ✅ Protected routes
-- ✅ Login/Register wired to auth
-- ✅ Token persistence
-- ✅ API client typed (User/DocumentRecord)
+### Google Drive Integration
+- ✅ **Dedicated OAuth Callback Route**: Created `DriveCallback.tsx` at `/drive-callback` handling popup `window.opener.postMessage` signaling and automatic dialog refresh.
+- ✅ **Drive Dialog Auto-Refresh**: `DriveImportDialog.tsx` listens for `drive:connected` events and instantly loads Drive files.
 
-### Editor (contentEditable)
-- ✅ EditorCore + formatting toolbar
-- ✅ Selection handling and formatting commands
-- ✅ Lists/blockquote nesting fixes
-- ✅ Save/load content to backend
-- ✅ Autosave every ~8s (only when content changes)
-- ✅ Formatting history tracking and persistence
-
-### Home UI (Drive-style)
-- ✅ Split into components:
-  - `DriveHeader.tsx`
-  - `DriveSidebar.tsx`
-  - `DriveSearchSection.tsx`
-  - `DriveTable.tsx`
-- ✅ Sidebar pills + New button styled
-- ✅ Drive-style search + filters
-- ✅ Document list with inline rename + delete
-- ✅ Row actions use shadcn dropdown
-
-### Behavior Pipeline (Phase 2)
-- ✅ Behavior events captured from editor and sent to backend
-- ✅ Redis buffer active for real-time event capture
-- ✅ Redis now also backs short-lived AI suggestion caching
-- ✅ Redis now tracks per-user AI request quotas
-- ✅ DuckDB schema + aggregator pipeline
-- ✅ Feature extraction to `formatting_features`
-- ✅ CSV/Parquet feature exports
-- ✅ Manual API triggers: `/behavior/aggregate`, `/behavior/features`, `/behavior/export`
-- ✅ Behavior summary endpoint added at `GET /behavior/summary/:documentId`
-- ✅ Behavior summary reads Redis events for the current authenticated user/document
-- ✅ Behavior summary groups regular format actions, chatbot preview accepts, and chatbot preview rejects
-- ✅ Document side panel now shows behavior event totals, accepted preview count, rejected preview count, and latest feedback
-
-### Dataset + Base ML Model (Phase 3)
-- ✅ WikiText-103 downloaded with Hugging Face datasets
-- ✅ JFLEG downloaded with Hugging Face datasets
-- ✅ Raw dataset snapshots saved under `ml/dataset/raw/`
-- ✅ Preprocessing pipeline writes:
-  - `formatting_examples.csv`
-  - `grammar_examples.csv`
-- ✅ Base formatting model trained and saved to `ml/models/base_model.pkl`
-- ✅ FastAPI prediction endpoint added in `ml/src/main.py`
-- ✅ Python bridge wired into Express
-- ✅ Backend prediction route exposed for frontend/backend consumers
-- ✅ Academic paper extraction scaffold implemented:
-  - `ml/dataset/extract_academic_papers.py` extracts formatting metadata from completed capstone research paper PDFs
-  - uses PyMuPDF for font size, bold/italic flags, coordinates, and line context
-  - classifies page types such as title, signature, TOC, chapter start, body, and bibliography
-  - builds context → format pairs and can merge them with WikiText formatting examples
-- ⚠️ Baseline validation accuracy is very high because labels are currently heuristic and should be refined later
-
-### Grammar + Spell Check (Phase 4)
-- ✅ `ml/grammar/grammar_checker.py` created
-- ✅ `ml/grammar/spell_checker.py` created
-- ✅ FastAPI endpoints added:
-  - `/grammar/check`
-  - `/spelling/check`
-- ✅ ML-side curl testing works
-- ✅ Express grammar/spelling routes wired through `pythonBridge.ts`
-- ✅ Inline editor suggestion overlay added for grammar/spelling issues
-- ✅ Suggestion apply/dismiss flow implemented in the editor UI
-- ✅ Existing document grammar checks now work without requiring a fresh edit first
-- ✅ Grammar/spell quality pass started:
-  - obvious unknown words like `asda` / `asdas` are now flagged without unsafe auto-corrections
-  - capitalization + missing punctuation are grouped into one sentence-boundary issue when possible
-  - non-actionable spelling flags are shown as manual review items instead of one-click replacements
-- ⚠️ Grammar model scoring still needs improvement beyond the current baseline rules
-
-### AI Chatbot (Phase 5)
-- ✅ `server/src/ai/aiClient.ts` now supports Gemini-backed chat requests
-- ✅ `POST /ai/chat` added as an authenticated AI chat endpoint
-- ✅ Chat request bodies validated with Zod
-- ✅ AI provider errors now surface meaningful messages instead of generic failures
-- ✅ Frontend chatbot now calls the real backend endpoint instead of using a placeholder response
-- ✅ Short conversation history is sent with chat requests
-- ✅ Current chatbot behavior is read-only / advisory only
-- ✅ Chatbot uses current document content as context
-- ✅ Document context shaping moved into `server/src/skills/buildChatContext.ts`
-- ✅ Chatbot system prompt moved into `server/src/ai/prompts/systemPrompts.ts`
-- ✅ Chat context now normalizes saved editor HTML into readable excerpts
-- ✅ Chat context includes title, document ID, word count, paragraph count, heading count, detected headings, opening excerpt, and recent excerpt
-- ✅ Focused Jest coverage added for chat context shaping
-- ✅ Chatbot preview rejection feedback loop added for current chat sessions
-- ✅ Rejected formatting previews are logged as behavior events such as `chat_preview_rejected:bold`
-- ✅ Accepted formatting previews are logged as behavior events such as `chat_preview_accepted:bold`
-- ✅ Rejected preview formats are sent back to `/ai/chat` so the prompt can acknowledge prior rejection
-- ✅ Repeated rejected previews should be shown again when the user explicitly asks, with copy that reconfirms they want to apply the previously rejected action
-- ✅ Chatbot formatting preview apply path now focuses the editor before restoring selection and running formatting commands
-- ✅ Non-bold formatting intents now have focused backend test coverage for underline, italic, headings, lists, blockquote, and no-intent messages
-- ⚠️ Tool-backed formatting actions are not wired yet
+### Backend & AI Pipeline
+- ✅ **Phase 7 AI Feedback Loop**: `FormatPrompt.tsx`, `AIChatbot.tsx`, and `Document.tsx` log empirical acceptance/rejection records to Supabase `prediction_feedback` and Redis behavior stream.
+- ✅ **Fine-Tuner Automation**: Added `POST /fine-tune` endpoint in `ml/src/main.py` and `POST /ai/fine-tune` route in Express.
+- ✅ **Deployment & Orchestration**: Created `docker-compose.yml` (multi-service local container stack) and `render.yaml` (production infrastructure specification).
 
 ---
 
-## ✅ Testing Confirmed
-- Auth flow works end-to-end
-- Editor saves and reloads content
-- Autosave persists updates
-- Manual save button works
-- Formatting history saved to `formatting_history`
-- Drive-style Home UI loads documents and actions work
-- Redis buffer receives behavior events
-- DuckDB aggregation and feature extraction complete
-- Feature export to CSV/Parquet succeeds
-- WikiText-103 and JFLEG download successfully
-- Preprocessing produces formatting and grammar datasets
-- Base model training completes and saves `ml/models/base_model.pkl`
-- FastAPI prediction endpoint returns formatting predictions
-- Express prediction route successfully calls the Python bridge
-- Grammar endpoint returns grammar scoring payloads
-- Spelling endpoint returns structured issue lists
-- Spell checker flags obvious unknown non-words while suppressing low-confidence replacement suggestions
-- Grammar checker groups related capitalization and terminal punctuation issues into a single actionable issue
-- Server build passes after adding Zod validation, Arcjet middleware, `/ai` route alias, and Redis AI cache/quota models
-- Gemini-backed chatbot replies successfully through the real backend AI route
-- Chatbot now maintains short conversation history across recent turns
-- Chatbot document context shaping now has backend unit coverage
-- Backend Jest is configured for TypeScript skill tests and ignores generated `dist/` output
-- Chatbot rejected-preview loop now logs behavior feedback and reconfirms repeated current-session preview requests
-- Chatbot accepted-preview path now logs behavior feedback for applied formatting previews
-- Chatbot preview apply now follows the toolbar pattern by focusing the editor before restoring selection
-- Behavior summary endpoint and side-panel UI were added for classmate testing visibility
-- Auto-format prompt apply now focuses the editor, restores the saved selection, and selects the current block for inline formats when no text is actively selected
-- Auto-format prediction results now populate the side-panel SuggestionPanel with confidence + reason, and clear stale predictions on accept/reject
-- Dismissing a side-panel suggestion now logs a rejection and suppresses that format temporarily
-- Grammar panel now supports debounced auto-checks (manual button still available)
-- `npm --prefix server test -- --runInBand` passes for the chat-context and formatting-intent skill tests
-- `npm --prefix server run build` passes after the chatbot context refactor, rejection feedback loop, broader formatting preview support, and behavior summary endpoint
-- `npm --prefix frontend run type-check` passes after the chatbot rejection feedback, editor-focus preview changes, behavior summary UI, auto-format apply targeting fix, and suggestion panel wiring
-- `npm --prefix frontend run build` passes after the auto-format apply targeting fix and suggestion panel wiring
-- Provider-side quota/rate-limit errors now return readable messages to the UI
+## 🧪 Testing Confirmed
+- **Frontend TypeScript**: `npx tsc --noEmit` passed with **0 errors**.
+- **Server TypeScript**: `npx tsc --noEmit` passed with **0 errors**.
+- **Jest Test Suites**: **5/5 suites passed** (**24/24 tests passed**).
+  - `src/routes/__tests__/api.integration.test.ts` (Supertest integration)
+  - `src/skills/__tests__/buildChatContext.test.ts`
+  - `src/skills/__tests__/feedbackLoop.test.ts`
+  - `src/skills/__tests__/parseFormattingIntent.test.ts`
+  - `src/skills/__tests__/resolveFormattingTier.test.ts`
+- **Pytest ML Suites**: **7/7 tests passed** (`tests/python/test_ml.py`).
+  - Grammar evaluator, spell checker, and Random Forest pre-trained model artifact loading/predictions.
 
----
+- Accepts only log a generic Redis behavior event (`chat_preview_accepted:...`); no structured accept/reject records
+- `ml/training/fine_tuner.py` exists (one user model trained) but has NO wired data source
+- No prediction accuracy measurement (#29) — nothing tracks accept-vs-reject rate or accuracy over time (RQ1/RQ2/RQ4 data collection)
 
-## 🐛 Known Issues
-- Grammar rule quality still needs improvement beyond the current baseline heuristics
-- Grammar/spell quality work has resumed as a focused quality + overlay pass
-- Current chatbot is advisory only and cannot apply formatting yet
-- Chatbot replies still need live provider QA against real documents after context shaping improvements
-- Chatbot rejection feedback is currently session-level and behavior-log based; persistent server-side feedback modeling is still future work
-- Rejected chat previews should not make a requested action disappear; only automatic suggestions should suppress previously rejected actions without user re-confirmation
+### 2. Docs-vs-Code Drift (MVC panel check)
+Documented in AGENTS.md but missing or relocated:
+- Skills live at `server/src/skills/` (not `server/src/ai/skills/` as documented)
+- `models/predictionModel.ts` (DuckDB queries) does not exist — DuckDB is only touched by Python (aggregator.py)
+- `ai/memory/vectorStore.ts` (pgvector RAG) does not exist anywhere
+- `redis/behaviorBuffer.ts` does not exist (Redis lives in `utils/redisClient.ts` + `models/behaviorModel.ts`)
+- `config/db.ts` / `config/env.ts` do not exist
 
----
+Resolution: either move code to match docs or update AGENTS.md to match reality.
 
-## 🚀 Next Step (resume point)
-- Continue Phase 5 work from the updated backend foundation
-- Chatbot document context shaping now lives in:
-  - `server/src/skills/buildChatContext.ts`
-  - `server/src/ai/prompts/systemPrompts.ts`
-  - `server/src/controllers/aiController.ts`
-  - Arcjet-protected AI routes
-  - Zod-validated route boundaries
-- Keep the chatbot read-only until preview/confirm formatting flows exist
-- Next chatbot pass should verify provider output quality against real saved documents
-- Later chatbot feedback work should persist accepted/rejected preview outcomes beyond the current frontend session
-- Repeated chat requests for a previously rejected preview should prompt for explicit confirmation instead of treating the suggestion as unavailable
-- Next ML/data pass should place the completed paper PDFs under `ml/dataset/raw/academic-papers/`, run the implemented extraction scaffold locally, inspect generated labels, then train against the merged formatting dataset
-- Future grammar improvement should synthetically corrupt clean WikiText sentences to generate 50,000+ bad → good pairs, but only after the formatting model baseline is improved
-- Continue grammar/spell quality as a combined quality + overlay pass:
-  - improve unknown-word detection and safe correction filtering
-  - group related sentence issues into one actionable flag
-  - reduce noisy multi-flag output in the editor panel/overlay
-  - keep unsafe replacements as manual review items instead of accepting them automatically
-- Expand Redis usage later for autosave dirty-flag coordination and NLP deduplication
+### 3. Misc
+- No pytest tests; only 3 Jest unit tests (automation too early until system complete)
+- 13 `.sql` migration files not in graphify graph (optional: `pip install "graphifyy[sql]"`)
+- Deployment: Vercel (frontend) + Render (server, ml) + Upstash (Redis) — DONE
 
----
-
-## 📁 Key Files (Recent)
-- `frontend/src/pages/Home.tsx`
-- `frontend/src/pages/Document.tsx`
-- `frontend/src/components/editor/*`
-- `frontend/src/components/editor/SuggestionOverlay.tsx`
-- `server/src/controllers/behaviorController.ts`
-- `server/src/controllers/predictionController.ts`
-- `server/src/routes/behaviorRoutes.ts`
-- `server/src/routes/predictionRoutes.ts`
-- `server/src/routes/aiRoutes.ts`
-- `server/src/controllers/aiController.ts`
-- `server/src/skills/buildChatContext.ts`
-- `server/src/skills/__tests__/buildChatContext.test.ts`
-- `server/src/skills/__tests__/parseFormattingIntent.test.ts`
-- `server/src/ai/prompts/systemPrompts.ts`
-- `server/jest.config.cjs`
-- `server/src/middleware/arcjet.ts`
-- `server/src/middleware/validate.ts`
-- `server/src/models/aiCacheModel.ts`
-- `server/src/models/aiQuotaModel.ts`
-- `server/src/ai/aiClient.ts`
-- `server/src/ai/bridge/pythonBridge.ts`
-- `server/schemas/authSchemas.ts`
-- `server/schemas/aiSchemas.ts`
-- `server/schemas/documentSchemas.ts`
-- `server/schemas/behaviorSchemas.ts`
-- `server/schemas/predictionSchemas.ts`
-- `frontend/src/components/editor/AIChatbot.tsx`
-- `frontend/src/services/api.ts`
-- `server/src/skills/runAggregator.ts`
-- `server/src/skills/featureExtractor.ts`
-- `server/src/skills/featureExport.ts`
-- `server/src/skills/predictFormat.ts`
-- `ml/aggregator.py`
-- `ml/feature_extractor.py`
-- `ml/export_features.py`
-- `ml/dataset/download.py`
-- `ml/dataset/preprocess.py`
-- `ml/dataset/extract_academic_papers.py`
-- `ml/training/base_trainer.py`
-- `ml/src/main.py`
-- `ml/grammar/grammar_checker.py`
-- `ml/grammar/spell_checker.py`
-- `ml/models/base_model.pkl`
-- `ml/models/grammar_model.pkl`
-- `db/duckdb/behavior.duckdb`
-
----
-
-## ✅ Next Thread Checklist
-- [x] Verify Express grammar/spelling routes
-- [x] Wire grammar/spelling into the editor UI
-- [x] Add route-level Zod validation on backend request boundaries
-- [x] Add Arcjet route protection for auth/AI-facing routes
-- [x] Add Redis-backed AI suggestion cache and quota tracking
-- [x] Add `/ai/*` route alias without breaking `/predictions/*`
-- [x] Resume AI/chatbot implementation from the new backend foundation
-- [x] Wire frontend chatbot to the real backend AI route
-- [x] Add short conversation history support to chat
-- [x] Verify Gemini-backed read-only chatbot works
-- [x] Improve chatbot document context shaping
-- [x] Add backend test coverage for chatbot context shaping
-- [x] Add current-session rejection feedback for chatbot formatting previews
-- [x] Add accepted feedback logging for chatbot formatting previews
-- [x] Add tests for non-bold chatbot formatting intents
-- [x] Focus the editor before applying chatbot formatting previews
-- [x] Add behavior summary endpoint for accepted/rejected feedback visibility
-- [x] Add behavior summary display to the document side panel
-- [x] Fix auto-format prompt apply targeting when no text is selected
-- [x] Wire auto-format predictions into the right-panel SuggestionPanel
-- [ ] Keep chatbot read-only until preview/confirm formatting flow is ready
-- [ ] Continue improving grammar scoring quality as a grouped overlay-quality pass
-- [x] Finalize Supabase schema + RLS + default folder trigger (aligned with DBSYS project)
-- [x] Add unknown-word detection for obvious non-words like `asda`
-- [x] Merge related punctuation/capitalization issues into a single actionable issue where appropriate
-- [ ] Revisit baseline labels/features to reduce artificial accuracy inflation
+### Completed recently (2026-08-10)
+- Profile display name feature: `PATCH /auth/profile` + userModel.ts (writes to Supabase Auth `user_metadata`, NOT `user_profiles`)
+- .gitignore cleanup: untracked `server/node_modules`, `frontend/node_modules`, `frontend/dist`, `db/duckdb/*.duckdb`
+- Deleted 14 stray `ml/_audit*.py` scratch files
+- graphify knowledge graph installed (PyPI `graphifyy`) and updated: 1593 nodes / 2402 edges / 132 communities

@@ -38,9 +38,9 @@ behavior and predicts it automatically.
 
 ## Dean Requirements (non-negotiable)
 
-- Editor must be built from scratch using contentEditable API
-  Do NOT use TipTap, ProseMirror, Quill, or any pre-built editor library
-  Build the toolbar, formatting commands, and selection handling manually
+- Editor must be feature-complete and custom-built — built on TipTap
+  (ProseMirror) with a custom React toolbar, custom formatting commands,
+  and custom selection handling; no prebuilt word-processor application
 - Grammar and spell checking is required as a feature
 - ML model must be pre-trained on an existing online dataset
   before user behavior fine-tuning begins
@@ -54,7 +54,8 @@ behavior and predicts it automatically.
 - React 18 + Vite
 - TypeScript + TSX
 - Shadcn/ui + Tailwind CSS (UI primitives only, NOT the editor)
-- contentEditable API (the custom editor)
+- TipTap editor (ProseMirror) with custom React toolbar + formatting commands;
+  pagination via the `tiptap-pagination-plus` extension
 
 ### Back-end
 - Node.js 20 + Express
@@ -63,6 +64,11 @@ behavior and predicts it automatically.
 ### Databases
 - Supabase — PostgreSQL + pgvector + Auth + Realtime
   Supabase Auth handles ALL authentication (no custom auth)
+  User profile display names live in Supabase Auth's own schema
+  (`auth.users.raw_user_meta_data`, key `display_name`) — updated via
+  `supabase.auth.admin.updateUserById`. The `user_profiles` table is the
+  manuscript's planned schema, NOT the deployed app's; never write profile
+  data to it.
   pgvector enabled for embedding storage
   Realtime for auto-save functionality
   Never commit Supabase URL or anon key
@@ -135,19 +141,19 @@ intellidocs/
 │   │   │   └── index.ts              ← all shared frontend types
 │   │   ├── components/
 │   │   │   ├── ui/                   ← Shadcn components (primitives only)
-│   │   │   ├── editor/               ← custom contentEditable editor
-│   │   │   │   ├── EditorCore.tsx    ← contentEditable div + event handlers
-│   │   │   │   ├── Toolbar.tsx       ← bold, italic, heading buttons
-│   │   │   │   ├── SelectionManager.ts  ← handles text selection
-│   │   │   │   ├── FormattingCommands.ts← applies formatting to selection
-│   │   │   │   ├── BehaviorListener.ts  ← fires events on every format action
-│   │   │   │   └── SuggestionOverlay.tsx← confidence-scored suggestion UI
-│   │   │   ├── ChatOverlay/          ← floating AI chatbot
-│   │   │   │   ├── ChatBubble.tsx    ← collapsed corner button
-│   │   │   │   ├── ChatPanel.tsx     ← messages + input
-│   │   │   │   ├── DiffPreview.tsx   ← before/after formatting diff
-│   │   │   │   ├── ConfirmBar.tsx    ← apply/reject buttons
-│   │   │   │   └── useChatOverlay.ts ← state machine (collapsed/expanded/previewing)
+│   │   │   ├── editor/               ← TipTap-based document editor
+│   │   │   │   ├── TiptapEditor.tsx  ← toolbar, shared extensions, canvas, menus
+│   │   │   │   ├── PagedEditor.tsx   ← paginated single editor (tiptap-pagination-plus)
+│   │   │   │   ├── GrammarUnderlineExtension.ts ← wavy-underline grammar plugin
+│   │   │   │   ├── GrammarPanel.tsx  ← grammar/spell engine + issue list
+│   │   │   │   ├── GrammarOverlay.tsx← floating fix popover
+│   │   │   │   ├── FormatPrompt.tsx  ← confidence-scored suggestion prompt
+│   │   │   │   ├── SuggestionPanel.tsx ← prediction suggestions UI
+│   │   │   │   ├── FormattingPanel.tsx ← preset + custom rule bindings
+│   │   │   │   ├── behaviorListener.ts ← format-action event factory
+│   │   │   │   ├── PageBreak.ts      ← legacy page-break node (saved docs)
+│   │   │   │   ├── AIChatbot.tsx     ← floating AI chatbot (preview/confirm UI)
+│   │   │   │   └── McpDebugPanel.tsx ← MCP tool debugging UI
 │   │   │   ├── DocumentCard.tsx
 │   │   │   ├── DocumentForm.tsx
 │   │   │   └── Navbar.tsx
@@ -175,31 +181,36 @@ intellidocs/
 │   │   ├── documentModel.ts          ← Supabase document queries
 │   │   ├── userModel.ts              ← Supabase user queries
 │   │   ├── behaviorModel.ts          ← Redis operations
-│   │   └── predictionModel.ts        ← DuckDB queries
+│   │   ├── feedbackModel.ts          ← Supabase prediction feedback queries
+│   │   ├── driveModel.ts             ← Supabase Google OAuth tokens
+│   │   └── folderModel.ts            ← Supabase folder management
 │   ├── controllers/                  ← request handlers (Controller layer)
 │   │   ├── authController.ts
 │   │   ├── documentController.ts
 │   │   ├── behaviorController.ts
-│   │   └── predictionController.ts
+│   │   ├── aiController.ts
+│   │   ├── predictionController.ts
+│   │   ├── driveController.ts
+│   │   └── formattingController.ts
 │   ├── routes/                       ← URL mapping only, no logic
 │   │   ├── authRoutes.ts
 │   │   ├── documentRoutes.ts
-│   │   └── aiRoutes.ts
+│   │   ├── aiRoutes.ts
+│   │   ├── behaviorRoutes.ts
+│   │   ├── driveRoutes.ts
+│   │   └── formattingRoutes.ts
 │   ├── ai/
 │   │   ├── aiClient.ts               ← external provider abstraction
 │   │   ├── bridge/
 │   │   │   └── pythonBridge.ts       ← HTTP calls to FastAPI only
-│   │   ├── skills/                   ← single-purpose async functions
-│   │   │   ├── behaviorTracker.ts
-│   │   │   ├── formatPredictor.ts
-│   │   │   ├── nlpCommands.ts
-│   │   │   ├── feedbackLoop.ts
-│   │   │   ├── featureExtractor.ts
-│   │   │   └── stream.ts
-│   │   ├── memory/
-│   │   │   └── vectorStore.ts        ← pgvector RAG queries
 │   │   └── prompts/
 │   │       └── systemPrompts.ts      ← ALL prompt strings live here
+│   ├── skills/                       ← single-purpose async functions
+│   │   ├── predictFormat.ts
+│   │   ├── feedbackLoop.ts
+│   │   ├── parseFormattingIntent.ts
+│   │   ├── resolveFormattingTier.ts
+│   │   └── buildChatContext.ts
 │   ├── middleware/
 │   │   ├── arcjet.ts                 ← Arcjet per-router protection
 │   │   ├── authMiddleware.ts         ← verify Supabase JWT
@@ -214,16 +225,14 @@ intellidocs/
 │   │       ├── predictNextFormat.ts
 │   │       ├── getBehaviorSummary.ts
 │   │       └── explainSuggestion.ts
-│   ├── redis/
-│   │   └── behaviorBuffer.ts         ← real-time event capture
 │   ├── schemas/                      ← Zod schemas for external boundaries
 │   │   ├── authSchemas.ts
 │   │   ├── behaviorSchemas.ts
 │   │   ├── documentSchemas.ts
+│   │   ├── feedbackSchemas.ts
 │   │   └── predictionSchemas.ts
-│   ├── config/
-│   │   ├── db.ts                     ← Supabase client setup
-│   │   └── env.ts                    ← environment variables
+│   ├── utils/
+│   │   └── redisClient.ts            ← Redis client singleton
 │   ├── app.ts                        ← Express setup + middleware
 │   └── server.ts                     ← HTTP entry point
 │
@@ -257,15 +266,19 @@ intellidocs/
 
 ---
 
-## Custom Editor Rules (contentEditable)
+## Custom Editor Rules (TipTap)
 
-- NEVER use TipTap, ProseMirror, Quill, or any editor library
-- Use browser's native contentEditable API
-- Use document.execCommand() or Selection API for formatting
-- EditorCore.tsx is the only file that touches contentEditable
-- All formatting goes through FormattingCommands.ts
-- All behavior events go through BehaviorListener.ts
-- SuggestionOverlay renders inside the editor, not outside it
+- EDITOR-FIRST RULE: before hand-rolling any editor behavior (pagination,
+  tables, menus, commands), check whether TipTap or a maintained community
+  extension already provides it and prefer that solution — e.g. pagination
+  uses `tiptap-pagination-plus` (see PagedEditor.tsx), not a custom cascade
+- The editor is TipTap (ProseMirror); the toolbar, menus, and page layout
+  are custom-built in React (TiptapEditor.tsx, PagedEditor.tsx)
+- All formatting goes through TipTap's command API (`editor.chain().focus()`)
+- All behavior events fire from toolbar actions via `onFormatApplied`
+- Grammar underlines are a custom TipTap plugin (GrammarUnderlineExtension.ts)
+- Keep shared extensions in `editorExtensions` (TiptapEditor.tsx) — single
+  source of truth for every editor instance
 
 ---
 
@@ -282,7 +295,7 @@ intellidocs/
 
 ## MCP Chatbot Rules
 
-- ChatOverlay has exactly 3 states: collapsed, expanded, previewing
+- AIChatbot has exactly 3 UI states: collapsed, expanded, previewing
 - applyFormatting ALWAYS calls preview mode first
 - User MUST confirm before commit mode is called
 - Rejection ALWAYS fires feedbackLoop.ts — never silently ignore
@@ -300,7 +313,7 @@ intellidocs/
   - Confidence scoring = ML model output
 
 - The AI API is ONLY used for:
-  - ChatOverlay chatbot (MCP tool orchestration)
+  - AIChatbot (MCP tool orchestration, preview/confirm UI)
   - Natural language command interpretation
 
 ### Implementation Details
@@ -445,7 +458,7 @@ Providers under evaluation include:
 - Controllers must not call Python directly; use the Python bridge path
 - Keep route files thin and move logic into controllers/skills/models as appropriate
 - Route files should handle Zod validation before controllers
-- The custom editor must stay `contentEditable`-based
+- The editor must stay TipTap-based — custom toolbar/commands, never a prebuilt word-processor app
 - Match the existing TypeScript style: explicit types, no `any`, minimal changes
 
 ## Coding Conventions
@@ -488,7 +501,7 @@ Phase 1 — Foundation
   2. Express CRUD for documents (MVC strictly)
   3. Supabase Auth (login, register, JWT middleware)
   4. React pages (Login, Register, Home, Document)
-  5. Custom contentEditable editor (EditorCore + Toolbar)
+  5. Custom TipTap editor (TiptapEditor toolbar + PagedEditor)
   6. Shadcn/ui for all non-editor UI
 
 Phase 2 — Behavior Pipeline
@@ -507,18 +520,18 @@ Phase 4 — Grammar + Spell Check
   15. grammar_checker.py using JFLEG
   16. spell_checker.py using pyspellchecker
   17. Wire into Express via pythonBridge.ts
-  18. Display inline in editor via SuggestionOverlay
+  18. Display inline in editor via GrammarUnderlineExtension
 
 Phase 5 — AI Suggestion UI
-  19. SuggestionBar with confidence score display
-  20. SuggestionOverlay inside editor
-  21. DiffPreview + ConfirmBar components
-  22. ChatOverlay (ChatBubble, ChatPanel, useChatOverlay)
+  19. SuggestionPanel with confidence score display
+  20. FormatPrompt inside editor
+  21. DiffPreview + ConfirmBar components (in AIChatbot)
+  22. AIChatbot (preview/confirm UI)
 
 Phase 6 — MCP Chatbot
   23. MCP server setup (mcpServer.ts)
   24. All 6 MCP tools
-  25. Wire ChatOverlay to MCP server
+  25. Wire AIChatbot to MCP server
   26. External AI provider integration + tool-calling verification
 
 Phase 7 — Learning Loop
@@ -558,7 +571,7 @@ formatting behavior and predicts it automatically.
 ## Important Reminders
 
 - Grammar checking is now a required feature (dean requirement)
-- Editor must use contentEditable — no editor libraries
+- Editor is TipTap — prefer TipTap/community extensions before hand-rolling editor features
 - ML must be pre-trained on a real dataset before user fine-tuning
 - MVC is strictly enforced — panel will check this
 - Supabase free tier pauses after 1 week of inactivity

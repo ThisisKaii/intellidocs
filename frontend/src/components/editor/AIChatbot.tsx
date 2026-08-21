@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
+import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { api, type RejectedFormattingPreview } from '@/services/api'
-import * as FormattingCommands from './FormattingCommands'
-import { restoreSelection } from './SelectionManager'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -20,6 +19,7 @@ interface ChatHistoryEntry {
 }
 
 interface AIChatbotProps {
+  editor: Editor | null
   documentId: string | undefined
   documentTitle?: string
   documentContent: string
@@ -30,6 +30,7 @@ interface AIChatbotProps {
 
 /** Floating AI chatbot for natural language document help. */
 export default function AIChatbot({
+  editor,
   documentId,
   documentTitle,
   documentContent,
@@ -112,24 +113,23 @@ export default function AIChatbot({
 
   /** Apply a confirmed formatting preview to the current editor selection. */
   function handlePreviewApply(messageIndex: number, format: string): void {
-    const commands: Record<string, (() => void) | undefined> = {
-      bold: FormattingCommands.bold,
-      italic: FormattingCommands.italic,
-      underline: FormattingCommands.underline,
-      heading1: FormattingCommands.heading1,
-      heading2: FormattingCommands.heading2,
-      heading3: FormattingCommands.heading3,
-      blockquote: FormattingCommands.blockquote,
-      unordered_list: FormattingCommands.bulletList,
-      ordered_list: FormattingCommands.numberedList,
+    const commands: Record<string, ((editor: Editor) => void) | undefined> = {
+      bold: (ed) => ed.chain().focus().toggleBold().run(),
+      italic: (ed) => ed.chain().focus().toggleItalic().run(),
+      underline: (ed) => ed.chain().focus().toggleUnderline().run(),
+      heading1: (ed) => ed.chain().focus().toggleHeading({ level: 1 }).run(),
+      heading2: (ed) => ed.chain().focus().toggleHeading({ level: 2 }).run(),
+      heading3: (ed) => ed.chain().focus().toggleHeading({ level: 3 }).run(),
+      blockquote: (ed) => ed.chain().focus().toggleBlockquote().run(),
+      unordered_list: (ed) => ed.chain().focus().toggleBulletList().run(),
+      ordered_list: (ed) => ed.chain().focus().toggleOrderedList().run(),
     }
 
     const command = commands[format]
-    if (!command) return
+    if (!editor || !command) return
 
     onFocusEditor?.()
-    restoreSelection()
-    command()
+    command(editor)
     onFormatApplied?.(format)
 
     if (documentId) {
@@ -141,6 +141,15 @@ export default function AIChatbot({
         })
         .catch((error) => console.error('Chat preview acceptance log failed', error))
     }
+
+    api.ai
+      .logFeedback({
+        documentId: documentId || undefined,
+        predictionType: 'chat_preview',
+        predictedFormat: format,
+        accepted: true,
+      })
+      .catch((error) => console.error('Chat preview acceptance feedback log failed', error))
     
     onFeedbackLogged?.()
 
@@ -187,7 +196,17 @@ export default function AIChatbot({
         .catch((error) => console.error('Chat preview rejection log failed', error))
     }
 
+    api.ai
+      .logFeedback({
+        documentId: documentId || undefined,
+        predictionType: 'chat_preview',
+        predictedFormat: format,
+        accepted: false,
+      })
+      .catch((error) => console.error('Chat preview rejection feedback log failed', error))
+
     onFeedbackLogged?.()
+
 
     setMessages((current) =>
       current.map((message, index) =>

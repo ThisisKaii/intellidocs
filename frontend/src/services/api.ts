@@ -8,6 +8,20 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 interface User {
   id: string
   email: string
+  displayName?: string | null
+}
+
+export type PageNumberFormat = 'none' | 'number' | 'roman'
+
+export type PageSizeKey = 'short' | 'long' | 'a4' | 'letter' | 'legal'
+
+export type PageOrientation = 'portrait' | 'landscape'
+
+export interface MarginValues {
+  top: number
+  bottom: number
+  left: number
+  right: number
 }
 
 export interface DocumentRecord {
@@ -15,8 +29,18 @@ export interface DocumentRecord {
   user_id: string
   title: string
   content: string
+  header_content: string
+  footer_content: string
+  show_header: boolean
+  show_footer: boolean
+  header_number_format: PageNumberFormat
+  footer_number_format: PageNumberFormat
+  page_size: PageSizeKey
+  margins: MarginValues
+  orientation: PageOrientation
   formatting_history: unknown[]
   is_isolated: boolean
+  formatting_preset: string | null
   created_at: string
   updated_at: string
 }
@@ -77,8 +101,61 @@ interface RegisterResponse {
 interface UpdateDocumentRequest {
   title?: string
   content?: string
+  header_content?: string
+  footer_content?: string
+  show_header?: boolean
+  show_footer?: boolean
+  header_number_format?: PageNumberFormat
+  footer_number_format?: PageNumberFormat
+  page_size?: PageSizeKey
+  margins?: MarginValues
+  orientation?: PageOrientation
   formatting_history?: string[]
   is_isolated?: boolean
+  formatting_preset?: string | null
+}
+
+// ── Three-tier formatting control system types ──────────────────────────────
+
+export interface TriggerCondition {
+  maxWords?: number
+  minWords?: number
+  maxChars?: number
+  standaloneLine?: boolean
+  startsWith?: string
+  contains?: string
+}
+
+export interface FormatRule {
+  condition: TriggerCondition
+  format: string
+  priority: number
+}
+
+export interface FormatPreset {
+  id: string
+  key: string
+  name: string
+  description: string
+  rules: FormatRule[]
+  is_system: boolean
+}
+
+export interface FormatBinding {
+  id: string
+  user_id: string
+  trigger_condition: TriggerCondition
+  format_to_apply: string
+  priority: number
+  created_at: string
+}
+
+export interface TierCheckResponse {
+  tier: 'binding' | 'preset' | 'ml' | 'none'
+  format?: string
+  confidence?: number
+  reason?: string
+  feature_values?: Record<string, number>
 }
 
 export interface GrammarIssue {
@@ -267,6 +344,14 @@ export const api = {
         body: JSON.stringify({ accessToken }),
       })
     },
+    /** Update the signed-in user's display name. */
+    updateProfile: async (displayName: string): Promise<{ user: User; message: string }> => {
+      return fetchAPI<{ user: User; message: string }>('auth/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: displayName }),
+      })
+    },
   },
 
   documents: {
@@ -328,6 +413,65 @@ export const api = {
     },
   },
 
+  formatting: {
+    /** List all available Tier 1 presets. */
+    listPresets: async (): Promise<FormatPreset[]> => {
+      const response = await fetchAPI<{ presets: FormatPreset[] }>('formatting/presets')
+      return response.presets
+    },
+    /** Assign a preset profile to a document. */
+    setDocumentPreset: async (documentId: string, preset: string): Promise<{ message: string }> => {
+      return fetchAPI<{ message: string }>(`formatting/documents/${documentId}/preset`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preset }),
+      })
+    },
+    /** List the current user's custom Tier 2 bindings. */
+    listBindings: async (): Promise<FormatBinding[]> => {
+      const response = await fetchAPI<{ bindings: FormatBinding[] }>('formatting/bindings')
+      return response.bindings
+    },
+    /** Create a custom formatting binding. */
+    createBinding: async (triggerCondition: TriggerCondition, formatToApply: string, priority: number): Promise<FormatBinding> => {
+      return fetchAPI<FormatBinding>('formatting/bindings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trigger_condition: triggerCondition,
+          format_to_apply: formatToApply,
+          priority,
+        }),
+      })
+    },
+    /** Update a custom formatting binding. */
+    updateBinding: async (id: string, triggerCondition: TriggerCondition, formatToApply: string, priority: number): Promise<FormatBinding> => {
+      return fetchAPI<FormatBinding>(`formatting/bindings/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trigger_condition: triggerCondition,
+          format_to_apply: formatToApply,
+          priority,
+        }),
+      })
+    },
+    /** Delete a custom formatting binding. */
+    deleteBinding: async (id: string): Promise<null> => {
+      return fetchAPI<null>(`formatting/bindings/${id}`, {
+        method: 'DELETE',
+      })
+    },
+    /** Run the three-tier check: binding -> preset -> ML fallback. */
+    tierCheck: async (text: string, documentId: string): Promise<TierCheckResponse> => {
+      return fetchAPI<TierCheckResponse>('formatting/tier-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, documentId }),
+      })
+    },
+  },
+
   predictions: {
     predict: async (text: string, userId?: string): Promise<PredictionResponse> => {
       return fetchAPI<PredictionResponse>('predictions/predict', {
@@ -374,6 +518,21 @@ export const api = {
         }),
       })
     },
+    /** Log structured user feedback (acceptance or rejection) for an AI formatting prediction. */
+    logFeedback: async (payload: {
+      documentId?: string
+      predictionType: 'format_prompt' | 'suggestion_panel' | 'chat_preview'
+      predictedFormat: string
+      confidence?: number
+      accepted: boolean
+    }): Promise<{ status: string; message: string }> => {
+      return fetchAPI<{ status: string; message: string }>('ai/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+    },
+
   },
 
   mcp: {

@@ -92,16 +92,16 @@ function DriveSidebar({
               <FileText className="size-4" /> New Document
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onCreateFolder} className="gap-2 py-2 cursor-pointer">
-              <FolderIcon className="size-4 text-[#4285f4]" /> New Folder
+              <FolderIcon className="size-4 text-primary" /> New Folder
             </DropdownMenuItem>
             {onImportFromFile && (
               <DropdownMenuItem onClick={onImportFromFile} className="gap-2 py-2 cursor-pointer">
-                <Upload className="size-4 text-[#1967d2]" /> Import from File
+                <Upload className="size-4 text-primary" /> Import from File
               </DropdownMenuItem>
             )}
             {onImportFromDrive && (
               <DropdownMenuItem onClick={onImportFromDrive} className="gap-2 py-2 cursor-pointer">
-                <HardDrive className="size-4 text-[#0f9d58]" /> Import from Drive
+                <HardDrive className="size-4 text-primary" /> Import from Drive
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -120,12 +120,12 @@ function DriveSidebar({
               onClick={() => onSelectView({ type: item.selectionType })}
               className={`flex items-center gap-3 w-full px-4 h-10 rounded-full text-[0.875rem] border-none cursor-pointer text-left transition-colors ${
                 active
-                  ? 'font-medium text-[#001d35] bg-[#c2e7ff]'
-                  : 'font-normal text-[#444746] hover:bg-black/5'
+                  ? 'font-medium text-primary bg-primary/15'
+                  : 'font-normal text-muted-foreground hover:bg-foreground/5'
               }`}
               style={{ fontFamily: 'inherit' }}
             >
-              <Icon className={`size-[18px] ${active ? 'text-[#001d35]' : 'text-[#444746]'}`} strokeWidth={active ? 2 : 1.75} />
+              <Icon className={`size-[18px] ${active ? 'text-primary' : 'text-muted-foreground'}`} strokeWidth={active ? 2 : 1.75} />
               {item.label}
             </button>
           )

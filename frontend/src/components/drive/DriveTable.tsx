@@ -306,12 +306,12 @@ export function DriveTable({
                   onContextMenu={(e) => handleContextMenu(e, item)}
                   className={`group relative flex items-center justify-between px-4 py-3.5 rounded-xl cursor-default transition-all duration-150 ${
                     isSelected
-                      ? 'bg-[#c2e7ff]'
-                      : 'bg-[#f1f3f4] hover:bg-[#e8eaed]'
+                      ? 'bg-primary/20'
+                      : 'bg-secondary hover:bg-secondary/70'
                   }`}
                 >
                   <div className="flex items-center gap-4 min-w-0 flex-1">
-                    <FolderIcon className="size-5 shrink-0 text-[#1f1f1f]" fill={isSelected ? '#1f1f1f' : 'currentColor'} strokeWidth={1} />
+                    <FolderIcon className="size-5 shrink-0 text-foreground" fill="currentColor" strokeWidth={1} />
                     {isEditing ? (
                       <input
                         value={editing.title}
@@ -327,7 +327,7 @@ export function DriveTable({
                       />
                     ) : (
                       <span
-                        className="text-[0.9375rem] font-medium text-[#1f1f1f] truncate m-0"
+                        className="text-[0.9375rem] font-medium text-foreground truncate m-0"
                         title={f.name}
                       >
                         {f.name}
@@ -339,7 +339,7 @@ export function DriveTable({
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
-                          className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-[#444746] border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/5 shrink-0 ml-2"
+                          className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-foreground/5 shrink-0 ml-2"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <MoreVertical className="size-4" />
@@ -400,7 +400,7 @@ export function DriveTable({
                   onContextMenu={(e) => handleContextMenu(e, item)}
                   className={`group flex items-center gap-4 px-4 py-3 cursor-default border-b border-border/40 transition-colors ${
                     isSelected
-                      ? 'bg-[#c2e7ff]'
+                      ? 'bg-primary/20'
                       : 'hover:bg-secondary/40'
                   }`}
                 >

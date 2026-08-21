@@ -25,6 +25,8 @@ interface GrammarPanelProps {
   text: string
   activeIssues?: GrammarIssue[]
   onCheckComplete?: (issues: GrammarIssue[]) => void
+  onApply?: (issue: GrammarIssue) => void
+  onDismiss?: (issue: GrammarIssue) => void
   autoCheck?: boolean
   autoCheckDelayMs?: number
   autoCheckCooldownMs?: number
@@ -86,6 +88,8 @@ export default function GrammarPanel({
   text,
   activeIssues,
   onCheckComplete,
+  onApply,
+  onDismiss,
   autoCheck = false,
   autoCheckDelayMs = 2500,
   autoCheckCooldownMs = 12000,
@@ -100,6 +104,8 @@ export default function GrammarPanel({
 
   // Strip HTML tags so the panel works whether it receives plain text or raw HTML
   const plainText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  // The prediction API rejects payloads over 50k chars — check the head only.
+  const checkText = plainText.slice(0, 50000)
   const displayedIssues = activeIssues ?? issues?.issues ?? []
   const overallMessage =
     issues && activeIssues !== undefined && activeIssues.length === 0
@@ -117,8 +123,8 @@ export default function GrammarPanel({
 
     try {
       const [grammarResult, spellingResult] = await Promise.all([
-        api.predictions.grammarCheck(plainText),
-        api.predictions.spellCheck(plainText),
+        api.predictions.grammarCheck(checkText),
+        api.predictions.spellCheck(checkText),
       ])
 
       const result = buildGrammarResult(grammarResult, spellingResult)
@@ -257,14 +263,84 @@ export default function GrammarPanel({
                       <span style={{ fontSize: '0.875rem' }}>No issues found</span>
                     </div>
                   ) : (
-                    <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', color: '#3b82f6', borderRadius: '0.375rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
-                        <AlertCircle style={{ width: '16px', height: '16px' }} />
-                        <span>{displayedIssues.length} {displayedIssues.length === 1 ? 'Issue' : 'Issues'} Highlighted</span>
-                      </div>
-                      <p style={{ fontSize: '0.75rem', opacity: 0.9, margin: 0 }}>
-                        Review the dashed underlines directly in your document to apply or dismiss suggestions.
-                      </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {displayedIssues.map((issue, index) => (
+                        <div
+                          key={`${issue.original}-${index}`}
+                          style={{
+                            borderRadius: '0.375rem',
+                            border: '1px solid var(--border)',
+                            padding: '0.625rem',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
+                            <span
+                              style={{
+                                fontSize: '0.625rem',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                padding: '0.125rem 0.5rem',
+                                borderRadius: '0.25rem',
+                                backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                                color: '#ea580c',
+                              }}
+                            >
+                              {issue.type}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: '0 0 0.375rem', lineHeight: 1.4 }}>
+                            <span style={{ textDecoration: 'line-through', opacity: 0.8 }}>{issue.original}</span>
+                            {' → '}
+                            <span style={{ color: '#10b981' }}>{issue.suggestion}</span>
+                          </p>
+                          <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.5rem', lineHeight: 1.4 }}>
+                            {issue.explanation}
+                          </p>
+                          <div style={{ display: 'flex', gap: '0.375rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (issue.actionable !== false) onApply?.(issue)
+                              }}
+                              disabled={issue.actionable === false}
+                              style={{
+                                flex: 1,
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                padding: '0.375rem 0',
+                                borderRadius: '0.375rem',
+                                border: 'none',
+                                backgroundColor: 'var(--primary)',
+                                color: 'var(--primary-foreground)',
+                                cursor: issue.actionable === false ? 'not-allowed' : 'pointer',
+                                opacity: issue.actionable === false ? 0.5 : 1,
+                                fontFamily: 'inherit',
+                              }}
+                            >
+                              {issue.actionable === false ? 'Review manually' : 'Apply'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDismiss?.(issue)}
+                              style={{
+                                flex: 1,
+                                fontSize: '0.75rem',
+                                fontWeight: 500,
+                                padding: '0.375rem 0',
+                                borderRadius: '0.375rem',
+                                color: 'var(--muted-foreground)',
+                                backgroundColor: 'transparent',
+                                border: '1px solid var(--border)',
+                                cursor: 'pointer',
+                                fontFamily: 'inherit',
+                              }}
+                            >
+                              Ignore
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

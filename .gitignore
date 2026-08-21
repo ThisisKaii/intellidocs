@@ -44,6 +44,17 @@ ml/models/*.pkl
 !ml/models/base_model.pkl
 !ml/models/grammar_model.pkl
 
+# Personal / reference data (thesis PDFs, formatting reference images)
+ml/dataset/manuscript/
+ml/dataset/format_reference/
+
+# Scratch scripts and conversion test files
+ml/_audit*.py
+ml/*convtest*
+ml/_convtest*
+ml/convtest.py
+ml/ml/
+
 # DuckDB
 db/duckdb/*.duckdb
 *.sqlite

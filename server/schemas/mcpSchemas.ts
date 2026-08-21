@@ -14,6 +14,8 @@ export const mcpToolCallSchema = z.object({
 
 export const getDocumentContentSchema = z.object({
   documentId: z.string().uuid(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(200).max(20000).optional(),
 })
 
 export const applyFormattingSchema = z.object({

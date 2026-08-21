@@ -8,8 +8,10 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Document from './pages/Document'
+import Settings from './pages/Settings'
 import AdminDashboard from './pages/AdminDashboard'
 import AuthCallback from './pages/AuthCallback'
+import DriveCallback from './pages/DriveCallback'
 import Privacy from './pages/Privacy'
 import './App.css'
 
@@ -22,6 +24,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/drive-callback" element={<DriveCallback />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/" element={<Landing />} />
 
@@ -39,6 +42,15 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Document />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute>
+                  <Settings />
                 </ProtectedRoute>
               }
             />

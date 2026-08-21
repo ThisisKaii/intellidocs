@@ -16,12 +16,14 @@ function buildOAuth2Client(): InstanceType<typeof google.auth.OAuth2> {
 }
 
 /** Generate the Google OAuth2 consent URL and return it. */
-export async function getAuthUrl(_req: Request, res: Response): Promise<void> {
+export async function getAuthUrl(req: Request, res: Response): Promise<void> {
   try {
+    const userId = req.user?.id
     const oauth2 = buildOAuth2Client()
     const url = oauth2.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
+      state: userId,
       scope: [
         'https://www.googleapis.com/auth/drive.readonly',
       ],
@@ -36,7 +38,7 @@ export async function getAuthUrl(_req: Request, res: Response): Promise<void> {
 /** Handle the OAuth2 callback, exchange code for tokens, and store them. */
 export async function handleCallback(req: Request, res: Response): Promise<void> {
   try {
-    const userId = req.user?.id
+    const userId = (req.query.state as string | undefined) || req.user?.id
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' })
       return
@@ -63,9 +65,9 @@ export async function handleCallback(req: Request, res: Response): Promise<void>
       tokens.expiry_date ?? 0,
     )
 
-    // Redirect to frontend with a success indicator
+    // Redirect to frontend callback receiver
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
-    res.redirect(`${frontendUrl}/dashboard?drive=connected`)
+    res.redirect(`${frontendUrl}/drive-callback?drive=connected`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     res.status(500).json({ error: message })

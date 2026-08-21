@@ -4,16 +4,17 @@ import { api, type DocumentRecord, type FolderRecord } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
-import { LogOut, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
+import UserMenu from '@/components/UserMenu'
 import DriveImportDialog from '@/components/DriveImportDialog'
-import ImportFileModal from '@/components/ImportFileModal'
+import ImportFileModal, { type ImportProgress, ImportProgressToast } from '@/components/ImportFileModal'
 
 /** One day in milliseconds — used for the "Recent" filter. */
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
 
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
 
   /* ── Core data ─────────────────────────────────────── */
   const [allDocuments, setAllDocuments] = useState<DocumentRecord[]>([])
@@ -31,6 +32,7 @@ export default function HomePage(): JSX.Element {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [driveOpen, setDriveOpen] = useState<boolean>(false)
   const [importFileOpen, setImportFileOpen] = useState<boolean>(false)
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
 
   /* ── Load all documents once ───────────────────────── */
   useEffect(() => {
@@ -140,11 +142,6 @@ export default function HomePage(): JSX.Element {
     api.folders.create(name.trim())
       .then((created) => setFolders((prev) => [...prev, created]))
       .catch(() => setError('Failed to create folder'))
-  }
-
-  function handleLogout(): void {
-    logout()
-    navigate('/login')
   }
 
   async function handleImportDoc(title: string, html: string): Promise<void> {
@@ -367,13 +364,7 @@ export default function HomePage(): JSX.Element {
                 </button>
               )}
 
-              <button
-                onClick={handleLogout}
-                title="Sign out"
-                className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer transition-colors hover:bg-foreground/5"
-              >
-                <LogOut className="size-5" />
-              </button>
+              <UserMenu />
             </div>
           </div>
         </header>
@@ -439,11 +430,17 @@ export default function HomePage(): JSX.Element {
       {importFileOpen && (
         <ImportFileModal
           onClose={() => setImportFileOpen(false)}
+          onProgress={setImportProgress}
           onImported={() => {
             // Refresh document list after successful import
             api.documents.list().then(setAllDocuments).catch(() => {})
           }}
         />
+      )}
+
+      {/* Google-Drive-style import progress toast (bottom right) */}
+      {importProgress && (
+        <ImportProgressToast progress={importProgress} onDone={() => setImportProgress(null)} />
       )}
     </div>
   )

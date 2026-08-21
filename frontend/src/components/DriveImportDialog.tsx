@@ -40,11 +40,24 @@ export default function DriveImportDialog({
     if (open) void checkStatus()
   }, [open, checkStatus])
 
-  /** Start the OAuth2 flow by opening the consent URL. */
+  /** Start the OAuth2 flow by opening the consent URL in a popup. */
   async function handleConnect(): Promise<void> {
     try {
       const res = await api.drive.getAuthUrl()
       window.open(res.url, '_blank', 'width=600,height=700')
+
+      function handleOAuthMessage(event: MessageEvent): void {
+        if (event.origin !== window.location.origin) return
+        const data = event.data as { type?: string; error?: string }
+        if (data.type === 'drive:connected') {
+          void checkStatus()
+          window.removeEventListener('message', handleOAuthMessage)
+        } else if (data.type === 'drive:error') {
+          console.error('Google Drive connection error:', data.error)
+          window.removeEventListener('message', handleOAuthMessage)
+        }
+      }
+      window.addEventListener('message', handleOAuthMessage)
     } catch (error) {
       console.error('Failed to get auth URL', error)
     }

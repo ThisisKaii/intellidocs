@@ -60,20 +60,32 @@ def parse_manuscript_dataframe(file_paths: List[str]) -> pd.DataFrame:
 
 
 def load_training_data(csv_path: str) -> pd.DataFrame:
-    """Load primary manuscript training data, falling back to processed CSV dataset if manuscript directory is empty."""
-    manuscript_files = load_manuscript_files(MANUSCRIPT_DIR)
+    """Load primary manuscript training data from processed CSV datasets."""
+    candidate_paths = [
+        "ml/dataset/processed/formatting_examples_merged.csv",
+        "dataset/processed/formatting_examples_merged.csv",
+        "ml/dataset/processed/academic_paper_formatting_examples.csv",
+        "dataset/processed/academic_paper_formatting_examples.csv",
+        csv_path,
+    ]
 
-    if manuscript_files:
-        print(f"📄 Training base model on manuscript documents: {manuscript_files}")
-        df = parse_manuscript_dataframe(manuscript_files)
-        if not df.empty and "label" in df.columns:
-            return df
-        print("⚠️ Manuscript extraction returned empty, falling back to historical CSV dataset.")
+    found_path = None
+    for path in candidate_paths:
+        if os.path.exists(path):
+            found_path = path
+            break
 
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"Training dataset not found: {csv_path}")
+    if not found_path:
+        # Fallback to direct extraction if missing
+        manuscript_files = load_manuscript_files(MANUSCRIPT_DIR)
+        if manuscript_files:
+            print(f"Loading manuscript documents from: {manuscript_files}")
+            from dataset.extract_academic_papers import extract_academic_examples
+            return extract_academic_examples(MANUSCRIPT_DIR)
+        raise FileNotFoundError(f"No processed training CSV found in candidate paths.")
 
-    dataframe = pd.read_csv(csv_path)
+    print(f"Loading training dataset from: {found_path}")
+    dataframe = pd.read_csv(found_path)
     if dataframe.empty:
         raise ValueError("Training dataset is empty.")
 
@@ -85,7 +97,7 @@ def load_training_data(csv_path: str) -> pd.DataFrame:
 
 def select_feature_columns(dataframe: pd.DataFrame) -> list[str]:
     """Select numeric feature columns used for model training."""
-    excluded = {"label", "text", "split"}
+    excluded = {"label", "text", "split", "source", "source_file", "context", "page_type"}
     return [
         column
         for column in dataframe.columns
@@ -93,36 +105,21 @@ def select_feature_columns(dataframe: pd.DataFrame) -> list[str]:
     ]
 
 
-def split_data(
-    dataframe: pd.DataFrame, feature_columns: list[str]
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """Split the dataset into train and validation sets."""
-    features = dataframe[feature_columns]
-    labels = dataframe["label"]
-
-    split = train_test_split(
-        features,
-        labels,
-        test_size=0.2,
-        random_state=42,
-        stratify=labels if labels.nunique() > 1 else None,
-    )
-    return cast(tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series], tuple(split))
-
-
 def train_model(
-    x_train: pd.DataFrame, y_train: pd.Series
+    x_train: pd.DataFrame,
+    y_train: pd.Series,
+    sample_weights: pd.Series | None = None,
 ) -> RandomForestClassifier:
-    """Train a baseline formatting classifier."""
+    """Train a baseline formatting classifier with sample weights."""
     model = RandomForestClassifier(
         n_estimators=200,
-        max_depth=12,
+        max_depth=14,
         min_samples_split=4,
         min_samples_leaf=2,
         class_weight="balanced",
         random_state=42,
     )
-    model.fit(x_train, y_train)
+    model.fit(x_train, y_train, sample_weight=sample_weights)
     return model
 
 
@@ -155,28 +152,44 @@ def save_model(
 
 def main() -> None:
     """Train and save the base formatting model using paper/manuscript data."""
-    dataset_path = os.getenv(
-        "FORMATTING_DATASET_PATH",
-        "dataset/processed/formatting_examples.csv",
-    )
-    output_path = os.getenv(
-        "BASE_MODEL_PATH",
-        "models/base_model.pkl",
-    )
+    default_dataset = "ml/dataset/processed/formatting_examples_merged.csv" if os.path.exists("ml/dataset") else "dataset/processed/formatting_examples_merged.csv"
+    default_output = "ml/models/base_model.pkl" if os.path.exists("ml/models") else "models/base_model.pkl"
+
+    dataset_path = os.getenv("FORMATTING_DATASET_PATH", default_dataset)
+    output_path = os.getenv("BASE_MODEL_PATH", default_output)
 
     dataframe = load_training_data(dataset_path)
     feature_columns = select_feature_columns(dataframe)
 
+
     if not feature_columns:
         raise ValueError("No numeric feature columns found for training.")
 
-    x_train, x_valid, y_train, y_valid = split_data(dataframe, feature_columns)
-    model = train_model(x_train, y_train)
+    # Fill NaN values in numeric feature columns
+    dataframe[feature_columns] = dataframe[feature_columns].fillna(0)
+
+    # Compute sample weights: Academic samples get 3.0x weight, WikiText gets 1.0x
+    sample_weights = dataframe.apply(
+        lambda row: 3.0 if str(row.get("split", "")).lower() == "academic" or "academic" in str(row.get("source", "")).lower() else 1.0,
+        axis=1,
+    )
+
+    x_train, x_valid, y_train, y_valid, w_train, w_valid = train_test_split(
+        dataframe[feature_columns],
+        dataframe["label"],
+        sample_weights,
+        test_size=0.2,
+        random_state=42,
+        stratify=dataframe["label"] if dataframe["label"].nunique() > 1 else None,
+    )
+
+    model = train_model(x_train, y_train, sample_weights=w_train)
     accuracy = evaluate_model(model, x_valid, y_valid)
 
     save_model(model, feature_columns, output_path)
 
-    print("✅ Base formatting model trained on research manuscript data.")
+    print("[OK] Base formatting model trained on research manuscript data.")
+    print(f"Features used ({len(feature_columns)}): {feature_columns}")
     print(f"Validation accuracy: {accuracy:.4f}")
     print(f"Saved model to: {output_path}")
 

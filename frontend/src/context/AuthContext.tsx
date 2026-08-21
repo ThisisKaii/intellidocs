@@ -6,6 +6,7 @@ export interface UserAuthData {
   email: string
   role?: 'student' | 'professor' | 'admin'
   verificationStatus?: 'pending' | 'approved' | 'rejected'
+  displayName?: string | null
 }
 
 interface AuthContextType {
@@ -15,6 +16,8 @@ interface AuthContextType {
   isAuthenticated: boolean
   login: (user: UserAuthData, token: string) => void
   logout: () => void
+  /** Merges partial profile updates (e.g. display name) into the current user. */
+  updateUser: (patch: Partial<UserAuthData>) => void
   /** Redirects to Google OAuth consent screen via Supabase. */
   loginWithGoogle: () => Promise<void>
 }
@@ -65,6 +68,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('authUser')
   }
 
+  const updateUser = (patch: Partial<UserAuthData>) => {
+    setUser((prev) => {
+      const next = prev ? { ...prev, ...patch } : prev
+      if (next) localStorage.setItem('authUser', JSON.stringify(next))
+      return next
+    })
+  }
+
   /**
    * Initiates Google OAuth via Supabase.
    * The user is redirected to Google, then back to /auth/callback.
@@ -86,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!token,
     login,
     logout,
+    updateUser,
     loginWithGoogle,
   }
 

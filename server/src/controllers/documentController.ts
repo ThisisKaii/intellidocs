@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import * as documentModel from '../models/documentModel'
 import { CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
+import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
 import mammoth from 'mammoth'
 import path from 'path'
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -47,7 +48,8 @@ export async function getDocument(req: Request, res: Response): Promise<void> {
     res.status(200).json(document)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    res.status(500).json({ error: message })
+    const status = (error as Error & { status?: number }).status ?? 500
+    res.status(status).json({ error: message })
   }
 }
 
@@ -152,10 +154,55 @@ export async function importDocument(req: Request, res: Response): Promise<void>
     const title = path.basename(file.originalname, ext) || 'Imported Document'
 
     let htmlContent = ''
+    let headerContent = ''
+    let footerContent = ''
+    let pageSetup: {
+      page_size: 'short' | 'long' | 'a4' | 'letter' | 'legal'
+      orientation: 'portrait' | 'landscape'
+      margins: { top: number; bottom: number; left: number; right: number }
+    } | undefined
 
-    if (ext === '.docx') {
-      // Convert Word document to clean semantic HTML via mammoth
-      const result = await mammoth.convertToHtml({ buffer: file.buffer })
+    // Try Python microservice for high-fidelity conversion (tables, images, typography, layout)
+    if (ext === '.docx' || ext === '.pdf') {
+      try {
+        const pyResult = await requestDocumentConversion(file.buffer, file.originalname)
+        if (pyResult && pyResult.html) {
+          htmlContent = pyResult.html
+          headerContent = pyResult.header ?? ''
+          footerContent = pyResult.footer ?? ''
+          pageSetup = pyResult.page_setup
+        }
+      } catch (pyError) {
+        console.warn('Python converter service unavailable, falling back to local converter:', pyError)
+      }
+    }
+
+    if (!htmlContent && ext === '.docx') {
+      // Fallback: Convert DOCX → HTML via Mammoth
+      const result = await mammoth.convertToHtml(
+        { buffer: file.buffer },
+        {
+          convertImage: (mammoth.images as any).imgElement((element: any) => {
+            return element.read('base64').then((imageBuffer: string) => ({
+              src: `data:${element.contentType};base64,${imageBuffer}`,
+            }))
+          }),
+          styleMap: [
+            "u => u",
+            "strike => s",
+            "sub => sub",
+            "sup => sup",
+            "p[style-name='Heading 1'] => h1:fresh",
+            "p[style-name='Heading 2'] => h2:fresh",
+            "p[style-name='Heading 3'] => h3:fresh",
+            "p[style-name='Heading 4'] => h4:fresh",
+            "p[style-name='Heading 5'] => h5:fresh",
+            "p[style-name='Heading 6'] => h6:fresh",
+            "p[style-name='Title'] => h1.title:fresh",
+            "p[style-name='Subtitle'] => h2.subtitle:fresh",
+          ],
+        }
+      )
       htmlContent = result.value
     } else if (ext === '.txt') {
       // Wrap each line of plain text in a <p> tag
@@ -170,21 +217,63 @@ export async function importDocument(req: Request, res: Response): Promise<void>
       const rawHtml = file.buffer.toString('utf-8')
       const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
       htmlContent = bodyMatch ? bodyMatch[1].trim() : rawHtml
-    } else if (ext === '.pdf') {
-      // Extract plain text from PDF using pdf-parse v2 class API
+    } else if (!htmlContent && ext === '.pdf') {
+      // Extract plain text from PDF using pdf-parse v2 class API with structure preservation
       const parser = new PDFParse({ data: file.buffer })
       const result = await parser.getText()
       await parser.destroy()
-      const text = result.text
-      htmlContent = text
-        .split(/\r?\n/)
-        .filter((line: string) => line.trim().length > 0)
-        .map((line: string) => `<p>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
-        .join('\n')
+      const text = result.text || ''
+
+      // Structure text into headings, paragraphs, and lists
+      const lines = text.split(/\r?\n/)
+      const htmlBlocks: string[] = []
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+
+        const escaped = trimmed
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+
+        // Detect Heading 1: Short uppercase/title lines or Chapter/Section starts
+        if (
+          (trimmed.length < 60 && /^(CHAPTER|SECTION|\d+\.|\d+\s+[A-Z])/i.test(trimmed)) ||
+          (trimmed.length < 45 && trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed))
+        ) {
+          htmlBlocks.push(`<h1>${escaped}</h1>`)
+        }
+        // Detect Heading 2: Sub-headings (e.g., 1.1, 2.3) or short titlecase lines ending without punctuation
+        else if (
+          (trimmed.length < 60 && /^\d+\.\d+\s+/.test(trimmed)) ||
+          (trimmed.length < 40 && !/[.:;,]$/.test(trimmed) && /^[A-Z][a-zA-B0-9\s]+$/.test(trimmed))
+        ) {
+          htmlBlocks.push(`<h2>${escaped}</h2>`)
+        }
+        // Detect Bullet points
+        else if (/^[\bullet\-\*•]\s+/.test(trimmed)) {
+          htmlBlocks.push(`<ul><li>${escaped.replace(/^[\bullet\-\*•]\s+/, '')}</li></ul>`)
+        }
+        // Standard paragraph
+        else {
+          htmlBlocks.push(`<p>${escaped}</p>`)
+        }
+      }
+
+      htmlContent = htmlBlocks.join('\n')
     }
 
-    // Create the document with the converted content
-    const document = await documentModel.createDocument(userId, { title, content: htmlContent })
+    // Create the document with the converted content, page setup, and header/footer
+    const document = await documentModel.createDocument(userId, {
+      title,
+      content: htmlContent,
+      header_content: headerContent,
+      footer_content: footerContent,
+      page_size: pageSetup?.page_size,
+      margins: pageSetup?.margins,
+      orientation: pageSetup?.orientation,
+    })
     res.status(201).json(document)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Import failed'

@@ -1,0 +1,36 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+
+  ml:
+    build:
+      context: ./ml
+      dockerfile: Dockerfile
+    ports:
+      - '8000:8000'
+    environment:
+      - BASE_MODEL_PATH=models/base_model.pkl
+      - USER_MODEL_DIR=models/user_models
+    volumes:
+      - ./ml/models:/app/models
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - ML_SERVICE_URL=http://ml:8000
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+      - ml
+    restart: unless-stopped

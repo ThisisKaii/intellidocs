@@ -164,3 +164,69 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
     res.status(status).json({ error: message })
   }
 }
+
+/** Handle logging of AI formatting prediction feedback. */
+export async function logAIFeedback(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const body = req.body as {
+      documentId?: string
+      predictionType: 'format_prompt' | 'suggestion_panel' | 'chat_preview'
+      predictedFormat: string
+      confidence?: number
+      accepted: boolean
+    }
+
+    const { processAIFeedback } = await import('../skills/feedbackLoop')
+
+    await processAIFeedback({
+      userId,
+      documentId: body.documentId,
+      predictionType: body.predictionType,
+      predictedFormat: body.predictedFormat,
+      confidence: body.confidence,
+      accepted: body.accepted,
+    })
+
+    res.status(201).json({ status: 'ok', message: 'Feedback logged successfully' })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to log AI feedback'
+    res.status(500).json({ error: message })
+  }
+}
+
+/** Trigger per-user supervised fine-tuning if minimum feedback threshold is met. */
+export async function triggerUserFineTune(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const { getFeedbackAccuracyStats } = await import('../models/feedbackModel')
+    const stats = await getFeedbackAccuracyStats(userId)
+
+    if (stats.totalPredictions < 5) {
+      res.status(400).json({
+        error: 'Not enough feedback data',
+        message: `${stats.totalPredictions}/5 predictions recorded. Continue using the editor to collect more feedback before fine-tuning.`,
+      })
+      return
+    }
+
+    const { triggerFineTune } = await import('../ai/bridge/pythonBridge')
+    const result = await triggerFineTune(userId)
+
+    res.status(200).json(result)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Fine-tune trigger failed'
+    res.status(500).json({ error: message })
+  }
+}
+

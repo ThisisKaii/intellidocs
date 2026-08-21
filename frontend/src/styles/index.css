@@ -1,30 +1,28 @@
 @import "tailwindcss";
 
-@theme {
+@theme inline {
   --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, Arial, Apple Color Emoji, "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "Roboto Mono", Menlo, Monaco, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
 
-  --color-background: #ffffff;
-  --color-foreground: #171717;
-  --color-card: #ffffff;
-  --color-card-foreground: #171717;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #171717;
-  --color-primary: #171717;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f6f3ed;
-  --color-secondary-foreground: #42362b;
-  --color-muted: #f6f3ed;
-  --color-muted-foreground: #666666;
-  --color-accent: #f6f3ed;
-  --color-accent-foreground: #171717;
-  --color-destructive: #ff5b4f;
-  --color-destructive-foreground: #ffffff;
-  --color-border: #ebebeb;
-  --color-input: #ebebeb;
-  --color-ring: #171717;
-
-  --radius: 0.5rem;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
   --radius: 0.5rem;
 }
@@ -54,6 +52,11 @@
     --border-shadow: rgba(0, 0, 0, 0.08);
     --border-shadow-light: rgb(235, 235, 235);
     --card-shadow-inner: #fafafa;
+    /* Editor-specific: paper page and canvas */
+    --page-bg: #ffffff;
+    --canvas-bg: #e8e8e8;
+    --hf-zone-bg: #f7f7f7;
+    --page-shadow: rgba(0, 0, 0, 0.12) 0px 1px 3px, rgba(0, 0, 0, 0.08) 0px 4px 12px;
   }
 
   .dark {
@@ -79,6 +82,11 @@
     --border-shadow: rgba(255, 255, 255, 0.14);
     --border-shadow-light: rgba(255, 255, 255, 0.1);
     --card-shadow-inner: rgba(255, 255, 255, 0.04);
+    /* Editor-specific: paper page is always white; canvas keeps the dark theme */
+    --page-bg: #ffffff;
+    --canvas-bg: #0d0d0d;
+    --hf-zone-bg: #242426;
+    --page-shadow: rgba(0, 0, 0, 0.5) 0px 1px 3px, rgba(0, 0, 0, 0.35) 0px 4px 12px;
   }
 
   * {
@@ -250,15 +258,6 @@
   background: rgba(0, 0, 0, 0.04);
   border-bottom: 1px solid rgba(0, 0, 0, 0.2);
   cursor: pointer;
-}
-
-.grammar-error {
-  border-bottom: 2px solid rgba(255, 91, 79, 0.6);
-  text-decoration: none;
-}
-
-.spell-error {
-  border-bottom: 2px dashed rgba(255, 91, 79, 0.5);
 }
 
 /* Show the card action button on card hover */

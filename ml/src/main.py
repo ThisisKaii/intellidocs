@@ -7,9 +7,11 @@ from typing import Any, Optional
 import pandas as pd
 import torch
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from converter import convert_docx_bytes_to_html, convert_pdf_bytes_to_html
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -41,6 +43,11 @@ app.add_middleware(
 class PredictRequest(BaseModel):
     text: str
     user_id: Optional[str] = None
+    font_size: Optional[float] = None
+    font_size_delta: Optional[float] = None
+    is_bold: Optional[bool] = None
+    is_italic: Optional[bool] = None
+    x_position: Optional[float] = None
 
 
 class PredictResponse(BaseModel):
@@ -121,39 +128,47 @@ def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> flo
         return 0.0
 
 
-def build_feature_row(text: str) -> pd.DataFrame:
-    """Build the numeric features used during base model training."""
-    normalized = text.strip()
+def build_feature_row(request: PredictRequest) -> pd.DataFrame:
+    """Build numeric feature vectors including typographic & academic layout attributes."""
+    normalized = request.text.strip()
+    words = normalized.split()
+    word_count = len(words)
+    char_count = len(normalized)
 
-    heading_depth = 0
-    for c in normalized:
-        if c == "=":
-            heading_depth += 1
-        elif c == " " and heading_depth > 0:
-            heading_depth += 1
-        else:
-            break
+    font_size = request.font_size if request.font_size is not None else 12.0
+    font_size_delta = request.font_size_delta if request.font_size_delta is not None else (font_size - 12.0)
+    is_bold = int(request.is_bold) if request.is_bold is not None else int(
+        word_count <= 14 and (normalized.isupper() or normalized.lower().startswith("chapter"))
+    )
+    is_italic = int(request.is_italic) if request.is_italic is not None else 0
+    x_pos = request.x_position if request.x_position is not None else 0.0
 
     features = {
-        "char_count": len(normalized),
-        "word_count": len(normalized.split()),
+        "char_count": char_count,
+        "word_count": word_count,
         "line_count": max(normalized.count("\n") + 1, 1),
+        "font_size": font_size,
+        "font_size_delta": font_size_delta,
+        "is_bold": is_bold,
+        "is_italic": is_italic,
+        "x_position": x_pos,
+        "y_position": 0.0,
+        "page_number": 1,
+        "page_type_code": 5,
         "uppercase_ratio": (
-            sum(1 for char in normalized if char.isupper()) / max(len(normalized), 1)
+            sum(1 for char in normalized if char.isupper()) / max(char_count, 1)
         ),
         "digit_ratio": (
-            sum(1 for char in normalized if char.isdigit()) / max(len(normalized), 1)
+            sum(1 for char in normalized if char.isdigit()) / max(char_count, 1)
         ),
         "punctuation_ratio": (
             sum(1 for char in normalized if not char.isalnum() and not char.isspace())
-            / max(len(normalized), 1)
+            / max(char_count, 1)
         ),
         "starts_with_marker": int(
-            normalized.startswith(("=", "*", "#", ">", "`", "    "))
+            normalized.startswith(("=", "*", "#", ">", "`", "    ", "-", "•")) or
+            normalized.lower().startswith(("figure", "table", "chapter", "references"))
         ),
-        "heading_depth": heading_depth,
-        "starts_with_bullet": int(normalized.startswith("* ")),
-        "starts_with_number_sign": int(normalized.startswith("# ")),
     }
     return pd.DataFrame([features])
 
@@ -179,7 +194,7 @@ async def health_check() -> dict[str, str]:
 
 @app.post("/predict", response_model=PredictResponse)
 async def predict_format(request: PredictRequest) -> PredictResponse:
-    """Predict a formatting label for given text combining RandomForest + LSTM sequence score."""
+    """Predict an APA academic formatting label using RandomForest + LSTM confidence adjustment."""
     text = request.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is required.")
@@ -190,41 +205,28 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
         model = payload["model"]
         feature_columns = payload["feature_columns"]
 
-        feature_frame = build_feature_row(text)
+        feature_frame = build_feature_row(request)
         for column in feature_columns:
             if column not in feature_frame.columns:
                 feature_frame[column] = 0
 
         ordered_features = feature_frame[feature_columns]
 
-        has_marker = (
-            text.startswith("    ") or
-            text.startswith("```") or
-            text.startswith(("* ", "- ", "# ", "> ")) or
-            (text.startswith("=") and text.endswith("="))
-        )
+        prediction = model.predict(ordered_features)[0]
+        probabilities = model.predict_proba(ordered_features)[0]
+        rf_confidence = float(max(probabilities))
 
-        if not has_marker:
-            prediction = "paragraph"
-            confidence = 1.0
-        else:
-            prediction = model.predict(ordered_features)[0]
-            probabilities = model.predict_proba(ordered_features)[0]
-            rf_confidence = float(max(probabilities))
-
-            # Combine with LSTM sequential prediction if user_id is provided
-            if request.user_id:
-                lstm_score = compute_lstm_sequence_adjustment(
-                    request.user_id, str(prediction)
-                )
-                if lstm_score > 0:
-                    # Hybrid combination: 70% RandomForest + 30% LSTM sequence reweighting
-                    confidence = (0.7 * rf_confidence) + (0.3 * lstm_score)
-                    lstm_adjusted = True
-                else:
-                    confidence = rf_confidence
+        if request.user_id:
+            lstm_score = compute_lstm_sequence_adjustment(
+                request.user_id, str(prediction)
+            )
+            if lstm_score > 0:
+                confidence = (0.7 * rf_confidence) + (0.3 * lstm_score)
+                lstm_adjusted = True
             else:
                 confidence = rf_confidence
+        else:
+            confidence = rf_confidence
 
     except FileNotFoundError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
@@ -248,6 +250,7 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
 
 
 @app.post("/grammar/check")
+
 async def grammar_check(request: TextCheckRequest) -> dict[str, Any]:
     """Run the grammar quality checker on the given text."""
     try:
@@ -269,6 +272,32 @@ async def spelling_check(request: TextCheckRequest) -> dict[str, Any]:
             status_code=500,
             detail=f"Spelling check failed: {error}",
         ) from error
+
+
+@app.post("/convert/document")
+async def convert_document(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Convert uploaded .docx or .pdf file into high-fidelity HTML.
+
+    Returns {"html", "page_setup", "header", "footer"} so the server can persist
+    page size/margins and header/footer content for the imported document.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is missing.")
+
+    filename_lower = file.filename.lower()
+    content_bytes = await file.read()
+
+    try:
+        if filename_lower.endswith(".docx"):
+            result = convert_docx_bytes_to_html(content_bytes)
+        elif filename_lower.endswith(".pdf"):
+            result = convert_pdf_bytes_to_html(content_bytes)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format for high-fidelity conversion.")
+
+        return result
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Document conversion failed: {error}") from error
 
 
 @app.post("/pipeline/aggregate")
@@ -341,12 +370,50 @@ async def trigger_feature_export() -> dict[str, str]:
         ) from error
 
 
+class FineTuneRequest(BaseModel):
+    user_id: str
+
+
+class FineTuneResponse(BaseModel):
+    status: str
+    message: str
+    user_id: str
+
+
+@app.post("/fine-tune", response_model=FineTuneResponse)
+async def trigger_fine_tune(request: FineTuneRequest) -> FineTuneResponse:
+    """Trigger supervised user fine-tuning in a background thread."""
+    import subprocess
+    import threading
+
+    fine_tuner_path = ROOT_DIR / "training" / "fine_tuner.py"
+    python_exec = sys.executable
+
+    def run_fine_tuner() -> None:
+        subprocess.run(
+            [python_exec, str(fine_tuner_path), "--user-id", request.user_id],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+        )
+
+    thread = threading.Thread(target=run_fine_tuner, daemon=True)
+    thread.start()
+
+    return FineTuneResponse(
+        status="started",
+        message=f"Fine-tuning started for user {request.user_id}",
+        user_id=request.user_id,
+    )
+
+
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=int(os.getenv("PORT", "8001")),
         log_level="info",
     )

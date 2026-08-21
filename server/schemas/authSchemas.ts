@@ -13,5 +13,11 @@ export const googleAuthSchema = z.object({
   accessToken: z.string().min(1, 'Access token is required'),
 })
 
+/** Validate the profile update request body. */
+export const updateProfileSchema = z.object({
+  display_name: z.string().trim().min(1, 'Display name is required').max(100, 'Display name must be at most 100 characters'),
+})
+
 export type AuthBody = z.infer<typeof authBodySchema>
 export type GoogleAuthBody = z.infer<typeof googleAuthSchema>
+export type UpdateProfileBody = z.infer<typeof updateProfileSchema>

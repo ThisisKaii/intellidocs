@@ -1,8 +1,10 @@
 import axios from 'axios'
 import {
+  pythonConversionResponseSchema,
   pythonGrammarCheckResponseSchema,
   pythonPredictionResponseSchema,
   pythonSpellingCheckResponseSchema,
+  type PythonConversionResponse,
   type PythonGrammarCheckResponse,
   type PythonPredictionResponse,
   type PythonSpellingCheckResponse,
@@ -40,15 +42,33 @@ export interface SpellingCheckResponse {
   message: string
 }
 
+function getMLApiUrl(): string {
+  return process.env.ML_API_URL || process.env.PYTHON_API_URL || 'http://localhost:8001'
+}
+
 /** Send a formatting prediction request to the FastAPI service. */
 export async function requestFormatPrediction(
-  text: string
+  text: string,
+  options?: {
+    fontSize?: number
+    isBold?: boolean
+    isItalic?: boolean
+    xPosition?: number
+    userId?: string
+  }
 ): Promise<PredictionResponse> {
-  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+  const mlApiUrl = getMLApiUrl()
 
   const response = await axios.post<PythonPredictionResponse>(
     `${mlApiUrl}/predict`,
-    { text }
+    {
+      text,
+      user_id: options?.userId,
+      font_size: options?.fontSize,
+      is_bold: options?.isBold,
+      is_italic: options?.isItalic,
+      x_position: options?.xPosition,
+    }
   )
   const data = pythonPredictionResponseSchema.parse(response.data)
 
@@ -63,7 +83,7 @@ export async function requestFormatPrediction(
 export async function requestGrammarCheck(
   text: string
 ): Promise<GrammarCheckResponse> {
-  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+  const mlApiUrl = getMLApiUrl()
 
   const response = await axios.post<PythonGrammarCheckResponse>(
     `${mlApiUrl}/grammar/check`,
@@ -77,7 +97,7 @@ export async function requestGrammarCheck(
 export async function requestSpellingCheck(
   text: string
 ): Promise<SpellingCheckResponse> {
-  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+  const mlApiUrl = getMLApiUrl()
 
   const response = await axios.post<PythonSpellingCheckResponse>(
     `${mlApiUrl}/spelling/check`,
@@ -104,7 +124,7 @@ export interface PipelineExportResponse {
 
 /** Trigger Redis → DuckDB aggregation via the ML FastAPI service. */
 export async function requestAggregation(): Promise<PipelineAggregateResponse> {
-  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+  const mlApiUrl = getMLApiUrl()
 
   const response = await axios.post<PipelineAggregateResponse>(
     `${mlApiUrl}/pipeline/aggregate`
@@ -114,7 +134,7 @@ export async function requestAggregation(): Promise<PipelineAggregateResponse> {
 
 /** Trigger feature extraction via the ML FastAPI service. */
 export async function requestFeatureExtraction(): Promise<PipelineExtractResponse> {
-  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+  const mlApiUrl = getMLApiUrl()
 
   const response = await axios.post<PipelineExtractResponse>(
     `${mlApiUrl}/pipeline/extract-features`
@@ -124,10 +144,47 @@ export async function requestFeatureExtraction(): Promise<PipelineExtractRespons
 
 /** Trigger feature export via the ML FastAPI service. */
 export async function requestFeatureExport(): Promise<PipelineExportResponse> {
-  const mlApiUrl = process.env.ML_API_URL || 'http://localhost:8000'
+  const mlApiUrl = getMLApiUrl()
 
   const response = await axios.post<PipelineExportResponse>(
     `${mlApiUrl}/pipeline/export-features`
   )
   return response.data
 }
+
+/** Send a file buffer to Python ML FastAPI service for high-fidelity conversion. */
+export async function requestDocumentConversion(
+  fileBuffer: Buffer,
+  filename: string
+): Promise<PythonConversionResponse> {
+  const mlApiUrl = getMLApiUrl()
+
+  const formData = new (require('form-data'))()
+  formData.append('file', fileBuffer, filename)
+
+  const response = await axios.post<PythonConversionResponse>(
+    `${mlApiUrl}/convert/document`,
+    formData,
+    {
+      headers: formData.getHeaders(),
+    }
+  )
+
+  return pythonConversionResponseSchema.parse(response.data)
+}
+
+export interface FineTuneBridgeResponse {
+  status: string
+  message: string
+  user_id: string
+}
+
+/** Trigger per-user supervised fine-tuning on the ML FastAPI service. */
+export async function triggerFineTune(userId: string): Promise<FineTuneBridgeResponse> {
+  const mlApiUrl = getMLApiUrl()
+  const response = await axios.post<FineTuneBridgeResponse>(`${mlApiUrl}/fine-tune`, {
+    user_id: userId,
+  })
+  return response.data
+}
+

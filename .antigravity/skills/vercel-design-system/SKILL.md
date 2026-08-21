@@ -3,7 +3,7 @@ name: vercel-design-system
 description: Use when building or styling frontend UI components in IntelliDocs — React pages, Shadcn components, the editor toolbar/overlay, or any Tailwind styling work. Provides the Vercel-inspired design tokens (colors, typography, shadows, spacing) this project follows.
 ---
 
-This is IntelliDocs' actual design system — apply these tokens directly to all frontend components (Home, Document editor, ChatOverlay, etc.). This is not a reference/inspiration document; it is the source of truth for styling.
+This is IntelliDocs' actual design system — apply these tokens directly to all frontend components (Home, Document editor, AIChatbot, etc.). This is not a reference/inspiration document; it is the source of truth for styling.
 
 # Design System Inspired by Vercel
 

@@ -157,10 +157,10 @@ export default function Landing(): JSX.Element {
           Capstone Research System
         </div>
         <h1 style={{ fontSize: 'clamp(2.5rem, 6vw, 3rem)', fontWeight: 600, lineHeight: 1.0, letterSpacing: '-2.4px', margin: '0 0 1.5rem', maxWidth: '800px' }}>
-          The editor that learns<br />your formatting.
+          IntelliDocs — The editor that learns your formatting.
         </h1>
-        <p style={{ fontSize: '1.25rem', fontWeight: 400, lineHeight: 1.8, color: 'var(--muted-foreground)', maxWidth: '600px', margin: '0 0 2.5rem' }}>
-          IntelliDocs watches how you format documents and predicts your next move. Grammar checking, spell checking, and ML-powered suggestions — all in one editor.
+        <p style={{ fontSize: '1.25rem', fontWeight: 400, lineHeight: 1.8, color: 'var(--muted-foreground)', maxWidth: '650px', margin: '0 0 2.5rem' }}>
+          IntelliDocs is an intelligent academic document editor with AI formatting prediction, inline grammar checking, and seamless Google Drive import for effortless document styling.
         </p>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
           <Link to="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', height: '44px', padding: '0 1.5rem', fontSize: '0.875rem', fontWeight: 500, backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', borderRadius: '6px', textDecoration: 'none' }}>Start Writing</Link>
@@ -208,7 +208,7 @@ export default function Landing(): JSX.Element {
             { icon: CheckCircle, title: 'Grammar & Spell Check', desc: 'Trained on the JFLEG dataset with inline suggestions that appear exactly where you need them.', color: '#10b981' },
             { icon: Sparkles, title: 'Confidence Scoring', desc: 'Every suggestion comes with a confidence score so you always know how sure the model is.', color: '#de1d8d' },
             { icon: Zap, title: 'Real-time Behavior Tracking', desc: 'Redis captures every formatting action. DuckDB aggregates patterns. The model learns continuously.', color: '#ea580c' },
-            { icon: FileText, title: 'Custom Editor from Scratch', desc: 'Built on the contentEditable API — no third-party editor libraries. Full control over every interaction.', color: '#7928ca' },
+            { icon: FileText, title: 'Google Drive Document Import', desc: 'Connect your Google account to seamlessly import and edit your Google Docs directly inside IntelliDocs with zero friction.', color: '#4285f4' },
             { icon: MessageSquare, title: 'AI Chatbot Assistant', desc: 'An MCP-powered chatbot that can read your document, apply formatting, and explain every suggestion.', color: '#ff5b4f' },
           ].map((f) => (
             <div key={f.title} style={{ borderRadius: '8px', padding: '1.5rem', boxShadow: 'var(--border-shadow) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 2px, var(--card-shadow-inner) 0px 0px 0px 1px inset', backgroundColor: 'var(--card)' }}>
@@ -252,8 +252,11 @@ export default function Landing(): JSX.Element {
       </section>
 
       {/* Footer */}
-      <footer style={{ borderTop: '1px solid var(--border)', padding: '2rem', textAlign: 'center' }}>
+      <footer style={{ borderTop: '1px solid var(--border)', padding: '2rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
         <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: 0 }}>© 2026 IntelliDocs — Capstone Research System</p>
+        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem' }}>
+          <Link to="/privacy" style={{ color: 'var(--muted-foreground)', textDecoration: 'underline' }}>Privacy Policy</Link>
+        </div>
       </footer>
     </div>
   )

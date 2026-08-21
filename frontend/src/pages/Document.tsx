@@ -1,218 +1,77 @@
-import { useEffect, useRef, useState, useCallback, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { api, type BehaviorSummaryResponse } from '@/services/api'
-import { Toolbar, PAGE_SIZES, type PageSizeKey, type MarginValues } from '@/components/editor/Toolbar'
-import { EditorCore } from '@/components/editor/EditorCore'
-import { restoreSelection } from '@/components/editor/SelectionManager'
+import { api, type BehaviorSummaryResponse, type PageNumberFormat } from '@/services/api'
+import {
+  TiptapToolbar,
+  type Editor,
+  type PageSizeKey,
+  type PageOrientation,
+  type MarginValues,
+} from '@/components/editor/TiptapEditor'
+import { PagedEditor } from '@/components/editor/PagedEditor'
 import {
   type BehaviorEvent,
   createBehaviorEvent,
 } from '@/components/editor/behaviorListener'
 import SuggestionPanel, { type Suggestion } from '@/components/editor/SuggestionPanel'
-import GrammarPanel from '@/components/editor/GrammarPanel'
+import GrammarPanel, { type GrammarIssue } from '@/components/editor/GrammarPanel'
+import GrammarOverlay from '@/components/editor/GrammarOverlay'
 import FormatPrompt, { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import AIChatbot from '@/components/editor/AIChatbot'
-import SuggestionOverlay, { type GrammarIssue } from '@/components/editor/SuggestionOverlay'
+import FormattingPanel from '@/components/editor/FormattingPanel'
 import McpDebugPanel from '@/components/editor/McpDebugPanel'
+
+import { useTheme } from '@/context/ThemeContext'
 
 import { ArrowLeft, Save, Moon, Sun, ShieldOff, Shield } from 'lucide-react'
 
 const AUTOSAVE_DELAY = 8000
+/** Consecutive failed autosaves before giving up until the next edit. */
+const MAX_SAVE_RETRIES = 3
 
 const AUTO_FORMAT_DELAY = 1800
 const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.7
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
 const AUTO_FORMAT_MIN_INTERVAL_MS = 30 * 1000
 
-/* Static layout constants */
-const PAGE_GAP = 24
-const SPACER_ATTR = 'data-page-break'
-
-/** Convert inches to pixels at 96 dpi. */
-function inToPx(inches: number): number {
-  return Math.round(inches * 96)
-}
-
-interface EditorPagesProps {
-  editorRef: React.RefObject<HTMLDivElement>
-  content: string
-  onContentChange: (html: string) => void
-  grammarIssues: GrammarIssue[]
-  onGrammarApply: (issue: GrammarIssue) => void
-  onGrammarDismiss: (issue: GrammarIssue) => void
-  /** Page pixel width (from page size preset) */
-  pageWidth: number
-  /** Page pixel height (from page size preset) */
-  pageHeight: number
-  /** Padding values in pixels derived from user margin inputs */
-  padTop: number
-  padBottom: number
-  padLeft: number
-  padRight: number
-}
-
-/** Strip page-break spacer elements from HTML before saving. */
-function stripSpacers(html: string): string {
-  const div = document.createElement('div')
-  div.innerHTML = html
-  div.querySelectorAll(`[${SPACER_ATTR}]`).forEach(el => el.remove())
-  return div.innerHTML
-}
-
-/** Insert page-break spacers into the editor DOM at page boundaries.
- *  Uses dynamic content height so page size and margins are respected. */
-function insertPageBreaks(editor: HTMLElement, contentHeight: number, padTop: number, padBottom: number): number {
-  editor.querySelectorAll(`[${SPACER_ATTR}]`).forEach(el => el.remove())
-
-  const children = Array.from(editor.children) as HTMLElement[]
-  if (children.length === 0) return 1
-
-  let pageBottom = contentHeight
-  let pages = 1
-
-  for (const child of children) {
-    const childTop = child.offsetTop
-    const childBottom = childTop + child.offsetHeight
-
-    if (childBottom > pageBottom && childTop < pageBottom) {
-      const remaining = pageBottom - childTop
-      const spacerH = remaining + padTop + PAGE_GAP + padBottom
-      const spacer = document.createElement('div')
-      spacer.setAttribute(SPACER_ATTR, 'true')
-      spacer.contentEditable = 'false'
-      spacer.style.cssText = `height:${spacerH}px;pointer-events:none;user-select:none;margin:0;padding:0;border:none;`
-      child.parentNode?.insertBefore(spacer, child)
-      pages++
-      pageBottom = spacer.offsetTop + spacerH + contentHeight
-    } else if (childTop >= pageBottom) {
-      const spacerH = padTop + PAGE_GAP + padBottom
-      const spacer = document.createElement('div')
-      spacer.setAttribute(SPACER_ATTR, 'true')
-      spacer.contentEditable = 'false'
-      spacer.style.cssText = `height:${spacerH}px;pointer-events:none;user-select:none;margin:0;padding:0;border:none;`
-      child.parentNode?.insertBefore(spacer, child)
-      pages++
-      pageBottom = spacer.offsetTop + spacerH + contentHeight
-    }
-  }
-
-  return pages
-}
-
-/** Multi-page editor container that renders paper-like pages.
- *  Accepts dynamic page dimensions and margin padding from parent state. */
-function EditorPages({
-  editorRef,
-  content,
-  onContentChange,
-  grammarIssues,
-  onGrammarApply,
-  onGrammarDismiss,
-  pageWidth,
-  pageHeight,
-  padTop,
-  padBottom,
-  padLeft,
-  padRight,
-}: EditorPagesProps): JSX.Element {
-  const [numPages, setNumPages] = useState(1)
-  const contentHeight = pageHeight - padTop - padBottom
-
-  /** Recalculate page breaks after content or layout changes. */
-  const recalcPages = useCallback(() => {
-    if (!editorRef.current) return
-    const p = insertPageBreaks(editorRef.current, contentHeight, padTop, padBottom)
-    setNumPages(p)
-  }, [editorRef, contentHeight, padTop, padBottom])
-
-  useEffect(() => {
-    const t = setTimeout(recalcPages, 50)
-    return () => clearTimeout(t)
-  }, [content, recalcPages])
-
-  // Re-run when layout dimensions change
-  useEffect(() => { recalcPages() }, [pageWidth, pageHeight, padTop, padBottom, padLeft, padRight, recalcPages])
-
-  const handleContentChange = useCallback((html: string) => {
-    onContentChange(stripSpacers(html))
-  }, [onContentChange])
-
-  const totalHeight = numPages * pageHeight + (numPages - 1) * PAGE_GAP
-
-  return (
-    <main style={{ flex: 1, overflowY: 'auto', minWidth: 0, position: 'relative', backgroundColor: 'var(--secondary)' }}>
-      <div style={{
-        maxWidth: `${pageWidth}px`,
-        minHeight: `${totalHeight}px`,
-        margin: '2rem auto',
-        position: 'relative',
-      }}>
-        {/* Page shadow backgrounds */}
-        {Array.from({ length: numPages }).map((_, i) => (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              top: `${i * (pageHeight + PAGE_GAP)}px`,
-              left: 0,
-              right: 0,
-              height: `${pageHeight}px`,
-              backgroundColor: 'var(--background)',
-              boxShadow: 'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px, rgba(0,0,0,0.03) 0px 8px 16px',
-              borderRadius: '2px',
-              pointerEvents: 'none',
-            }}
-          />
-        ))}
-
-        {/* Content layer — uses user-defined margins as padding */}
-        <div style={{
-          position: 'relative',
-          paddingTop: `${padTop}px`,
-          paddingBottom: `${padBottom}px`,
-          paddingLeft: `${padLeft}px`,
-          paddingRight: `${padRight}px`,
-          minHeight: `${contentHeight}px`,
-        }}>
-          <div style={{ position: 'relative' }}>
-            <EditorCore
-              ref={editorRef}
-              onContentChange={handleContentChange}
-              initialContent={content}
-            />
-            <SuggestionOverlay
-              editorRef={editorRef}
-              issues={grammarIssues}
-              content={content}
-              onApply={onGrammarApply}
-              onDismiss={onGrammarDismiss}
-            />
-          </div>
-        </div>
-      </div>
-    </main>
-  )
-}
-
 export default function Document(): JSX.Element {
   const { id } = useParams()
-  const editorRef = useRef<HTMLDivElement | null>(null)
+
+  // ── TipTap editor — the currently focused page editor, reported by the
+  //    paginated view. Toolbar, grammar, suggestions and AI act on it.
+  const [editor, setEditor] = useState<Editor | null>(null)
+
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef<boolean>(false)
   const latestTitleRef = useRef<string>('Untitled Document')
   const latestContentRef = useRef<string>('')
   const latestFormatHistoryRef = useRef<string[]>([])
   const pendingSaveRef = useRef<boolean>(false)
+  const saveRetryCountRef = useRef<number>(0)
   const autoFormatTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressedAutoFormatsRef = useRef<Record<string, number>>({})
-  const lastAutoFormatRef = useRef<{format : string; shownAt: number} | null>(null)
+  const lastAutoFormatRef = useRef<{format: string; shownAt: number} | null>(null)
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
+  const latestHeaderRef = useRef<string>('')
+  const latestFooterRef = useRef<string>('')
+  const [headerContent, setHeaderContent] = useState<string>('')
+  const [footerContent, setFooterContent] = useState<string>('')
+  const [showHeader, setShowHeader] = useState<boolean>(false)
+  const [showFooter, setShowFooter] = useState<boolean>(false)
+  const [headerNumberFormat, setHeaderNumberFormat] = useState<PageNumberFormat>('none')
+  const [footerNumberFormat, setFooterNumberFormat] = useState<PageNumberFormat>('none')
+  const latestHeaderSettingsRef = useRef({
+    showHeader: false,
+    showFooter: false,
+    headerNumberFormat: 'none' as PageNumberFormat,
+    footerNumberFormat: 'none' as PageNumberFormat,
+  })
   const [_lastSavedTitle, setLastSavedTitle] = useState<string>('Untitled Document')
   const [_lastSavedContent, setLastSavedContent] = useState<string>('')
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved')
   const [wordCount, setWordCount] = useState<number>(0)
   const [formatHistory, setFormatHistory] = useState<string[]>([])
   const [_behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([])
@@ -222,30 +81,27 @@ export default function Document(): JSX.Element {
   /* ── Page layout state ─────────────────────────────────────────────── */
   const [pageSize, setPageSize] = useState<PageSizeKey>('short')
   const [margins, setMargins] = useState<MarginValues>({ top: 1, bottom: 1, left: 1.5, right: 1 })
+  const [orientation, setOrientation] = useState<PageOrientation>('portrait')
+  const latestPageSetupRef = useRef({
+    pageSize: 'short' as PageSizeKey,
+    margins: { top: 1, bottom: 1, left: 1.5, right: 1 } as MarginValues,
+    orientation: 'portrait' as PageOrientation,
+  })
 
   const [rightPanelOpen] = useState<boolean>(true)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
+  const [activeGrammarIssue, setActiveGrammarIssue] = useState<GrammarIssue | null>(null)
+  const [activeGrammarRect, setActiveGrammarRect] = useState<DOMRect | null>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
+  const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
 
-  const chatContent = getPlainText(content)
+  const chatContent = buildAiDocumentContext(content)
 
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    return document.documentElement.classList.contains('dark')
-  })
-
-  function toggleTheme() {
-    const nextDark = !isDark
-    setIsDark(nextDark)
-    const root = window.document.documentElement
-    if (nextDark) {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
-  }
+  const { theme, toggleTheme } = useTheme()
+  const isDark = theme === 'dark'
 
   useEffect(() => {
     if (!id) return
@@ -254,8 +110,35 @@ export default function Document(): JSX.Element {
         const doc = await api.documents.get(id as string)
         const nextTitle = doc.title || 'Untitled Document'
         const nextContent = doc.content || ''
+        const nextHeader = doc.header_content || ''
+        const nextFooter = doc.footer_content || ''
         setTitle(nextTitle)
         setContent(nextContent)
+        latestHeaderRef.current = nextHeader
+        latestFooterRef.current = nextFooter
+        setHeaderContent(nextHeader)
+        setFooterContent(nextFooter)
+        setShowHeader(doc.show_header ?? false)
+        setShowFooter(doc.show_footer ?? false)
+        setHeaderNumberFormat(doc.header_number_format ?? 'none')
+        setFooterNumberFormat(doc.footer_number_format ?? 'none')
+        latestHeaderSettingsRef.current = {
+          showHeader: doc.show_header ?? false,
+          showFooter: doc.show_footer ?? false,
+          headerNumberFormat: doc.header_number_format ?? 'none',
+          footerNumberFormat: doc.footer_number_format ?? 'none',
+        }
+        const nextPageSize = doc.page_size ?? 'short'
+        const nextMargins = doc.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 }
+        const nextOrientation = doc.orientation ?? 'portrait'
+        setPageSize(nextPageSize)
+        setMargins(nextMargins)
+        setOrientation(nextOrientation)
+        latestPageSetupRef.current = {
+          pageSize: nextPageSize,
+          margins: nextMargins,
+          orientation: nextOrientation,
+        }
         latestTitleRef.current = nextTitle
         latestContentRef.current = nextContent
         setLastSavedTitle(nextTitle)
@@ -263,6 +146,7 @@ export default function Document(): JSX.Element {
         setSaveStatus('saved')
         updateWordCount(nextContent)
         setIsIsolated(doc.is_isolated ?? false)
+        setFormattingPreset(doc.formatting_preset ?? null)
       } catch (error) {
         console.error(error)
       }
@@ -320,6 +204,32 @@ export default function Document(): JSX.Element {
     return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
   }
 
+  /**
+   * Build a compact, bounded document context for the AI assistant so large
+   * documents never flood the provider context window. Includes the opening
+   * excerpt, a heading outline, and a note telling the user they can fetch a
+   * specific page via `/mcp getDocumentContent`.
+   */
+  function buildAiDocumentContext(html: string): string {
+    const plainText = getPlainText(html)
+    const words = plainText.match(/\b[\w']+\b/g) ?? []
+    const outline = Array.from(
+      html.matchAll(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi),
+      (match) => match[1].replace(/<[^>]*>/g, '').trim()
+    ).filter((heading) => heading.length > 0)
+
+    const excerpt = plainText.slice(0, 4000)
+    const outlineBlock =
+      outline.length > 0
+        ? `\n\nDocument outline:\n- ${outline.slice(0, 20).join('\n- ')}`
+        : ''
+    const truncatedNote =
+      plainText.length > 4000
+        ? '\n\n[Content truncated. Ask the user to run: /mcp getDocumentContent documentId=YOUR_ID page=1]'
+        : ''
+    return `${excerpt}${outlineBlock}\n\nWord count: ${words.length}${truncatedNote}`
+  }
+
   function formatSuggestionLabel(format: string): string {
     const labels: Record<string, string> = {
       bold: 'Bold',
@@ -353,99 +263,21 @@ export default function Document(): JSX.Element {
     return true
   }
 
-  function hasVisibleTextSelection(): boolean {
-    const selection = window.getSelection()
-    return Boolean(selection && selection.rangeCount > 0 && selection.toString().trim())
-  }
-
-  function findEditableBlock(node: Node | null, editor: HTMLElement): HTMLElement | null {
-    let current =
-      node instanceof HTMLElement ? node : node?.parentElement ?? null
-
-    while (current && current !== editor) {
-      if (
-        ['P', 'DIV', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(
-          current.tagName
-        )
-      ) {
-        return current
-      }
-
-      current = current.parentElement
-    }
-
-    return null
-  }
-
-  function selectCurrentBlockForInlineFormat(editor: HTMLElement): void {
-    const selection = window.getSelection()
-
-    if (!selection || selection.rangeCount === 0) {
-      return
-    }
-
-    const range = selection.getRangeAt(0)
-    const block = findEditableBlock(range.startContainer, editor)
-
-    if (!block) {
-      return
-    }
-
-    const nextRange = document.createRange()
-    nextRange.selectNodeContents(block)
-
-    selection.removeAllRanges()
-    selection.addRange(nextRange)
-  }
 
   function applyPromptFormat(format: string): void {
-    const editor = editorRef.current
     if (!editor) return
-
-    editor.focus()
-    restoreSelection()
-
-    const inlineFormats = new Set(['bold', 'italic', 'underline'])
-
-    if (inlineFormats.has(format) && !hasVisibleTextSelection()) {
-      selectCurrentBlockForInlineFormat(editor)
-    }
-
     switch (format) {
-      case 'bold':
-        document.execCommand('bold', false)
-        break
-      case 'italic':
-        document.execCommand('italic', false)
-        break
-      case 'underline':
-        document.execCommand('underline', false)
-        break
-      case 'heading1':
-      case 'h1':
-        document.execCommand('formatBlock', false, '<h1>')
-        break
-      case 'heading2':
-      case 'h2':
-        document.execCommand('formatBlock', false, '<h2>')
-        break
-      case 'heading3':
-      case 'h3':
-        document.execCommand('formatBlock', false, '<h3>')
-        break
-      case 'unordered_list':
-      case 'ul':
-        document.execCommand('insertUnorderedList', false)
-        break
-      case 'ordered_list':
-      case 'ol':
-        document.execCommand('insertOrderedList', false)
-        break
-      case 'blockquote':
-        document.execCommand('formatBlock', false, '<blockquote>')
-        break
-      default:
-        break
+      case 'bold':          editor.chain().focus().toggleBold().run(); break
+      case 'italic':        editor.chain().focus().toggleItalic().run(); break
+      case 'underline':     editor.chain().focus().toggleUnderline().run(); break
+      case 'strikethrough': editor.chain().focus().toggleStrike().run(); break
+      case 'heading1': case 'h1': editor.chain().focus().toggleHeading({ level: 1 }).run(); break
+      case 'heading2': case 'h2': editor.chain().focus().toggleHeading({ level: 2 }).run(); break
+      case 'heading3': case 'h3': editor.chain().focus().toggleHeading({ level: 3 }).run(); break
+      case 'unordered_list': case 'ul': editor.chain().focus().toggleBulletList().run(); break
+      case 'ordered_list': case 'ol': editor.chain().focus().toggleOrderedList().run(); break
+      case 'blockquote':    editor.chain().focus().toggleBlockquote().run(); break
+      default: break
     }
   }
 
@@ -460,7 +292,7 @@ export default function Document(): JSX.Element {
   }
 
   async function runAutoFormatPrediction(nextContent: string): Promise<void> {
-   const plainText = getPlainText(nextContent)
+    const plainText = getPlainText(nextContent).slice(0, 50000)
 
     if (plainText.length < 12) {
       setFormatPrompt(null)
@@ -470,9 +302,30 @@ export default function Document(): JSX.Element {
     }
 
     try {
-      const prediction = await api.predictions.predict(plainText)
-      const predictedFormat = prediction.predicted_format
-      const confidence = prediction.confidence
+      const result = await api.formatting.tierCheck(plainText, id ?? '')
+
+      // Tier 1/2 — preset rule or custom binding: apply immediately.
+      if (result.tier === 'binding' || result.tier === 'preset') {
+        if (result.format) {
+          applyPromptFormat(result.format)
+          handleFormat(result.format)
+        }
+        setFormatPrompt(null)
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
+
+      // Tier 3 — ML prediction with confidence score.
+      if (result.tier !== 'ml' || !result.format || result.confidence === undefined) {
+        setFormatPrompt(null)
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
+
+      const predictedFormat = result.format
+      const confidence = result.confidence
 
       if (confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) {
         setFormatPrompt(null)
@@ -528,6 +381,7 @@ export default function Document(): JSX.Element {
 
   function scheduleSave(): void {
     pendingSaveRef.current = true
+    saveRetryCountRef.current = 0
     setSaveStatus('unsaved')
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     autosaveTimer.current = setTimeout(() => {
@@ -544,7 +398,8 @@ export default function Document(): JSX.Element {
     }
 
     const nextTitle = latestTitleRef.current
-    const nextContent = editorRef.current?.innerHTML ?? latestContentRef.current
+    // Read the latest content from the cache kept fresh by every page edit
+    const nextContent = latestContentRef.current
     const nextFormatHistory = latestFormatHistoryRef.current
 
     savingRef.current = true
@@ -555,17 +410,34 @@ export default function Document(): JSX.Element {
       await api.documents.update(id, {
         title: nextTitle,
         content: nextContent,
+        header_content: latestHeaderRef.current,
+        footer_content: latestFooterRef.current,
+        show_header: latestHeaderSettingsRef.current.showHeader,
+        show_footer: latestHeaderSettingsRef.current.showFooter,
+        header_number_format: latestHeaderSettingsRef.current.headerNumberFormat,
+        footer_number_format: latestHeaderSettingsRef.current.footerNumberFormat,
+        page_size: latestPageSetupRef.current.pageSize,
+        margins: latestPageSetupRef.current.margins,
+        orientation: latestPageSetupRef.current.orientation,
         formatting_history: nextFormatHistory,
       })
       latestContentRef.current = nextContent
       setContent(nextContent)
       setLastSavedTitle(nextTitle)
       setLastSavedContent(nextContent)
+      saveRetryCountRef.current = 0
       setSaveStatus('saved')
     } catch (error) {
       console.error('Autosave failed', error)
-      pendingSaveRef.current = true
-      setSaveStatus('unsaved')
+      // Give up after a few consecutive failures instead of retrying forever.
+      saveRetryCountRef.current += 1
+      if (saveRetryCountRef.current >= MAX_SAVE_RETRIES) {
+        pendingSaveRef.current = false
+        setSaveStatus('error')
+      } else {
+        pendingSaveRef.current = true
+        setSaveStatus('unsaved')
+      }
     } finally {
       savingRef.current = false
 
@@ -593,8 +465,62 @@ export default function Document(): JSX.Element {
     scheduleSave()
   }
 
+  function handleHeaderChange(value: string): void {
+    latestHeaderRef.current = value
+    setHeaderContent(value)
+    scheduleSave()
+  }
+
+  function handleFooterChange(value: string): void {
+    latestFooterRef.current = value
+    setFooterContent(value)
+    scheduleSave()
+  }
+
+  function handleShowHeaderChange(value: boolean): void {
+    latestHeaderSettingsRef.current.showHeader = value
+    setShowHeader(value)
+    scheduleSave()
+  }
+
+  function handleShowFooterChange(value: boolean): void {
+    latestHeaderSettingsRef.current.showFooter = value
+    setShowFooter(value)
+    scheduleSave()
+  }
+
+  function handleHeaderNumberFormatChange(value: PageNumberFormat): void {
+    latestHeaderSettingsRef.current.headerNumberFormat = value
+    setHeaderNumberFormat(value)
+    scheduleSave()
+  }
+
+  function handleFooterNumberFormatChange(value: PageNumberFormat): void {
+    latestHeaderSettingsRef.current.footerNumberFormat = value
+    setFooterNumberFormat(value)
+    scheduleSave()
+  }
+
+  function handlePageSizeChange(value: PageSizeKey): void {
+    latestPageSetupRef.current.pageSize = value
+    setPageSize(value)
+    scheduleSave()
+  }
+
+  function handleMarginsChange(value: MarginValues): void {
+    latestPageSetupRef.current.margins = value
+    setMargins(value)
+    scheduleSave()
+  }
+
+  function handleOrientationChange(value: PageOrientation): void {
+    latestPageSetupRef.current.orientation = value
+    setOrientation(value)
+    scheduleSave()
+  }
+
   function handleFormat(formatType: string): void {
-    const nextContent = editorRef.current?.innerHTML || content
+    const nextContent = latestContentRef.current
     latestContentRef.current = nextContent
     setContent(nextContent)
     setFormatHistory((prev) => {
@@ -625,6 +551,16 @@ export default function Document(): JSX.Element {
           documentId: id,
         })
         .catch((error) => console.error('Auto-format acceptance log failed', error))
+
+      api.ai
+        .logFeedback({
+          documentId: id,
+          predictionType: 'format_prompt',
+          predictedFormat: format,
+          confidence: formatPrompt?.confidence,
+          accepted: true,
+        })
+        .catch((error) => console.error('Format prompt acceptance feedback failed', error))
     }
 
     void loadBehaviorSummary()
@@ -646,6 +582,16 @@ export default function Document(): JSX.Element {
           documentId: id,
         })
         .catch((error) => console.error('Auto-format rejected log failed', error))
+
+      api.ai
+        .logFeedback({
+          documentId: id,
+          predictionType: 'format_prompt',
+          predictedFormat: format,
+          confidence: formatPrompt?.confidence,
+          accepted: false,
+        })
+        .catch((error) => console.error('Format prompt rejection feedback failed', error))
     }
 
     void loadBehaviorSummary()
@@ -664,55 +610,61 @@ export default function Document(): JSX.Element {
   }
 
   function handleGrammarApply(issue: GrammarIssue): void {
-    if (!editorRef.current) return
+    if (!editor) return
 
     function preserveReplacementCase(originalText: string, suggestion: string): string {
       if (!originalText || !suggestion) return suggestion
-
-      if (originalText === originalText.toUpperCase()) {
-        return suggestion.toUpperCase()
-      }
-
-      if (originalText[0] === originalText[0].toUpperCase()) {
+      if (originalText === originalText.toUpperCase()) return suggestion.toUpperCase()
+      if (originalText[0] === originalText[0].toUpperCase())
         return suggestion[0].toUpperCase() + suggestion.slice(1)
-      }
-
       return suggestion
     }
 
-    const editor = editorRef.current
-    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null)
-    const originalNeedle = issue.original.toLowerCase()
-    let node = walker.nextNode()
+    // Apply grammar fix via TipTap's transaction system
+    const { state, dispatch } = editor.view
+    const { doc, tr } = state
+    const needle = issue.original.toLowerCase()
     let applied = false
 
-    while (node && !applied) {
-      const text = node.nodeValue || ''
-      const index = text.toLowerCase().indexOf(originalNeedle)
-
-      if (index !== -1) {
-        const matchedText = text.substring(index, index + issue.original.length)
+    doc.descendants((node, pos) => {
+      if (applied || node.type.name !== 'text') return
+      const text = node.text ?? ''
+      const idx = text.toLowerCase().indexOf(needle)
+      if (idx !== -1) {
+        const matchedText = text.substring(idx, idx + issue.original.length)
         const replacement = preserveReplacementCase(matchedText, issue.suggestion)
-
-        node.nodeValue =
-          text.substring(0, index) +
-          replacement +
-          text.substring(index + issue.original.length)
+        tr.replaceWith(pos + idx, pos + idx + issue.original.length, state.schema.text(replacement))
         applied = true
       }
+    })
 
-      node = walker.nextNode()
-    }
-
-    if (applied) {
-      handleContentChange(editor.innerHTML)
-    }
+    if (applied) dispatch(tr)
     setGrammarIssues((prev) => prev.filter((i) => i !== issue))
   }
 
   function handleGrammarDismiss(issue: GrammarIssue): void {
     setGrammarIssues((prev) => prev.filter((i) => i !== issue))
+    setActiveGrammarIssue((active) => (active === issue ? null : active))
   }
+
+  // Push grammar issues into the editor's wavy-underline decorations whenever they change.
+  useEffect(() => {
+    if (!editor || !editor.commands.setGrammarIssues) return
+    editor.commands.setGrammarIssues(grammarIssues)
+  }, [editor, grammarIssues])
+
+  // Open the click-anchored popover when the user clicks a wavy underline.
+  // Grammar-underline clicks are forwarded from every page editor by the
+  // paginated view.
+
+  // Close the popover when its issue is removed from the active set.
+  useEffect(() => {
+    if (!activeGrammarIssue) return
+    if (!grammarIssues.includes(activeGrammarIssue)) {
+      setActiveGrammarIssue(null)
+      setActiveGrammarRect(null)
+    }
+  }, [grammarIssues, activeGrammarIssue])
 
   useEffect(() => {
   return () => {
@@ -727,7 +679,10 @@ export default function Document(): JSX.Element {
 }, [])
 
   // const getEditorText = useCallback(() => editorRef.current?.innerText || '', [])
-  function focusEditor(): void { editorRef.current?.focus() }
+  /** Focus the editor via TipTap's native focus command. */
+  function focusEditor(): void {
+    editor?.chain().focus().run()
+  }
 
   async function handleManualSave(): Promise<void> {
     if (autosaveTimer.current) {
@@ -844,7 +799,7 @@ export default function Document(): JSX.Element {
                 transition: 'color 200ms',
               }}
             >
-              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : 'Saved'}
+              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
             </span>
 
             <button
@@ -952,13 +907,50 @@ export default function Document(): JSX.Element {
 
         {/* Toolbar row — overflow visible with z-index so popovers float above canvas */}
         <div style={{ borderTop: '1px solid var(--border)', position: 'relative', zIndex: 100 }}>
-          <Toolbar
+          <TiptapToolbar
+            editor={editor ?? null}
+            documentTitle={title}
             onFormatApplied={handleFormat}
-            onFocusEditor={focusEditor}
             pageSize={pageSize}
-            onPageSizeChange={setPageSize}
+            onPageSizeChange={handlePageSizeChange}
             margins={margins}
-            onMarginsChange={setMargins}
+            onMarginsChange={handleMarginsChange}
+            orientation={orientation}
+            onOrientationChange={handleOrientationChange}
+            onImportComplete={(importedHtml, importedTitle, layout) => {
+              if (importedTitle) setTitle(importedTitle)
+              if (layout) {
+                latestPageSetupRef.current = {
+                  pageSize: layout.pageSize ?? latestPageSetupRef.current.pageSize,
+                  margins: layout.margins ?? latestPageSetupRef.current.margins,
+                  orientation: layout.orientation ?? latestPageSetupRef.current.orientation,
+                }
+                setPageSize(latestPageSetupRef.current.pageSize)
+                setMargins(latestPageSetupRef.current.margins)
+                setOrientation(latestPageSetupRef.current.orientation)
+                if (layout.headerContent !== undefined) {
+                  latestHeaderRef.current = layout.headerContent
+                  setHeaderContent(layout.headerContent)
+                }
+                if (layout.footerContent !== undefined) {
+                  latestFooterRef.current = layout.footerContent
+                  setFooterContent(layout.footerContent)
+                }
+              }
+              handleContentChange(importedHtml)
+            }}
+            headerContent={headerContent}
+            footerContent={footerContent}
+            onHeaderChange={handleHeaderChange}
+            onFooterChange={handleFooterChange}
+            showHeader={showHeader}
+            showFooter={showFooter}
+            onShowHeaderChange={handleShowHeaderChange}
+            onShowFooterChange={handleShowFooterChange}
+            headerNumberFormat={headerNumberFormat}
+            footerNumberFormat={footerNumberFormat}
+            onHeaderNumberFormatChange={handleHeaderNumberFormatChange}
+            onFooterNumberFormatChange={handleFooterNumberFormatChange}
           />
         </div>
       </header>
@@ -966,21 +958,30 @@ export default function Document(): JSX.Element {
       {/* ── Body ──────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
-        {/* Editor area — page size and margins driven by toolbar state */}
-        <EditorPages
-          editorRef={editorRef}
-          content={content}
-          onContentChange={handleContentChange}
-          grammarIssues={grammarIssues}
-          onGrammarApply={handleGrammarApply}
-          onGrammarDismiss={handleGrammarDismiss}
-          pageWidth={PAGE_SIZES[pageSize].width}
-          pageHeight={PAGE_SIZES[pageSize].height}
-          padTop={inToPx(margins.top)}
-          padBottom={inToPx(margins.bottom)}
-          padLeft={inToPx(margins.left)}
-          padRight={inToPx(margins.right)}
-        />
+        {/* Editor area — clean TipTap paper sheet */}
+        <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ flex: 1, overflowY: 'auto', backgroundColor: 'var(--canvas-bg)', padding: '2rem 1rem' }}>
+            <PagedEditor
+              content={content}
+              onContentChange={handleContentChange}
+              onActiveEditorChange={setEditor}
+              onGrammarClick={(issue, rect) => {
+                setActiveGrammarIssue(issue)
+                setActiveGrammarRect(rect)
+              }}
+              grammarIssues={grammarIssues}
+              pageSize={pageSize}
+              margins={margins}
+              orientation={orientation}
+              showHeader={showHeader}
+              showFooter={showFooter}
+              headerContent={headerContent}
+              footerContent={footerContent}
+              headerNumberFormat={headerNumberFormat}
+              footerNumberFormat={footerNumberFormat}
+            />
+          </div>
+        </main>
 
         {/* Right panel */}
         <AnimatePresence>
@@ -1037,15 +1038,25 @@ export default function Document(): JSX.Element {
                   )}
                 </div>
 
-                {/* Grammar auto-check (panel hidden) */}
+                {/* Grammar & spell check — engine only; issues render in the
+                    floating GrammarOverlay over the document */}
                 <GrammarPanel
                   text={content}
                   activeIssues={grammarIssues}
                   onCheckComplete={setGrammarIssues}
+                  onApply={handleGrammarApply}
+                  onDismiss={handleGrammarDismiss}
                   autoCheck
                   autoCheckDelayMs={2500}
                   autoCheckCooldownMs={12000}
                   showPanel={false}
+                />
+
+                {/* Formatting preset + custom rules (Tier 1 & 2) */}
+                <FormattingPanel
+                  documentId={id}
+                  activePreset={formattingPreset}
+                  onPresetChange={setFormattingPreset}
                 />
 
                 {/* Session stats */}
@@ -1150,6 +1161,18 @@ export default function Document(): JSX.Element {
         </AnimatePresence>
       </div>
 
+      {/* Grammar & spell check — floating popover anchored to a clicked wavy underline */}
+      <GrammarOverlay
+        issue={activeGrammarIssue}
+        anchorRect={activeGrammarRect}
+        onApply={handleGrammarApply}
+        onDismiss={handleGrammarDismiss}
+        onClose={() => {
+          setActiveGrammarIssue(null)
+          setActiveGrammarRect(null)
+        }}
+      />
+
       {/* Format prompt (float) */}
       <div
         style={{
@@ -1171,6 +1194,7 @@ export default function Document(): JSX.Element {
       {/* AI Chatbot (float) */}
       <div style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 50 }}>
         <AIChatbot
+          editor={editor ?? null}
           documentId={id}
           documentTitle={title}
           documentContent={chatContent}
