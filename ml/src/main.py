@@ -22,8 +22,13 @@ from grammar.spell_checker import check_spelling
 
 load_dotenv()
 
-MODEL_PATH = os.getenv("BASE_MODEL_PATH", "models/base_model.pkl")
-LSTM_DIR = os.getenv("LSTM_MODEL_DIR", "models/lstm")
+DEFAULT_MODEL_PATH = str(ROOT_DIR / "models" / "base_model.pkl")
+MODEL_PATH = os.getenv("BASE_MODEL_PATH", DEFAULT_MODEL_PATH)
+if not os.path.isabs(MODEL_PATH) and not os.path.exists(MODEL_PATH):
+    MODEL_PATH = DEFAULT_MODEL_PATH
+
+DEFAULT_LSTM_DIR = str(ROOT_DIR / "models" / "lstm")
+LSTM_DIR = os.getenv("LSTM_MODEL_DIR", DEFAULT_LSTM_DIR)
 
 app = FastAPI(
     title="IntelliDocs ML API",
@@ -166,8 +171,7 @@ def build_feature_row(request: PredictRequest) -> pd.DataFrame:
             / max(char_count, 1)
         ),
         "starts_with_marker": int(
-            normalized.startswith(("=", "*", "#", ">", "`", "    ", "-", "•")) or
-            normalized.lower().startswith(("figure", "table", "chapter", "references"))
+            normalized.startswith(("=", "*", "#", ">", "`", "    ", "-", "•", "+"))
         ),
     }
     return pd.DataFrame([features])
@@ -195,9 +199,59 @@ async def health_check() -> dict[str, str]:
 @app.post("/predict", response_model=PredictResponse)
 async def predict_format(request: PredictRequest) -> PredictResponse:
     """Predict an APA academic formatting label using RandomForest + LSTM confidence adjustment."""
+    import re
+
     text = request.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is required.")
+
+    words = text.split()
+    word_count = len(words)
+    lower = text.lower()
+
+    # Hybrid academic structural heuristics
+    if word_count <= 14 and "\n" not in text:
+        if (
+            lower.startswith("chapter")
+            or bool(re.match(r"^(chapter\s+\d+|[ivx]+\.|\d+\.)\s+", lower))
+            or lower in [
+                "abstract", "introduction", "methodology", "literature review",
+                "results", "discussion", "conclusion", "references",
+                "table of contents", "acknowledgments", "appendix"
+            ]
+        ):
+            return PredictResponse(
+                predicted_format="heading1",
+                confidence=0.96,
+                model_path=MODEL_PATH,
+                feature_values={"word_count": word_count, "academic_heading1_prior": 1.0},
+                lstm_adjusted=False,
+            )
+        if bool(re.match(r"^\d+\.\d+\s+", text)):
+            return PredictResponse(
+                predicted_format="heading2",
+                confidence=0.95,
+                model_path=MODEL_PATH,
+                feature_values={"word_count": word_count, "academic_heading2_prior": 1.0},
+                lstm_adjusted=False,
+            )
+        if bool(re.match(r"^\d+\.\d+\.\d+\s+", text)):
+            return PredictResponse(
+                predicted_format="heading3",
+                confidence=0.94,
+                model_path=MODEL_PATH,
+                feature_values={"word_count": word_count, "academic_heading3_prior": 1.0},
+                lstm_adjusted=False,
+            )
+
+    if text.startswith(("- ", "• ", "* ", "— ", "– ")) and word_count <= 25:
+        return PredictResponse(
+            predicted_format="unordered_list",
+            confidence=0.93,
+            model_path=MODEL_PATH,
+            feature_values={"word_count": word_count, "bullet_marker": 1.0},
+            lstm_adjusted=False,
+        )
 
     lstm_adjusted = False
     try:

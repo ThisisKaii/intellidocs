@@ -7,7 +7,8 @@ import { Color } from '@tiptap/extension-color'
 import { TextStyle } from '@tiptap/extension-text-style'
 import FontFamily from '@tiptap/extension-font-family'
 import TextAlign from '@tiptap/extension-text-align'
-import Image from '@tiptap/extension-image'
+import ImageResize from 'tiptap-extension-resize-image'
+import Paragraph from '@tiptap/extension-paragraph'
 import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableCell from '@tiptap/extension-table-cell'
@@ -61,6 +62,7 @@ import {
 import { api, type PageNumberFormat } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { IndentExtension } from './IndentExtension'
+import { TargetHighlightExtension } from './TargetHighlightExtension'
 
 /** Download document content as a standalone clean HTML file. */
 function downloadHTML(html: string, title: string): void {
@@ -192,10 +194,125 @@ const POPOVER_STYLE: CSSProperties = {
 
 const FOCUS_RING: CSSProperties = { outline: '2px solid var(--ring)', outlineOffset: '1px' }
 
+// ─── Whitelist of CSS properties allowed through inline style pass-through ──
+
+const ALLOWED_STYLE_PROPS = new Set([
+  'color', 'background-color', 'background', 'text-align',
+  'font-weight', 'font-style', 'font-size', 'font-family',
+  'margin-top', 'margin-bottom', 'margin-left', 'margin-right',
+  'padding-top', 'padding-bottom', 'padding-left', 'padding-right',
+  'border', 'border-top', 'border-bottom', 'border-left', 'border-right',
+  'border-color', 'border-width', 'border-style',
+  'vertical-align', 'line-height', 'text-decoration',
+  'white-space', 'word-wrap', 'overflow-wrap',
+])
+
+/** Extract only whitelisted CSS properties from an inline style string. */
+function filterStyle(raw: string | null): string | null {
+  if (!raw) return null
+  const kept: string[] = []
+  for (const decl of raw.split(';')) {
+    const trimmed = decl.trim()
+    if (!trimmed) continue
+    const colon = trimmed.indexOf(':')
+    if (colon < 1) continue
+    const prop = trimmed.slice(0, colon).trim().toLowerCase()
+    if (ALLOWED_STYLE_PROPS.has(prop)) kept.push(trimmed)
+  }
+  return kept.length > 0 ? kept.join('; ') : null
+}
+
+// ─── Custom node extensions preserving imported styles and cell backgrounds ─
+
+export const CustomTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      color: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('color'),
+        renderHTML: (a) => (a.color ? { color: a.color } : {}),
+      },
+      backgroundColor: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('bgcolor'),
+        renderHTML: (a) => (a.backgroundColor ? { bgcolor: a.backgroundColor } : {}),
+      },
+      style: {
+        default: null,
+        parseHTML: (el) => filterStyle(el.getAttribute('style')),
+        renderHTML: (a) => (a.style ? { style: a.style } : {}),
+      },
+    }
+  },
+})
+
+export const CustomTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      color: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('color'),
+        renderHTML: (a) => (a.color ? { color: a.color } : {}),
+      },
+      backgroundColor: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('bgcolor'),
+        renderHTML: (a) => (a.backgroundColor ? { bgcolor: a.backgroundColor } : {}),
+      },
+      style: {
+        default: null,
+        parseHTML: (el) => filterStyle(el.getAttribute('style')),
+        renderHTML: (a) => (a.style ? { style: a.style } : {}),
+      },
+    }
+  },
+})
+
 // ─── Editor extensions (single source of truth) ─────────────────────────────
 
+const CustomParagraph = Paragraph.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      style: {
+        default: null,
+        parseHTML: (el) => filterStyle(el.getAttribute('style')),
+        renderHTML: (a) => (a.style ? { style: a.style } : {}),
+      },
+    }
+  },
+})
+
+/** Center-aligned ImageResize: sets containerStyle to center by default. */
+const CenteredImageResize = ImageResize.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      containerStyle: {
+        default: 'margin: 0 auto;',
+        parseHTML: (element) => {
+          const raw = element.getAttribute('containerstyle')
+          if (raw) return raw
+          const width = element.getAttribute('width')
+          if (width) return `width: ${width}px; height: auto; cursor: pointer; margin: 0 auto;`
+          return 'margin: 0 auto;'
+        },
+        renderHTML: (attributes) => {
+          if (!attributes.containerStyle) return {}
+          return { containerstyle: attributes.containerStyle }
+        },
+      },
+    }
+  },
+})
+
 export const editorExtensions = [
-  StarterKit,
+  StarterKit.configure({
+    paragraph: false,
+  }),
+  CustomParagraph,
   PageBreak,
   TextStyle,
   Color,
@@ -203,15 +320,16 @@ export const editorExtensions = [
   FontSizeExtension,
   IndentExtension,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
-  Image.configure({ inline: true, allowBase64: true }),
+  CenteredImageResize.configure({ inline: false, allowBase64: true }),
   Table.configure({ resizable: true }),
   TableRow,
-  TableCell,
-  TableHeader,
+  CustomTableCell,
+  CustomTableHeader,
   Subscript,
   Superscript,
   Highlight.configure({ multicolor: true }),
   GrammarUnderlineExtension,
+  TargetHighlightExtension,
 ]
 
 // ─── Editor factory hook ────────────────────────────────────────────────────
@@ -669,7 +787,7 @@ export function TiptapToolbar({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".docx,.pdf,.txt,.html,.htm"
+        accept=".docx,.doc,.pdf,.txt,.html,.htm"
         style={{ display: 'none' }}
         onChange={(e) => void handleFileSelected(e)}
       />
@@ -1176,7 +1294,7 @@ export function TiptapToolbar({
             e.preventDefault()
             fileInputRef.current?.click()
           }}
-          title="Import Document (.docx, .pdf, .txt, .html)"
+          title="Import Document (.docx, .doc, .pdf, .txt, .html)"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -1817,8 +1935,6 @@ const PROSE_STYLES = `
     word-wrap: break-word;
     caret-color: #171717;
   }
-  .ProseMirror span[style*="font-family"] { font-family: inherit; }
-  .ProseMirror span[style*="font-size"] { font-size: inherit; }
   .ProseMirror span[style*="color:#000000"],
   .ProseMirror span[style*="color: #000000"],
   .ProseMirror span[style*="color:#000"],
@@ -1826,12 +1942,15 @@ const PROSE_STYLES = `
   .ProseMirror span[style*="color:black"],
   .ProseMirror span[style*="color: rgb(0, 0, 0)"],
   .ProseMirror span[style*="color: rgb(0,0,0)"] { color: inherit; }
-  .ProseMirror h1 { font-size: 16pt; font-weight: 700; margin: 0.75em 0 0.25em; letter-spacing: -0.02em; }
-  .ProseMirror h2 { font-size: 14pt; font-weight: 700; font-style: italic; margin: 0.75em 0 0.25em; }
+  .ProseMirror h1 { font-size: 18pt; font-weight: 700; margin: 0.85em 0 0.35em; letter-spacing: -0.02em; }
+  .ProseMirror h1.title { font-size: 20pt; font-weight: 700; margin: 0.75em 0 0.35em; }
+  .ProseMirror h2 { font-size: 14.5pt; font-weight: 700; margin: 0.75em 0 0.3em; }
+  .ProseMirror h2.subtitle { font-size: 14pt; font-weight: 600; font-style: italic; margin: 0.35em 0 0.5em; }
   .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6 {
-    font-size: 12pt; font-weight: 700; margin: 0.5em 0 0.25em;
+    font-size: 12.5pt; font-weight: 700; margin: 0.65em 0 0.25em;
   }
-  .ProseMirror p { margin-bottom: 0.5em; }
+  .ProseMirror p { margin-bottom: 0.25em; line-height: 1.5 !important; }
+  .ProseMirror p:empty, .ProseMirror p > br:only-child { min-height: 0.6em; display: block; width: 100%; margin-bottom: 0 !important; }
   .ProseMirror blockquote {
     border-left: 3px solid var(--foreground);
     margin: 0.75em 0;
@@ -1858,22 +1977,85 @@ const PROSE_STYLES = `
   .ProseMirror table {
     border-collapse: collapse;
     width: 100%;
-    margin: 1em 0;
+    margin: 1.25em 0;
     border: 1px solid var(--border);
+    table-layout: fixed;
   }
   .ProseMirror th, .ProseMirror td {
     border: 1px solid var(--border);
-    padding: 6px 10px;
+    padding: 8px 12px;
     text-align: left;
     min-width: 1em;
+    vertical-align: top;
   }
-  .ProseMirror th { background: var(--secondary); font-weight: 600; }
+  .ProseMirror th {
+    background-color: var(--secondary);
+    color: var(--foreground);
+    font-weight: 600;
+  }
+  .ProseMirror th[style*="background-color:#000"],
+  .ProseMirror th[style*="background-color: #000"],
+  .ProseMirror th[style*="background-color:#1"],
+  .ProseMirror th[style*="background-color:#2"],
+  .ProseMirror th[style*="background-color:#3"],
+  .ProseMirror th[style*="background-color:#4"],
+  .ProseMirror th[style*="background-color:black"],
+  .ProseMirror th[style*="background-color: rgb(0"],
+  .ProseMirror th[style*="background-color:rgba(0"],
+  .ProseMirror th[style*="background-color: #0"],
+  .ProseMirror th[style*="background-color: #1"],
+  .ProseMirror th[style*="background-color: #2"],
+  .ProseMirror th[style*="background-color: #3"],
+  .ProseMirror th[style*="background-color: #4"],
+  .ProseMirror th[style*="background-color:#1F"],
+  .ProseMirror th[style*="background-color:#1a"],
+  .ProseMirror th[style*="background-color:#2d"],
+  .ProseMirror th[style*="background-color:#21"],
+  .ProseMirror th[style*="background-color:#2f"] {
+    color: #ffffff !important;
+  }
+  .ProseMirror td[style*="background-color:#000"],
+  .ProseMirror td[style*="background-color: #000"],
+  .ProseMirror td[style*="background-color:#1"],
+  .ProseMirror td[style*="background-color:#2"],
+  .ProseMirror td[style*="background-color:#3"],
+  .ProseMirror td[style*="background-color:#4"],
+  .ProseMirror td[style*="background-color:black"],
+  .ProseMirror td[style*="background-color: rgb(0"],
+  .ProseMirror td[style*="background-color:rgba(0"],
+  .ProseMirror td[style*="background-color: #0"],
+  .ProseMirror td[style*="background-color: #1"],
+  .ProseMirror td[style*="background-color: #2"],
+  .ProseMirror td[style*="background-color: #3"],
+  .ProseMirror td[style*="background-color: #4"],
+  .ProseMirror td[style*="background-color:#1F"],
+  .ProseMirror td[style*="background-color:#1a"],
+  .ProseMirror td[style*="background-color:#2d"],
+  .ProseMirror td[style*="background-color:#21"],
+  .ProseMirror td[style*="background-color:#2f"] {
+    color: #ffffff !important;
+  }
+  .ProseMirror th p, .ProseMirror td p {
+    margin: 0 !important;
+    line-height: 1.35 !important;
+  }
+  .ProseMirror th[style*="background-color:#000"] p,
+  .ProseMirror th[style*="background-color: #000"] p,
+  .ProseMirror th[style*="background-color:#1"] p,
+  .ProseMirror th[style*="background-color:#2"] p,
+  .ProseMirror th[style*="background-color:#3"] p,
+  .ProseMirror th[style*="background-color:#4"] p,
+  .ProseMirror th[style*="background-color:black"] p,
+  .ProseMirror th[style*="background-color: rgb(0"] p,
+  .ProseMirror th[style*="background-color:#1F"] p,
+  .ProseMirror th[style*="background-color:#1a"] p {
+    color: #ffffff !important;
+  }
   .ProseMirror img {
-    max-width: 100%;
     height: auto;
     display: block;
-    margin: 1em auto;
     border-radius: 4px;
+    outline: none;
   }
   .ProseMirror hr {
     border: none;
@@ -1894,6 +2076,52 @@ const PROSE_STYLES = `
   }
   .ProseMirror ::selection { background: rgba(99, 102, 241, 0.2); }
   .ProseMirror .ProseMirror-selectednode { outline: 2px solid var(--primary); outline-offset: 2px; }
+  /* Suppress the ProseMirror selection outline on images — the library handles its own */
+  .ProseMirror [data-resize-image-ui] { outline: none !important; }
+  .ProseMirror-selectednode:has([data-resize-image-ui]) { outline: none !important; }
+  .ProseMirror [data-resize-image-ui="position-controller"] {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    background: var(--popover, #ffffff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    position: absolute;
+    top: -44px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    animation: fadeIn 150ms ease-out;
+    cursor: default;
+  }
+  .ProseMirror [data-resize-image-ui="position-controller"] img,
+  .ProseMirror [data-resize-image-ui="position-controller"] svg {
+    width: 20px;
+    height: 20px;
+    padding: 3px;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 120ms, background 120ms;
+    background: transparent;
+    border: none;
+  }
+  .ProseMirror [data-resize-image-ui="position-controller"] img:hover,
+  .ProseMirror [data-resize-image-ui="position-controller"] svg:hover {
+    opacity: 1;
+    background: var(--secondary, #f3f4f6);
+  }
+  .ProseMirror [data-resize-image-ui="resize-handle"] {
+    width: 10px;
+    height: 10px;
+    background: var(--primary, #6366f1);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    opacity: 0.9;
+  }
   .ProseMirror .grammar-wavy {
     text-decoration: underline wavy #ef4444;
     text-decoration-skip-ink: none;
@@ -1901,6 +2129,28 @@ const PROSE_STYLES = `
   }
   .ProseMirror .grammar-wavy:hover {
     background-color: rgba(239, 68, 68, 0.08);
+  }
+  .ProseMirror .agentic-suggestion-pulse {
+    background-color: rgba(99, 102, 241, 0.08);
+    border-radius: 6px;
+    outline: 2px dashed #6366f1;
+    outline-offset: 3px;
+    animation: agenticPulse 2s ease-in-out infinite;
+    transition: all 200ms ease;
+  }
+  @keyframes agenticPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+      background-color: rgba(99, 102, 241, 0.04);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+      background-color: rgba(99, 102, 241, 0.08);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+      background-color: rgba(99, 102, 241, 0.04);
+    }
   }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-2px); }

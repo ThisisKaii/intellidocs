@@ -17,9 +17,10 @@ export interface ImportProgress {
   currentName: string
 }
 
-const ACCEPTED_EXTENSIONS = ['.docx', '.txt', '.html', '.htm', '.pdf']
+const ACCEPTED_EXTENSIONS = ['.docx', '.doc', '.txt', '.html', '.htm', '.pdf']
 const ACCEPTED_MIME = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
   'text/plain',
   'text/html',
   'application/pdf',
@@ -40,7 +41,7 @@ function formatFileSize(bytes: number): string {
 function fileError(file: File): string | null {
   const ext = '.' + file.name.split('.').pop()?.toLowerCase()
   if (!ACCEPTED_EXTENSIONS.includes(ext) && !ACCEPTED_MIME.includes(file.type)) {
-    return `Unsupported file type "${ext}". Please upload a .docx, .txt, .html, or .pdf file.`
+    return `Unsupported file type "${ext}". Please upload a .docx, .doc, .txt, .html, or .pdf file.`
   }
   return null
 }
@@ -76,7 +77,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
     setSuccess(false)
     const next = filterFiles(files)
     if (next.length === 0) {
-      setError('No supported files selected. Please pick .docx, .txt, .html, or .pdf files.')
+      setError('No supported files selected. Please pick .docx, .doc, .txt, .html, or .pdf files.')
       return
     }
     setSelectedFiles((prev) => {
@@ -189,7 +190,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
                 Import Document
               </h2>
               <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>
-                Supported formats: <strong>.docx</strong>, <strong>.txt</strong>, <strong>.html</strong>, <strong>.pdf</strong>
+                Supported formats: <strong>.docx</strong>, <strong>.doc</strong>, <strong>.txt</strong>, <strong>.html</strong>, <strong>.pdf</strong>
               </p>
             </div>
             <button
@@ -238,7 +239,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
             <input
               ref={inputRef}
               type="file"
-              accept=".docx,.txt,.html,.htm,.pdf"
+              accept=".docx,.doc,.txt,.html,.htm,.pdf"
               multiple
               onChange={handleInputChange}
               style={{ display: 'none' }}
@@ -261,7 +262,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
                   {dragging ? 'Drop files here' : 'Drag & drop or click to browse'}
                 </p>
                 <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>
-                  .docx &bull; .txt &bull; .html &bull; .pdf — multiple allowed
+                  .docx &bull; .doc &bull; .txt &bull; .html &bull; .pdf — multiple allowed
                 </p>
               </div>
             )}

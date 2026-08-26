@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, useCallback, type ChangeEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { api, type BehaviorSummaryResponse, type PageNumberFormat } from '@/services/api'
@@ -21,25 +21,22 @@ import FormatPrompt, { type FormatSuggestion } from '@/components/editor/FormatP
 import AIChatbot from '@/components/editor/AIChatbot'
 import FormattingPanel from '@/components/editor/FormattingPanel'
 import McpDebugPanel from '@/components/editor/McpDebugPanel'
-
 import { useTheme } from '@/context/ThemeContext'
-
 import { ArrowLeft, Save, Moon, Sun, ShieldOff, Shield } from 'lucide-react'
+import { useAutoFormatScanner, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
+import { setHighlight, clearHighlight } from '@/components/editor/TargetHighlightExtension'
 
 const AUTOSAVE_DELAY = 8000
-/** Consecutive failed autosaves before giving up until the next edit. */
 const MAX_SAVE_RETRIES = 3
 
-const AUTO_FORMAT_DELAY = 1800
-const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.7
+const AUTO_FORMAT_DELAY = 1200
+const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.22
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
-const AUTO_FORMAT_MIN_INTERVAL_MS = 30 * 1000
+const AUTO_FORMAT_MIN_INTERVAL_MS = 15 * 1000
 
 export default function Document(): JSX.Element {
   const { id } = useParams()
 
-  // ── TipTap editor — the currently focused page editor, reported by the
-  //    paginated view. Toolbar, grammar, suggestions and AI act on it.
   const [editor, setEditor] = useState<Editor | null>(null)
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -51,7 +48,7 @@ export default function Document(): JSX.Element {
   const saveRetryCountRef = useRef<number>(0)
   const autoFormatTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressedAutoFormatsRef = useRef<Record<string, number>>({})
-  const lastAutoFormatRef = useRef<{format: string; shownAt: number} | null>(null)
+  const lastAutoFormatRef = useRef<{ format: string; shownAt: number } | null>(null)
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
@@ -102,6 +99,79 @@ export default function Document(): JSX.Element {
 
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
+
+  // ── Agentic auto-format scanner ──────────────────────────────────────
+  const {
+    suggestions: scannerSuggestions,
+    activeSuggestion: scannerActive,
+    isTargetInViewport,
+    acceptSuggestion: acceptScannerSuggestion,
+    rejectSuggestion: rejectScannerSuggestion,
+  } = useAutoFormatScanner({ editor, enabled: !!editor })
+
+  /** Smooth-scroll to a scanner suggestion's ProseMirror position. */
+  const jumpToScannerTarget = useCallback((suggestion: ScannerSuggestion): void => {
+    if (!editor || editor.isDestroyed) return
+
+    // Focus editor and scroll to position
+    editor.chain().focus().setTextSelection(suggestion.from).run()
+
+    // Scroll the editor's viewport to bring the target into view
+    const editorView = editor.view
+    const coords = editorView.coordsAtPos(suggestion.from)
+    const editorContainer = editorView.dom.closest('.intellidocs-page-editor')?.parentElement
+    if (editorContainer) {
+      const containerRect = editorContainer.getBoundingClientRect()
+      const scrollTop = editorContainer.scrollTop
+      const targetY = coords.top - containerRect.top + scrollTop - 200
+      editorContainer.scrollTo({ top: targetY, behavior: 'smooth' })
+    }
+
+    // Apply pulse highlight after a brief delay (let scroll settle)
+    setTimeout(() => {
+      if (!editor.isDestroyed) {
+        setHighlight(editor, suggestion.from, suggestion.to)
+      }
+    }, 400)
+
+    // Clear highlight after 6 seconds
+    setTimeout(() => {
+      if (!editor.isDestroyed) {
+        clearHighlight(editor)
+      }
+    }, 6000)
+  }, [editor])
+
+  // Sync scanner's active suggestion into the formatPrompt state
+  // so the FormatPrompt component renders it. Only do this when the
+  // existing cursor-based auto-format isn't already showing a suggestion.
+  useEffect(() => {
+    if (!scannerActive) return
+
+    // Always apply highlight when scanner has an active suggestion,
+    // regardless of whether cursor-based formatPrompt is already showing
+    if (editor && !editor.isDestroyed) {
+      setHighlight(editor, scannerActive.from, scannerActive.to)
+      setTimeout(() => {
+        if (!editor.isDestroyed) clearHighlight(editor)
+      }, 6000)
+    }
+
+    // Only set formatPrompt if cursor-based system hasn't already
+    if (!formatPrompt) {
+      setFormatPrompt({
+        format: scannerActive.format,
+        confidence: scannerActive.confidence,
+      })
+    }
+  }, [scannerActive, formatPrompt, editor])
+
+  // Clear scanner highlight when scanner suggestions change
+  useEffect(() => {
+    if (editor && !editor.isDestroyed && scannerSuggestions.length === 0) {
+      clearHighlight(editor)
+    }
+  }, [scannerSuggestions, editor])
 
   useEffect(() => {
     if (!id) return
@@ -263,20 +333,38 @@ export default function Document(): JSX.Element {
     return true
   }
 
+  function isFormatAlreadyActive(format: string): boolean {
+    if (!editor) return false
+    switch (format) {
+      case 'bold': return editor.isActive('bold')
+      case 'italic': return editor.isActive('italic')
+      case 'underline': return editor.isActive('underline')
+      case 'strikethrough': return editor.isActive('strike')
+      case 'heading1': case 'h1': return editor.isActive('heading', { level: 1 })
+      case 'heading2': case 'h2': return editor.isActive('heading', { level: 2 })
+      case 'heading3': case 'h3': return editor.isActive('heading', { level: 3 })
+      case 'unordered_list': case 'ul': return editor.isActive('bulletList')
+      case 'ordered_list': case 'ol': return editor.isActive('orderedList')
+      case 'blockquote': return editor.isActive('blockquote')
+      default: return false
+    }
+  }
 
   function applyPromptFormat(format: string): void {
     if (!editor) return
+    if (isFormatAlreadyActive(format)) return
+
     switch (format) {
-      case 'bold':          editor.chain().focus().toggleBold().run(); break
-      case 'italic':        editor.chain().focus().toggleItalic().run(); break
-      case 'underline':     editor.chain().focus().toggleUnderline().run(); break
-      case 'strikethrough': editor.chain().focus().toggleStrike().run(); break
-      case 'heading1': case 'h1': editor.chain().focus().toggleHeading({ level: 1 }).run(); break
-      case 'heading2': case 'h2': editor.chain().focus().toggleHeading({ level: 2 }).run(); break
-      case 'heading3': case 'h3': editor.chain().focus().toggleHeading({ level: 3 }).run(); break
-      case 'unordered_list': case 'ul': editor.chain().focus().toggleBulletList().run(); break
-      case 'ordered_list': case 'ol': editor.chain().focus().toggleOrderedList().run(); break
-      case 'blockquote':    editor.chain().focus().toggleBlockquote().run(); break
+      case 'bold':          editor.chain().focus().setBold().run(); break
+      case 'italic':        editor.chain().focus().setItalic().run(); break
+      case 'underline':     editor.chain().focus().setUnderline().run(); break
+      case 'strikethrough': editor.chain().focus().setStrike().run(); break
+      case 'heading1': case 'h1': editor.chain().focus().setHeading({ level: 1 }).run(); break
+      case 'heading2': case 'h2': editor.chain().focus().setHeading({ level: 2 }).run(); break
+      case 'heading3': case 'h3': editor.chain().focus().setHeading({ level: 3 }).run(); break
+      case 'unordered_list': case 'ul': if (!editor.isActive('bulletList')) editor.chain().focus().toggleBulletList().run(); break
+      case 'ordered_list': case 'ol': if (!editor.isActive('orderedList')) editor.chain().focus().toggleOrderedList().run(); break
+      case 'blockquote':    editor.chain().focus().setBlockquote().run(); break
       default: break
     }
   }
@@ -294,7 +382,26 @@ export default function Document(): JSX.Element {
   async function runAutoFormatPrediction(nextContent: string): Promise<void> {
     const plainText = getPlainText(nextContent).slice(0, 50000)
 
-    if (plainText.length < 12) {
+    // Extract the active paragraph / line / selection text for context-aware prediction
+    let activeText = ''
+    if (editor && !editor.isDestroyed) {
+      const { from, to } = editor.state.selection
+      if (from !== to) {
+        activeText = editor.state.doc.textBetween(from, to).trim()
+      } else {
+        const $pos = editor.state.doc.resolve(from)
+        activeText = $pos.parent.textContent.trim()
+      }
+    }
+    if (!activeText) {
+      const lines = plainText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0)
+      activeText = lines[lines.length - 1] ?? ''
+    }
+
+    if (activeText.length < 3) {
       setFormatPrompt(null)
       setSuggestions([])
       setShowSuggestions(false)
@@ -302,7 +409,14 @@ export default function Document(): JSX.Element {
     }
 
     try {
-      const result = await api.formatting.tierCheck(plainText, id ?? '')
+      const result = await api.formatting.tierCheck(activeText, id ?? '')
+
+      if (result.format && isFormatAlreadyActive(result.format)) {
+        setFormatPrompt(null)
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
 
       // Tier 1/2 — preset rule or custom binding: apply immediately.
       if (result.tier === 'binding' || result.tier === 'preset') {
@@ -327,6 +441,14 @@ export default function Document(): JSX.Element {
       const predictedFormat = result.format
       const confidence = result.confidence
 
+      // Regular body text / paragraphs don't need a formatting suggestion prompt
+      if (predictedFormat === 'paragraph' || predictedFormat === 'body_text') {
+        setFormatPrompt(null)
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
+
       if (confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) {
         setFormatPrompt(null)
         setSuggestions([])
@@ -334,39 +456,55 @@ export default function Document(): JSX.Element {
         return
       }
 
-      if (isAutoFormatSuppressed(predictedFormat)) {
+      // Scan candidate lines across the document to populate the Suggestions drawer
+      const lines = plainText.split('\n').map((l) => l.trim()).filter((l) => l.length >= 4 && l.length <= 120)
+      const candidateLines = lines.slice(0, 8)
+      
+      const newSuggestions: Suggestion[] = []
+      if (predictedFormat !== 'paragraph' && predictedFormat !== 'body_text') {
+        const confidencePercent = Math.min(98, Math.max(80, Math.round(confidence * 100 * 2.8)))
+        newSuggestions.push({
+          format: predictedFormat,
+          confidence: confidencePercent,
+          reason: `Predicted ${formatSuggestionLabel(predictedFormat)} for current section based on academic layout patterns.`,
+        })
+
+        if (!isAutoFormatSuppressed(predictedFormat) && !shouldSkipAutoFormatSuggestion(predictedFormat)) {
+          setFormatPrompt({
+            format: predictedFormat,
+            confidence: confidencePercent,
+          })
+          lastAutoFormatRef.current = {
+            format: predictedFormat,
+            shownAt: Date.now(),
+          }
+        }
+      }
+
+      // Check additional lines if present for the suggestions drawer
+      for (const line of candidateLines) {
+        if (line === plainText.trim()) continue
+        if (/^(chapter|\d+\.|\d+\.\d+|[ivx]+\.)/i.test(line)) {
+          const isH2 = /^\d+\.\d+\s+/i.test(line)
+          const isH3 = /^\d+\.\d+\.\d+\s+/i.test(line)
+          const fmt = isH3 ? 'heading3' : isH2 ? 'heading2' : 'heading1'
+          if (!newSuggestions.some((s) => s.format === fmt)) {
+            newSuggestions.push({
+              format: fmt,
+              confidence: 95,
+              reason: `Detected "${line.slice(0, 30)}..." as an academic ${formatSuggestionLabel(fmt)}.`,
+            })
+          }
+        }
+      }
+
+      if (newSuggestions.length > 0) {
+        setSuggestions(newSuggestions)
+        setShowSuggestions(true)
+      } else {
         setFormatPrompt(null)
         setSuggestions([])
         setShowSuggestions(false)
-        return
-      }
-
-      if (shouldSkipAutoFormatSuggestion(predictedFormat)){
-        setFormatPrompt(null)
-        setSuggestions([])
-        setShowSuggestions(false)
-
-        return
-
-      }
-
-      const confidencePercent = Math.round(confidence * 100)
-      const suggestion = {
-        format: predictedFormat,
-        confidence: confidencePercent,
-        reason: `Predicted ${formatSuggestionLabel(predictedFormat)} based on your recent writing context.`,
-      }
-
-      setFormatPrompt({
-        format: predictedFormat,
-        confidence: confidencePercent,
-      })
-      setSuggestions([suggestion])
-      setShowSuggestions(true)
-
-      lastAutoFormatRef.current = {
-        format: predictedFormat,
-        shownAt: Date.now(),
       }
     } catch (error) {
       console.error('Auto-format prediction failed', error)
@@ -543,6 +681,16 @@ export default function Document(): JSX.Element {
     applyPromptFormat(format)
     handleFormat(format)
 
+    // Dismiss the active scanner suggestion
+    if (scannerActive) {
+      acceptScannerSuggestion(scannerActive.key)
+    }
+
+    // Clear any pulse highlight
+    if (editor && !editor.isDestroyed) {
+      clearHighlight(editor)
+    }
+
     if (id) {
       api.behavior
         .log({
@@ -602,6 +750,16 @@ export default function Document(): JSX.Element {
 
     if (rejectedFormat) {
       rejectAutoSuggestion(rejectedFormat)
+    }
+
+    // Dismiss the active scanner suggestion
+    if (scannerActive) {
+      rejectScannerSuggestion(scannerActive.key)
+    }
+
+    // Clear any pulse highlight on rejection
+    if (editor && !editor.isDestroyed) {
+      clearHighlight(editor)
     }
 
     setFormatPrompt(null)
@@ -1188,6 +1346,10 @@ export default function Document(): JSX.Element {
           suggestion={formatPrompt}
           onAccept={handlePromptAccept}
           onReject={handlePromptReject}
+          targetPage={scannerActive?.pageNumber ?? formatPrompt?.confidence ? undefined : null}
+          isTargetInViewport={isTargetInViewport}
+          onJumpToPage={scannerActive ? () => jumpToScannerTarget(scannerActive) : undefined}
+          targetPreview={scannerActive?.preview ?? null}
         />
       </div>
 

@@ -148,9 +148,10 @@ def _image_html(blip: Any, doc_parts: Dict[str, bytes]) -> str:
         pass
 
     if width:
-        style = f"width:{width}px; max-width:100%; height:auto; display:block; margin:0.75em auto; border-radius:4px;"
+        style = "max-width:100%; height:auto; display:block; border-radius:4px;"
+        return f'<img src="data:{mime};base64,{b64_src}" width="{width}" style="{style}" />'
     else:
-        style = "max-width:100%; height:auto; display:block; margin:0.75em auto; border-radius:4px;"
+        style = "max-width:100%; height:auto; display:block; border-radius:4px;"
 
     return f'<img src="data:{mime};base64,{b64_src}" style="{style}" />'
 
@@ -166,6 +167,25 @@ def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes]) -> str:
     return _run_to_html(run)
 
 
+def _is_dark_hex(hex_str: str) -> bool:
+    """Check if a hex color is dark (luminance < 128) to ensure high text contrast."""
+    if not hex_str:
+        return False
+    try:
+        h = hex_str.lstrip("#")
+        if len(h) == 6:
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            lum = 0.299 * r + 0.587 * g + 0.114 * b
+            return lum < 128
+        if len(h) == 3:
+            r, g, b = int(h[0] * 2, 16), int(h[1] * 2, 16), int(h[2] * 2, 16)
+            lum = 0.299 * r + 0.587 * g + 0.114 * b
+            return lum < 128
+    except Exception:
+        pass
+    return False
+
+
 def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
     """Build the inner HTML (runs + hyperlinks + page breaks + images) of a paragraph."""
     parts: List[str] = []
@@ -178,12 +198,16 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
             for br in brs:
                 if br.get(qn("w:type")) == "page":
                     page_breaks += '<hr class="page-break" data-page-break="true" />'
+                else:
+                    parts.append("<br/>")
             parts.append(page_breaks + _run_or_image_html(run, doc_parts))
         elif tag == qn("w:hyperlink"):
             parts.append(_hyperlink_html(child, p, doc_parts))
         elif tag == qn("w:br"):
             if child.get(qn("w:type")) == "page":
                 parts.append('<hr class="page-break" data-page-break="true" />')
+            else:
+                parts.append("<br/>")
     return "".join(parts)
 
 
@@ -231,17 +255,13 @@ def _paragraph_indent_css(p: Paragraph) -> str:
 
 
 def _paragraph_spacing_css(p: Paragraph) -> str:
-    """Return CSS for paragraph spacing from w:spacing (twips -> px, line -> unitless).
-
-    Preserves Word's space_before/space_after/line-spacing instead of applying
-    one hardcoded margin to every paragraph.
-    """
+    """Return CSS for paragraph spacing from w:spacing (twips -> px, line -> unitless)."""
     pPr = p._element.pPr
     if pPr is None:
-        return ""
+        return "margin-bottom:0.25em; line-height:1.5"
     sp = pPr.find(qn("w:spacing"))
     if sp is None:
-        return ""
+        return "margin-bottom:0.25em; line-height:1.5"
     styles: List[str] = []
     before = sp.get(qn("w:before"))
     if before and before != "0":
@@ -249,14 +269,19 @@ def _paragraph_spacing_css(p: Paragraph) -> str:
     after = sp.get(qn("w:after"))
     if after and after != "0":
         styles.append(f"margin-bottom:{round(int(after) * TWIPS_PER_PX, 1)}px")
+    else:
+        styles.append("margin-bottom:0.25em")
+
     line = sp.get(qn("w:line"))
     if line and line != "0":
         rule = sp.get(qn("w:lineRule"), "auto")
         if rule == "exact" or rule == "atLeast":
             styles.append(f"line-height:{round(int(line) / 240.0, 2)}pt")
         else:
-            # w:line is in 240ths of a line; a value of 240 == single spacing.
             styles.append(f"line-height:{round(int(line) / 240.0, 2)}")
+    else:
+        styles.append("line-height:1.5")
+
     return "; ".join(styles)
 
 
@@ -346,6 +371,12 @@ def _paragraph_to_html(
     if re.fullmatch(r"(<hr[^>]*/>\s*)+", inner):
         return inner
 
+    # A paragraph that is only an image -> bare <img>, not wrapped in <p>.
+    # This prevents ProseMirror from splitting the <p> and creating an
+    # empty paragraph above the block-level image node.
+    if re.fullmatch(r'<img\s[^>]+/>', inner.strip()):
+        return inner.strip()
+
     alignment = _get_paragraph_alignment(p)
     align_style = f"text-align:{alignment};" if alignment != "left" else ""
     spacing_style = _paragraph_spacing_css(p)
@@ -353,20 +384,20 @@ def _paragraph_to_html(
 
     if "title" in style_name and "sub" not in style_name:
         css = " ".join(
-            filter(None, [align_style, "font-size:22pt; font-weight:bold; margin:0.5em 0;", indent_style])
+            filter(None, [align_style, "font-size:20pt; font-weight:bold; margin:0.75em 0 0.35em;", indent_style])
         )
         return f'<h1 class="title" style="{css}">{inner}</h1>'
     if "subtitle" in style_name:
         css = " ".join(
-            filter(None, [align_style, "font-size:14pt; font-style:italic; margin:0.5em 0;", indent_style])
+            filter(None, [align_style, "font-size:14pt; font-weight:600; font-style:italic; margin:0.35em 0 0.5em;", indent_style])
         )
         return f'<h2 class="subtitle" style="{css}">{inner}</h2>'
     if "heading 1" in style_name:
-        return f'<h1 style="{align_style} font-size:18pt; font-weight:bold; margin:0.75em 0 0.25em; {indent_style}">{inner}</h1>'
+        return f'<h1 style="{align_style} font-size:17pt; font-weight:bold; margin:0.85em 0 0.35em; {indent_style}">{inner}</h1>'
     if "heading 2" in style_name:
-        return f'<h2 style="{align_style} font-size:15pt; font-weight:bold; font-style:italic; margin:0.75em 0 0.25em; {indent_style}">{inner}</h2>'
+        return f'<h2 style="{align_style} font-size:14pt; font-weight:bold; margin:0.75em 0 0.3em; {indent_style}">{inner}</h2>'
     if "heading 3" in style_name:
-        return f'<h3 style="{align_style} font-size:13pt; font-weight:bold; margin:0.5em 0 0.25em; {indent_style}">{inner}</h3>'
+        return f'<h3 style="{align_style} font-size:12.5pt; font-weight:bold; margin:0.65em 0 0.25em; {indent_style}">{inner}</h3>'
     if "heading 4" in style_name:
         return f'<h4 style="{align_style} font-size:11.5pt; font-weight:bold; margin:0.5em 0 0.25em; {indent_style}">{inner}</h4>'
     if "heading 5" in style_name:
@@ -380,6 +411,18 @@ def _paragraph_to_html(
     css_combined = "; ".join(part.rstrip("; ") for part in css_parts).strip()
     style_attr = f' style="{css_combined};"' if css_combined else ""
     return f"<p{style_attr}>{inner}</p>"
+
+
+def _cell_paragraph_to_html(p: Paragraph, doc_parts: Dict[str, bytes], force_white: bool = False) -> str:
+    """Format paragraphs inside table cells compactly without ballooning cell heights."""
+    inner = _paragraph_inner_html(p, doc_parts)
+    if not inner.strip():
+        return ""
+    alignment = _get_paragraph_alignment(p)
+    align_style = f"text-align:{alignment};" if alignment != "left" else ""
+    color_style = "color:#ffffff;" if force_white else ""
+    css = " ".join(filter(None, [align_style, color_style, "margin:0; line-height:1.35;"]))
+    return f'<p style="{css}">{inner}</p>'
 
 
 def _table_to_html(table: Table, doc_parts: Dict[str, bytes]) -> str:
@@ -401,31 +444,45 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes]) -> str:
 
         for ci, cell in enumerate(row.cells):
             bg_color = ""
+            text_color = ""
+            is_dark = False
             try:
                 tc_pr = cell._element.get_or_add_tcPr()
                 shd = tc_pr.find(qn("w:shd"))
                 if shd is not None and shd.get(qn("w:fill")):
                     fill = shd.get(qn("w:fill"))
-                    if fill and fill != "auto":
+                    if fill and fill != "auto" and fill.lower() not in ("ffffff", "none"):
                         bg_color = f"background-color:#{fill};"
+                        if _is_dark_hex(fill):
+                            is_dark = True
+                            text_color = "color:#ffffff; font-weight:600;"
             except Exception:
                 pass
 
-            cell_content = "".join(_paragraph_to_html(p, doc_parts) for p in cell.paragraphs)
+            if not bg_color and i == 0:
+                bg_color = "background-color:var(--secondary);"
+
+            cell_content = "".join(_cell_paragraph_to_html(p, doc_parts, force_white=is_dark) for p in cell.paragraphs)
             if not cell_content.strip():
                 cell_content = "&nbsp;"
 
-            cell_style = f"border:1px solid var(--border); padding:6px 10px; {bg_color}"
+            style_parts = ["border:1px solid var(--border)", "padding:8px 12px", "vertical-align:top"]
+            if bg_color:
+                style_parts.append(bg_color.rstrip(";"))
+            if text_color:
+                style_parts.append(text_color.rstrip(";"))
             if ci < len(col_widths):
                 pct = col_widths[ci] / total_width * 100
-                cell_style += f" width:{pct:.2f}%;"
+                style_parts.append(f"width:{pct:.2f}%")
+
+            cell_style = "; ".join(style_parts) + ";"
             cells_html.append(f'<{tag} style="{cell_style}">{cell_content}</{tag}>')
 
         tr_style = "background-color:var(--secondary);" if i == 0 else ""
         tr_attr = f' style="{tr_style}"' if tr_style else ""
         rows_html.append(f"<tr{tr_attr}>{''.join(cells_html)}</tr>")
 
-    table_css = "border-collapse:collapse; width:100%; margin:1em 0; border:1px solid var(--border); table-layout:fixed;"
+    table_css = "border-collapse:collapse; width:100%; margin:1.25em 0; border:1px solid var(--border); table-layout:fixed;"
     return f'<table style="{table_css}">{"".join(rows_html)}</table>'
 
 
@@ -859,9 +916,10 @@ def _pdf_image_to_html(doc: Any, info: Dict[str, Any]) -> str:
         bbox = info.get("bbox")
         width = round(bbox[2] - bbox[0]) if bbox else None
         if width:
-            style = f"width:{width}px; max-width:100%; height:auto; display:block; margin:0.75em auto; border-radius:4px;"
+            style = "max-width:100%; height:auto; display:block; border-radius:4px;"
+            return f'<img src="data:{mime};base64,{b64}" width="{width}" style="{style}" />'
         else:
-            style = "max-width:100%; height:auto; display:block; margin:0.75em auto; border-radius:4px;"
+            style = "max-width:100%; height:auto; display:block; border-radius:4px;"
         return f'<img src="data:{mime};base64,{b64}" style="{style}" />'
     except Exception:
         return ""

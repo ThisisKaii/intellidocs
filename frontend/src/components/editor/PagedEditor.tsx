@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEditor, type Editor } from '@tiptap/react'
 import { PaginationPlus } from 'tiptap-pagination-plus'
 import {
@@ -29,6 +29,34 @@ function pageNumberToken(format: PageNumberFormat): string {
   return format === 'none' ? '' : '{page}'
 }
 
+/** Number of pages to render instantly before progressive hydration begins. */
+const INITIAL_PAGE_COUNT = 3
+
+/** Maximum content length (chars) below which progressive loading is skipped. */
+const PROGRESSIVE_THRESHOLD = 8000
+
+/**
+ * Split document HTML into page chunks at `<hr class="page-break">` boundaries.
+ * Returns an array of HTML strings, one per page. If no page breaks are found,
+ * returns the entire content as a single chunk.
+ */
+function splitIntoPageChunks(html: string): string[] {
+  const PAGE_BREAK_RE = /<hr\s+class="page-break"[^>]*\/?>/gi
+  if (!PAGE_BREAK_RE.test(html)) return [html]
+
+  const parts: string[] = []
+  let lastIdx = 0
+  PAGE_BREAK_RE.lastIndex = 0
+
+  let match: RegExpExecArray | null
+  while ((match = PAGE_BREAK_RE.exec(html)) !== null) {
+    parts.push(html.slice(lastIdx, match.index + match[0].length))
+    lastIdx = match.index + match[0].length
+  }
+  if (lastIdx < html.length) parts.push(html.slice(lastIdx))
+  return parts.length > 0 ? parts : [html]
+}
+
 interface PagedEditorProps {
   /** Full document HTML — the single source of truth. */
   content: string
@@ -56,6 +84,10 @@ interface PagedEditorProps {
  * tiptap-pagination-plus extension. Page breaks, headers, footers and margins
  * are computed by the extension from the configured page geometry; layout
  * prop changes are applied through its update commands.
+ *
+ * For long documents (>5 pages), content is progressively hydrated:
+ * the first 3 pages render instantly, then remaining pages are appended
+ * in idle frames to avoid freezing the browser.
  */
 export function PagedEditor({
   content,
@@ -76,6 +108,9 @@ export function PagedEditor({
   const propsRef = useRef({ onContentChange, onGrammarClick })
   propsRef.current = { onContentChange, onGrammarClick }
   const lastEmittedRef = useRef<string | null>(null)
+  const progressiveLoadedRef = useRef<boolean>(false)
+  const cancelledRef = useRef<boolean>(false)
+  const [loadProgress, setLoadProgress] = useState<number | null>(null)
 
   const preset = PAGE_SIZES[pageSize]
   const page =
@@ -110,7 +145,7 @@ export function PagedEditor({
         footerRight: showFooter ? pageNumberToken(footerNumberFormat) : '',
       }),
     ],
-    content,
+    content: '',
     editorProps: {
       attributes: {
         spellcheck: 'false',
@@ -128,9 +163,9 @@ export function PagedEditor({
     onActiveEditorChange(editor)
   }, [editor, onActiveEditorChange])
 
-  // Push externally-driven content (initial load, restore) into the editor
-  // without firing a save cycle. Content emitted by this editor is tracked
-  // in `lastEmittedRef` and never pushed back.
+  // Push externally-driven content (initial load, restore) into the editor.
+  // For large documents, content is progressively hydrated in page chunks
+  // to avoid freezing the browser main thread.
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     if (content === lastEmittedRef.current) return
@@ -138,8 +173,70 @@ export function PagedEditor({
       lastEmittedRef.current = content
       return
     }
+
     lastEmittedRef.current = content
-    editor.commands.setContent(content, { emitUpdate: false })
+
+    // Small documents: load all at once (no progressive loading needed)
+    if (content.length < PROGRESSIVE_THRESHOLD) {
+      progressiveLoadedRef.current = false
+      setLoadProgress(null)
+      editor.commands.setContent(content, { emitUpdate: false })
+      return
+    }
+
+    // Large documents: split into page chunks and progressively hydrate
+    const chunks = splitIntoPageChunks(content)
+    if (chunks.length <= INITIAL_PAGE_COUNT) {
+      editor.commands.setContent(content, { emitUpdate: false })
+      return
+    }
+
+    cancelledRef.current = false
+    progressiveLoadedRef.current = false
+    setLoadProgress(0)
+
+    // Phase 1: Render initial pages immediately
+    const initialHtml = chunks.slice(0, INITIAL_PAGE_COUNT).join('')
+    editor.commands.setContent(initialHtml, { emitUpdate: false })
+
+    // Phase 2: Append remaining chunks in idle frames
+    let nextChunkIdx = INITIAL_PAGE_COUNT
+    let rafId: number
+
+    function appendNextChunk(): void {
+      if (cancelledRef.current || nextChunkIdx >= chunks.length) {
+        if (!cancelledRef.current) {
+          progressiveLoadedRef.current = true
+          setLoadProgress(null)
+          // Emit final HTML so autosave captures the full document
+          const finalHtml = editor.getHTML()
+          lastEmittedRef.current = finalHtml
+          propsRef.current.onContentChange(finalHtml)
+        }
+        return
+      }
+
+      const chunk = chunks[nextChunkIdx]
+      if (chunk) {
+        editor.commands.insertContent(chunk)
+      }
+      nextChunkIdx += 1
+      setLoadProgress(Math.round((nextChunkIdx / chunks.length) * 100))
+
+      // Yield to the browser for painting, then continue
+      rafId = requestAnimationFrame(() => {
+        // Use a short setTimeout to yield to the browser event loop
+        // so the UI stays responsive during hydration
+        setTimeout(appendNextChunk, 8)
+      })
+    }
+
+    rafId = requestAnimationFrame(() => setTimeout(appendNextChunk, 8))
+
+    return () => {
+      cancelledRef.current = true
+      cancelAnimationFrame(rafId)
+    }
   }, [editor, content])
 
   // Apply layout changes (page size, margins, orientation, header/footer)
@@ -225,6 +322,44 @@ export function PagedEditor({
           ${romanStyle}`}
       </style>
       <TiptapCanvas editor={editor} />
+      {loadProgress !== null && (
+        <div
+          style={{
+            marginTop: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.5rem 0.75rem',
+            borderRadius: '0.5rem',
+            backgroundColor: 'var(--secondary)',
+            fontSize: '0.8125rem',
+            color: 'var(--muted-foreground)',
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              height: '4px',
+              borderRadius: '999px',
+              backgroundColor: 'var(--border)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                width: `${loadProgress}%`,
+                height: '100%',
+                borderRadius: '999px',
+                backgroundColor: 'var(--primary)',
+                transition: 'width 120ms ease',
+              }}
+            />
+          </div>
+          <span style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+            {loadProgress}%
+          </span>
+        </div>
+      )}
     </div>
   )
 }
