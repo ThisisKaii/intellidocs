@@ -52,6 +52,8 @@ const HEADING_PATTERNS: Array<{ re: RegExp; format: string; confidence: number }
 interface UseAutoFormatScannerOptions {
   editor: Editor | null
   enabled?: boolean
+  /** Minimum confidence (0–1) a candidate must exceed to be suggested. */
+  minConfidence?: number
 }
 
 /**
@@ -65,6 +67,7 @@ interface UseAutoFormatScannerOptions {
 export function useAutoFormatScanner({
   editor,
   enabled = true,
+  minConfidence = 0.68,
 }: UseAutoFormatScannerOptions): {
   suggestions: ScannerSuggestion[]
   activeSuggestion: ScannerSuggestion | null
@@ -120,8 +123,24 @@ export function useAutoFormatScanner({
       const text = node.textContent.trim()
       if (text.length < 4 || text.length > 150) return
 
+      // Skip content that should never be suggested as a heading:
+      // list items, table cells, questions, and questionnaire options.
+      const $res = doc.resolve(pos)
+      for (let d = $res.depth; d >= 0; d--) {
+        const name = $res.node(d).type.name
+        if (
+          name === 'bulletList' || name === 'orderedList' || name === 'listItem' ||
+          name === 'table' || name === 'tableRow' || name === 'tableCell' || name === 'tableHeader'
+        ) {
+          return
+        }
+      }
+      if (/[?？]\s*$/.test(text)) return
+      if (/^[a-dA-D][.)]\s/.test(text)) return
+
       for (const { re, format, confidence } of HEADING_PATTERNS) {
         if (re.test(text)) {
+          if (confidence / 100 < minConfidence) continue
           if (node.type.name === 'heading') {
             const level = node.attrs.level as number
             const fmtNum = parseInt(format.replace('heading', ''), 10)
@@ -155,7 +174,7 @@ export function useAutoFormatScanner({
       if (prev >= topSuggestions.length) return topSuggestions.length > 0 ? 0 : -1
       return prev
     })
-  }, [editor, enabled, estimatePageNumber])
+  }, [editor, enabled, estimatePageNumber, minConfidence])
 
   /** Transition scanner state based on viewport and active suggestion. */
   useEffect(() => {

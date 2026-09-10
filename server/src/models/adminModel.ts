@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
 
@@ -153,4 +153,109 @@ export async function deleteDocumentByAdmin(documentId: string): Promise<boolean
   }
 
   return true
+}
+
+/** Generate a structured empirical research CSV dataset for Chapter 4 analysis. */
+export async function generateEmpiricalDataset(): Promise<string> {
+  // Fetch prediction feedback records
+  const { data: feedbackData, error: fbErr } = await supabase
+    .from('prediction_feedback')
+    .select('user_id, document_id, prediction_type, predicted_format, confidence, accepted, created_at')
+    .order('created_at', { ascending: true })
+
+  if (fbErr) {
+    console.error('Error fetching prediction feedback:', fbErr)
+    throw new Error(fbErr.message)
+  }
+
+  // Fetch formatting action counts
+  const { count: totalActions } = await supabase
+    .from('formatting_actions')
+    .select('*', { count: 'exact', head: true })
+
+  const { count: totalUsers } = await supabase
+    .from('user_profiles')
+    .select('*', { count: 'exact', head: true })
+
+  const { count: totalDocs } = await supabase
+    .from('documents')
+    .select('*', { count: 'exact', head: true })
+
+  // Build CSV rows
+  const rows: string[] = []
+
+  // Header
+  rows.push('metric,value,description')
+
+  // Summary metrics
+  rows.push(`total_users,${totalUsers || 0},Total registered users in platform`)
+  rows.push(`total_documents,${totalDocs || 0},Total documents created`)
+  rows.push(`total_formatting_actions,${totalActions || 0},Total formatting actions logged`)
+  rows.push(`total_predictions,${feedbackData?.length || 0},Total ML predictions with feedback`)
+  rows.push(`generated_at,"${new Date().toISOString()}",Dataset generation timestamp`)
+
+  // Per-prediction records (for confusion matrix and acceptance rate)
+  if (feedbackData && feedbackData.length > 0) {
+    rows.push('')
+    rows.push('---PREDICTION_FEEDBACK---')
+    rows.push('user_id,document_id,prediction_type,predicted_format,confidence,accepted,created_at')
+
+    for (const fb of feedbackData) {
+      rows.push(
+        `"${fb.user_id}","${fb.document_id || ''}","${fb.prediction_type}","${fb.predicted_format}",${fb.confidence ?? ''},${fb.accepted},"${fb.created_at}"`
+      )
+    }
+
+    // Compute acceptance rates by prediction type
+    const byType: Record<string, { total: number; accepted: number }> = {}
+    for (const fb of feedbackData) {
+      const key = fb.prediction_type
+      if (!byType[key]) byType[key] = { total: 0, accepted: 0 }
+      byType[key].total++
+      if (fb.accepted) byType[key].accepted++
+    }
+
+    rows.push('')
+    rows.push('---ACCEPTANCE_BY_TYPE---')
+    rows.push('prediction_type,total_predictions,accepted,acceptance_rate')
+    for (const [type, stats] of Object.entries(byType)) {
+      const rate = stats.total > 0 ? (stats.accepted / stats.total * 100).toFixed(2) : '0.00'
+      rows.push(`"${type}",${stats.total},${stats.accepted},${rate}%`)
+    }
+
+    // Personalization curve: acceptance rate over time (bucketed by week)
+    const weeklyMap: Record<string, { total: number; accepted: number }> = {}
+    for (const fb of feedbackData) {
+      const d = new Date(fb.created_at)
+      const weekKey = `${d.getFullYear()}-W${String(Math.ceil((d.getDate()) / 7)).padStart(2, '0')}`
+      if (!weeklyMap[weekKey]) weeklyMap[weekKey] = { total: 0, accepted: 0 }
+      weeklyMap[weekKey].total++
+      if (fb.accepted) weeklyMap[weekKey].accepted++
+    }
+
+    rows.push('')
+    rows.push('---PERSONALIZATION_CURVE---')
+    rows.push('week,total_predictions,accepted,acceptance_rate')
+    for (const [week, stats] of Object.entries(weeklyMap)) {
+      const rate = stats.total > 0 ? (stats.accepted / stats.total * 100).toFixed(2) : '0.00'
+      rows.push(`"${week}",${stats.total},${stats.accepted},${rate}%`)
+    }
+
+    // Format distribution
+    const formatCounts: Record<string, number> = {}
+    for (const fb of feedbackData) {
+      formatCounts[fb.predicted_format] = (formatCounts[fb.predicted_format] || 0) + 1
+    }
+
+    rows.push('')
+    rows.push('---FORMAT_DISTRIBUTION---')
+    rows.push('predicted_format,count,percentage')
+    const totalPreds = feedbackData.length
+    for (const [fmt, count] of Object.entries(formatCounts).sort((a, b) => b[1] - a[1])) {
+      const pct = (count / totalPreds * 100).toFixed(2)
+      rows.push(`"${fmt}",${count},${pct}%`)
+    }
+  }
+
+  return rows.join('\n')
 }

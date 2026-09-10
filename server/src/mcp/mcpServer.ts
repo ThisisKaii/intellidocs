@@ -5,6 +5,7 @@ import {
   mcpToolCallSchema,
   getDocumentContentSchema,
   applyFormattingSchema,
+  applyBulkFormattingSchema,
   getUserProfileSchema,
   predictNextFormatSchema,
   getBehaviorSummarySchema,
@@ -12,6 +13,7 @@ import {
 } from '../../schemas/mcpSchemas'
 import { getDocumentContent } from './tools/getDocumentContent'
 import { applyFormatting } from './tools/applyFormatting'
+import { applyBulkFormatting } from './tools/applyBulkFormatting'
 import { getUserProfile } from './tools/getUserProfile'
 import { predictNextFormat } from './tools/predictNextFormat'
 import { getBehaviorSummary } from './tools/getBehaviorSummary'
@@ -24,6 +26,7 @@ router.get('/tools', aiArcjet, (_req, res) => {
     tools: [
       { name: 'getDocumentContent' },
       { name: 'applyFormatting' },
+      { name: 'applyBulkFormatting' },
       { name: 'getUserProfile' },
       { name: 'predictNextFormat' },
       { name: 'getBehaviorSummary' },
@@ -45,6 +48,8 @@ router.post('/call', aiArcjet, validateBody(mcpToolCallSchema), async (req, res)
         return res.json(await getDocumentContent({ userId }, getDocumentContentSchema.parse(args)))
       case 'applyFormatting':
         return res.json(await applyFormatting({ userId }, applyFormattingSchema.parse(args)))
+      case 'applyBulkFormatting':
+        return res.json(await applyBulkFormatting({ userId }, applyBulkFormattingSchema.parse(args)))
       case 'getUserProfile':
         return res.json(await getUserProfile({ userId, email }))
       case 'predictNextFormat':

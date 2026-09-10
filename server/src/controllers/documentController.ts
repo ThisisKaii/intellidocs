@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import * as documentModel from '../models/documentModel'
+import { resolvePendingSharesByUser } from '../models/shareModel'
 import { CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
 import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
 import mammoth from 'mammoth'
@@ -28,6 +29,103 @@ export async function getAllDocuments(req: Request, res: Response) {
   }
 }
 
+/** Return documents shared to the authenticated user (active non-deleted). */
+export async function getSharedDocuments(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id
+    const userEmail = req.user?.email
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    // Lazily resolve shares that were pending on this email before listing.
+    if (userEmail) {
+      await resolvePendingSharesByUser(userId, userEmail)
+    }
+
+    const documents = await documentModel.getSharedDocuments(userId)
+    res.json(documents)
+  } catch {
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+/** Return documents currently in the trash (soft-deleted, owned by the user). */
+export async function getTrashDocuments(req: Request, res: Response) {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    const documents = await documentModel.getTrashDocuments(userId)
+    res.json(documents)
+  } catch {
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+/** Soft-delete a document (move to trash). */
+export async function trashDocument(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id } = req.params
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    if (!id) {
+      res.status(400).json({ error: 'Document ID is required' })
+      return
+    }
+    await documentModel.softDeleteDocument(id, userId)
+    res.status(204).send()
+  } catch {
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+/** Restore a document from trash. */
+export async function restoreTrashDocument(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id } = req.params
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    if (!id) {
+      res.status(400).json({ error: 'Document ID is required' })
+      return
+    }
+    await documentModel.restoreDocument(id, userId)
+    res.status(204).send()
+  } catch {
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+/** Permanently delete a document from trash. */
+export async function purgeTrashDocument(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id } = req.params
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    if (!id) {
+      res.status(400).json({ error: 'Document ID is required' })
+      return
+    }
+    await documentModel.purgeDocument(id, userId)
+    res.status(204).send()
+  } catch {
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
 /** Return a single document by ID, scoped to the authenticated user. */
 export async function getDocument(req: Request, res: Response): Promise<void> {
   try {
@@ -44,7 +142,12 @@ export async function getDocument(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const document = await documentModel.getDocumentById(id, userId)
+    const document = await documentModel.getDocumentForUser(
+      id,
+      userId,
+      req.user?.email,
+      typeof req.query.shareToken === 'string' ? req.query.shareToken : undefined,
+    )
     res.status(200).json(document)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'

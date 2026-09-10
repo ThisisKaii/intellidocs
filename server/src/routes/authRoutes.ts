@@ -1,9 +1,9 @@
 import { Router } from 'express'
-import { login, register, googleAuth, updateProfile } from '../controllers/authController'
+import { login, register, googleAuth, updateProfile, applyProfessor } from '../controllers/authController'
 import { authMiddleware } from '../middleware/authMiddleware'
 import { authArcjet, signupArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
-import { authBodySchema, googleAuthSchema, updateProfileSchema } from '../../schemas/authSchemas'
+import { authBodySchema, googleAuthSchema, updateProfileSchema, applyProfessorSchema } from '../../schemas/authSchemas'
 
 const router = Router()
 
@@ -16,5 +16,8 @@ router.post('/google', authArcjet, validateBody(googleAuthSchema), googleAuth)
 
 /** Update the signed-in user's own profile (display name). */
 router.patch('/profile', authMiddleware, validateBody(updateProfileSchema), updateProfile)
+
+/** Submit a faculty verification application (student → pending professor). */
+router.post('/apply-professor', authMiddleware, validateBody(applyProfessorSchema), applyProfessor)
 
 export default router

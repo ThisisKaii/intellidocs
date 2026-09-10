@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
 import { updateOwnProfile } from '../models/userModel'
+import { resolvePendingShares } from '../models/shareModel'
 import { AuthenticatedRequest } from '../types/express'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
@@ -9,17 +10,16 @@ const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SE
 interface AuthBody {
   email: string
   password: string
-  role?: 'student' | 'professor'
 }
 
 interface GoogleAuthBody {
   accessToken: string
 }
 
-/** Register a new user with email, password, and optional role. */
+/** Register a new user with email and password. All users default to student role. */
 export async function register(req: Request, res: Response): Promise<void> {
   try {
-    const { email, password, role = 'student' } = req.body as AuthBody
+    const { email, password } = req.body as AuthBody
 
     if (!email || !password) {
       res.status(400).json({ error: 'Email and password are required' })
@@ -33,22 +33,24 @@ export async function register(req: Request, res: Response): Promise<void> {
       return
     }
 
-    // If a role was specified, upsert the user profile immediately
-    if (data.user && role) {
-      // Fetch the role_id for the selected role name
+    // All new users default to student role
+    if (data.user) {
       const { data: roleRow } = await supabase
         .from('roles')
         .select('role_id')
-        .eq('role_name', role)
+        .eq('role_name', 'student')
         .single()
 
       if (roleRow) {
         await supabase.from('user_profiles').upsert({
           user_id: data.user.id,
           role_id: roleRow.role_id,
-          verification_status: role === 'professor' ? 'pending' : 'approved',
+          verification_status: 'approved',
         })
       }
+
+      // Resolve any document shares that were pending on this email.
+      await resolvePendingShares(data.user.id, email)
     }
 
     res.status(201).json({
@@ -195,5 +197,84 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
     })
   } catch {
     res.status(500).json({ error: 'Failed to update profile' })
+  }
+}
+
+interface ApplyProfessorBody {
+  college: string
+  department: string
+  institutionalEmail: string
+  facultyId: string
+  reason: string
+}
+
+/**
+ * Submit a faculty verification application.
+ * Changes the user's role to 'professor' with verification_status = 'pending'.
+ */
+export async function applyProfessor(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: '401 Unauthorized: Session required' })
+      return
+    }
+
+    const { college, department, institutionalEmail, facultyId, reason } = req.body as ApplyProfessorBody
+
+    if (!college || !department || !institutionalEmail || !facultyId || !reason) {
+      res.status(400).json({ error: 'All fields are required' })
+      return
+    }
+
+    // Fetch the professor role_id
+    const { data: roleRow } = await supabase
+      .from('roles')
+      .select('role_id')
+      .eq('role_name', 'professor')
+      .single()
+
+    if (!roleRow) {
+      res.status(500).json({ error: 'Professor role not found in system' })
+      return
+    }
+
+    // Upsert the user profile to professor with pending verification
+    const { error: upsertError } = await supabase
+      .from('user_profiles')
+      .upsert({
+        user_id: userId,
+        role_id: roleRow.role_id,
+        verification_status: 'pending',
+        phone: facultyId,
+      }, { onConflict: 'user_id' })
+
+    if (upsertError) {
+      res.status(500).json({ error: 'Failed to submit application' })
+      return
+    }
+
+    // Store application details in notification for admin review
+    await supabase.from('notifications').insert({
+      user_id: userId,
+      type: 'professor_application',
+      title: 'Professor Application Submitted',
+      message: `Application submitted by ${req.user?.email}. College: ${college}, Department: ${department}, Faculty ID: ${facultyId}. Reason: ${reason}`,
+      metadata: {
+        college,
+        department,
+        institutionalEmail,
+        facultyId,
+        reason,
+        submittedAt: new Date().toISOString(),
+      },
+    })
+
+    res.status(200).json({
+      message: 'Professor application submitted successfully. An administrator will review your application.',
+      status: 'pending',
+    })
+  } catch {
+    res.status(500).json({ error: 'Failed to submit application' })
   }
 }

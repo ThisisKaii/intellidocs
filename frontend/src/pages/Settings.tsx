@@ -12,10 +12,17 @@ import {
   QrCode,
   Loader2,
   AlertTriangle,
+  GraduationCap,
+  Sparkles,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/services/api'
 import { supabase } from '@/lib/supabase'
+import {
+  getEditorPreferences,
+  setEditorPreferences,
+  type EditorPreferences,
+} from '@/lib/editorPreferences'
 
 const ROLE_LABELS: Record<string, string> = {
   student: 'Student',
@@ -97,13 +104,22 @@ export default function SettingsPage(): JSX.Element {
             </div>
           </section>
 
-          {/* 3. Change Password */}
+          {/* 3. Faculty Application (visible to students and pending professors) */}
+          <FacultyApplicationSection
+            role={role}
+            verificationStatus={user?.verificationStatus}
+          />
+
+          {/* 4. Change Password */}
           <ChangePasswordSection />
 
-          {/* 4. Connected Accounts (Google) */}
+          {/* 5. Connected Accounts (Google) */}
           <ConnectedAccountsSection />
 
-          {/* 5. Two-Factor Authentication (2FA) */}
+          {/* 6. Editor & AI personalization */}
+          <EditorPersonalizationSection />
+
+          {/* 7. Two-Factor Authentication (2FA) */}
           <TwoFactorAuthSection />
         </div>
 
@@ -193,6 +209,191 @@ function ManageProfileSection({
     </section>
   )
 }
+
+/** Faculty verification application section. Visible to students and pending professors. */
+function FacultyApplicationSection({
+  role,
+  verificationStatus,
+}: {
+  role: string
+  verificationStatus?: string
+}): JSX.Element {
+  const [college, setCollege] = useState('')
+  const [department, setDepartment] = useState('')
+  const [institutionalEmail, setInstitutionalEmail] = useState('')
+  const [facultyId, setFacultyId] = useState('')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const isPending = role === 'professor' && verificationStatus === 'pending'
+  const isApproved = role === 'professor' && verificationStatus === 'approved'
+  const isRejected = role === 'professor' && verificationStatus === 'rejected'
+
+  if (isApproved) {
+    return (
+      <section className="rounded-2xl bg-card border border-border p-6">
+        <h2 className="text-base font-medium mb-2 flex items-center gap-2">
+          <GraduationCap className="size-4 text-green-600" strokeWidth={1.75} />
+          Faculty Status
+        </h2>
+        <p className="text-sm text-green-600 flex items-center gap-1.5">
+          <Check className="size-4" strokeWidth={2} />
+          Your professor application has been approved. You have full educator access.
+        </p>
+      </section>
+    )
+  }
+
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault()
+    setFeedback(null)
+    setSaving(true)
+    try {
+      const res = await api.auth.applyProfessor({
+        college: college.trim(),
+        department: department.trim(),
+        institutionalEmail: institutionalEmail.trim(),
+        facultyId: facultyId.trim(),
+        reason: reason.trim(),
+      })
+      setFeedback({ ok: true, text: res.message })
+      setCollege('')
+      setDepartment('')
+      setInstitutionalEmail('')
+      setFacultyId('')
+      setReason('')
+    } catch (err) {
+      setFeedback({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Failed to submit application',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (isPending) {
+    return (
+      <section className="rounded-2xl bg-card border border-border p-6">
+        <h2 className="text-base font-medium mb-2 flex items-center gap-2">
+          <GraduationCap className="size-4 text-yellow-600" strokeWidth={1.75} />
+          Faculty Application
+        </h2>
+        <p className="text-sm text-yellow-600 flex items-center gap-1.5">
+          <AlertTriangle className="size-4" strokeWidth={2} />
+          Your professor application is under review by an administrator. You will be notified once a decision is made.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="rounded-2xl bg-card border border-border p-6">
+      <h2 className="text-base font-medium mb-2 flex items-center gap-2">
+        <GraduationCap className="size-4 text-muted-foreground" strokeWidth={1.75} />
+        Apply for Faculty Access
+      </h2>
+      <p className="text-xs text-muted-foreground mb-4">
+        Submit your credentials to apply for a Professor account. Administrator approval is required to unlock educator features such as document review, grading, and compliance auditing.
+      </p>
+
+      {isRejected && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 mb-4">
+          <p className="text-xs text-destructive">
+            Your previous application was not approved. You may re-apply with updated credentials.
+          </p>
+        </div>
+      )}
+
+      <form onSubmit={(e) => { void handleSubmit(e) }} className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="college" className="text-sm text-muted-foreground">College</label>
+            <input
+              id="college"
+              type="text"
+              value={college}
+              onChange={(e) => setCollege(e.target.value)}
+              placeholder="e.g. College of Computer Studies"
+              required
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="department" className="text-sm text-muted-foreground">Department</label>
+            <input
+              id="department"
+              type="text"
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              placeholder="e.g. Computer Science"
+              required
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="inst-email" className="text-sm text-muted-foreground">Institutional Email</label>
+            <input
+              id="inst-email"
+              type="email"
+              value={institutionalEmail}
+              onChange={(e) => setInstitutionalEmail(e.target.value)}
+              placeholder="professor@university.edu"
+              required
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="faculty-id" className="text-sm text-muted-foreground">Faculty ID Number</label>
+            <input
+              id="faculty-id"
+              type="text"
+              value={facultyId}
+              onChange={(e) => setFacultyId(e.target.value)}
+              placeholder="e.g. FAC-2026-001"
+              required
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label htmlFor="reason" className="text-sm text-muted-foreground">Reason for Application</label>
+          <textarea
+            id="reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Briefly describe your role and why you need faculty access..."
+            required
+            rows={3}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary resize-none"
+          />
+        </div>
+
+        {feedback && (
+          <p className={`text-sm flex items-center gap-1.5 ${feedback.ok ? 'text-green-600' : 'text-destructive'}`}>
+            {feedback.ok && <Check className="size-4" strokeWidth={2} />}
+            {!feedback.ok && <AlertTriangle className="size-4" strokeWidth={2} />}
+            {feedback.text}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="inline-flex w-fit items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saving ? 'Submitting…' : 'Submit Application'}
+        </button>
+      </form>
+    </section>
+  )
+}
+
 
 /** Form to update user password securely via Supabase Auth. */
 function ChangePasswordSection(): JSX.Element {
@@ -642,6 +843,114 @@ function TwoFactorAuthSection(): JSX.Element {
           {feedback.text}
         </p>
       )}
+    </section>
+  )
+}
+
+/** Persisted editor & AI preferences: underline style, sensitivity, highlight color. */
+function EditorPersonalizationSection(): JSX.Element {
+  const [prefs, setPrefs] = useState(() => getEditorPreferences())
+
+  function update(next: Partial<EditorPreferences>): void {
+    setPrefs(setEditorPreferences(next))
+  }
+
+  return (
+    <section className="rounded-2xl bg-card border border-border p-6">
+      <h2 className="text-base font-medium mb-4 flex items-center gap-2">
+        <Sparkles className="size-4 text-muted-foreground" strokeWidth={1.75} />
+        Editor &amp; AI
+      </h2>
+
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground">Suggestion underline style</label>
+          <div className="flex gap-2">
+            {(
+              [
+                { value: 'straight', label: 'Straight lines' },
+                { value: 'wavy', label: 'Wavy lines' },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => update({ underlineStyle: option.value })}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium border transition-colors cursor-pointer ${
+                  prefs.underlineStyle === option.value
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-transparent text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Grammar issues underline in red, spelling issues in amber.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground">Suggestion sensitivity</label>
+          <div className="flex gap-2">
+            {(
+              [
+                { value: 'low', label: 'Fewer tips', threshold: '≥55%' },
+                { value: 'medium', label: 'Balanced', threshold: '≥68%' },
+                { value: 'high', label: 'More tips', threshold: '≥80%' },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => update({ sensitivity: option.value })}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm border transition-colors cursor-pointer ${
+                  prefs.sensitivity === option.value
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-transparent text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <span className="block font-medium">{option.label}</span>
+                <span className="block text-xs opacity-80">{option.threshold}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground">Highlight color</label>
+          <div className="flex gap-2">
+            {(
+              [
+                { value: 'indigo', swatch: '#6366f1' },
+                { value: 'purple', swatch: '#7c3aed' },
+                { value: 'emerald', swatch: '#059669' },
+                { value: 'amber', swatch: '#d97706' },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                title={option.value}
+                onClick={() => update({ highlightColor: option.value })}
+                aria-label={`Highlight color ${option.value}`}
+                className="rounded-full p-1 border transition-transform cursor-pointer hover:scale-110"
+                style={{
+                  backgroundColor: option.swatch,
+                  borderColor: prefs.highlightColor === option.value ? 'var(--foreground)' : 'transparent',
+                  boxShadow: prefs.highlightColor === option.value ? '0 0 0 2px var(--card)' : undefined,
+                }}
+              >
+                <span className="block size-6 rounded-full" />
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Used for in-canvas formatting suggestion highlights and the suggestion pulse.
+          </p>
+        </div>
+      </div>
     </section>
   )
 }

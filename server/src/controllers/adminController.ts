@@ -83,3 +83,16 @@ export async function deleteDocument(req: AuthenticatedRequest, res: Response): 
     res.status(500).json({ error: message })
   }
 }
+
+/** Export empirical research dataset as CSV for Chapter 4 analysis. */
+export async function exportEmpiricalData(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const csvData = await adminModel.generateEmpiricalDataset()
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', `attachment; filename="intellidocs_research_dataset_${new Date().toISOString().slice(0, 10)}.csv"`)
+    res.status(200).send(csvData)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to export empirical data'
+    res.status(500).json({ error: message })
+  }
+}

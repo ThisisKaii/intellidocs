@@ -45,6 +45,11 @@ export interface Document {
   formatting_history: unknown[]
   is_isolated: boolean
   formatting_preset: string | null
+  is_deleted: boolean
+  deleted_at: string | null
+  share_permission?: SharePermission
+  share_token?: string | null
+  shared_by?: string
   created_at: string
   updated_at: string
 }
@@ -175,6 +180,19 @@ export interface PendingProfessorApplicant {
 export interface VerifyProfessorRequest {
   status: 'approved' | 'rejected'
   notes?: string
+}
+
+export type SharePermission = 'view' | 'comment' | 'edit'
+
+/** A document share row (owner grants access to a collaborator). */
+export interface DocumentShare {
+  share_id: string
+  document_id: string
+  owner_id: string
+  shared_with: string | null
+  pending_email: string | null
+  permission: SharePermission
+  shared_at: string
 }
 
 export interface DocumentComment {

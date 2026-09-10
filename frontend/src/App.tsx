@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
-import { ProtectedRoute, AdminRoute } from './components/ProtectedRoute'
+import { ProtectedRoute, AdminRoute, ApprovedProfessorRoute } from './components/ProtectedRoute'
 import { ErrorPage } from './components/ErrorPage'
 import Home from './pages/Home'
 import Landing from './pages/Landing'
@@ -10,6 +10,7 @@ import Register from './pages/Register'
 import Document from './pages/Document'
 import Settings from './pages/Settings'
 import AdminDashboard from './pages/AdminDashboard'
+import ProfessorDashboard from './pages/ProfessorDashboard'
 import AuthCallback from './pages/AuthCallback'
 import DriveCallback from './pages/DriveCallback'
 import Privacy from './pages/Privacy'
@@ -61,6 +62,15 @@ function App() {
                 <AdminRoute>
                   <AdminDashboard />
                 </AdminRoute>
+              }
+            />
+
+            <Route
+              path="/professor"
+              element={
+                <ApprovedProfessorRoute>
+                  <ProfessorDashboard />
+                </ApprovedProfessorRoute>
               }
             />
 

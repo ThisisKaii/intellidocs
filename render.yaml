@@ -5,6 +5,11 @@ services:
     dockerfilePath: ./server/Dockerfile
     dockerContext: ./server
     plan: free
+    healthCheckPath: /health
+    scaling:
+      minInstances: 1
+      maxInstances: 2
+      targetMemoryPercent: 75
     envVars:
       - key: NODE_ENV
         value: production
@@ -19,6 +24,8 @@ services:
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
+      - key: SUPABASE_POOLER_URL
+        sync: false
       - key: AI_PROVIDER
         sync: false
       - key: AI_API_KEY
@@ -27,7 +34,9 @@ services:
         sync: false
       - key: ARCJET_KEY
         sync: false
-      - key: REDIS_URL
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
@@ -44,11 +53,16 @@ services:
     dockerfilePath: ./ml/Dockerfile
     dockerContext: ./ml
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: BASE_MODEL_PATH
         value: models/base_model.pkl
       - key: USER_MODEL_DIR
         value: models/user_models
+      - key: PORT
+        value: '8000'
+      - key: DUCKDB_PATH
+        value: db/duckdb/behavior.duckdb
     disk:
       name: ml-models
       mountPath: /app/models

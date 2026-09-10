@@ -11,6 +11,7 @@ import {
 } from './TiptapEditor'
 import type { GrammarIssue } from './GrammarPanel'
 import type { PageNumberFormat } from '@/services/api'
+import type { UnderlineStyle } from '@/lib/editorPreferences'
 
 /** Vertical gap between stacked page sheets, in px. */
 const PAGE_GAP = 40
@@ -64,10 +65,12 @@ interface PagedEditorProps {
   onContentChange: (html: string) => void
   /** Called with the live editor once it exists. */
   onActiveEditorChange: (editor: Editor | null) => void
-  /** Forwarded grammar-underline clicks for the popover. */
-  onGrammarClick: (issue: GrammarIssue, rect: DOMRect) => void
+  /** Forwarded grammar-underline clicks for the popover (includes the PM position). */
+  onGrammarClick: (issue: GrammarIssue, rect: DOMRect, pos: number) => void
   /** Grammar issues to underline in the editor. */
   grammarIssues: GrammarIssue[]
+  /** Preferred underline style — changing it rebuilds the issue decorations. */
+  underlineStyle: UnderlineStyle
   pageSize: PageSizeKey
   margins: MarginValues
   orientation: PageOrientation
@@ -95,6 +98,7 @@ export function PagedEditor({
   onActiveEditorChange,
   onGrammarClick,
   grammarIssues,
+  underlineStyle,
   pageSize,
   margins,
   orientation,
@@ -273,19 +277,19 @@ export function PagedEditor({
     footerNumberFormat,
   ])
 
-  // Grammar wavy underlines.
+  // Grammar underlines — rebuild when the issue set OR the underline style changes.
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     if (editor.commands.setGrammarIssues) {
       editor.commands.setGrammarIssues(grammarIssues)
     }
-  }, [editor, grammarIssues])
+  }, [editor, grammarIssues, underlineStyle])
 
   // Forward grammar-underline clicks to the parent.
   useEffect(() => {
     if (!editor) return
-    const handler = (event: { issue: GrammarIssue; rect: DOMRect }): void => {
-      propsRef.current.onGrammarClick(event.issue, event.rect)
+    const handler = (event: { issue: GrammarIssue; rect: DOMRect; pos: number }): void => {
+      propsRef.current.onGrammarClick(event.issue, event.rect, event.pos)
     }
     editor.on('grammar-click', handler)
     return () => {

@@ -41,6 +41,11 @@ export interface DocumentRecord {
   formatting_history: unknown[]
   is_isolated: boolean
   formatting_preset: string | null
+  is_deleted: boolean
+  deleted_at: string | null
+  share_permission?: SharePermission
+  share_token?: string | null
+  shared_by?: string
   created_at: string
   updated_at: string
 }
@@ -158,6 +163,23 @@ export interface TierCheckResponse {
   feature_values?: Record<string, number>
 }
 
+export interface DocumentShare {
+  share_id: string
+  document_id: string
+  owner_id: string
+  shared_with: string | null
+  pending_email: string | null
+  permission: SharePermission
+  shared_at: string
+}
+
+export interface DocumentShareLink {
+  share_token: string | null
+  share_permission: SharePermission
+}
+
+export type SharePermission = 'view' | 'comment' | 'edit'
+
 export interface GrammarIssue {
   type: string
   original: string
@@ -200,6 +222,12 @@ export interface AIChatPreview {
   label: string
   confidence: number
   reason?: string
+  /** Every requested format (e.g. ["bold", "italic"] for "make everything bold italic"). */
+  formats?: string[]
+  /** Document scope: current selection or the whole document. */
+  scope?: 'selection' | 'all'
+  /** Explicit font size in points, e.g. "font size 20". */
+  fontSize?: number | null
 }
 
 export interface AIChatResponse {
@@ -213,6 +241,7 @@ export interface AIChatResponse {
 export type MCPToolName =
   | 'getDocumentContent'
   | 'applyFormatting'
+  | 'applyBulkFormatting'
   | 'getUserProfile'
   | 'predictNextFormat'
   | 'getBehaviorSummary'
@@ -230,6 +259,7 @@ export interface MCPToolListResponse {
 export interface DriveFile {
   id: string
   name: string
+  mimeType?: string
   modifiedTime: string
   iconLink: string
 }
@@ -329,11 +359,25 @@ export const api = {
         body: JSON.stringify({ email, password }),
       })
     },
-    register: async (email: string, password: string, role: 'student' | 'professor' = 'student'): Promise<RegisterResponse> => {
+    register: async (email: string, password: string): Promise<RegisterResponse> => {
       return fetchAPI<RegisterResponse>('auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, role }),
+        body: JSON.stringify({ email, password }),
+      })
+    },
+    /** Submit a faculty verification application (promotes student to pending professor). */
+    applyProfessor: async (payload: {
+      college: string
+      department: string
+      institutionalEmail: string
+      facultyId: string
+      reason: string
+    }): Promise<{ message: string; status: string }> => {
+      return fetchAPI<{ message: string; status: string }>('auth/apply-professor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       })
     },
     /** Called after Google OAuth redirect to sync profile with Express backend. */
@@ -358,8 +402,67 @@ export const api = {
     list: async (): Promise<DocumentRecord[]> => {
       return fetchAPI<DocumentRecord[]>('documents')
     },
-    get: async (id: string): Promise<DocumentRecord> => {
-      return fetchAPI<DocumentRecord>(`documents/${id}`)
+    shared: async (): Promise<DocumentRecord[]> => {
+      return fetchAPI<DocumentRecord[]>('documents/shared')
+    },
+    trash: async (): Promise<DocumentRecord[]> => {
+      return fetchAPI<DocumentRecord[]>('documents/trash')
+    },
+    share: async (documentId: string, email: string, permission: SharePermission): Promise<DocumentShare> => {
+      return fetchAPI<DocumentShare>(`documents/${documentId}/shares`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, permission }),
+      })
+    },
+    listShares: async (documentId: string): Promise<DocumentShare[]> => {
+      return fetchAPI<DocumentShare[]>(`documents/${documentId}/shares`)
+    },
+    updateShare: async (documentId: string, shareId: string, permission: SharePermission): Promise<DocumentShare> => {
+      return fetchAPI<DocumentShare>(`documents/${documentId}/shares/${shareId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission }),
+      })
+    },
+    removeShare: async (documentId: string, shareId: string): Promise<null> => {
+      return fetchAPI<null>(`documents/${documentId}/shares/${shareId}`, {
+        method: 'DELETE',
+      })
+    },
+    getShareLink: async (documentId: string): Promise<DocumentShareLink> => {
+      return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-link`)
+    },
+    createShareLink: async (documentId: string, permission: SharePermission): Promise<DocumentShareLink> => {
+      return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission }),
+      })
+    },
+    revokeShareLink: async (documentId: string): Promise<null> => {
+      return fetchAPI<null>(`documents/${documentId}/share-link`, {
+        method: 'DELETE',
+      })
+    },
+    trashDoc: async (id: string): Promise<null> => {
+      return fetchAPI<null>(`documents/${id}/trash`, {
+        method: 'POST',
+      })
+    },
+    restore: async (id: string): Promise<null> => {
+      return fetchAPI<null>(`documents/${id}/restore`, {
+        method: 'POST',
+      })
+    },
+    deletePermanent: async (id: string): Promise<null> => {
+      return fetchAPI<null>(`documents/${id}/permanent`, {
+        method: 'DELETE',
+      })
+    },
+    get: async (id: string, shareToken?: string): Promise<DocumentRecord> => {
+      const suffix = shareToken ? `?shareToken=${encodeURIComponent(shareToken)}` : ''
+      return fetchAPI<DocumentRecord>(`documents/${id}${suffix}`)
     },
     create: async (title: string): Promise<DocumentRecord> => {
       return fetchAPI<DocumentRecord>('documents', {
@@ -668,6 +771,17 @@ export const api = {
       return fetchAPI<{ message: string }>(`admin/documents/${documentId}`, {
         method: 'DELETE',
       })
+    },
+    /** Download the empirical research dataset as a CSV blob. */
+    exportEmpiricalData: async (): Promise<Blob> => {
+      const token = getAuthToken()
+      const response = await fetch(`${API_BASE_URL}/admin/export-empirical`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!response.ok) {
+        throw new Error('Failed to export empirical data')
+      }
+      return response.blob()
     },
   },
 }

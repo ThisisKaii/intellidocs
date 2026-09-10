@@ -9,6 +9,9 @@ interface ChatMessage {
   content: string
   command_applied?: string | null
   preview_format?: string | null
+  preview_formats?: string[] | null
+  preview_scope?: 'selection' | 'all' | null
+  preview_font_size?: number | null
   preview_reason?: string | null
   preview_status?: 'pending' | 'applied' | 'rejected' | null
 }
@@ -26,6 +29,8 @@ interface AIChatbotProps {
   onFormatApplied?: (format: string) => void
   onFeedbackLogged?: () => void
   onFocusEditor?: () => void
+  /** Render embedded inside a docked panel (no floating button, panel fills parent). */
+  docked?: boolean
 }
 
 /** Floating AI chatbot for natural language document help. */
@@ -37,8 +42,9 @@ export default function AIChatbot({
   onFormatApplied,
   onFeedbackLogged,
   onFocusEditor,
+  docked = false,
 }: AIChatbotProps): JSX.Element {
-  const [open, setOpen] = useState<boolean>(false)
+  const [open, setOpen] = useState<boolean>(docked)
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -81,6 +87,33 @@ export default function AIChatbot({
     return rejectedPreviews.some((preview) => preview.format === format)
   }
 
+  /** Single-format commands used for selection-scope previews. */
+  const SELECTION_COMMANDS: Record<string, ((ed: Editor) => void) | undefined> = {
+    bold: (ed) => ed.chain().focus().toggleBold().run(),
+    italic: (ed) => ed.chain().focus().toggleItalic().run(),
+    underline: (ed) => ed.chain().focus().toggleUnderline().run(),
+    heading1: (ed) => ed.chain().focus().toggleHeading({ level: 1 }).run(),
+    heading2: (ed) => ed.chain().focus().toggleHeading({ level: 2 }).run(),
+    heading3: (ed) => ed.chain().focus().toggleHeading({ level: 3 }).run(),
+    blockquote: (ed) => ed.chain().focus().toggleBlockquote().run(),
+    unordered_list: (ed) => ed.chain().focus().toggleBulletList().run(),
+    ordered_list: (ed) => ed.chain().focus().toggleOrderedList().run(),
+  }
+
+  /** Describe a preview as one readable string, e.g. "Bold + Italic + font size 20pt". */
+  function describePreview(msg: ChatMessage): string {
+    const parts: string[] = []
+    const formats =
+      msg.preview_formats && msg.preview_formats.length > 0
+        ? msg.preview_formats
+        : msg.preview_format && msg.preview_format !== 'body_text'
+          ? [msg.preview_format]
+          : []
+    for (const format of formats) parts.push(formatPreviewLabel(format))
+    if (msg.preview_font_size) parts.push(`font size ${msg.preview_font_size}pt`)
+    return parts.length > 0 ? parts.join(' + ') : 'Text'
+  }
+
   /** Parse key=value arguments for MCP tool calls. */
   function parseMcpArgs(raw: string): Record<string, string> {
     const args: Record<string, string> = {}
@@ -111,31 +144,59 @@ export default function AIChatbot({
     return { tool, args }
   }
 
-  /** Apply a confirmed formatting preview to the current editor selection. */
-  function handlePreviewApply(messageIndex: number, format: string): void {
-    const commands: Record<string, ((editor: Editor) => void) | undefined> = {
-      bold: (ed) => ed.chain().focus().toggleBold().run(),
-      italic: (ed) => ed.chain().focus().toggleItalic().run(),
-      underline: (ed) => ed.chain().focus().toggleUnderline().run(),
-      heading1: (ed) => ed.chain().focus().toggleHeading({ level: 1 }).run(),
-      heading2: (ed) => ed.chain().focus().toggleHeading({ level: 2 }).run(),
-      heading3: (ed) => ed.chain().focus().toggleHeading({ level: 3 }).run(),
-      blockquote: (ed) => ed.chain().focus().toggleBlockquote().run(),
-      unordered_list: (ed) => ed.chain().focus().toggleBulletList().run(),
-      ordered_list: (ed) => ed.chain().focus().toggleOrderedList().run(),
+  /** Apply set-semantics marks + font size across the whole document. */
+  function applyBulkFormats(formats: string[], fontSize?: number): void {
+    if (!editor || editor.isDestroyed) return
+    let chain = editor.chain().focus().selectAll()
+    for (const format of formats) {
+      if (format === 'bold') chain = chain.setMark('bold')
+      else if (format === 'italic') chain = chain.setMark('italic')
+      else if (format === 'underline') chain = chain.setMark('underline')
+    }
+    if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
+    chain.run()
+    // Collapse the selection so subsequent typing isn't auto-formatted.
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+  }
+
+  /** Apply a confirmed formatting preview to the editor (selection or whole doc). */
+  function handlePreviewApply(messageIndex: number, msg: ChatMessage): void {
+    if (!editor) return
+
+    const formats =
+      msg.preview_formats && msg.preview_formats.length > 0
+        ? msg.preview_formats
+        : msg.preview_format && msg.preview_format !== 'body_text'
+          ? [msg.preview_format]
+          : []
+    const scope = msg.preview_scope ?? 'selection'
+    const fontSize = msg.preview_font_size ? msg.preview_font_size : undefined
+
+    const applied: string[] = []
+    for (const format of formats) applied.push(formatPreviewLabel(format))
+    if (fontSize) applied.push(`size ${fontSize}pt`)
+
+    if (scope === 'all') {
+      applyBulkFormats(formats, fontSize)
+    } else {
+      onFocusEditor?.()
+      for (const format of formats) {
+        const command = SELECTION_COMMANDS[format]
+        if (command) command(editor)
+      }
+      if (fontSize && editor.isEditable) {
+        editor.chain().focus().setMark('textStyle', { fontSize: `${fontSize}pt` }).run()
+      }
     }
 
-    const command = commands[format]
-    if (!editor || !command) return
-
-    onFocusEditor?.()
-    command(editor)
-    onFormatApplied?.(format)
+    if (applied.length > 0) {
+      onFormatApplied?.(applied.join('+'))
+    }
 
     if (documentId) {
       api.behavior
         .log({
-          action: `chat_preview_accepted:${format}`,
+          action: `chat_preview_accepted:${formats.join(',')}`,
           timestamp: new Date().toISOString(),
           documentId,
         })
@@ -146,11 +207,11 @@ export default function AIChatbot({
       .logFeedback({
         documentId: documentId || undefined,
         predictionType: 'chat_preview',
-        predictedFormat: format,
+        predictedFormat: formats.join(','),
         accepted: true,
       })
       .catch((error) => console.error('Chat preview acceptance feedback log failed', error))
-    
+
     onFeedbackLogged?.()
 
     setMessages((current) =>
@@ -159,7 +220,7 @@ export default function AIChatbot({
           ? {
               ...message,
               preview_status: 'applied',
-              command_applied: formatPreviewLabel(format),
+              command_applied: applied.length > 0 ? applied.join(' + ') : formatPreviewLabel(msg.preview_format ?? ''),
             }
           : message
       )
@@ -259,6 +320,29 @@ export default function AIChatbot({
             content: `MCP ${mcpCommand.tool} result:\n${JSON.stringify(result, null, 2)}`,
           },
         ])
+
+        // A committed applyFormatting call actually applies the format to the
+        // editor (works with keyboard or mouse selections, or a collapsed cursor).
+        if (
+          mcpCommand.tool === 'applyFormatting' &&
+          toolArgs.mode === 'commit' &&
+          typeof toolArgs.format === 'string'
+        ) {
+          const command = SELECTION_COMMANDS[toolArgs.format]
+          if (editor && command) {
+            command(editor)
+            onFormatApplied?.(toolArgs.format)
+            if (documentId) {
+              api.behavior
+                .log({
+                  action: `mcp_format_applied:${toolArgs.format}`,
+                  timestamp: new Date().toISOString(),
+                  documentId,
+                })
+                .catch((error) => console.error('MCP format applied log failed', error))
+            }
+          }
+        }
       } catch (error) {
         setMessages((current) => [
           ...current,
@@ -314,6 +398,12 @@ export default function AIChatbot({
         role: 'assistant',
         content: `${response.reply}${reconfirmationNote}`,
         preview_format: previewFormat,
+        preview_formats:
+          response.preview?.formats && response.preview.formats.length > 0
+            ? response.preview.formats
+            : null,
+        preview_scope: response.preview?.scope ?? null,
+        preview_font_size: response.preview?.fontSize ?? null,
         preview_reason: previewFormat ? previewReason : null,
         preview_status: previewFormat ? 'pending' : null,
       }
@@ -336,47 +426,51 @@ export default function AIChatbot({
 
   return (
     <>
-      {/* Floating button */}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          width: '40px',
-          height: '40px',
-          borderRadius: '50%',
-          backgroundColor: 'var(--primary)',
-          color: 'var(--primary-foreground)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 14px 0 rgba(0,0,0,0.1)',
-          border: 'none',
-          cursor: 'pointer',
-          transition: 'opacity 150ms transform 150ms',
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9' }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
-        title="AI Assistant"
-      >
-        {open ? <X style={{ width: '16px', height: '16px' }} /> : <MessageSquare style={{ width: '16px', height: '16px' }} />}
-      </button>
+      {/* Floating button (hidden when docked inside the side panel) */}
+      {!docked && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--primary)',
+            color: 'var(--primary-foreground)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 14px 0 rgba(0,0,0,0.1)',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'opacity 150ms transform 150ms',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.9' }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
+          title="AI Assistant"
+        >
+          {open ? <X style={{ width: '16px', height: '16px' }} /> : <MessageSquare style={{ width: '16px', height: '16px' }} />}
+        </button>
+      )}
 
       {/* Chat panel */}
       <AnimatePresence>
-        {open && (
+        {(open || docked) && (
           <motion.div
-            initial={{ opacity: 0, y: 12, scale: 0.96 }}
+            initial={false}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.96 }}
             transition={{ duration: 0.2 }}
             style={{
-              position: 'absolute',
-              bottom: '56px',
-              right: 0,
-              width: '320px',
+              position: docked ? 'relative' : 'absolute',
+              bottom: docked ? undefined : '56px',
+              right: docked ? undefined : 0,
+              width: docked ? '100%' : '320px',
+              height: docked ? '100%' : undefined,
               backgroundColor: 'var(--card)',
-              boxShadow: 'var(--border-shadow) 0px 0px 0px 1px, rgba(0, 0, 0, 0.08) 0px 4px 12px, inset 0px 0px 0px 1px var(--card-shadow-inner)',
-              borderRadius: '0.75rem',
+              boxShadow: docked
+                ? 'none'
+                : 'var(--border-shadow) 0px 0px 0px 1px, rgba(0, 0, 0, 0.08) 0px 4px 12px, inset 0px 0px 0px 1px var(--card-shadow-inner)',
+              borderRadius: docked ? 0 : '0.75rem',
               overflow: 'hidden',
               zIndex: 50,
               display: 'flex',
@@ -395,7 +489,7 @@ export default function AIChatbot({
             </div>
 
             {/* Messages */}
-            <div style={{ height: '256px', overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ flex: docked ? 1 : undefined, height: docked ? '0px' : '256px', minHeight: 0, overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {messages.map((m, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
                   <div
@@ -411,7 +505,7 @@ export default function AIChatbot({
                     }}
                   >
                     {m.content}
-                    {m.preview_format && (
+                    {m.preview_status || m.preview_format || (m.preview_formats?.length ?? 0) > 0 || m.preview_font_size ? (
                       <div
                         style={{
                           marginTop: '0.5rem',
@@ -438,10 +532,16 @@ export default function AIChatbot({
                           style={{
                             fontSize: '0.8125rem',
                             fontWeight: 600,
-                            marginBottom: m.preview_reason ? '0.25rem' : 0,
+                            marginBottom: m.preview_reason || m.preview_scope ? '0.25rem' : 0,
                           }}
                         >
-                          {formatPreviewLabel(m.preview_format)}
+                          {describePreview(m)}
+                          {m.preview_scope === 'all' && (
+                            <span style={{ fontSize: '0.6875rem', fontWeight: 500, opacity: 0.75 }}>
+                              {' '}
+                              — entire document
+                            </span>
+                          )}
                         </div>
                         {m.preview_reason && (
                           <div
@@ -459,7 +559,7 @@ export default function AIChatbot({
                           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.625rem' }}>
                             <button
                               type="button"
-                              onClick={() => handlePreviewApply(i, m.preview_format as string)}
+                              onClick={() => handlePreviewApply(i, m)}
                               style={{
                                 flex: 1,
                                 fontSize: '0.75rem',
@@ -508,7 +608,7 @@ export default function AIChatbot({
                           </div>
                         )}
                       </div>
-                    )}
+                    ) : null}
                     {m.command_applied && (
                       <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', opacity: 0.7, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <span style={{ color: '#10b981' }}>✓</span> Applied: {m.command_applied}

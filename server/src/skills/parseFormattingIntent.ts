@@ -10,9 +10,16 @@ export type FormattingIntent =
   | 'ordered_list'
 
 export interface FormattingIntentResult {
+  /** Primary (first) matched format — kept for backward compatibility. */
   format: FormattingIntent | null
+  /** Every format requested in the message, in parse order. */
+  formats: FormattingIntent[]
   confidence: number
   matchedPhrase: string | null
+  /** Document scope the user asked for: the current selection or the whole document. */
+  scope: 'selection' | 'all'
+  /** Explicit font size in points (e.g. "font size 20"), when requested. */
+  fontSize: number | null
 }
 
 /** Normalize a user message before intent matching. */
@@ -28,7 +35,30 @@ function findMatch(
   return patterns.find((pattern) => message.includes(pattern)) ?? null
 }
 
-/** Parse a formatting intent from a natural-language chatbot message. */
+/** Phrases that mean the user wants the formatting applied document-wide. */
+const BULK_SCOPE_PHRASES = [
+  'everything',
+  'everywhere',
+  'whole document',
+  'entire document',
+  'whole doc',
+  'whole thing',
+  'the whole',
+  'all text',
+  'all the text',
+  'every line',
+  'every paragraph',
+]
+
+/** Detect a request like "font size 20" / "size of 20" and return points. */
+function detectFontSize(message: string): number | null {
+  const match = message.match(/(?:font\s*)?size\s*(?:of\s*)?([0-9]{1,3})/)
+  if (!match) return null
+  const size = Number.parseInt(match[1], 10)
+  return size >= 6 && size <= 96 ? size : null
+}
+
+/** Parse one or more formatting intents from a natural-language chatbot message. */
 export function parseFormattingIntent(
   message: string
 ): FormattingIntentResult {
@@ -86,20 +116,31 @@ export function parseFormattingIntent(
     },
   ]
 
+  const formats: FormattingIntent[] = []
+  let firstPhrase: string | null = null
+  let firstConfidence = 0
+
   for (const entry of intentMap) {
     const matchedPhrase = findMatch(normalized, entry.patterns)
     if (matchedPhrase) {
-      return {
-        format: entry.format,
-        confidence: entry.confidence,
-        matchedPhrase,
-      }
+      if (!formats.includes(entry.format)) formats.push(entry.format)
+      if (firstPhrase === null) firstPhrase = matchedPhrase
+      if (firstConfidence === 0) firstConfidence = entry.confidence
     }
   }
 
+  const scope: 'selection' | 'all' = BULK_SCOPE_PHRASES.some((phrase) =>
+    normalized.includes(phrase)
+  )
+    ? 'all'
+    : 'selection'
+
   return {
-    format: null,
-    confidence: 0,
-    matchedPhrase: null,
+    format: formats[0] ?? null,
+    formats,
+    confidence: firstConfidence,
+    matchedPhrase: firstPhrase,
+    scope,
+    fontSize: detectFontSize(normalized),
   }
 }

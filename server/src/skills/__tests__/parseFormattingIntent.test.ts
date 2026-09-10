@@ -58,4 +58,33 @@ describe('parseFormattingIntent', () => {
     expect(result.confidence).toBe(0)
     expect(result.matchedPhrase).toBeNull()
   })
+
+  it('detects multiple formats in one request', () => {
+    const result = parseFormattingIntent('Make everything bold italic')
+
+    expect(result.formats).toEqual(['bold', 'italic'])
+    expect(result.format).toBe('bold')
+  })
+
+  it('detects whole-document scope', () => {
+    const result = parseFormattingIntent('Apply bold to the whole document')
+
+    expect(result.scope).toBe('all')
+    expect(result.formats).toContain('bold')
+  })
+
+  it('detects a requested font size', () => {
+    const result = parseFormattingIntent('Make everything bold italic font size 20')
+
+    expect(result.fontSize).toBe(20)
+    expect(result.scope).toBe('all')
+    expect(result.formats).toEqual(['bold', 'italic'])
+  })
+
+  it('keeps selection scope by default', () => {
+    const result = parseFormattingIntent('Make this heading 1')
+
+    expect(result.scope).toBe('selection')
+    expect(result.fontSize).toBeNull()
+  })
 })

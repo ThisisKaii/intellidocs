@@ -12,12 +12,57 @@ import ImportFileModal, { type ImportProgress, ImportProgressToast } from '@/com
 /** One day in milliseconds — used for the "Recent" filter. */
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
 
+interface ConfirmDialogState {
+  title: string
+  description: string
+  confirmLabel: string
+  onConfirm: () => void
+}
+
+/** Small centered confirmation modal used before any destructive action. */
+function ConfirmDialog({
+  dialog,
+  onClose,
+}: {
+  dialog: ConfirmDialogState | null
+  onClose: () => void
+}): JSX.Element | null {
+  if (!dialog) return null
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-xl">
+        <h2 className="text-base font-semibold text-foreground m-0 mb-2">{dialog.title}</h2>
+        <p className="text-sm text-muted-foreground mb-6">{dialog.description}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center h-9 px-4 rounded-lg border border-border text-foreground text-sm font-medium cursor-pointer hover:bg-secondary"
+            style={{ fontFamily: 'inherit' }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => { dialog.onConfirm(); onClose() }}
+            className="inline-flex items-center h-9 px-4 rounded-lg border-none bg-destructive text-white text-sm font-medium cursor-pointer hover:opacity-90"
+            style={{ fontFamily: 'inherit' }}
+          >
+            {dialog.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate()
   const { user } = useAuth()
 
   /* ── Core data ─────────────────────────────────────── */
   const [allDocuments, setAllDocuments] = useState<DocumentRecord[]>([])
+  const [sharedDocuments, setSharedDocuments] = useState<DocumentRecord[]>([])
+  const [trashDocuments, setTrashDocuments] = useState<DocumentRecord[]>([])
   const [folderDocuments, setFolderDocuments] = useState<DocumentRecord[]>([])
   const [folders, setFolders] = useState<FolderRecord[]>([])
   const [currentFolderChildren, setCurrentFolderChildren] = useState<FolderRecord[]>([])
@@ -33,18 +78,21 @@ export default function HomePage(): JSX.Element {
   const [driveOpen, setDriveOpen] = useState<boolean>(false)
   const [importFileOpen, setImportFileOpen] = useState<boolean>(false)
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
 
   /* ── Load all documents once ───────────────────────── */
   useEffect(() => {
     async function loadInitialData(): Promise<void> {
       try {
         setLoading(true)
-        const [docs, loadedFolders] = await Promise.all([
+        const [docs, loadedFolders, trashList] = await Promise.all([
           api.documents.list(),
           api.folders.list(),
+          api.documents.trash(),
         ])
         setAllDocuments(docs)
         setFolders(loadedFolders)
+        setTrashDocuments(trashList)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load drive data')
       } finally {
@@ -78,6 +126,16 @@ export default function HomePage(): JSX.Element {
     loadFolder()
   }, [selection])
 
+  /* ── Load shared + trash documents when those views open ── */
+  useEffect(() => {
+    if (selection.type === 'shared') {
+      api.documents.shared().then(setSharedDocuments).catch(() => {})
+    }
+    if (selection.type === 'trash') {
+      api.documents.trash().then(setTrashDocuments).catch(() => {})
+    }
+  }, [selection.type])
+
   /* ── Derived: which documents to show ──────────────── */
   const visibleDocuments = useMemo(() => {
     let docs: DocumentRecord[]
@@ -91,8 +149,11 @@ export default function HomePage(): JSX.Element {
         docs = allDocuments.filter((d) => new Date(d.updated_at).getTime() > cutoff)
         break
       }
+      case 'shared':
+        docs = sharedDocuments
+        break
       case 'trash':
-        docs = [] // No soft-delete support yet — empty state
+        docs = trashDocuments
         break
       default:
         docs = allDocuments
@@ -105,7 +166,7 @@ export default function HomePage(): JSX.Element {
     const q = query.trim().toLowerCase()
     if (!q) return sorted
     return sorted.filter((d) => d.title.toLowerCase().includes(q))
-  }, [allDocuments, folderDocuments, selection, query])
+  }, [allDocuments, folderDocuments, sharedDocuments, trashDocuments, selection, query])
 
   /** Folders to display in the main content area (top-level or sub-folders). */
   const visibleFolders = useMemo((): FolderRecord[] => {
@@ -241,10 +302,28 @@ export default function HomePage(): JSX.Element {
 
   /* ── Delete ────────────────────────────────────────── */
 
-  async function handleDelete(id: string, kind: 'file' | 'folder'): Promise<void> {
+  /** Permanently delete a doc that is already in the trash. */
+  async function deleteFilePermanently(id: string): Promise<void> {
+    try {
+      await api.documents.deletePermanent(id)
+      setTrashDocuments((docs) => docs.filter((d) => d.id !== id))
+      setAllDocuments((docs) => docs.filter((d) => d.id !== id))
+      setFolderDocuments((docs) => docs.filter((d) => d.id !== id))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete')
+    }
+  }
+
+  /** Soft-delete (trash) a file or hard-delete a folder. */
+  async function deleteFileSoft(id: string, kind: 'file' | 'folder'): Promise<void> {
     try {
       if (kind === 'file') {
-        await api.documents.delete(id)
+        await api.documents.trashDoc(id)
         setAllDocuments((docs) => docs.filter((d) => d.id !== id))
         setFolderDocuments((docs) => docs.filter((d) => d.id !== id))
       } else {
@@ -258,6 +337,77 @@ export default function HomePage(): JSX.Element {
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete')
+    }
+  }
+
+  /** Ask for confirmation before any delete (soft or permanent). */
+  function handleDelete(id: string, kind: 'file' | 'folder'): void {
+    if (kind === 'file' && selection.type === 'shared') {
+      setError('You can only delete documents you own')
+      return
+    }
+    if (kind === 'file' && selection.type === 'trash') {
+      const doc = trashDocuments.find((d) => d.id === id)
+      setConfirmDialog({
+        title: 'Delete permanently?',
+        description: `"${doc?.title ?? 'This document'}" will be permanently deleted and cannot be recovered.`,
+        confirmLabel: 'Delete forever',
+        onConfirm: () => void deleteFilePermanently(id),
+      })
+      return
+    }
+    if (kind === 'file') {
+      const doc = allDocuments.find((d) => d.id === id)
+      setConfirmDialog({
+        title: 'Move to trash?',
+        description: `"${doc?.title ?? 'This document'}" will be moved to trash. You can restore it later.`,
+        confirmLabel: 'Move to trash',
+        onConfirm: () => void deleteFileSoft(id, kind),
+      })
+      return
+    }
+    const folder = folders.find((f) => f.folder_id === id)
+    setConfirmDialog({
+      title: 'Delete folder?',
+      description: `Folder "${folder?.name ?? 'this folder'}" will be deleted. Documents inside it are not removed.`,
+      confirmLabel: 'Delete folder',
+      onConfirm: () => void deleteFileSoft(id, kind),
+    })
+  }
+
+  /** Restore trashed documents back into the active list. */
+  async function handleRestore(ids: string[]): Promise<void> {
+    try {
+      for (const id of ids) {
+        await api.documents.restore(id)
+        const restored = trashDocuments.find((d) => d.id === id)
+        if (restored) setAllDocuments((prev) => [restored, ...prev])
+      }
+      setTrashDocuments((docs) => docs.filter((d) => !ids.includes(d.id)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restore documents')
+    }
+  }
+
+  /** Permanently delete every document currently in the trash. */
+  function handleEmptyTrash(): void {
+    const count = trashDocuments.length
+    setConfirmDialog({
+      title: 'Empty trash?',
+      description: `${count} item${count === 1 ? '' : 's'} will be permanently deleted and cannot be recovered.`,
+      confirmLabel: 'Empty trash',
+      onConfirm: () => void confirmEmptyTrash(),
+    })
+  }
+
+  async function confirmEmptyTrash(): Promise<void> {
+    try {
+      for (const doc of trashDocuments) {
+        await api.documents.deletePermanent(doc.id)
+      }
+      setTrashDocuments([])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to empty trash')
     }
   }
 
@@ -313,6 +463,8 @@ export default function HomePage(): JSX.Element {
         return selection.folderName ?? 'Folder'
       case 'recent':
         return 'Recent'
+      case 'shared':
+        return 'Shared with me'
       case 'trash':
         return 'Trash'
       default:
@@ -332,6 +484,10 @@ export default function HomePage(): JSX.Element {
         onSelectView={handleSelectView}
         onImportFromFile={() => setImportFileOpen(true)}
         onImportFromDrive={() => setDriveOpen(true)}
+        documentCount={allDocuments.length}
+        recentCount={allDocuments.filter((d) => new Date(d.updated_at).getTime() > Date.now() - RECENT_MS).length}
+        trashCount={trashDocuments.length}
+        folders={folders}
       />
 
       {/* ── Main ─────────────────────────────────────── */}
@@ -385,10 +541,33 @@ export default function HomePage(): JSX.Element {
             <h1 className="text-2xl font-normal text-foreground m-0">{pageTitle}</h1>
             {selection.type === 'trash' && (
               <p className="text-sm text-muted-foreground mt-1">
-                Items in trash are permanently deleted. Soft-delete support coming soon.
+                Items in trash are permanently deleted after you confirm. Restore anything you still need.
               </p>
             )}
           </div>
+
+          {/* Trash actions */}
+          {selection.type === 'trash' && trashDocuments.length > 0 && (
+            <div className="flex items-center gap-2 mb-4">
+              <button
+                onClick={handleEmptyTrash}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-destructive/25 text-destructive text-xs font-semibold cursor-pointer hover:bg-destructive/5"
+              >
+                Empty trash
+              </button>
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={() => {
+                    void handleRestore([...selectedIds])
+                    setSelectedIds(new Set())
+                  }}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-foreground text-xs font-semibold cursor-pointer hover:bg-secondary"
+                >
+                  Restore selected
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Error banner */}
           {error && (
@@ -412,6 +591,8 @@ export default function HomePage(): JSX.Element {
             onCancelEdit={handleCancelEdit}
             onSaveEdit={handleSaveEdit}
             onDelete={handleDelete}
+            onRestore={(docId) => void handleRestore([docId])}
+            readOnlyView={selection.type === 'trash'}
             onTitleChange={handleTitleChange}
             onSelect={handleSelect}
             onClearSelection={handleClearSelection}
@@ -442,6 +623,9 @@ export default function HomePage(): JSX.Element {
       {importProgress && (
         <ImportProgressToast progress={importProgress} onDone={() => setImportProgress(null)} />
       )}
+
+      {/* Destructive-action confirmation */}
+      <ConfirmDialog dialog={confirmDialog} onClose={() => setConfirmDialog(null)} />
     </div>
   )
 }

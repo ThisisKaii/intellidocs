@@ -43,7 +43,7 @@ export interface SpellingCheckResponse {
 }
 
 function getMLApiUrl(): string {
-  return process.env.ML_API_URL || process.env.PYTHON_API_URL || 'http://localhost:8001'
+  return process.env.ML_API_URL || process.env.PYTHON_API_URL || 'http://localhost:8000'
 }
 
 /** Send a formatting prediction request to the FastAPI service. */

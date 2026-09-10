@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api, type DriveFile } from '@/services/api'
-import { HardDrive, ExternalLink, Download, X, Loader2, Unplug } from 'lucide-react'
+import { HardDrive, ExternalLink, Download, X, Loader2, Unplug, RefreshCw } from 'lucide-react'
 
 interface DriveImportDialogProps {
   open: boolean
@@ -194,7 +194,27 @@ export default function DriveImportDialog({
           ) : (
             <div>
               {/* Disconnect action */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.25rem', marginBottom: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => { void checkStatus() }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '0.375rem',
+                    border: 'none',
+                    backgroundColor: 'transparent',
+                    color: 'var(--muted-foreground)',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <RefreshCw style={{ width: '12px', height: '12px' }} />
+                  Refresh
+                </button>
                 <button
                   type="button"
                   onClick={() => { void handleDisconnect() }}
@@ -218,9 +238,14 @@ export default function DriveImportDialog({
               </div>
 
               {files.length === 0 ? (
-                <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', textAlign: 'center', padding: '1rem 0' }}>
-                  No Google Docs found in your Drive.
-                </p>
+                <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>
+                    No importable documents found in your Drive.
+                  </p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', opacity: 0.75, margin: '0.375rem 0 0' }}>
+                    IntelliDocs can import Google Docs, Word (.docx), PDF, and text files.
+                  </p>
+                </div>
               ) : (
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   {files.map((file) => (

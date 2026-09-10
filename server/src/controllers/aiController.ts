@@ -39,6 +39,12 @@ interface FormattingPreview {
   label: string
   confidence: number
   reason: string
+  /** Every requested format (e.g. ["bold", "italic"] for "make everything bold italic"). */
+  formats?: string[]
+  /** Document scope: current selection or the whole document. */
+  scope?: 'selection' | 'all'
+  /** Explicit font size in points, e.g. "font size 20". */
+  fontSize?: number | null
 }
 
 /** Read the active AI provider summary from the environment. */
@@ -67,8 +73,10 @@ function buildHistoryMessages(
 /** Build preview metadata for formatting-style chat requests. */
 function detectFormattingPreview(message: string): FormattingPreview | null {
   const intent = parseFormattingIntent(message)
+  const hasFormats = intent.formats.length > 0
+  const hasFontSize = intent.fontSize !== null
 
-  if (!intent.format) {
+  if (!hasFormats && !hasFontSize) {
     return null
   }
 
@@ -84,13 +92,26 @@ function detectFormattingPreview(message: string): FormattingPreview | null {
     ordered_list: 'Numbered List',
   }
 
+  const primary = intent.formats[0]
+  const reasonParts: string[] = []
+  if (intent.matchedPhrase) {
+    reasonParts.push(`Detected formatting intent from "${intent.matchedPhrase}".`)
+  }
+  if (hasFontSize) {
+    reasonParts.push(`Font size ${intent.fontSize}pt requested.`)
+  }
+  if (intent.scope === 'all') {
+    reasonParts.push('Applies to the whole document.')
+  }
+
   return {
-    format: intent.format,
-    label: labels[intent.format] ?? intent.format,
+    format: primary ?? 'body_text',
+    label: primary ? (labels[primary] ?? primary) : 'Font size',
     confidence: intent.confidence,
-    reason: intent.matchedPhrase
-      ? `Detected formatting intent from "${intent.matchedPhrase}".`
-      : 'Detected a likely formatting request.',
+    reason: reasonParts.length > 0 ? reasonParts.join(' ') : 'Detected a likely formatting request.',
+    formats: intent.formats,
+    scope: intent.scope,
+    fontSize: intent.fontSize,
   }
 }
 
@@ -150,6 +171,9 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
             label: preview.label,
             confidence: preview.confidence,
             reason: preview.reason,
+            formats: preview.formats,
+            scope: preview.scope,
+            fontSize: preview.fontSize,
           }
         : null,
     })

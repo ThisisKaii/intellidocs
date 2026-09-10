@@ -56,7 +56,8 @@ ml/convtest.py
 ml/ml/
 
 # DuckDB
-db/duckdb/*.duckdb
+**/*.duckdb
+**/duckdb/exports/
 *.sqlite
 *.db
 

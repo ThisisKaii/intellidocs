@@ -2,12 +2,20 @@ import {
   FileText,
   Clock3,
   Trash,
+  Share2,
   Plus,
   FolderIcon,
   HardDrive,
   Upload,
   type LucideIcon,
 } from 'lucide-react'
+import type { FolderRecord } from '@/services/api'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 
 interface SidebarItem {
@@ -19,17 +27,10 @@ interface SidebarItem {
 
 /** Describes which view/section the sidebar has selected. */
 export interface FolderSelection {
-  type: 'all' | 'folder' | 'recent' | 'trash'
+  type: 'all' | 'folder' | 'recent' | 'trash' | 'shared'
   folderId?: string
   folderName?: string
 }
-
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
 interface DriveSidebarProps {
   selection: FolderSelection
@@ -38,11 +39,18 @@ interface DriveSidebarProps {
   onSelectView: (sel: FolderSelection) => void
   onImportFromFile?: () => void
   onImportFromDrive?: () => void
+  /** Badge counts for the main navigation items. */
+  documentCount?: number
+  recentCount?: number
+  trashCount?: number
+  /** Quick-access folders listed under the navigation. */
+  folders?: FolderRecord[]
 }
 
 const NAV_ITEMS: SidebarItem[] = [
   { id: 'drive', label: 'My Documents', icon: FileText, selectionType: 'all' },
   { id: 'recent', label: 'Recent', icon: Clock3, selectionType: 'recent' },
+  { id: 'shared', label: 'Shared with me', icon: Share2, selectionType: 'shared' },
   { id: 'trash', label: 'Trash', icon: Trash, selectionType: 'trash' },
 ]
 
@@ -54,10 +62,22 @@ function DriveSidebar({
   onSelectView,
   onImportFromFile,
   onImportFromDrive,
+  documentCount,
+  recentCount,
+  trashCount,
+  folders,
 }: DriveSidebarProps): JSX.Element {
   function isNavActive(item: SidebarItem): boolean {
     if (selection.type === 'folder') return false
     return item.selectionType === selection.type
+  }
+
+  /** Badge count for a nav item, or undefined when there is nothing to show. */
+  function navCount(item: SidebarItem): number | undefined {
+    if (item.selectionType === 'all') return documentCount
+    if (item.selectionType === 'recent') return recentCount
+    if (item.selectionType === 'trash') return trashCount
+    return undefined
   }
 
   return (
@@ -113,6 +133,7 @@ function DriveSidebar({
         {NAV_ITEMS.map((item) => {
           const active = isNavActive(item)
           const Icon = item.icon
+          const count = navCount(item)
           return (
             <button
               key={item.id}
@@ -126,11 +147,52 @@ function DriveSidebar({
               style={{ fontFamily: 'inherit' }}
             >
               <Icon className={`size-[18px] ${active ? 'text-primary' : 'text-muted-foreground'}`} strokeWidth={active ? 2 : 1.75} />
-              {item.label}
+              <span className="truncate">{item.label}</span>
+              {typeof count === 'number' && count > 0 && (
+                <span
+                  className={`ml-auto text-[0.6875rem] font-medium rounded-full px-2 py-0.5 ${
+                    active ? 'bg-primary/15 text-primary' : 'bg-foreground/5 text-muted-foreground'
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
             </button>
           )
         })}
       </nav>
+
+      {/* ── Quick-access folders ───────────────────── */}
+      {folders && folders.length > 0 && (
+        <div className="mt-6">
+          <div className="px-4 pb-2 text-[0.6875rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Folders
+          </div>
+          <nav className="flex flex-col px-3 gap-0.5">
+            {folders.slice(0, 6).map((folder) => {
+              const active = selection.type === 'folder' && selection.folderId === folder.folder_id
+              return (
+                <button
+                  key={folder.folder_id}
+                  type="button"
+                  onClick={() =>
+                    onSelectView({ type: 'folder', folderId: folder.folder_id, folderName: folder.name })
+                  }
+                  className={`flex items-center gap-3 w-full px-4 h-9 rounded-full text-[0.8125rem] border-none cursor-pointer text-left transition-colors ${
+                    active
+                      ? 'font-medium text-primary bg-primary/15'
+                      : 'font-normal text-muted-foreground hover:bg-foreground/5'
+                  }`}
+                  style={{ fontFamily: 'inherit' }}
+                >
+                  <FolderIcon className={`size-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} strokeWidth={active ? 2 : 1.75} />
+                  <span className="truncate">{folder.name}</span>
+                </button>
+              )
+            })}
+          </nav>
+        </div>
+      )}
 
       {/* ── Footer ─────────────────────────────────── */}
       <div className="mt-auto px-6 py-4">

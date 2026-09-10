@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, useCallback, type ChangeEvent } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
-import { api, type BehaviorSummaryResponse, type PageNumberFormat } from '@/services/api'
+import { useEffect, useRef, useState, useCallback, type ChangeEvent, type DragEvent } from 'react'
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { api, type BehaviorSummaryResponse, type DocumentRecord, type PageNumberFormat } from '@/services/api'
 import {
   TiptapToolbar,
   type Editor,
@@ -14,17 +13,30 @@ import {
   type BehaviorEvent,
   createBehaviorEvent,
 } from '@/components/editor/behaviorListener'
-import SuggestionPanel, { type Suggestion } from '@/components/editor/SuggestionPanel'
 import GrammarPanel, { type GrammarIssue } from '@/components/editor/GrammarPanel'
+import type { Suggestion } from '@/components/editor/SuggestionPanel'
 import GrammarOverlay from '@/components/editor/GrammarOverlay'
-import FormatPrompt, { type FormatSuggestion } from '@/components/editor/FormatPrompt'
-import AIChatbot from '@/components/editor/AIChatbot'
+import InlineSuggestionChip from '@/components/editor/InlineSuggestionChip'
+import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
+import EditorSidePanel, { type SidePanelTab } from '@/components/editor/EditorSidePanel'
+import StylesRibbon, { STYLE_DRAG_MIME } from '@/components/editor/StylesRibbon'
+import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
+import { applyStyleCommand } from '@/components/editor/styleCommands'
 import FormattingPanel from '@/components/editor/FormattingPanel'
 import McpDebugPanel from '@/components/editor/McpDebugPanel'
 import { useTheme } from '@/context/ThemeContext'
-import { ArrowLeft, Save, Moon, Sun, ShieldOff, Shield } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
+import ShareModal from '@/components/ShareModal'
+import { ArrowLeft, Save, Moon, Sun, ShieldOff, Shield, PanelRight, PanelRightClose, Share2 } from 'lucide-react'
 import { useAutoFormatScanner, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
+import { useEditorPreferences } from '@/hooks/useEditorPreferences'
+import { confidenceThreshold, highlightColorCss } from '@/lib/editorPreferences'
 import { setHighlight, clearHighlight } from '@/components/editor/TargetHighlightExtension'
+import {
+  cacheDocumentRead,
+  evictCachedDocument,
+  getCachedDocumentRead,
+} from '@/hooks/useDocumentCache'
 
 const AUTOSAVE_DELAY = 8000
 const MAX_SAVE_RETRIES = 3
@@ -36,6 +48,16 @@ const AUTO_FORMAT_MIN_INTERVAL_MS = 15 * 1000
 
 export default function Document(): JSX.Element {
   const { id } = useParams()
+  const { user } = useAuth()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  // `?readonly=1` is used when opening a trash document (view only).
+  // `?share=TOKEN` grants read-only access to non-owners via a share link.
+  const shareToken = searchParams.get('share') ?? undefined
+  const [viewOnly, setViewOnly] = useState<boolean>(false)
+  const readOnly = searchParams.get('readonly') === '1' || viewOnly
+  const [docOwnerId, setDocOwnerId] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState<boolean>(false)
 
   const [editor, setEditor] = useState<Editor | null>(null)
 
@@ -85,15 +107,20 @@ export default function Document(): JSX.Element {
     orientation: 'portrait' as PageOrientation,
   })
 
-  const [rightPanelOpen] = useState<boolean>(true)
+  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(true)
+  const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>('assistant')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
   const [activeGrammarIssue, setActiveGrammarIssue] = useState<GrammarIssue | null>(null)
   const [activeGrammarRect, setActiveGrammarRect] = useState<DOMRect | null>(null)
+  const [suggestionRange, setSuggestionRange] = useState<{ from: number; to: number } | null>(null)
+  const [suggestionAnchor, setSuggestionAnchor] = useState<{ x: number; y: number } | null>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
+
+  const prefs = useEditorPreferences()
 
   const chatContent = buildAiDocumentContext(content)
 
@@ -104,10 +131,42 @@ export default function Document(): JSX.Element {
   const {
     suggestions: scannerSuggestions,
     activeSuggestion: scannerActive,
-    isTargetInViewport,
     acceptSuggestion: acceptScannerSuggestion,
     rejectSuggestion: rejectScannerSuggestion,
-  } = useAutoFormatScanner({ editor, enabled: !!editor })
+  } = useAutoFormatScanner({
+    editor,
+    enabled: !!editor,
+    minConfidence: confidenceThreshold(prefs),
+  })
+
+  /** Ctrl+\ keyboard shortcut toggles the docked side panel. */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if ((event.ctrlKey || event.metaKey) && event.key === '\\') {
+        event.preventDefault()
+        setRightPanelOpen((open) => !open)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  /** Keep the editor locked when this page is opened in read-only mode. */
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.setEditable(!readOnly)
+  }, [editor, readOnly])
+
+  /** Restore a trashed document straight from the read-only page, then go home. */
+  async function handleRestoreFromReadonly(): Promise<void> {
+    if (!id) return
+    try {
+      await api.documents.restore(id)
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      console.error('Restore failed', err)
+    }
+  }
 
   /** Smooth-scroll to a scanner suggestion's ProseMirror position. */
   const jumpToScannerTarget = useCallback((suggestion: ScannerSuggestion): void => {
@@ -142,87 +201,102 @@ export default function Document(): JSX.Element {
     }, 6000)
   }, [editor])
 
-  // Sync scanner's active suggestion into the formatPrompt state
-  // so the FormatPrompt component renders it. Only do this when the
-  // existing cursor-based auto-format isn't already showing a suggestion.
+  // Sync scanner's active suggestion into the inline highlight + chip.
+  // The highlight stays until the user accepts/rejects (no auto-clear).
   useEffect(() => {
     if (!scannerActive) return
 
-    // Always apply highlight when scanner has an active suggestion,
-    // regardless of whether cursor-based formatPrompt is already showing
+    // If a cursor-based suggestion is already showing, don't override it.
+    if (formatPrompt && !suggestionRange) return
+
+    setSuggestionRange({ from: scannerActive.from, to: scannerActive.to })
     if (editor && !editor.isDestroyed) {
       setHighlight(editor, scannerActive.from, scannerActive.to)
-      setTimeout(() => {
-        if (!editor.isDestroyed) clearHighlight(editor)
-      }, 6000)
     }
 
-    // Only set formatPrompt if cursor-based system hasn't already
     if (!formatPrompt) {
       setFormatPrompt({
         format: scannerActive.format,
         confidence: scannerActive.confidence,
       })
     }
-  }, [scannerActive, formatPrompt, editor])
+  }, [scannerActive, formatPrompt, suggestionRange, editor])
 
-  // Clear scanner highlight when scanner suggestions change
+  // Clear scanner highlight when scanner suggestions change and nothing is active
   useEffect(() => {
-    if (editor && !editor.isDestroyed && scannerSuggestions.length === 0) {
+    if (editor && !editor.isDestroyed && scannerSuggestions.length === 0 && !formatPrompt) {
       clearHighlight(editor)
     }
-  }, [scannerSuggestions, editor])
+  }, [scannerSuggestions, formatPrompt, editor])
 
   useEffect(() => {
     if (!id) return
+    const docId = id
     async function loadDocument(): Promise<void> {
       try {
-        const doc = await api.documents.get(id as string)
-        const nextTitle = doc.title || 'Untitled Document'
-        const nextContent = doc.content || ''
-        const nextHeader = doc.header_content || ''
-        const nextFooter = doc.footer_content || ''
-        setTitle(nextTitle)
-        setContent(nextContent)
-        latestHeaderRef.current = nextHeader
-        latestFooterRef.current = nextFooter
-        setHeaderContent(nextHeader)
-        setFooterContent(nextFooter)
-        setShowHeader(doc.show_header ?? false)
-        setShowFooter(doc.show_footer ?? false)
-        setHeaderNumberFormat(doc.header_number_format ?? 'none')
-        setFooterNumberFormat(doc.footer_number_format ?? 'none')
-        latestHeaderSettingsRef.current = {
-          showHeader: doc.show_header ?? false,
-          showFooter: doc.show_footer ?? false,
-          headerNumberFormat: doc.header_number_format ?? 'none',
-          footerNumberFormat: doc.footer_number_format ?? 'none',
+        // Paint from the IndexedDB cache first so the editor is instant on reload.
+        const cached = await getCachedDocumentRead(docId)
+        if (cached && latestContentRef.current === '') {
+          applyLoadedDocument(cached)
         }
-        const nextPageSize = doc.page_size ?? 'short'
-        const nextMargins = doc.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 }
-        const nextOrientation = doc.orientation ?? 'portrait'
-        setPageSize(nextPageSize)
-        setMargins(nextMargins)
-        setOrientation(nextOrientation)
-        latestPageSetupRef.current = {
-          pageSize: nextPageSize,
-          margins: nextMargins,
-          orientation: nextOrientation,
+
+        const doc = await api.documents.get(docId, shareToken)
+        applyLoadedDocument(doc)
+        // Share-link visitors who are not the owner get a read-only session.
+        if (shareToken && doc.user_id !== user?.id) {
+          setViewOnly(true)
         }
-        latestTitleRef.current = nextTitle
-        latestContentRef.current = nextContent
-        setLastSavedTitle(nextTitle)
-        setLastSavedContent(nextContent)
-        setSaveStatus('saved')
-        updateWordCount(nextContent)
-        setIsIsolated(doc.is_isolated ?? false)
-        setFormattingPreset(doc.formatting_preset ?? null)
+        void cacheDocumentRead(doc)
       } catch (error) {
         console.error(error)
       }
     }
     loadDocument()
   }, [id])
+
+  /** Apply a loaded document record to all editor state. */
+  function applyLoadedDocument(doc: DocumentRecord): void {
+    const nextTitle = doc.title || 'Untitled Document'
+    const nextContent = doc.content || ''
+    const nextHeader = doc.header_content || ''
+    const nextFooter = doc.footer_content || ''
+    setTitle(nextTitle)
+    setContent(nextContent)
+    latestHeaderRef.current = nextHeader
+    latestFooterRef.current = nextFooter
+    setHeaderContent(nextHeader)
+    setFooterContent(nextFooter)
+    setShowHeader(doc.show_header ?? false)
+    setShowFooter(doc.show_footer ?? false)
+    setHeaderNumberFormat(doc.header_number_format ?? 'none')
+    setFooterNumberFormat(doc.footer_number_format ?? 'none')
+    latestHeaderSettingsRef.current = {
+      showHeader: doc.show_header ?? false,
+      showFooter: doc.show_footer ?? false,
+      headerNumberFormat: doc.header_number_format ?? 'none',
+      footerNumberFormat: doc.footer_number_format ?? 'none',
+    }
+    const nextPageSize = doc.page_size ?? 'short'
+    const nextMargins = doc.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 }
+    const nextOrientation = doc.orientation ?? 'portrait'
+    setPageSize(nextPageSize)
+    setMargins(nextMargins)
+    setOrientation(nextOrientation)
+    latestPageSetupRef.current = {
+      pageSize: nextPageSize,
+      margins: nextMargins,
+      orientation: nextOrientation,
+    }
+    latestTitleRef.current = nextTitle
+    latestContentRef.current = nextContent
+    setLastSavedTitle(nextTitle)
+    setLastSavedContent(nextContent)
+    setSaveStatus('saved')
+    updateWordCount(nextContent)
+    setIsIsolated(doc.is_isolated ?? false)
+    setFormattingPreset(doc.formatting_preset ?? null)
+    setDocOwnerId(doc.user_id ?? null)
+  }
 
   async function loadBehaviorSummary(): Promise<void> {
     if (!id) return
@@ -351,7 +425,7 @@ export default function Document(): JSX.Element {
   }
 
   function applyPromptFormat(format: string): void {
-    if (!editor) return
+    if (!editor || !editor.isEditable) return
     if (isFormatAlreadyActive(format)) return
 
     switch (format) {
@@ -369,6 +443,105 @@ export default function Document(): JSX.Element {
     }
   }
 
+  /** Resolve the current textblock's ProseMirror range for highlighting. */
+  function getActiveParagraphRange(): { from: number; to: number } | null {
+    if (!editor || editor.isDestroyed) return null
+    const { from } = editor.state.selection
+    const $pos = editor.state.doc.resolve(from)
+    if (!$pos.parent.isTextblock) return null
+    return { from: $pos.start(), to: $pos.end() }
+  }
+
+  /** Alternatives offered by the chip's "change to" cycling. */
+  const SUGGESTION_ALTERNATIVES: Record<string, string[]> = {
+    heading1: ['heading1', 'heading2', 'heading3', 'bold', 'paragraph'],
+    heading2: ['heading2', 'heading1', 'heading3', 'paragraph'],
+    heading3: ['heading3', 'heading2', 'heading1', 'paragraph'],
+    bold: ['bold', 'italic', 'underline', 'paragraph'],
+    italic: ['italic', 'bold', 'underline', 'paragraph'],
+    underline: ['underline', 'bold', 'italic', 'paragraph'],
+    blockquote: ['blockquote', 'paragraph'],
+    unordered_list: ['unordered_list', 'ordered_list', 'paragraph'],
+    ordered_list: ['ordered_list', 'unordered_list', 'paragraph'],
+  }
+
+  /** Cycle the chip's current format to the next/previous alternative. */
+  function cycleSuggestionFormat(direction: 1 | -1): void {
+    if (!formatPrompt) return
+    const list = SUGGESTION_ALTERNATIVES[formatPrompt.format] ?? [formatPrompt.format]
+    const idx = list.indexOf(formatPrompt.format)
+    if (idx < 0) return
+    const next = list[(idx + direction + list.length) % list.length]
+    setFormatPrompt({ format: next, confidence: formatPrompt.confidence })
+    if (editor && !editor.isDestroyed && suggestionRange) {
+      setHighlight(editor, suggestionRange.from, suggestionRange.to)
+    }
+  }
+
+  const updateSuggestionAnchor = useCallback((): void => {
+    if (!editor || editor.isDestroyed || !suggestionRange) return
+    const view = editor.view
+    const coords = view.coordsAtPos(suggestionRange.from + 1)
+    if (coords.left === 0 && coords.top === 0) return
+    setSuggestionAnchor({ x: coords.left, y: coords.top })
+  }, [editor, suggestionRange])
+
+  // Recompute the chip anchor when the range, editor, window, or editor
+  // transactions change (covers typing, scrolling, and page layout shifts).
+  useEffect(() => {
+    if (!suggestionRange || !editor || editor.isDestroyed) {
+      setSuggestionAnchor(null)
+      return
+    }
+    const refresh = (): void => updateSuggestionAnchor()
+    refresh()
+    document.addEventListener('scroll', refresh, { passive: true })
+    window.addEventListener('resize', refresh)
+    editor.on('transaction', refresh)
+    return () => {
+      document.removeEventListener('scroll', refresh)
+      window.removeEventListener('resize', refresh)
+      editor.off('transaction', refresh)
+    }
+  }, [suggestionRange, editor, updateSuggestionAnchor])
+
+  // When the prompt clears, drop the chip range + anchor.
+  useEffect(() => {
+    if (!formatPrompt) {
+      setSuggestionRange((prev) => (prev ? null : prev))
+    }
+  }, [formatPrompt])
+
+  // Keyboard: Enter accepts, Esc rejects, Alt+ArrowUp/Down cycles "change to".
+  useEffect(() => {
+    function onSuggestionKey(event: KeyboardEvent): void {
+      if (!formatPrompt || !suggestionRange) return
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        handlePromptReject()
+        return
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        handlePromptAccept(formatPrompt.format)
+        return
+      }
+      if (event.altKey && event.key === 'ArrowDown') {
+        event.preventDefault()
+        cycleSuggestionFormat(1)
+        return
+      }
+      if (event.altKey && event.key === 'ArrowUp') {
+        event.preventDefault()
+        cycleSuggestionFormat(-1)
+      }
+    }
+    window.addEventListener('keydown', onSuggestionKey)
+    return () => window.removeEventListener('keydown', onSuggestionKey)
+  }, [formatPrompt, suggestionRange])
+
   function scheduleAutoFormatPrediction(nextContent: string): void {
     if (autoFormatTimer.current) {
       clearTimeout(autoFormatTimer.current)
@@ -380,6 +553,7 @@ export default function Document(): JSX.Element {
   }
 
   async function runAutoFormatPrediction(nextContent: string): Promise<void> {
+    if (!editor || !editor.isEditable) return
     const plainText = getPlainText(nextContent).slice(0, 50000)
 
     // Extract the active paragraph / line / selection text for context-aware prediction
@@ -449,6 +623,17 @@ export default function Document(): JSX.Element {
         return
       }
 
+      // Suppress heading suggestions on questionnaire / option lines and lists
+      const isQuestionLine = /[?？]\s*$/.test(activeText) || /^[a-dA-D][.)]\s/.test(activeText)
+      const isHeadingFamily = ['heading1', 'heading2', 'heading3', 'h1', 'h2', 'h3'].includes(predictedFormat)
+      const inList = editor?.isActive('bulletList') || editor?.isActive('orderedList') || editor?.isActive('listItem')
+      if (isHeadingFamily && (isQuestionLine || inList)) {
+        setFormatPrompt(null)
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
+
       if (confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) {
         setFormatPrompt(null)
         setSuggestions([])
@@ -477,6 +662,13 @@ export default function Document(): JSX.Element {
           lastAutoFormatRef.current = {
             format: predictedFormat,
             shownAt: Date.now(),
+          }
+
+          // Highlight the active paragraph so the user sees what's being suggested
+          const range = getActiveParagraphRange()
+          if (range) {
+            setSuggestionRange(range)
+            if (editor && !editor.isDestroyed) setHighlight(editor, range.from, range.to)
           }
         }
       }
@@ -518,6 +710,7 @@ export default function Document(): JSX.Element {
   }
 
   function scheduleSave(): void {
+    if (readOnly) return
     pendingSaveRef.current = true
     saveRetryCountRef.current = 0
     setSaveStatus('unsaved')
@@ -565,6 +758,7 @@ export default function Document(): JSX.Element {
       setLastSavedContent(nextContent)
       saveRetryCountRef.current = 0
       setSaveStatus('saved')
+      if (id) void evictCachedDocument(id)
     } catch (error) {
       console.error('Autosave failed', error)
       // Give up after a few consecutive failures instead of retrying forever.
@@ -678,6 +872,7 @@ export default function Document(): JSX.Element {
   }
 
   function handlePromptAccept(format: string): void {
+    if (editor && !editor.isEditable) return
     applyPromptFormat(format)
     handleFormat(format)
 
@@ -768,7 +963,7 @@ export default function Document(): JSX.Element {
   }
 
   function handleGrammarApply(issue: GrammarIssue): void {
-    if (!editor) return
+    if (!editor || !editor.isEditable) return
 
     function preserveReplacementCase(originalText: string, suggestion: string): string {
       if (!originalText || !suggestion) return suggestion
@@ -804,6 +999,53 @@ export default function Document(): JSX.Element {
     setGrammarIssues((prev) => prev.filter((i) => i !== issue))
     setActiveGrammarIssue((active) => (active === issue ? null : active))
   }
+
+  /** Apply a ribbon style tile at the current selection (click-to-apply). */
+  function handleApplyRibbonStyle(format: string): void {
+    if (!editor || !editor.isEditable) return
+    applyStyleCommand(editor, format)
+    handleFormat(format)
+  }
+
+  /** Resolve the active preset (if the doc uses one of the academic presets). */
+  const activeAcademicPreset = ACADEMIC_PRESETS.find((p) => p.key === formattingPreset)
+
+  /** One-click academic preset: page geometry + scoped typography + persisted preset key. */
+  async function handleApplyAcademicPreset(key: string): Promise<void> {
+    const preset = ACADEMIC_PRESETS.find((p) => p.key === key)
+    if (!preset) return
+    setPageSize(preset.pageSize)
+    setMargins({ ...preset.margins })
+    setOrientation(preset.orientation)
+    setFormattingPreset(key)
+    if (id) {
+      try {
+        await api.formatting.setDocumentPreset(id, key)
+      } catch (err) {
+        console.error('Failed to persist academic preset', err)
+      }
+    }
+  }
+
+  /** Drop a dragged style tile onto a paragraph in the editor canvas. */
+  function handleStyleDrop(e: DragEvent): void {
+    e.preventDefault()
+    const format = e.dataTransfer.getData(STYLE_DRAG_MIME)
+    if (!format || !editor || editor.isDestroyed || !editor.isEditable) return
+    const coords = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
+    if (!coords) return
+    applyStyleCommand(editor, format, coords.pos, coords.pos)
+    handleFormat(format)
+  }
+
+  /** Grammar underline click — open the anchored fix popover. */
+  const handleGrammarClick = useCallback(
+    (issue: GrammarIssue, rect: DOMRect, _pos: number): void => {
+      setActiveGrammarIssue(issue)
+      setActiveGrammarRect(rect)
+    },
+    []
+  )
 
   // Push grammar issues into the editor's wavy-underline decorations whenever they change.
   useEffect(() => {
@@ -927,6 +1169,7 @@ export default function Document(): JSX.Element {
             <input
               value={title}
               onChange={handleTitleChange}
+              readOnly={readOnly}
               placeholder="Untitled Document"
               style={{
                 width: '100%',
@@ -960,6 +1203,37 @@ export default function Document(): JSX.Element {
               {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
             </span>
 
+            {!readOnly && docOwnerId && user?.id === docOwnerId && (
+              <button
+                type="button"
+                onClick={() => setShareOpen(true)}
+                title="Share this document"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  height: '32px',
+                  padding: '0 0.75rem',
+                  borderRadius: '0.5rem',
+                  border: 'none',
+                  boxShadow: '0 0 0 1px var(--border-shadow)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--foreground)',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'background-color 150ms',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
+              >
+                <Share2 style={{ width: '14px', height: '14px' }} />
+                Share
+              </button>
+            )}
+
+            {!readOnly && (
             <button
               type="button"
               onClick={() => { void handleManualSave() }}
@@ -988,6 +1262,7 @@ export default function Document(): JSX.Element {
               <Save style={{ width: '14px', height: '14px' }} />
               Save
             </button>
+            )}
 
             <button
               type="button"
@@ -1019,6 +1294,41 @@ export default function Document(): JSX.Element {
               {isDark ? <Sun style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <Moon style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
             </button>
 
+            <button
+              type="button"
+              onClick={() => setRightPanelOpen((open) => !open)}
+              title="Toggle assistant panel (Ctrl+\)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                borderRadius: '0.5rem',
+                border: 'none',
+                boxShadow: '0 0 0 1px var(--border-shadow)',
+                backgroundColor: rightPanelOpen ? 'var(--secondary)' : 'transparent',
+                color: rightPanelOpen ? 'var(--foreground)' : 'var(--muted-foreground)',
+                cursor: 'pointer',
+                transition: 'background-color 150ms, color 150ms',
+              }}
+              onMouseEnter={(e) => {
+                if (!rightPanelOpen) {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)'
+                  ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!rightPanelOpen) {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
+                  ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'
+                }
+              }}
+            >
+              {rightPanelOpen ? <PanelRightClose style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <PanelRight style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
+            </button>
+
+            {!readOnly && (
             <button
               type="button"
               onClick={() => {
@@ -1060,11 +1370,13 @@ export default function Document(): JSX.Element {
             >
               {isIsolated ? <ShieldOff style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <Shield style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
             </button>
+            )}
           </div>
         </div>
 
         {/* Toolbar row — overflow visible with z-index so popovers float above canvas */}
-        <div style={{ borderTop: '1px solid var(--border)', position: 'relative', zIndex: 100 }}>
+        {!readOnly && (
+          <div style={{ borderTop: '1px solid var(--border)', position: 'relative', zIndex: 100 }}>
           <TiptapToolbar
             editor={editor ?? null}
             documentTitle={title}
@@ -1111,23 +1423,94 @@ export default function Document(): JSX.Element {
             onFooterNumberFormatChange={handleFooterNumberFormatChange}
           />
         </div>
+        )}
       </header>
+
+      {/* Read-only banner — shown for trash documents or share-link visitors */}
+      {readOnly && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.75rem',
+            padding: '0.5rem 1rem',
+            borderBottom: '1px solid var(--border)',
+            backgroundColor: 'var(--secondary)',
+            fontSize: '0.8125rem',
+            color: 'var(--foreground)',
+            flexShrink: 0,
+          }}
+        >
+          <Shield style={{ width: '14px', height: '14px' }} />
+          {viewOnly ? (
+            <span>View only — you are seeing this document through a share link.</span>
+          ) : (
+            <>
+              <span>View only — this document is in trash. Restore it to edit again.</span>
+              <button
+                type="button"
+                onClick={() => { void handleRestoreFromReadonly() }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  height: '28px',
+                  padding: '0 0.75rem',
+                  borderRadius: '0.5rem',
+                  border: 'none',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--primary-foreground)',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Restore document
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Styles ribbon ───────────────────────────────────── */}
+      {!readOnly && (
+        <StylesRibbon
+          editor={editor}
+          onApplyStyle={handleApplyRibbonStyle}
+          onApplyPreset={(key) => { void handleApplyAcademicPreset(key) }}
+          activePreset={formattingPreset}
+        />
+      )}
 
       {/* ── Body ──────────────────────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
         {/* Editor area — clean TipTap paper sheet */}
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <div style={{ flex: 1, overflowY: 'auto', backgroundColor: 'var(--canvas-bg)', padding: '2rem 1rem' }}>
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              backgroundColor: 'var(--canvas-bg)',
+              padding: '2rem 1rem',
+              ['--agentic-pulse-color' as string]: highlightColorCss(prefs),
+            }}
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes(STYLE_DRAG_MIME)) return
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+            }}
+            onDrop={handleStyleDrop}
+          >
+            {activeAcademicPreset && <style>{activeAcademicPreset.css}</style>}
             <PagedEditor
               content={content}
               onContentChange={handleContentChange}
               onActiveEditorChange={setEditor}
-              onGrammarClick={(issue, rect) => {
-                setActiveGrammarIssue(issue)
-                setActiveGrammarRect(rect)
-              }}
+              onGrammarClick={handleGrammarClick}
               grammarIssues={grammarIssues}
+              underlineStyle={prefs.underlineStyle}
               pageSize={pageSize}
               margins={margins}
               orientation={orientation}
@@ -1141,28 +1524,57 @@ export default function Document(): JSX.Element {
           </div>
         </main>
 
-        {/* Right panel */}
-        <AnimatePresence>
-          {rightPanelOpen && (
-            <motion.aside
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 272, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-              style={{
-                borderLeft: '1px solid var(--border)',
-                backgroundColor: 'var(--card)',
-                flexShrink: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                overflowY: 'auto',
-                overflowX: 'hidden',
-              }}
-            >
-              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {/* Right panel — docked editor assistant with suggestions queue */}
+        <EditorSidePanel
+          open={rightPanelOpen}
+          activeTab={sidePanelTab}
+          onToggle={() => setRightPanelOpen((open) => !open)}
+          onTabChange={setSidePanelTab}
+          editor={editor}
+          documentId={id}
+          documentTitle={title}
+          documentContent={chatContent}
+          scannerSuggestions={scannerSuggestions}
+          mlSuggestions={showSuggestions ? suggestions : []}
+          grammarIssues={grammarIssues}
+          onJumpTo={jumpToScannerTarget}
+          onAcceptScanner={acceptScannerSuggestion}
+          onRejectScanner={rejectScannerSuggestion}
+          onApplyMl={(fmt) => handlePromptAccept(fmt)}
+          onDismissMl={() => handlePromptReject()}
+          onApplyGrammar={handleGrammarApply}
+          onDismissGrammar={handleGrammarDismiss}
+          onFocusEditor={focusEditor}
+          extraSections={
+            <>
+              {/* Grammar & spell check — visible panel + wavy underlines in the editor */}
+              <GrammarPanel
+                text={content}
+                activeIssues={grammarIssues}
+                onCheckComplete={setGrammarIssues}
+                onApply={handleGrammarApply}
+                onDismiss={handleGrammarDismiss}
+                autoCheck
+                autoCheckDelayMs={2500}
+                autoCheckCooldownMs={12000}
+              />
 
-                {/* Predictions section */}
-                <div>
+              {/* Formatting preset + custom rules (Tier 1 & 2) */}
+              <FormattingPanel
+                documentId={id}
+                activePreset={formattingPreset}
+                onPresetChange={setFormattingPreset}
+              />
+
+              {/* Session stats */}
+              <div
+                style={{
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--border)',
+                  padding: '0.75rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <p
                     style={{
                       fontSize: '0.6875rem',
@@ -1170,153 +1582,88 @@ export default function Document(): JSX.Element {
                       textTransform: 'uppercase',
                       letterSpacing: '0.06em',
                       color: 'var(--muted-foreground)',
-                      margin: '0 0 0.625rem',
+                      margin: 0,
                     }}
                   >
-                    Predictions
+                    Session
                   </p>
-                  <SuggestionPanel
-                    suggestions={suggestions}
-                    onApply={(fmt) => handlePromptAccept(fmt)}
-                    onDismiss={() => handlePromptReject()}
-                  />
-                  {!showSuggestions && (
-                    <div
-                      style={{
-                        borderRadius: '0.5rem',
-                        padding: '0.875rem',
-                        textAlign: 'center',
-                        backgroundColor: 'var(--secondary)',
-                      }}
-                    >
-                      <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: 0 }}>
-                        Predictions appear as you type and format
-                      </p>
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      void loadBehaviorSummary()
+                    }}
+                    disabled={behaviorSummaryLoading}
+                    style={{
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      color: 'var(--muted-foreground)',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      cursor: behaviorSummaryLoading ? 'not-allowed' : 'pointer',
+                      opacity: behaviorSummaryLoading ? 0.5 : 1,
+                      padding: 0,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {behaviorSummaryLoading ? 'Loading…' : 'Refresh'}
+                  </button>
                 </div>
 
-                {/* Grammar & spell check — engine only; issues render in the
-                    floating GrammarOverlay over the document */}
-                <GrammarPanel
-                  text={content}
-                  activeIssues={grammarIssues}
-                  onCheckComplete={setGrammarIssues}
-                  onApply={handleGrammarApply}
-                  onDismiss={handleGrammarDismiss}
-                  autoCheck
-                  autoCheckDelayMs={2500}
-                  autoCheckCooldownMs={12000}
-                  showPanel={false}
-                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Words</span>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{wordCount}</span>
+                </div>
 
-                {/* Formatting preset + custom rules (Tier 1 & 2) */}
-                <FormattingPanel
-                  documentId={id}
-                  activePreset={formattingPreset}
-                  onPresetChange={setFormattingPreset}
-                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Behavior events</span>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{behaviorSummary?.totalEvents ?? 0}</span>
+                </div>
 
-                {/* Session stats */}
-                <div
-                  style={{
-                    borderRadius: '0.5rem',
-                    border: '1px solid var(--border)',
-                    padding: '0.75rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <p
-                      style={{
-                        fontSize: '0.6875rem',
-                        fontWeight: 600,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        color: 'var(--muted-foreground)',
-                        margin: 0,
-                      }}
-                    >
-                      Session
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.625rem' }}>
+                  <div style={{ borderRadius: '0.375rem', backgroundColor: 'var(--secondary)', padding: '0.625rem' }}>
+                    <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
+                      Accepted
                     </p>
-                    <button
-                      type="button"
-                      onMouseDown={(event) => {
-                        event.preventDefault()
-                        void loadBehaviorSummary()
-                      }}
-                      disabled={behaviorSummaryLoading}
-                      style={{
-                        fontSize: '0.6875rem',
-                        fontWeight: 600,
-                        color: 'var(--muted-foreground)',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        cursor: behaviorSummaryLoading ? 'not-allowed' : 'pointer',
-                        opacity: behaviorSummaryLoading ? 0.5 : 1,
-                        padding: 0,
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      {behaviorSummaryLoading ? 'Loading…' : 'Refresh'}
-                    </button>
+                    <p style={{ fontSize: '1rem', fontWeight: 600, color: '#10b981', margin: 0 }}>
+                      {countBehaviorBucket(behaviorSummary?.chatPreviewAccepted)}
+                    </p>
                   </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Words</span>
-                    <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{wordCount}</span>
+                  <div style={{ borderRadius: '0.375rem', backgroundColor: 'var(--secondary)', padding: '0.625rem' }}>
+                    <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
+                      Rejected
+                    </p>
+                    <p style={{ fontSize: '1rem', fontWeight: 600, color: '#ff5b4f', margin: 0 }}>
+                      {countBehaviorBucket(behaviorSummary?.chatPreviewRejected)}
+                    </p>
                   </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Behavior events</span>
-                    <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{behaviorSummary?.totalEvents ?? 0}</span>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.625rem' }}>
-                    <div style={{ borderRadius: '0.375rem', backgroundColor: 'var(--secondary)', padding: '0.625rem' }}>
-                      <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
-                        Accepted
-                      </p>
-                      <p style={{ fontSize: '1rem', fontWeight: 600, color: '#10b981', margin: 0 }}>
-                        {countBehaviorBucket(behaviorSummary?.chatPreviewAccepted)}
-                      </p>
-                    </div>
-                    <div style={{ borderRadius: '0.375rem', backgroundColor: 'var(--secondary)', padding: '0.625rem' }}>
-                      <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
-                        Rejected
-                      </p>
-                      <p style={{ fontSize: '1rem', fontWeight: 600, color: '#ff5b4f', margin: 0 }}>
-                        {countBehaviorBucket(behaviorSummary?.chatPreviewRejected)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {behaviorSummary && behaviorSummary.latestEvents.length > 0 ? (
-                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
-                      <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.5rem' }}>
-                        Latest feedback
-                      </p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                        {behaviorSummary.latestEvents.slice(0, 3).map((event) => (
-                          <div key={`${event.action}-${event.timestamp}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {event.action}
-                            </span>
-                            <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', flexShrink: 0 }}>
-                              {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
 
-                <McpDebugPanel documentId={id} documentContent={chatContent} />
-
+                {behaviorSummary && behaviorSummary.latestEvents.length > 0 ? (
+                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+                    <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.5rem' }}>
+                      Latest feedback
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                      {behaviorSummary.latestEvents.slice(0, 3).map((event) => (
+                        <div key={`${event.action}-${event.timestamp}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {event.action}
+                          </span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', flexShrink: 0 }}>
+                            {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
+
+              <McpDebugPanel documentId={id} documentContent={chatContent} />
+            </>
+          }
+        />
       </div>
 
       {/* Grammar & spell check — floating popover anchored to a clicked wavy underline */}
@@ -1331,40 +1678,21 @@ export default function Document(): JSX.Element {
         }}
       />
 
-      {/* Format prompt (float) */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: '1.5rem',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 50,
-          pointerEvents: formatPrompt ? 'all' : 'none',
-        }}
-      >
-        <FormatPrompt
-          suggestion={formatPrompt}
-          onAccept={handlePromptAccept}
+      {/* Inline suggestion chip — anchored above the highlighted block */}
+      {formatPrompt && suggestionRange && suggestionAnchor && (
+        <InlineSuggestionChip
+          anchor={suggestionAnchor}
+          label={formatSuggestionLabel(formatPrompt.format)}
+          confidence={formatPrompt.confidence}
+          onChangeTo={cycleSuggestionFormat}
+          onAccept={() => handlePromptAccept(formatPrompt.format)}
           onReject={handlePromptReject}
-          targetPage={scannerActive?.pageNumber ?? formatPrompt?.confidence ? undefined : null}
-          isTargetInViewport={isTargetInViewport}
-          onJumpToPage={scannerActive ? () => jumpToScannerTarget(scannerActive) : undefined}
-          targetPreview={scannerActive?.preview ?? null}
         />
-      </div>
+      )}
 
-      {/* AI Chatbot (float) */}
-      <div style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 50 }}>
-        <AIChatbot
-          editor={editor ?? null}
-          documentId={id}
-          documentTitle={title}
-          documentContent={chatContent}
-          onFormatApplied={handleFormat}
-          onFocusEditor={focusEditor}
-          onFeedbackLogged={() => void loadBehaviorSummary()}
-        />
-      </div>
+      {shareOpen && id && (
+        <ShareModal documentId={id} onClose={() => setShareOpen(false)} />
+      )}
     </div>
   )
 }

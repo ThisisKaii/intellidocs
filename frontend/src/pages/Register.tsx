@@ -7,7 +7,6 @@ import { api } from '../services/api'
 function Register(): JSX.Element {
   const navigate = useNavigate()
   const { login, loginWithGoogle } = useAuth()
-  const [role, setRole] = useState<'student' | 'professor'>('student')
   const [googleLoading, setGoogleLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -32,23 +31,18 @@ function Register(): JSX.Element {
     setLoading(true)
 
     try {
-      await api.auth.register(email, password, role)
+      await api.auth.register(email, password)
       const loginResponse = await api.auth.login(email, password)
       login(
         {
           id: loginResponse.user.id,
           email: loginResponse.user.email,
-          role,
-          verificationStatus: role === 'professor' ? 'pending' : 'approved',
+          role: 'student',
+          verificationStatus: 'approved',
         },
         loginResponse.session.access_token
       )
-
-      if (role === 'professor') {
-        setSuccess('Professor account submitted! Verification is pending Administrator approval.')
-      } else {
-        setSuccess('Account created. Redirecting…')
-      }
+      setSuccess('Account created. Redirecting…')
       setTimeout(() => navigate('/dashboard'), 1500)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
@@ -243,62 +237,6 @@ function Register(): JSX.Element {
           )}
 
           <form onSubmit={handleSubmit} noValidate>
-            {/* Account Role */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label
-                style={{
-                  display: 'block',
-                  fontSize: '0.8125rem',
-                  fontWeight: 500,
-                  color: 'var(--foreground)',
-                  marginBottom: '0.5rem',
-                }}
-              >
-                Register As
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setRole('student')}
-                  style={{
-                    height: '36px',
-                    borderRadius: '0.5rem',
-                    border: role === 'student' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    backgroundColor: role === 'student' ? 'var(--secondary)' : 'transparent',
-                    color: role === 'student' ? 'var(--foreground)' : 'var(--muted-foreground)',
-                    fontSize: '0.8125rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 150ms',
-                  }}
-                >
-                  Student
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('professor')}
-                  style={{
-                    height: '36px',
-                    borderRadius: '0.5rem',
-                    border: role === 'professor' ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    backgroundColor: role === 'professor' ? 'var(--secondary)' : 'transparent',
-                    color: role === 'professor' ? 'var(--foreground)' : 'var(--muted-foreground)',
-                    fontSize: '0.8125rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    transition: 'all 150ms',
-                  }}
-                >
-                  Professor
-                </button>
-              </div>
-              {role === 'professor' && (
-                <p style={{ fontSize: '0.75rem', color: '#eab308', margin: '0.375rem 0 0', fontWeight: 500 }}>
-                  Note: Professor accounts require Administrator approval before review features are unlocked.
-                </p>
-              )}
-            </div>
-
             {/* Email */}
             <div style={{ marginBottom: '1rem' }}>
               <label

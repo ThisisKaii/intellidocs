@@ -3,18 +3,25 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { GrammarIssue } from './GrammarPanel'
+import { getEditorPreferences } from '@/lib/editorPreferences'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     grammarUnderline: {
-      /** Replace the set of grammar issues rendered as wavy underlines. */
+      /** Replace the set of grammar issues rendered as underlines. */
       setGrammarIssues: (issues: GrammarIssue[]) => ReturnType
     }
   }
 
   interface EditorEvents {
-    'grammar-click': { issue: GrammarIssue; rect: DOMRect }
+    /** Fired when a grammar/spelling underline is clicked; pos is the ProseMirror position. */
+    'grammar-click': { issue: GrammarIssue; rect: DOMRect; pos: number }
   }
+}
+
+/** CSS class for the user's preferred underline style. */
+function underlineClass(): string {
+  return getEditorPreferences().underlineStyle === 'wavy' ? 'grammar-wavy' : 'grammar-straight'
 }
 
 interface GrammarPluginState {
@@ -24,7 +31,7 @@ interface GrammarPluginState {
 
 const grammarKey = new PluginKey<GrammarPluginState>('grammarUnderline')
 
-/** Find every occurrence of each issue's original text and wrap it in a wavy underline decoration. */
+/** Find every occurrence of each issue's original text and wrap it in an underline decoration. */
 function buildDecorations(doc: ProseMirrorNode, issues: GrammarIssue[]): DecorationSet {
   const textByPos: { from: number; text: string }[] = []
   doc.descendants((node, pos) => {
@@ -47,7 +54,7 @@ function buildDecorations(doc: ProseMirrorNode, issues: GrammarIssue[]): Decorat
         if (matchIndex === -1) break
         decorations.push(
           Decoration.inline(from + matchIndex, from + matchIndex + issue.original.length, {
-            class: 'grammar-wavy',
+            class: `grammar-issue ${underlineClass()} grammar-kind-${issue.kind ?? 'grammar'}`,
             'data-issue-index': String(index),
           })
         )
@@ -101,9 +108,9 @@ export const GrammarUnderlineExtension = Extension.create({
           decorations(state) {
             return key.getState(state)?.decorations ?? DecorationSet.empty
           },
-          handleClick(view, _pos, event) {
+          handleClick(view, pos, event) {
             const target = event.target as Element
-            const wavy = target.closest?.('.grammar-wavy') as HTMLElement | null
+            const wavy = target.closest?.('.grammar-issue') as HTMLElement | null
             if (!wavy) return false
 
             const index = Number(wavy.getAttribute('data-issue-index'))
@@ -111,7 +118,11 @@ export const GrammarUnderlineExtension = Extension.create({
             const issue = state?.issues[index]
             if (!issue) return false
 
-            editor.emit('grammar-click', { issue, rect: wavy.getBoundingClientRect() })
+            editor.emit('grammar-click', {
+              issue,
+              rect: wavy.getBoundingClientRect(),
+              pos,
+            })
             return true
           },
         },

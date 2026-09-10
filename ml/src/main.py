@@ -1,6 +1,7 @@
 import os
 import pickle
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -35,6 +36,11 @@ if not os.path.isabs(MODEL_PATH) and not os.path.exists(MODEL_PATH):
 DEFAULT_LSTM_DIR = str(ROOT_DIR / "models" / "lstm")
 LSTM_DIR = os.getenv("LSTM_MODEL_DIR", DEFAULT_LSTM_DIR)
 
+# 24h in-process cache for the base model payload so predictions avoid a
+# pickle reload on every request.
+_MODEL_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
+MODEL_CACHE_TTL_SECONDS = 24 * 60 * 60
+
 app = FastAPI(
     title="IntelliDocs ML API",
     description="Machine Learning API for hybrid RandomForest + LSTM formatting prediction and grammar checking",
@@ -58,6 +64,11 @@ class PredictRequest(BaseModel):
     is_bold: Optional[bool] = None
     is_italic: Optional[bool] = None
     x_position: Optional[float] = None
+    # Hierarchical outline context (Phase 2)
+    previous_format: Optional[str] = None
+    current_heading_level: Optional[int] = None
+    is_inside_table: Optional[bool] = None
+    is_list_item: Optional[bool] = None
 
 
 class PredictResponse(BaseModel):
@@ -73,7 +84,12 @@ class TextCheckRequest(BaseModel):
 
 
 def load_model_payload() -> dict[str, Any]:
-    """Load the trained base formatting model from disk."""
+    """Load the trained base formatting model from disk, cached for 24h."""
+    model_key = os.path.realpath(MODEL_PATH)
+    cached = _MODEL_CACHE.get(model_key)
+    if cached and (time.time() - cached[1]) < MODEL_CACHE_TTL_SECONDS:
+        return cached[0]
+
     if not os.path.exists(MODEL_PATH):
         raise FileNotFoundError(f"Base model not found: {MODEL_PATH}")
 
@@ -83,12 +99,22 @@ def load_model_payload() -> dict[str, Any]:
     if "model" not in payload or "feature_columns" not in payload:
         raise ValueError("Model payload is missing required fields.")
 
+    _MODEL_CACHE[model_key] = (payload, time.time())
     return payload
 
 
 def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> float:
     """Calculate sequence-level confidence reweighting from user's PyTorch LSTM weights if available."""
-    model_file = os.path.join(LSTM_DIR, f"user_{user_id}.pt")
+    # Prefer the 24h temp cache backed by Supabase Storage; fall back to local dir.
+    try:
+        from storage import download_user_model
+
+        cached_model = download_user_model(user_id)
+    except Exception as exc:
+        print(f"Model cache lookup warning for {user_id}: {exc}")
+        cached_model = None
+
+    model_file = cached_model or os.path.join(LSTM_DIR, f"user_{user_id}.pt")
     if not os.path.exists(model_file):
         return 0.0
 
@@ -139,7 +165,7 @@ def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> flo
 
 
 def build_feature_row(request: PredictRequest) -> pd.DataFrame:
-    """Build numeric feature vectors including typographic & academic layout attributes."""
+    """Build numeric feature vectors including typographic, academic layout, and hierarchical context attributes."""
     normalized = request.text.strip()
     words = normalized.split()
     word_count = len(words)
@@ -152,6 +178,12 @@ def build_feature_row(request: PredictRequest) -> pd.DataFrame:
     )
     is_italic = int(request.is_italic) if request.is_italic is not None else 0
     x_pos = request.x_position if request.x_position is not None else 0.0
+
+    # Hierarchical context features (Phase 2)
+    prev_fmt = request.previous_format or "none"
+    heading_level = request.current_heading_level if request.current_heading_level is not None else 0
+    in_table = int(request.is_inside_table) if request.is_inside_table is not None else 0
+    in_list = int(request.is_list_item) if request.is_list_item is not None else 0
 
     features = {
         "char_count": char_count,
@@ -178,6 +210,12 @@ def build_feature_row(request: PredictRequest) -> pd.DataFrame:
         "starts_with_marker": int(
             normalized.startswith(("=", "*", "#", ">", "`", "    ", "-", "•", "+"))
         ),
+        # Hierarchical context
+        "prev_is_heading": int(prev_fmt.startswith("heading")),
+        "prev_is_body": int(prev_fmt == "body"),
+        "heading_level": heading_level,
+        "in_table": in_table,
+        "in_list": in_list,
     }
     return pd.DataFrame([features])
 
@@ -203,7 +241,7 @@ async def health_check() -> dict[str, str]:
 
 @app.post("/predict", response_model=PredictResponse)
 async def predict_format(request: PredictRequest) -> PredictResponse:
-    """Predict an APA academic formatting label using RandomForest + LSTM confidence adjustment."""
+    """Predict an APA academic formatting label using hierarchical heuristics + RandomForest + LSTM."""
     import re
 
     text = request.text.strip()
@@ -214,40 +252,53 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
     word_count = len(words)
     lower = text.lower()
 
-    # Hybrid academic structural heuristics
-    if word_count <= 14 and "\n" not in text:
-        if (
-            lower.startswith("chapter")
-            or bool(re.match(r"^(chapter\s+\d+|[ivx]+\.|\d+\.)\s+", lower))
-            or lower in [
-                "abstract", "introduction", "methodology", "literature review",
-                "results", "discussion", "conclusion", "references",
-                "table of contents", "acknowledgments", "appendix"
-            ]
-        ):
-            return PredictResponse(
-                predicted_format="heading1",
-                confidence=0.96,
-                model_path=MODEL_PATH,
-                feature_values={"word_count": word_count, "academic_heading1_prior": 1.0},
-                lstm_adjusted=False,
-            )
-        if bool(re.match(r"^\d+\.\d+\s+", text)):
-            return PredictResponse(
-                predicted_format="heading2",
-                confidence=0.95,
-                model_path=MODEL_PATH,
-                feature_values={"word_count": word_count, "academic_heading2_prior": 1.0},
-                lstm_adjusted=False,
-            )
-        if bool(re.match(r"^\d+\.\d+\.\d+\s+", text)):
-            return PredictResponse(
-                predicted_format="heading3",
-                confidence=0.94,
-                model_path=MODEL_PATH,
-                feature_values={"word_count": word_count, "academic_heading3_prior": 1.0},
-                lstm_adjusted=False,
-            )
+    prev_fmt = request.previous_format or "none"
+    heading_level = request.current_heading_level or 0
+    in_table = request.is_inside_table or False
+    in_list = request.is_list_item or False
+
+    # Suppress heading predictions inside tables and list items to prevent layout disruption
+    if not in_table and not in_list:
+        # Hierarchical topological outline rules (Phase 2)
+        if word_count <= 14 and "\n" not in text:
+            if (
+                lower.startswith("chapter")
+                or bool(re.match(r"^(chapter\s+\d+|[ivx]+\.|\d+\.)\s+", lower))
+                or lower in [
+                    "abstract", "introduction", "methodology", "literature review",
+                    "results", "discussion", "conclusion", "references",
+                    "table of contents", "acknowledgments", "appendix"
+                ]
+            ):
+                # After a title or body → heading1 (confidence 0.98 per spec)
+                confidence = 0.98 if prev_fmt in ("none", "body", "title") else 0.95
+                return PredictResponse(
+                    predicted_format="heading1",
+                    confidence=confidence,
+                    model_path=MODEL_PATH,
+                    feature_values={"word_count": word_count, "academic_heading1_prior": 1.0, "hierarchy_context": 1.0},
+                    lstm_adjusted=False,
+                )
+            if bool(re.match(r"^\d+\.\d+\s+", text)):
+                # Under heading1 → heading2 (confidence 0.98 per spec)
+                confidence = 0.98 if heading_level == 1 else 0.95
+                return PredictResponse(
+                    predicted_format="heading2",
+                    confidence=confidence,
+                    model_path=MODEL_PATH,
+                    feature_values={"word_count": word_count, "academic_heading2_prior": 1.0, "hierarchy_context": 1.0},
+                    lstm_adjusted=False,
+                )
+            if bool(re.match(r"^\d+\.\d+\.\d+\s+", text)):
+                # Under heading2 → heading3 (confidence 0.98 per spec)
+                confidence = 0.98 if heading_level == 2 else 0.95
+                return PredictResponse(
+                    predicted_format="heading3",
+                    confidence=confidence,
+                    model_path=MODEL_PATH,
+                    feature_values={"word_count": word_count, "academic_heading3_prior": 1.0, "hierarchy_context": 1.0},
+                    lstm_adjusted=False,
+                )
 
     if text.startswith(("- ", "• ", "* ", "— ", "– ")) and word_count <= 25:
         return PredictResponse(
@@ -473,6 +524,6 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=int(os.getenv("PORT", "8001")),
+        port=int(os.getenv("PORT", "8000")),
         log_level="info",
     )

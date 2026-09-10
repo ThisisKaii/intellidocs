@@ -10,12 +10,14 @@ import {
 import {
   Check,
   ChevronRight,
+  Eye,
   FileText,
   FolderIcon,
   Home,
   MoreVertical,
   Pencil,
   Plus,
+  RotateCcw,
   Trash2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -56,6 +58,8 @@ interface DriveTableProps {
   onCancelEdit: () => void
   onSaveEdit: () => void
   onDelete: (id: string, kind: 'file' | 'folder') => void
+  onRestore: (id: string) => void
+  readOnlyView: boolean
   onTitleChange: (nextTitle: string) => void
   onSelect: (id: string, event: React.MouseEvent) => void
   onClearSelection: () => void
@@ -94,11 +98,15 @@ function ContextMenuOverlay({
   onClose,
   onRename,
   onDelete,
+  onRestore,
+  readOnlyView,
 }: {
   ctx: ContextMenuState
   onClose: () => void
   onRename: () => void
   onDelete: () => void
+  onRestore: () => void
+  readOnlyView: boolean
 }): JSX.Element {
   return (
     <>
@@ -111,22 +119,45 @@ function ContextMenuOverlay({
           boxShadow: '0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
         }}
       >
-        <button
-          onClick={() => { onRename(); onClose() }}
-          className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-foreground bg-transparent border-none cursor-pointer rounded-lg hover:bg-secondary transition-colors text-left"
-          style={{ fontFamily: 'inherit' }}
-        >
-          <Pencil className="size-3.5 text-muted-foreground" />
-          Rename
-        </button>
-        <button
-          onClick={() => { onDelete(); onClose() }}
-          className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-destructive bg-transparent border-none cursor-pointer rounded-lg hover:bg-destructive/8 transition-colors text-left"
-          style={{ fontFamily: 'inherit' }}
-        >
-          <Trash2 className="size-3.5" />
-          Delete
-        </button>
+        {readOnlyView ? (
+          <>
+            <button
+              onClick={() => { onRestore(); onClose() }}
+              className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-foreground bg-transparent border-none cursor-pointer rounded-lg hover:bg-secondary transition-colors text-left"
+              style={{ fontFamily: 'inherit' }}
+            >
+              <RotateCcw className="size-3.5 text-muted-foreground" />
+              Restore
+            </button>
+            <button
+              onClick={() => { onDelete(); onClose() }}
+              className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-destructive bg-transparent border-none cursor-pointer rounded-lg hover:bg-destructive/8 transition-colors text-left"
+              style={{ fontFamily: 'inherit' }}
+            >
+              <Trash2 className="size-3.5" />
+              Delete permanently
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => { onRename(); onClose() }}
+              className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-foreground bg-transparent border-none cursor-pointer rounded-lg hover:bg-secondary transition-colors text-left"
+              style={{ fontFamily: 'inherit' }}
+            >
+              <Pencil className="size-3.5 text-muted-foreground" />
+              Rename
+            </button>
+            <button
+              onClick={() => { onDelete(); onClose() }}
+              className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-destructive bg-transparent border-none cursor-pointer rounded-lg hover:bg-destructive/8 transition-colors text-left"
+              style={{ fontFamily: 'inherit' }}
+            >
+              <Trash2 className="size-3.5" />
+              Delete
+            </button>
+          </>
+        )}
       </div>
     </>
   )
@@ -161,6 +192,8 @@ export function DriveTable({
   onCancelEdit,
   onSaveEdit,
   onDelete,
+  onRestore,
+  readOnlyView,
   onTitleChange,
   onSelect,
   onClearSelection,
@@ -186,12 +219,12 @@ export function DriveTable({
 
   const handleDoubleClick = useCallback((item: DriveItem) => {
     if (item.kind === 'file') {
-      navigate(`/document/${item.id}`)
+      navigate(readOnlyView ? `/document/${item.id}?readonly=1` : `/document/${item.id}`)
     } else {
       const folder = folders.find((f) => f.folder_id === item.id)
       if (folder) onOpenFolder(folder)
     }
-  }, [navigate, folders, onOpenFolder])
+  }, [navigate, folders, onOpenFolder, readOnlyView])
 
   const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
     if (e.target === containerRef.current || (e.target as HTMLElement).dataset.driveBackground === 'true') {
@@ -455,33 +488,59 @@ export function DriveTable({
                   </div>
 
                   {/* Actions */}
-                  <div className="w-8 flex items-center justify-center shrink-0">
-                    {!isEditing && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-secondary"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreVertical className="size-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" style={{ minWidth: '160px' }}>
-                          <DropdownMenuItem
-                            onSelect={() => onStartEdit(item.id, item.title, item.kind)}
-                            className="cursor-pointer gap-2 text-sm text-foreground"
-                          >
-                            <Pencil className="size-3.5" /> Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onSelect={() => onDelete(item.id, item.kind)}
-                            className="cursor-pointer gap-2 text-sm text-destructive"
-                          >
-                            <Trash2 className="size-3.5" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                  <div className={`flex items-center justify-end gap-1 shrink-0 ${readOnlyView ? '' : 'w-8'}`}>
+                    {!isEditing && readOnlyView ? (
+                      <>
+                        <button
+                          title="Open (view only)"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/document/${item.id}?readonly=1`) }}
+                          className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer transition-colors hover:bg-secondary"
+                        >
+                          <Eye className="size-4" />
+                        </button>
+                        <button
+                          title="Restore"
+                          onClick={(e) => { e.stopPropagation(); onRestore(item.id) }}
+                          className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-foreground border-none cursor-pointer transition-colors hover:bg-secondary"
+                        >
+                          <RotateCcw className="size-4" />
+                        </button>
+                        <button
+                          title="Delete permanently"
+                          onClick={(e) => { e.stopPropagation(); onDelete(item.id, item.kind) }}
+                          className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-destructive border-none cursor-pointer transition-colors hover:bg-destructive/10"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </>
+                    ) : (
+                      !isEditing && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-secondary"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="size-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" style={{ minWidth: '160px' }}>
+                            <DropdownMenuItem
+                              onSelect={() => onStartEdit(item.id, item.title, item.kind)}
+                              className="cursor-pointer gap-2 text-sm text-foreground"
+                            >
+                              <Pencil className="size-3.5" /> Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onSelect={() => onDelete(item.id, item.kind)}
+                              className="cursor-pointer gap-2 text-sm text-destructive"
+                            >
+                              <Trash2 className="size-3.5" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )
                     )}
                   </div>
                 </div>
@@ -496,7 +555,9 @@ export function DriveTable({
         <ContextMenuOverlay
           ctx={ctxMenu}
           onClose={() => setCtxMenu(null)}
+          readOnlyView={readOnlyView}
           onRename={() => onStartEdit(ctxMenu.item.id, ctxMenu.item.title, ctxMenu.item.kind)}
+          onRestore={() => onRestore(ctxMenu.item.id)}
           onDelete={() => onDelete(ctxMenu.item.id, ctxMenu.item.kind)}
         />
       )}

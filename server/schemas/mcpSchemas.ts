@@ -4,6 +4,7 @@ export const mcpToolCallSchema = z.object({
   tool: z.enum([
     'getDocumentContent',
     'applyFormatting',
+    'applyBulkFormatting',
     'getUserProfile',
     'predictNextFormat',
     'getBehaviorSummary',
@@ -23,6 +24,18 @@ export const applyFormattingSchema = z.object({
   format: z.string().min(1),
   mode: z.enum(['preview', 'commit']),
   selection: z.string().optional(),
+  reason: z.string().optional(),
+})
+
+export const applyBulkFormattingSchema = z.object({
+  documentId: z.string().uuid(),
+  format: z.string().min(1),
+  mode: z.enum(['preview', 'commit']),
+  /** ProseMirror ranges or block ids to target across the document. */
+  targets: z.array(z.object({
+    from: z.coerce.number().int().min(1),
+    to: z.coerce.number().int().min(1),
+  })).min(1).max(500),
   reason: z.string().optional(),
 })
 

@@ -2122,34 +2122,51 @@ const PROSE_STYLES = `
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
     opacity: 0.9;
   }
-  .ProseMirror .grammar-wavy {
-    text-decoration: underline wavy #ef4444;
+  .ProseMirror .grammar-issue {
     text-decoration-skip-ink: none;
     cursor: pointer;
   }
-  .ProseMirror .grammar-wavy:hover {
+  .ProseMirror .grammar-issue.grammar-straight.grammar-kind-grammar {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    text-decoration-color: #ef4444;
+  }
+  .ProseMirror .grammar-issue.grammar-straight.grammar-kind-spelling {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    text-decoration-color: #f59e0b;
+  }
+  .ProseMirror .grammar-issue.grammar-wavy.grammar-kind-grammar {
+    text-decoration: underline wavy #ef4444;
+  }
+  .ProseMirror .grammar-issue.grammar-wavy.grammar-kind-spelling {
+    text-decoration: underline wavy #f59e0b;
+  }
+  .ProseMirror .grammar-issue:hover {
     background-color: rgba(239, 68, 68, 0.08);
   }
   .ProseMirror .agentic-suggestion-pulse {
-    background-color: rgba(99, 102, 241, 0.08);
+    background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 8%, transparent);
     border-radius: 6px;
-    outline: 2px dashed #6366f1;
+    outline: 2px dashed var(--agentic-pulse-color, #6366f1);
     outline-offset: 3px;
     animation: agenticPulse 2s ease-in-out infinite;
     transition: all 200ms ease;
   }
   @keyframes agenticPulse {
     0% {
-      box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
-      background-color: rgba(99, 102, 241, 0.04);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 40%, transparent);
+      background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 4%, transparent);
     }
     50% {
-      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
-      background-color: rgba(99, 102, 241, 0.08);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 15%, transparent);
+      background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 8%, transparent);
     }
     100% {
-      box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
-      background-color: rgba(99, 102, 241, 0.04);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 40%, transparent);
+      background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 4%, transparent);
     }
   }
   @keyframes fadeIn {

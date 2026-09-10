@@ -13,5 +13,6 @@ router.get('/users', adminController.getAllUsers)
 router.patch('/users/:userId/role', adminController.updateUserRole)
 router.get('/reports', adminController.getSystemReports)
 router.delete('/documents/:documentId', adminController.deleteDocument)
+router.get('/export-empirical', adminController.exportEmpiricalData)
 
 export default router

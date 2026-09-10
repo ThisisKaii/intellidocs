@@ -14,6 +14,8 @@ export interface GrammarIssue {
   suggestion: string
   explanation: string
   actionable?: boolean
+  /** Underline category — grammar issues render red, spelling issues render amber. */
+  kind?: 'grammar' | 'spelling'
 }
 
 interface GrammarResult {
@@ -58,6 +60,7 @@ function buildGrammarResult(
     suggestion: issue.suggestion,
     explanation: issue.explanation,
     actionable: true,
+    kind: 'grammar',
   }))
 
   const spellingIssues: GrammarIssue[] = spelling.issues.map((issue) => ({
@@ -68,6 +71,7 @@ function buildGrammarResult(
       ? 'Possible spelling issue detected by the spell checker.'
       : 'Possible non-word detected, but no safe automatic replacement was found.',
     actionable: Boolean(issue.suggestion),
+    kind: 'spelling',
   }))
 
   const issues = [...grammarIssues, ...spellingIssues]

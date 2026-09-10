@@ -30,6 +30,45 @@ SUBJECT_VERB_ERRORS = {
 SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
 WORD_PATTERN = re.compile(r"\b[\w']+\b", re.UNICODE)
 
+ACADEMIC_KEYWORDS = frozenset({
+    "abstract", "introduction", "methodology", "literature review",
+    "results", "discussion", "conclusion", "references",
+    "table of contents", "acknowledgments", "appendix", "appendices",
+    "background", "related work", "future work", "summary",
+    "chapter", "section", "appendix",
+})
+
+
+def is_academic_structural_block(text: str) -> bool:
+    """Detect if a text block is an academic structural element (heading, title, TOC entry).
+
+    Returns True for short lines that are chapter headings, numbered sections,
+    or known academic section titles — even if they lack terminal punctuation.
+    These blocks should NOT trigger grammar fragment or missing-period warnings.
+    """
+    lower = text.lower().strip()
+    words = lower.split()
+    if len(words) > 12 or lower.endswith((".", "!", "?")):
+        return False
+
+    # Chapter headings: "Chapter 1 Introduction", "Chapter Two"
+    if lower.startswith("chapter"):
+        return True
+
+    # Numbered section headings: "1.0", "1.1", "1.1.1", "2.3.1", etc.
+    if re.match(r"^(\d+(\.\d+)*)\s+", lower):
+        return True
+
+    # Roman numeral headings: "I.", "II.", "III.", "IV.", etc.
+    if re.match(r"^(i{1,3}|iv|v|vi{0,3}|ix|x)\.\s*", lower):
+        return True
+
+    # Known academic section titles
+    if lower in ACADEMIC_KEYWORDS:
+        return True
+
+    return False
+
 
 def load_dataset(csv_path: str) -> pd.DataFrame:
     """Load the processed grammar dataset from disk."""
@@ -508,13 +547,21 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
 
 
 def detect_issues(text: str) -> list[dict[str, str]]:
-    """Run the baseline rule-based grammar checks."""
+    """Run the baseline rule-based grammar checks.
+
+    Academic structural blocks (chapter headings, numbered sections, etc.)
+    bypass sentence boundary and fragment checks while retaining spelling
+    and genuine typo detection.
+    """
     issues: list[dict[str, str]] = []
     issues.extend(detect_repeated_words(text))
     issues.extend(detect_article_mismatch(text))
     issues.extend(detect_subject_verb_mismatch(text))
     issues.extend(detect_pos_syntax_issues(text))
-    issues.extend(detect_sentence_boundary_issues(text))
+
+    # Bypass sentence boundary issues for academic structural blocks
+    if not is_academic_structural_block(text):
+        issues.extend(detect_sentence_boundary_issues(text))
 
     deduped: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
