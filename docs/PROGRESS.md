@@ -1,8 +1,23 @@
 # IntelliDocs Progress Summary
 
-**Last Updated:** August 27, 2026  
-**Phase:** Master Implementation Plan — All 5 Phases ✅ Complete  
-**Status:** Auth Simplification ✅. Context-Aware Grammar ✅. Hierarchical ML Engine ✅. Admin Console & Empirical Exporter ✅. Professor Workspace & Thesis Compliance ✅. Strategic UX Innovations (S1–S8) ✅.
+**Last Updated:** September 11, 2026  
+**Phase:** Master Implementation Plan — All 5 Phases ✅ Complete + New Implementation Plan ✅ Complete + Round-2 acceptance fixes ✅ Complete  
+**Deployment:** Frontend ✅ (Vercel — intellidocs-silk.vercel.app) · Server ✅ (Render) · ML ✅ (Render, live as of this update)
+
+## 🟢 Current Status (where we are now)
+
+- Code pushed to GitHub; working from the laptop against **prod only** (no
+  localhost testing).
+- Frontend, server, and **ML service are all deployed and live**.
+- Round-2 fixes (suggestion UX, grammar visibility, trash/delete UX, preset
+  dropdown, bulk formatting, MCP commit, Drive listing, sidebar, share links)
+  are code-complete and verified by the automated suite — **manual acceptance
+  on prod is the only remaining gate** (see `docs/TESTING_PLAN.md` §3).
+- Once on the laptop/prod: run migrations **014–016** in the prod Supabase SQL
+  editor (presets, sharing/trash, share links) if not already applied, then
+  walk the Round-2 checklist from the top.
+- Admin/Professor workspaces remain **on hold** by the user's decision until
+  the Round-2 checklist is accepted.
 
 ---
 
@@ -50,7 +65,7 @@
 
 ## ✅ Completed — New Implementation Plan (implementation_plan.md)
 
-Implemented on top of the Master Plan above. **Last Updated:** September 8, 2026.
+Implemented on top of the Master Plan above. **Last Updated:** September 11, 2026.
 
 ### Phase 1: In-Editor Suggestions, Docked Panels & Personalization
 - ✅ **In-editor suggestion pill + float-over** (`EditorSuggestions.tsx`): ML prediction shown inline; floating action bar offers Accept / Dismiss / "Change to".
@@ -108,18 +123,21 @@ Implemented on top of the Master Plan above. **Last Updated:** September 8, 2026
 - **ML compile**: `py_compile` clean for `ml/storage.py` and `ml/src/main.py`.
 
 ### Remaining / Not-Yet-Done
-1. Manual acceptance testing of the fixes above (share-link opens, read-only trash view, Drive listing, bulk formatting) plus previous-generation features.
-2. Run `graphify update .` to refresh repo graphs (CLI unavailable in the agent env; user must run).
-3. Google Drive OAuth app verification (user awaiting Google review) — until scoped verification lands, OAuth may re-prompt.
-4. ML model retraining with any new feature columns; Supabase Storage `user-models` bucket creation in the real project.
+1. **Manual acceptance on prod** (round-2 checklist, `docs/TESTING_PLAN.md` §3): share-link opens, read-only trash view, Drive listing, bulk formatting, MCP commit, sidebar badges, preset dropdown.
+2. **Apply migrations 014–016 to prod Supabase** if not already applied (`db/supabase/014_academic_presets.sql`, `015_sharing_trash.sql`, `016_share_links.sql`).
+3. **Admin/Professor workspaces**: deferred by user decision until round-2 acceptance passes (incl. previously "skipped" S1/S3/S5/S7/S8 checks).
+4. Run `graphify update .` to refresh repo graphs (CLI unavailable in the agent env; user must run on laptop).
+5. Google Drive OAuth app verification (user awaiting Google review) — until scoped verification lands, OAuth may re-prompt.
+6. ML model retraining with any new feature columns; Supabase Storage `user-models` bucket creation in the real project.
 
 ---
 
 ## 🚀 Remaining Next Milestones
-1. **Wire New Components into Editor**: Integrate `ExplainableAIPopover`, `ThesisChecklist`, `CitationStyler`, `GhostFormatting` into `Document.tsx` / `TiptapEditor.tsx` sidebar and suggestion UI.
-2. **Offline Buffer Integration**: Wire `useOfflineBuffer` into `Document.tsx` auto-save flow.
-3. **Professor Routes Auth**: Apply `requireApprovedProfessor` middleware to `professorRoutes.ts`.
-4. **ML Training Update**: Retrain base model with new hierarchical context features (5 new columns).
-5. **Database Migration**: Add `college`, `department`, `institutional_email`, `faculty_id` columns to `user_profiles` for faculty applications.
-6. **Phase 1-5 Verification**: Run full pytest + Jest suites; test each phase manually.
-7. **Deployment**: Deploy updated backend to Render, frontend to Vercel.
+1. **Round-2 manual acceptance** on prod; apply migrations 014–016 to prod Supabase.
+2. **Administrator/Professor rollout**: enable `AdminRoute` / `ApprovedProfessorRoute` pages on prod (currently on hold), then verify Master-plan items 4–10.
+3. **Wire New Components into Editor**: Integrate `ExplainableAIPopover`, `ThesisChecklist`, `CitationStyler`, `GhostFormatting` into `Document.tsx` / `TiptapEditor.tsx` sidebar and suggestion UI (if not already wired).
+4. **Offline Buffer Integration**: Wire `useOfflineBuffer` into `Document.tsx` auto-save flow.
+5. **Professor Routes Auth**: Apply `requireApprovedProfessor` middleware to `professorRoutes.ts`.
+6. **ML Training Update**: Retrain base model with new hierarchical context features (5 new columns).
+7. **Database Migration**: Add `college`, `department`, `institutional_email`, `faculty_id` columns to `user_profiles` for faculty applications.
+8. **Performance**: investigate slow initial "My Documents" load on prod (caches exist but first paint still slow — reported in round-1 feedback).
