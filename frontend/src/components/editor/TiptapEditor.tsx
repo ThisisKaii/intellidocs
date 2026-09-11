@@ -62,7 +62,6 @@ import {
 import { api, type PageNumberFormat } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { IndentExtension } from './IndentExtension'
-import { TargetHighlightExtension } from './TargetHighlightExtension'
 
 /** Download document content as a standalone clean HTML file. */
 function downloadHTML(html: string, title: string): void {
@@ -329,7 +328,6 @@ export const editorExtensions = [
   Superscript,
   Highlight.configure({ multicolor: true }),
   GrammarUnderlineExtension,
-  TargetHighlightExtension,
 ]
 
 // ─── Editor factory hook ────────────────────────────────────────────────────
@@ -2146,28 +2144,6 @@ const PROSE_STYLES = `
   }
   .ProseMirror .grammar-issue:hover {
     background-color: rgba(239, 68, 68, 0.08);
-  }
-  .ProseMirror .agentic-suggestion-pulse {
-    background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 8%, transparent);
-    border-radius: 6px;
-    outline: 2px dashed var(--agentic-pulse-color, #6366f1);
-    outline-offset: 3px;
-    animation: agenticPulse 2s ease-in-out infinite;
-    transition: all 200ms ease;
-  }
-  @keyframes agenticPulse {
-    0% {
-      box-shadow: 0 0 0 0 color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 40%, transparent);
-      background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 4%, transparent);
-    }
-    50% {
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 15%, transparent);
-      background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 8%, transparent);
-    }
-    100% {
-      box-shadow: 0 0 0 0 color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 40%, transparent);
-      background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 4%, transparent);
-    }
   }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-2px); }

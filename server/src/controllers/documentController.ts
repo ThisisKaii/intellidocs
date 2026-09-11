@@ -195,7 +195,8 @@ export async function updateDocument(req: Request, res: Response): Promise<void>
       return
     }
 
-    const document = await documentModel.updateDocument(id, userId, body)
+    const shareToken = typeof req.query.shareToken === 'string' ? req.query.shareToken : undefined
+    const document = await documentModel.updateDocument(id, userId, body, shareToken)
     res.status(200).json(document)
   } catch {
     res.status(500).json({ error: 'Internal server error' })

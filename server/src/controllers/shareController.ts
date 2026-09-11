@@ -128,21 +128,75 @@ export async function createShareLink(req: Request, res: Response): Promise<void
     if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return }
     if (!id) { res.status(400).json({ error: 'Document ID is required' }); return }
 
-    const { permission } = req.body as { permission?: SharePermission }
+    const { permission, expiresAt } = req.body as {
+      permission?: SharePermission
+      expiresAt?: string | null
+    }
     if (!permission || !['view', 'comment', 'edit'].includes(permission)) {
       res.status(400).json({ error: 'Valid permission value is required' }); return
+    }
+    const expiry = parseExpiry(expiresAt)
+    if (expiry === 'invalid') {
+      res.status(400).json({ error: 'Invalid expiry value' }); return
     }
 
     const doc = await documentModel.getDocumentById(id, userId)
     if (doc.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return }
 
     const token = crypto.randomBytes(24).toString('base64url')
-    const link = await shareModel.upsertShareLink(id, token, permission)
+    const link = await shareModel.upsertShareLink(id, token, permission, expiry)
     res.status(201).json(link)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     res.status(500).json({ error: message })
   }
+}
+
+/** Update an existing share link's permission or expiry (owner only, keeps token). */
+export async function updateShareLink(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id } = req.params
+    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return }
+    if (!id) { res.status(400).json({ error: 'Document ID is required' }); return }
+
+    const { permission, expiresAt } = req.body as {
+      permission?: SharePermission
+      expiresAt?: string | null
+    }
+    if (permission !== undefined && !['view', 'comment', 'edit'].includes(permission)) {
+      res.status(400).json({ error: 'Valid permission value is required' }); return
+    }
+    const expiry = parseExpiry(expiresAt)
+    if (expiry === 'invalid') {
+      res.status(400).json({ error: 'Invalid expiry value' }); return
+    }
+
+    const doc = await documentModel.getDocumentById(id, userId)
+    if (doc.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return }
+
+    const current = await shareModel.getShareLink(id)
+    if (!current?.share_token) {
+      res.status(400).json({ error: 'No share link exists yet' }); return
+    }
+
+    const nextPermission = permission ?? current.share_permission
+    const nextExpiry = expiry ?? current.share_expires_at
+    const link = await shareModel.upsertShareLink(id, current.share_token, nextPermission, nextExpiry)
+    res.json(link)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    res.status(500).json({ error: message })
+  }
+}
+
+/** Validate an optional expiry value; returns 'invalid', null, or an ISO string. */
+function parseExpiry(expiresAt: string | null | undefined): string | null | 'invalid' {
+  if (expiresAt === undefined || expiresAt === null || expiresAt === '') return null
+  const ts = new Date(expiresAt).getTime()
+  if (Number.isNaN(ts)) return 'invalid'
+  if (ts <= Date.now()) return 'invalid'
+  return new Date(ts).toISOString()
 }
 
 /** Disable a document's copyable share link (owner only). */

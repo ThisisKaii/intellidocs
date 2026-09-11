@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
-import { api, type RejectedFormattingPreview } from '@/services/api'
+import { api, type AIChatPreviewMeta, type RejectedFormattingPreview } from '@/services/api'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -11,6 +11,8 @@ interface ChatMessage {
   preview_format?: string | null
   preview_formats?: string[] | null
   preview_scope?: 'selection' | 'all' | null
+  preview_target?: string | null
+  preview_normalize?: boolean | null
   preview_font_size?: number | null
   preview_reason?: string | null
   preview_status?: 'pending' | 'applied' | 'rejected' | null
@@ -55,6 +57,7 @@ export default function AIChatbot({
   const [loading, setLoading] = useState<boolean>(false)
   const [rejectedPreviews, setRejectedPreviews] = useState<RejectedFormattingPreview[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
+  const lastPreviewRef = useRef<AIChatPreviewMeta | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -103,15 +106,42 @@ export default function AIChatbot({
   /** Describe a preview as one readable string, e.g. "Bold + Italic + font size 20pt". */
   function describePreview(msg: ChatMessage): string {
     const parts: string[] = []
+    if (msg.preview_normalize) parts.push('Clear formatting')
     const formats =
       msg.preview_formats && msg.preview_formats.length > 0
         ? msg.preview_formats
         : msg.preview_format && msg.preview_format !== 'body_text'
           ? [msg.preview_format]
           : []
-    for (const format of formats) parts.push(formatPreviewLabel(format))
+    for (const format of formats) {
+      if (!msg.preview_normalize) parts.push(formatPreviewLabel(format))
+    }
     if (msg.preview_font_size) parts.push(`font size ${msg.preview_font_size}pt`)
-    return parts.length > 0 ? parts.join(' + ') : 'Text'
+    if (parts.length === 0) parts.push(describePreviewText(msg))
+    return parts.join(' + ')
+  }
+
+  /** Fallback label when a preview has no concrete formats to describe. */
+  function describePreviewText(msg: ChatMessage): string {
+    if (msg.preview_formats && msg.preview_formats.length > 0) {
+      return msg.preview_formats.map(formatPreviewLabel).join(' + ')
+    }
+    return msg.preview_format ? formatPreviewLabel(msg.preview_format) : 'Text'
+  }
+
+  /** Human-readable scope suffix for the preview, honoring chapter targets. */
+  function previewScopeLabel(msg: ChatMessage): string {
+    if (msg.preview_scope === 'all') {
+      if (msg.preview_target) {
+        const words = msg.preview_target.split(' ')
+        const capitalized = words
+          .map((word) => (word === 'chapter' || word === 'section' ? word : word.length > 0 ? word[0].toUpperCase() + word.slice(1) : word))
+          .join(' ')
+        return `— ${capitalized}`
+      }
+      return '— entire document'
+    }
+    return ''
   }
 
   /** Parse key=value arguments for MCP tool calls. */
@@ -159,6 +189,82 @@ export default function AIChatbot({
     editor.commands.setTextSelection(editor.state.doc.content.size)
   }
 
+  /**
+   * Locate a heading whose text matches a chapter/section reference (e.g.
+   * "chapter 1") and apply formats to everything up to the next heading of the
+   * same or higher level — no manual highlighting required.
+   */
+  function applyFormatsToTarget(target: string, formats: string[], fontSize?: number, normalize = false): boolean {
+    if (!editor || editor.isDestroyed) return false
+    const doc = editor.state.doc
+    const targetKey = target.toLowerCase().replace(/\s+/g, ' ').trim()
+    let from: number | null = null
+    let to: number | null = null
+
+    doc.descendants((node, pos) => {
+      if (from !== null) return false
+      if (node.type.name !== 'heading') return true
+      const text = (node.textContent ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+      if (!text.includes(targetKey)) return true
+
+      const headStart = pos + 1
+      const headLevel = Number(node.attrs?.level ?? 1)
+      let sectionEnd = doc.content.size
+      let stop = false
+      doc.descendants((nd, np) => {
+        if (stop) return false
+        if (np <= pos) return true
+        if (nd.type.name === 'heading') {
+          const ndLevel = Number(nd.attrs?.level ?? 1)
+          if (ndLevel <= headLevel) {
+            sectionEnd = np
+            stop = true
+            return false
+          }
+        }
+        return true
+      })
+
+      from = headStart
+      to = sectionEnd
+      return false
+    })
+
+    if (from === null || to === null) return false
+
+    let chain = editor.chain().focus().setTextSelection({ from, to })
+    if (normalize) {
+      chain = chain.unsetAllMarks()
+    } else {
+      for (const format of formats) {
+        if (format === 'bold') chain = chain.setMark('bold')
+        else if (format === 'italic') chain = chain.setMark('italic')
+        else if (format === 'underline') chain = chain.setMark('underline')
+      }
+    }
+    if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
+    chain.run()
+    // Restore the cursor to the top of the targeted section.
+    editor.commands.setTextSelection(from)
+    return true
+  }
+
+  /** Clear existing marks in the given scope, optionally setting a font size. */
+  function applyNormalize(scope: 'selection' | 'all', fontSize?: number): void {
+    if (!editor || editor.isDestroyed) return
+    // With no text selected, clear the whole current block so the action is visible.
+    if (scope === 'selection' && editor.state.selection.empty) {
+      editor.chain().focus().selectParentNode().run()
+    }
+    const chain =
+      scope === 'all'
+        ? editor.chain().focus().selectAll().unsetAllMarks()
+        : editor.chain().focus().unsetAllMarks()
+    const exec = fontSize ? chain.setMark('textStyle', { fontSize: `${fontSize}pt` }) : chain
+    exec.run()
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+  }
+
   /** Apply a confirmed formatting preview to the editor (selection or whole doc). */
   function handlePreviewApply(messageIndex: number, msg: ChatMessage): void {
     if (!editor) return
@@ -171,15 +277,31 @@ export default function AIChatbot({
           : []
     const scope = msg.preview_scope ?? 'selection'
     const fontSize = msg.preview_font_size ? msg.preview_font_size : undefined
+    const target = msg.preview_target ?? null
+    const normalize = msg.preview_normalize ?? false
 
     const applied: string[] = []
+    if (normalize) applied.push('Clear formatting')
     for (const format of formats) applied.push(formatPreviewLabel(format))
     if (fontSize) applied.push(`size ${fontSize}pt`)
+    if (applied.length === 0) applied.push(formatPreviewLabel(msg.preview_format ?? ''))
 
-    if (scope === 'all') {
+    let targetWarning = ''
+    if (target && scope === 'all') {
+      const ok = applyFormatsToTarget(target, formats, fontSize, normalize)
+      if (!ok) targetWarning = ` (could not find "${target}" in the document)`
+    } else if (normalize) {
+      applyNormalize(scope, fontSize)
+    } else if (scope === 'all') {
       applyBulkFormats(formats, fontSize)
     } else {
       onFocusEditor?.()
+      // When no text is selected, apply to the whole current block so the
+      // formatting takes effect on something visible instead of requiring
+      // the user to highlight the target first.
+      if (editor.state.selection.empty) {
+        editor.chain().focus().selectParentNode().run()
+      }
       for (const format of formats) {
         const command = SELECTION_COMMANDS[format]
         if (command) command(editor)
@@ -220,7 +342,7 @@ export default function AIChatbot({
           ? {
               ...message,
               preview_status: 'applied',
-              command_applied: applied.length > 0 ? applied.join(' + ') : formatPreviewLabel(msg.preview_format ?? ''),
+              command_applied: `${applied.length > 0 ? applied.join(' + ') : formatPreviewLabel(msg.preview_format ?? '')}${targetWarning}`,
             }
           : message
       )
@@ -372,7 +494,8 @@ export default function AIChatbot({
         documentTitle,
         documentContent,
         history,
-        rejectedPreviews
+        rejectedPreviews,
+        lastPreviewRef.current
       )
 
       const previewFormat =
@@ -403,10 +526,28 @@ export default function AIChatbot({
             ? response.preview.formats
             : null,
         preview_scope: response.preview?.scope ?? null,
+        preview_target: response.preview?.target ?? null,
+        preview_normalize: response.preview?.normalize ?? false,
         preview_font_size: response.preview?.fontSize ?? null,
         preview_reason: previewFormat ? previewReason : null,
         preview_status: previewFormat ? 'pending' : null,
       }
+
+      // Remember the last shown preview so follow-ups ("back to normal",
+      // "latter", "make it 12pt") resolve against the right change.
+      lastPreviewRef.current = response.preview
+        ? {
+            format: previewFormat ?? undefined,
+            formats:
+              response.preview.formats && response.preview.formats.length > 0
+                ? response.preview.formats
+                : previewFormat ? [previewFormat] : [],
+            scope: response.preview?.scope ?? 'selection',
+            fontSize: response.preview?.fontSize ?? null,
+            target: response.preview?.target ?? null,
+            normalize: response.preview?.normalize ?? false,
+          }
+        : lastPreviewRef.current
 
       setMessages((current) => [...current, assistantMsg])
     } catch (error) {
@@ -539,7 +680,7 @@ export default function AIChatbot({
                           {m.preview_scope === 'all' && (
                             <span style={{ fontSize: '0.6875rem', fontWeight: 500, opacity: 0.75 }}>
                               {' '}
-                              — entire document
+                              {previewScopeLabel(m)}
                             </span>
                           )}
                         </div>

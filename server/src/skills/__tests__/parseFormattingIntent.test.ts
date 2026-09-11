@@ -87,4 +87,38 @@ describe('parseFormattingIntent', () => {
     expect(result.scope).toBe('selection')
     expect(result.fontSize).toBeNull()
   })
+
+  it('detects normalize/revert requests with a target font size', () => {
+    const result = parseFormattingIntent('Make it that they go back to normal font 12pt')
+
+    expect(result.normalize).toBe(true)
+    expect(result.fontSize).toBe(12)
+    expect(result.formats).toEqual([])
+  })
+
+  it('detects a bare "12pt" font size', () => {
+    const result = parseFormattingIntent('Make the entire chapter 1 12pt')
+
+    expect(result.fontSize).toBe(12)
+  })
+
+  it('detects chapter targets and treats them as whole-document scope', () => {
+    const result = parseFormattingIntent('Make the entire chapter 1 bold')
+
+    expect(result.target).toBe('chapter 1')
+    expect(result.scope).toBe('all')
+    expect(result.formats).toContain('bold')
+  })
+
+  it('normalizes word-numbers in chapter targets', () => {
+    const result = parseFormattingIntent('Make chapter one italic')
+
+    expect(result.target).toBe('chapter 1')
+  })
+
+  it('detects named sections as targets', () => {
+    const result = parseFormattingIntent('Make the introduction 12pt')
+
+    expect(result.target).toBe('introduction')
+  })
 })

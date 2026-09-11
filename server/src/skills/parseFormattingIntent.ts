@@ -20,6 +20,10 @@ export interface FormattingIntentResult {
   scope: 'selection' | 'all'
   /** Explicit font size in points (e.g. "font size 20"), when requested. */
   fontSize: number | null
+  /** True when the user asked to clear formatting / return to normal text. */
+  normalize: boolean
+  /** Chapter or section reference such as "chapter 1" or "introduction". */
+  target: string | null
 }
 
 /** Normalize a user message before intent matching. */
@@ -50,12 +54,79 @@ const BULK_SCOPE_PHRASES = [
   'every paragraph',
 ]
 
-/** Detect a request like "font size 20" / "size of 20" and return points. */
+/** Detect a request like "font size 20" / "size of 20" / "12pt" and return points. */
 function detectFontSize(message: string): number | null {
-  const match = message.match(/(?:font\s*)?size\s*(?:of\s*)?([0-9]{1,3})/)
-  if (!match) return null
-  const size = Number.parseInt(match[1], 10)
+  const ptMatch = message.match(/([0-9]{1,3})\s*(?:pt|points?)\b/)
+  const sizeMatch = message.match(/(?:font\s*)?size\s*(?:of\s*)?([0-9]{1,3})/)
+  const raw = ptMatch?.[1] ?? sizeMatch?.[1]
+  if (!raw) return null
+  const size = Number.parseInt(raw, 10)
   return size >= 6 && size <= 96 ? size : null
+}
+
+/** Phrases that mean the user wants formatting cleared / returned to normal. */
+const NORMALIZE_PHRASES = [
+  'back to normal',
+  'go back to normal',
+  'back to default',
+  'return to normal',
+  'remove bold',
+  'remove italic',
+  'remove underline',
+  'remove all formatting',
+  'remove the formatting',
+  'remove formatting',
+  'undo formatting',
+  'undo the formatting',
+  'reset formatting',
+  'clear formatting',
+  'plain text',
+  'normal font',
+  'default font',
+  'make it normal',
+  'unformat',
+]
+
+/** Word-number mapping so "chapter one" normalizes to "chapter 1". */
+const NUMBER_WORDS: Record<string, string> = {
+  one: '1',
+  two: '2',
+  three: '3',
+  four: '4',
+  five: '5',
+  six: '6',
+  seven: '7',
+  eight: '8',
+  nine: '9',
+  ten: '10',
+  eleven: '11',
+  twelve: '12',
+  thirteen: '13',
+  fourteen: '14',
+  fifteen: '15',
+  sixteen: '16',
+  seventeen: '17',
+  eighteen: '18',
+  nineteen: '19',
+  twenty: '20',
+}
+
+/** Detect a chapter/section reference such as "chapter 1" or "introduction". */
+function detectTarget(message: string): string | null {
+  const chapterMatch = message.match(/(?:entire\s+|whole\s+|full\s+)?chapter\s+([0-9]{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/)
+  if (chapterMatch) {
+    const number = NUMBER_WORDS[chapterMatch[1]] ?? chapterMatch[1]
+    return `chapter ${number}`
+  }
+
+  const sectionMatch = message.match(/(?:entire\s+|whole\s+|full\s+)?section\s+([0-9]{1,2}|one|two|three|four|five)\b/)
+  if (sectionMatch) {
+    const number = NUMBER_WORDS[sectionMatch[1]] ?? sectionMatch[1]
+    return `section ${number}`
+  }
+
+  const namedMatch = message.match(/\b(introduction|literature review|methodology|methods|results|discussion|conclusion|references|appendix|abstract)\b/)
+  return namedMatch ? namedMatch[1] : null
 }
 
 /** Parse one or more formatting intents from a natural-language chatbot message. */
@@ -129,11 +200,13 @@ export function parseFormattingIntent(
     }
   }
 
-  const scope: 'selection' | 'all' = BULK_SCOPE_PHRASES.some((phrase) =>
-    normalized.includes(phrase)
-  )
-    ? 'all'
-    : 'selection'
+  const target = detectTarget(normalized)
+  const scope: 'selection' | 'all' =
+    target !== null ||
+    BULK_SCOPE_PHRASES.some((phrase) => normalized.includes(phrase))
+      ? 'all'
+      : 'selection'
+  const normalize = NORMALIZE_PHRASES.some((phrase) => normalized.includes(phrase))
 
   return {
     format: formats[0] ?? null,
@@ -142,5 +215,7 @@ export function parseFormattingIntent(
     matchedPhrase: firstPhrase,
     scope,
     fontSize: detectFontSize(normalized),
+    normalize,
+    target,
   }
 }

@@ -45,6 +45,7 @@ export interface DocumentRecord {
   deleted_at: string | null
   share_permission?: SharePermission
   share_token?: string | null
+  share_expires_at?: string | null
   shared_by?: string
   created_at: string
   updated_at: string
@@ -176,6 +177,7 @@ export interface DocumentShare {
 export interface DocumentShareLink {
   share_token: string | null
   share_permission: SharePermission
+  share_expires_at: string | null
 }
 
 export type SharePermission = 'view' | 'comment' | 'edit'
@@ -228,6 +230,20 @@ export interface AIChatPreview {
   scope?: 'selection' | 'all'
   /** Explicit font size in points, e.g. "font size 20". */
   fontSize?: number | null
+  /** Chapter/section reference like "chapter 1" the change should target without highlighting. */
+  target?: string | null
+  /** True when the change clears existing formatting (revert to normal). */
+  normalize?: boolean
+}
+
+/** Snapshot of the last shown preview, sent back so follow-ups resolve to it. */
+export interface AIChatPreviewMeta {
+  format?: string
+  formats?: string[]
+  scope?: 'selection' | 'all'
+  fontSize?: number | null
+  target?: string | null
+  normalize?: boolean
 }
 
 export interface AIChatResponse {
@@ -433,11 +449,18 @@ export const api = {
     getShareLink: async (documentId: string): Promise<DocumentShareLink> => {
       return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-link`)
     },
-    createShareLink: async (documentId: string, permission: SharePermission): Promise<DocumentShareLink> => {
+    createShareLink: async (documentId: string, permission: SharePermission, expiresAt: string | null = null): Promise<DocumentShareLink> => {
       return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permission }),
+        body: JSON.stringify({ permission, expiresAt }),
+      })
+    },
+    updateShareLink: async (documentId: string, permission: SharePermission, expiresAt: string | null = null): Promise<DocumentShareLink> => {
+      return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-link`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission, expiresAt }),
       })
     },
     revokeShareLink: async (documentId: string): Promise<null> => {
@@ -471,8 +494,9 @@ export const api = {
         body: JSON.stringify({ title }),
       })
     },
-    update: async (id: string, data: UpdateDocumentRequest): Promise<DocumentRecord> => {
-      return fetchAPI<DocumentRecord>(`documents/${id}`, {
+    update: async (id: string, data: UpdateDocumentRequest, shareToken?: string): Promise<DocumentRecord> => {
+      const suffix = shareToken ? `?shareToken=${encodeURIComponent(shareToken)}` : ''
+      return fetchAPI<DocumentRecord>(`documents/${id}${suffix}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -606,7 +630,8 @@ export const api = {
       documentTitle?: string,
       documentContent?: string,
       history?: AIChatHistoryMessage[],
-      rejectedFormattingPreviews?: RejectedFormattingPreview[]
+      rejectedFormattingPreviews?: RejectedFormattingPreview[],
+      lastPreview?: AIChatPreviewMeta | null
     ): Promise<AIChatResponse> => {
       return fetchAPI<AIChatResponse>('ai/chat', {
         method: 'POST',
@@ -618,6 +643,7 @@ export const api = {
           documentContent,
           history,
           rejectedFormattingPreviews,
+          lastPreview,
         }),
       })
     },

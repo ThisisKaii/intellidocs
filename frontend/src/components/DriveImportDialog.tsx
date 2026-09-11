@@ -18,10 +18,12 @@ export default function DriveImportDialog({
   const [loading, setLoading] = useState<boolean>(true)
   const [files, setFiles] = useState<DriveFile[]>([])
   const [importing, setImporting] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   /** Check Google Drive connection status. */
   const checkStatus = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await api.drive.status()
       setConnected(res.connected)
@@ -31,6 +33,7 @@ export default function DriveImportDialog({
       }
     } catch (error) {
       console.error('Drive status check failed', error)
+      setError(error instanceof Error ? error.message : 'Failed to check Google Drive connection.')
     } finally {
       setLoading(false)
     }
@@ -77,12 +80,14 @@ export default function DriveImportDialog({
   /** Import a single file by exporting its HTML. */
   async function handleImport(file: DriveFile): Promise<void> {
     setImporting(file.id)
+    setError(null)
     try {
       const res = await api.drive.exportFile(file.id)
       onImport(res.title, res.html)
       onClose()
     } catch (error) {
       console.error('Failed to import file', error)
+      setError(error instanceof Error ? error.message : `Failed to import "${file.name}".`)
     } finally {
       setImporting(null)
     }
@@ -157,6 +162,47 @@ export default function DriveImportDialog({
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem' }}>
+          {error && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.5rem',
+                padding: '0.625rem 0.75rem',
+                borderRadius: '0.5rem',
+                backgroundColor: 'rgba(255, 91, 79, 0.1)',
+                border: '1px solid rgba(255, 91, 79, 0.35)',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <p style={{ fontSize: '0.75rem', color: '#ff5b4f', margin: 0, lineHeight: 1.4 }}>
+                {error}
+              </p>
+              <button
+                type="button"
+                onClick={() => { void checkStatus() }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  flexShrink: 0,
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
+                  padding: '0.25rem 0.5rem',
+                  borderRadius: '0.375rem',
+                  border: 'none',
+                  backgroundColor: 'var(--foreground)',
+                  color: 'var(--background)',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                <RefreshCw style={{ width: '11px', height: '11px' }} />
+                Retry
+              </button>
+            </div>
+          )}
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 0' }}>
               <Loader2 style={{ width: '20px', height: '20px', color: 'var(--muted-foreground)', animation: 'spin 1s linear infinite' }} />

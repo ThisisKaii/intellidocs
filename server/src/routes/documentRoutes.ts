@@ -59,6 +59,7 @@ router.delete('/:id/shares/:shareId', shareController.deleteShare)
 /** Copyable share links — owner manages, recipients open with ?share=token. */
 router.get('/:id/share-link', shareController.getShareLink)
 router.post('/:id/share-link', shareController.createShareLink)
+router.put('/:id/share-link', shareController.updateShareLink)
 router.delete('/:id/share-link', shareController.revokeShareLink)
 
 export default router

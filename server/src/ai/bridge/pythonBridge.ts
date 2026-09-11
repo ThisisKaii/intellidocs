@@ -46,6 +46,17 @@ function getMLApiUrl(): string {
   return process.env.ML_API_URL || process.env.PYTHON_API_URL || 'http://localhost:8000'
 }
 
+/**
+ * Rethrow an ML service failure with the resolved service URL and a fix hint,
+ * so the frontend banner can show exactly which address failed.
+ */
+function mlError(action: string, mlApiUrl: string, error: unknown, hint: string): never {
+  const detail = error instanceof Error ? error.message : String(error)
+  throw new Error(
+    `ML service at ${mlApiUrl} failed (${action}): ${detail}. ${hint}`
+  )
+}
+
 /** Send a formatting prediction request to the FastAPI service. */
 export async function requestFormatPrediction(
   text: string,
@@ -85,12 +96,21 @@ export async function requestGrammarCheck(
 ): Promise<GrammarCheckResponse> {
   const mlApiUrl = getMLApiUrl()
 
-  const response = await axios.post<PythonGrammarCheckResponse>(
-    `${mlApiUrl}/grammar/check`,
-    { text }
-  )
+  try {
+    const response = await axios.post<PythonGrammarCheckResponse>(
+      `${mlApiUrl}/grammar/check`,
+      { text }
+    )
 
-  return pythonGrammarCheckResponseSchema.parse(response.data)
+    return pythonGrammarCheckResponseSchema.parse(response.data)
+  } catch (error) {
+    mlError(
+      'grammar check',
+      mlApiUrl,
+      error,
+      'Start the FastAPI service (ml/src/main.py) locally or fix ML_API_URL / PYTHON_API_URL.'
+    )
+  }
 }
 
 /** Send a spelling check request to the FastAPI service. */
@@ -99,12 +119,21 @@ export async function requestSpellingCheck(
 ): Promise<SpellingCheckResponse> {
   const mlApiUrl = getMLApiUrl()
 
-  const response = await axios.post<PythonSpellingCheckResponse>(
-    `${mlApiUrl}/spelling/check`,
-    { text }
-  )
+  try {
+    const response = await axios.post<PythonSpellingCheckResponse>(
+      `${mlApiUrl}/spelling/check`,
+      { text }
+    )
 
-  return pythonSpellingCheckResponseSchema.parse(response.data)
+    return pythonSpellingCheckResponseSchema.parse(response.data)
+  } catch (error) {
+    mlError(
+      'spelling check',
+      mlApiUrl,
+      error,
+      'Start the FastAPI service (ml/src/main.py) locally or fix ML_API_URL / PYTHON_API_URL.'
+    )
+  }
 }
 
 export interface PipelineAggregateResponse {

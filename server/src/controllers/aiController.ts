@@ -27,6 +27,18 @@ interface AIChatBody {
   documentContent?: string
   history?: AIChatMessage[]
   rejectedFormattingPreviews?: RejectedFormattingPreview[]
+  /** The most recent formatting preview this user saw, for follow-up resolution. */
+  lastPreview?: AIChatPreviewContext | null
+}
+
+/** Compact snapshot of a previously shown formatting preview (from the client). */
+interface AIChatPreviewContext {
+  format?: string
+  formats?: string[]
+  scope?: 'selection' | 'all'
+  fontSize?: number | null
+  target?: string | null
+  normalize?: boolean
 }
 
 interface AIProviderSummary {
@@ -45,7 +57,34 @@ interface FormattingPreview {
   scope?: 'selection' | 'all'
   /** Explicit font size in points, e.g. "font size 20". */
   fontSize?: number | null
+  /** Chapter/section reference like "chapter 1" the change should target. */
+  target?: string | null
+  /** True when the change clears existing formatting (revert to normal). */
+  normalize?: boolean
+  /** Deterministic reply when no provider call is needed (confirmations/follow-ups). */
+  shortCircuitReply?: string | null
 }
+
+/** Words that confirm a previously shown preview. */
+const CONFIRMATION_PHRASES = [
+  'i want the latter',
+  'the latter',
+  'latter',
+  'yes do it',
+  'yes do that',
+  'yes apply',
+  'yes please',
+  'go ahead',
+  'apply it',
+  'apply',
+  'confirm',
+  'do it',
+  'yes',
+  'yeah',
+  'okay',
+  'ok',
+  'sounds good',
+]
 
 /** Read the active AI provider summary from the environment. */
 function getProviderSummary(): AIProviderSummary {
@@ -71,12 +110,43 @@ function buildHistoryMessages(
 }
 
 /** Build preview metadata for formatting-style chat requests. */
-function detectFormattingPreview(message: string): FormattingPreview | null {
+function detectFormattingPreview(
+  message: string,
+  lastPreview: AIChatPreviewContext | null | undefined
+): FormattingPreview | null {
   const intent = parseFormattingIntent(message)
+  const normalized = message.toLowerCase().trim()
   const hasFormats = intent.formats.length > 0
   const hasFontSize = intent.fontSize !== null
 
-  if (!hasFormats && !hasFontSize) {
+  // A pure confirmation ("latter", "yes", "do it") reuses the previous preview
+  // so the accept/reject prompt stays available instead of a rambling reply.
+  const isConfirmation =
+    lastPreview !== null &&
+    lastPreview !== undefined &&
+    !hasFormats &&
+    !hasFontSize &&
+    !intent.normalize &&
+    !intent.target &&
+    CONFIRMATION_PHRASES.some((phrase) => normalized.includes(phrase))
+
+  if (isConfirmation) {
+    return {
+      format: lastPreview.format ?? lastPreview.formats?.[0] ?? 'body_text',
+      label: labelForFormat(lastPreview),
+      confidence: 0.99,
+      reason: 'Continuing your previous formatting change — confirm to apply it.',
+      formats: lastPreview.formats ?? [],
+      scope: lastPreview.scope ?? 'selection',
+      fontSize: lastPreview.fontSize ?? null,
+      target: lastPreview.target ?? null,
+      normalize: lastPreview.normalize ?? false,
+      shortCircuitReply: 'Got it — here is your formatting change again. Confirm or reject below, or tell me what to adjust.',
+    }
+  }
+
+  // Clear/revert requests produce a preview even without explicit formats.
+  if (!hasFormats && !hasFontSize && !intent.normalize && !intent.target) {
     return null
   }
 
@@ -94,25 +164,78 @@ function detectFormattingPreview(message: string): FormattingPreview | null {
 
   const primary = intent.formats[0]
   const reasonParts: string[] = []
+
+  if (intent.normalize) {
+    if (lastPreview?.formats && lastPreview.formats.length > 0) {
+      reasonParts.push(
+        `Reverting your previous change (${lastPreview.formats.map((f) => labels[f] ?? f).join(', ')}).`
+      )
+    } else {
+      reasonParts.push('Detected a request to clear existing formatting.')
+    }
+  }
   if (intent.matchedPhrase) {
     reasonParts.push(`Detected formatting intent from "${intent.matchedPhrase}".`)
   }
   if (hasFontSize) {
     reasonParts.push(`Font size ${intent.fontSize}pt requested.`)
   }
-  if (intent.scope === 'all') {
+  if (intent.target) {
+    reasonParts.push(`Targeting "${intent.target.toUpperCase()}" only (no highlighting needed).`)
+  } else if (intent.normalize && lastPreview?.scope === 'all') {
+    reasonParts.push('Applies to the whole document (matching your last change).')
+  } else if (intent.scope === 'all') {
     reasonParts.push('Applies to the whole document.')
   }
 
+  // Revert changes follow the previous change's scope/target unless the user
+  // named a different target in this message.
+  const resolvedScope: 'selection' | 'all' =
+    intent.target !== null
+      ? 'all'
+      : intent.normalize && lastPreview?.scope
+        ? lastPreview.scope
+        : intent.scope
+  const resolvedTarget = intent.target ?? (intent.normalize ? (lastPreview?.target ?? null) : null)
+  const revertFormats = intent.normalize ? (lastPreview?.formats ?? []) : intent.formats
+  const fontSize = intent.fontSize ?? (intent.normalize && lastPreview ? (lastPreview.fontSize ?? null) : null)
+
   return {
-    format: primary ?? 'body_text',
-    label: primary ? (labels[primary] ?? primary) : 'Font size',
+    format: intent.normalize
+      ? (revertFormats[0] ?? 'body_text')
+      : (primary ?? 'body_text'),
+    label: intent.normalize
+      ? 'Clear formatting'
+      : primary ? (labels[primary] ?? primary) : 'Font size',
     confidence: intent.confidence,
     reason: reasonParts.length > 0 ? reasonParts.join(' ') : 'Detected a likely formatting request.',
-    formats: intent.formats,
-    scope: intent.scope,
-    fontSize: intent.fontSize,
+    formats: revertFormats,
+    scope: resolvedScope,
+    fontSize,
+    target: resolvedTarget,
+    normalize: intent.normalize,
+    shortCircuitReply: intent.normalize
+      ? `Done — ${reasonParts.join(' ').replace(/\.$/, '')}. Confirm to apply.`
+      : null,
   }
+}
+
+/** Human label for a single preview context (used by confirmation re-display). */
+function labelForFormat(preview: AIChatPreviewContext): string {
+  const labels: Record<string, string> = {
+    bold: 'Bold',
+    italic: 'Italic',
+    underline: 'Underline',
+    heading1: 'Heading 1',
+    heading2: 'Heading 2',
+    heading3: 'Heading 3',
+    blockquote: 'Blockquote',
+    unordered_list: 'Bullet List',
+    ordered_list: 'Numbered List',
+    body_text: 'Text',
+  }
+  const fmt = preview.formats?.[0] ?? preview.format
+  return fmt ? (labels[fmt] ?? fmt) : 'Formatting'
 }
 
 /** Handle authenticated AI chatbot requests. */
@@ -145,9 +268,11 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const preview = detectFormattingPreview(message)
+    const preview = detectFormattingPreview(message, body.lastPreview)
 
-    const reply = await aiClient.chat(
+    // Rule-resolved follow-ups (confirmations, reverts, targets) get a short
+    // deterministic reply — the AI model never needs to guess or hallucinate.
+    const reply = preview?.shortCircuitReply ?? await aiClient.chat(
       [
         ...buildHistoryMessages(body.history),
         { role: 'user', content: message },
@@ -174,6 +299,8 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
             formats: preview.formats,
             scope: preview.scope,
             fontSize: preview.fontSize,
+            target: preview.target,
+            normalize: preview.normalize,
           }
         : null,
     })

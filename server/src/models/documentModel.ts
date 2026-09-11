@@ -2,6 +2,7 @@ import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { Document, CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
 import { getRedisClient } from '../utils/redisClient'
+import { isShareLinkExpired } from './shareModel'
 
 export const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -117,9 +118,9 @@ export async function getDocumentById(id: string, userId: string): Promise<Docum
 
 /**
  * Fetch a document by id with access checks: owners, active collaborators, or
- * pending-email collaborators can all retrieve it. A valid share link token
- * grants read-only access. Throws 404 when the document does not exist or is
- * not readable by this user.
+ * pending-email collaborators can all retrieve it. A valid (unexpired) share
+ * link token grants access; edit links are honored on the write path too.
+ * Throws 404 when the document does not exist or is not readable by this user.
  */
 export async function getDocumentForUser(
   id: string,
@@ -147,7 +148,10 @@ export async function getDocumentForUser(
   }
 
   const doc = data as Document
-  const viaShareLink = Boolean(shareToken) && doc.share_token === shareToken
+  const viaShareLink =
+    Boolean(shareToken) &&
+    doc.share_token === shareToken &&
+    !isShareLinkExpired(doc.share_expires_at)
   const canRead =
     doc.user_id === userId ||
     (await hasShareAccess(id, userId, userEmail, 'view')) ||
@@ -246,11 +250,16 @@ export async function updateDocument(
   id: string,
   userId: string,
   req: UpdateDocumentRequest,
+  shareToken?: string | undefined,
 ): Promise<Document> {
   // Owner and edit/comment collaborators may update. Verified via share access.
-  const doc = await getDocumentForUser(id, userId, undefined)
+  // An unexpired share link with edit permission also permits updates.
+  const doc = await getDocumentForUser(id, userId, undefined, shareToken)
   const canWrite =
     doc.user_id === userId ||
+    (doc.share_token === shareToken &&
+      doc.share_permission === 'edit' &&
+      !isShareLinkExpired(doc.share_expires_at)) ||
     (await hasShareAccess(id, userId, undefined, 'edit'))
 
   if (!canWrite) {

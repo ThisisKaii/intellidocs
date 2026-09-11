@@ -49,6 +49,7 @@ export interface Document {
   deleted_at: string | null
   share_permission?: SharePermission
   share_token?: string | null
+  share_expires_at?: string | null
   shared_by?: string
   created_at: string
   updated_at: string

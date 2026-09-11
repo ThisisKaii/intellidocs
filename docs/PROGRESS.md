@@ -1,7 +1,7 @@
 # IntelliDocs Progress Summary
 
 **Last Updated:** September 11, 2026  
-**Phase:** Master Implementation Plan — All 5 Phases ✅ Complete + New Implementation Plan ✅ Complete + Round-2 acceptance fixes ✅ Complete  
+**Phase:** Master Implementation Plan — All 5 Phases ✅ Complete + New Implementation Plan ✅ Complete + Round-2 acceptance fixes ✅ Complete + Round-3 acceptance fixes ✅ Code-complete (awaiting prod re-test) + Round-4 suggestion-highlight overlay ✅ Code-complete  
 **Deployment:** Frontend ✅ (Vercel — intellidocs-silk.vercel.app) · Server ✅ (Render) · ML ✅ (Render, live as of this update)
 
 ## 🟢 Current Status (where we are now)
@@ -9,15 +9,35 @@
 - Code pushed to GitHub; working from the laptop against **prod only** (no
   localhost testing).
 - Frontend, server, and **ML service are all deployed and live**.
-- Round-2 fixes (suggestion UX, grammar visibility, trash/delete UX, preset
-  dropdown, bulk formatting, MCP commit, Drive listing, sidebar, share links)
-  are code-complete and verified by the automated suite — **manual acceptance
-  on prod is the only remaining gate** (see `docs/TESTING_PLAN.md` §3).
-- Once on the laptop/prod: run migrations **014–016** in the prod Supabase SQL
-  editor (presets, sharing/trash, share links) if not already applied, then
-  walk the Round-2 checklist from the top.
+- Round-3 fixes are **code-complete and verified by the automated suite**
+  (server tsc clean, frontend tsc + build clean, jest 33/33, lint unchanged at
+  the 17-line pre-existing baseline). Manual acceptance on prod is the only
+  remaining gate (see `docs/TESTING_PLAN.md` §3).
+- Round-3 fixed: 3.1 scanner is the single suggestion driver (highlight persists,
+  chip jump/cycle, 10s rescan + debounce); 3.2 grammar failure banner + manual
+  check; 3.3 restore confirmations + view-only hides suggestions; 3.5 context-aware
+  chapter targets + no-hallucination follow-ups/confirmations ("back to normal",
+  "latter"); 3.7 Drive dialog surfaces the real API error; 3.9 persistent link
+  permission/expiry + edit-permission links actually edit (server + client).
+- Round-4 fixed (code-complete, verified: server tsc, frontend tsc + build,
+  jest 33/33): formatting suggestion highlight is now a true **overlay**
+  positioned INSIDE the editor's scroll container (absolute, container-space
+  coords via a DOM Range union rect) — it scrolls with the content with no
+  lag and covers every wrapped line of the range. Popup is **click-to-open**
+  — clicking the highlighted line opens the chip, or a **combobox when the
+  line also has grammar/spelling issues**. Scanner now lists EVERY detected
+  suggestion (no 5-cap). ML failure banner now prints the resolved ML URL +
+  hint (local: `ML_API_URL=http://localhost:8000` in server/.env — port 8001
+  mismatch was user-side config). Drive Blob import bug fixed; chatbot
+  formatting no longer requires a text highlight (falls back to the current
+  paragraph). Chip counter reflects queue position, panel synced.
+- Prod actions still required by the user:
+  1. Run migration **017_share_expiry.sql** in the prod Supabase SQL editor
+     (016 must also be present for the share-link columns).
+  2. Re-test §3.1, §3.2, §3.3, §3.5, §3.7, §3.9 on the live app.
+  3. Run `graphify update .`.
 - Admin/Professor workspaces remain **on hold** by the user's decision until
-  the Round-2 checklist is accepted.
+  the Round-3 checklist is accepted.
 
 ---
 
@@ -58,7 +78,7 @@
 - **Frontend TypeScript**: `npx tsc --noEmit` passed with **0 errors**.
 - **Server TypeScript**: `npx tsc --noEmit` passed with **0 errors**.
 - **Frontend Production Build**: `npm run build` completed cleanly.
-- **Jest Test Suites**: **5/5 suites passed** (**24/24 tests passed**).
+- **Jest Test Suites**: **5/5 suites passed** (**33/33 tests passed**).
 - **Pytest ML Suites**: **7/7 tests passed** (`tests/python/test_ml.py`).
 
 ---

@@ -234,6 +234,16 @@ function isImportable(file: { name: string; mimeType: string }): boolean {
   return /\.(docx?|pdf|txt|rtf|odt)$/i.test(file.name)
 }
 
+/** Convert a googleapis download payload (Blob/Buffer/string/ArrayBuffer) into a Buffer. */
+async function toBuffer(data: unknown): Promise<Buffer> {
+  if (Buffer.isBuffer(data)) return data
+  if (data instanceof Blob) return Buffer.from(await data.arrayBuffer())
+  if (data instanceof ArrayBuffer) return Buffer.from(data)
+  if (typeof data === 'string') return Buffer.from(data)
+  if (Array.isArray(data)) return Buffer.from(data as number[])
+  throw new Error('Unsupported data type returned by Google Drive')
+}
+
 /**
  * Export a Drive file into IntelliDocs HTML content.
  * - Native Google Docs → text/html export.
@@ -264,16 +274,14 @@ export async function exportFile(req: Request, res: Response): Promise<void> {
     // Native Google Docs → export as HTML (tables/images/text preserved).
     if (mimeType === 'application/vnd.google-apps.document') {
       const exported = await drive.files.export({ fileId, mimeType: 'text/html' })
-      const html = typeof exported.data === 'string' ? exported.data : String(exported.data)
+      const html = (await toBuffer(exported.data)).toString('utf-8')
       res.status(200).json({ title, html })
       return
     }
 
     // Other file types → download the raw bytes and convert.
     const downloaded = await drive.files.get({ fileId, alt: 'media' })
-    const buffer = Buffer.isBuffer(downloaded.data)
-      ? downloaded.data
-      : Buffer.from(downloaded.data as unknown as string)
+    const buffer = await toBuffer(downloaded.data)
 
     // Try the Python converter, then fall back to local conversion.
     let html = ''

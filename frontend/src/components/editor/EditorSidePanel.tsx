@@ -28,6 +28,8 @@ interface EditorSidePanelProps {
   documentTitle?: string
   documentContent: string
   scannerSuggestions: ScannerSuggestion[]
+  /** Key of the suggestion currently highlighted in the editor (drives the active card state). */
+  activeScannerKey?: string | null
   mlSuggestions: Suggestion[]
   grammarIssues: GrammarIssue[]
   onJumpTo: (suggestion: ScannerSuggestion) => void
@@ -38,6 +40,8 @@ interface EditorSidePanelProps {
   onApplyGrammar: (issue: GrammarIssue) => void
   onDismissGrammar: (issue: GrammarIssue) => void
   onFocusEditor?: () => void
+  /** When true, only the AI Assistant tab is shown (share-link / trash views). */
+  readOnly?: boolean
   /** Extra tool sections rendered at the bottom of the Suggestions tab. */
   extraSections?: ReactNode
 }
@@ -53,6 +57,7 @@ export default function EditorSidePanel({
   documentTitle,
   documentContent,
   scannerSuggestions,
+  activeScannerKey = null,
   mlSuggestions,
   grammarIssues,
   onJumpTo,
@@ -63,6 +68,7 @@ export default function EditorSidePanel({
   onApplyGrammar,
   onDismissGrammar,
   onFocusEditor,
+  readOnly = false,
   extraSections,
 }: EditorSidePanelProps): JSX.Element {
   return (
@@ -153,12 +159,14 @@ export default function EditorSidePanel({
                 label="AI Assistant"
                 onClick={() => onTabChange('assistant')}
               />
-              <TabButton
-                active={activeTab === 'suggestions'}
-                icon={<Sparkles style={{ width: '14px', height: '14px' }} />}
-                label={`Suggestions${scannerSuggestions.length + mlSuggestions.length > 0 ? ` (${scannerSuggestions.length + mlSuggestions.length})` : ''}`}
-                onClick={() => onTabChange('suggestions')}
-              />
+              {!readOnly && (
+                <TabButton
+                  active={activeTab === 'suggestions'}
+                  icon={<Sparkles style={{ width: '14px', height: '14px' }} />}
+                  label={`Suggestions${scannerSuggestions.length + mlSuggestions.length > 0 ? ` (${scannerSuggestions.length + mlSuggestions.length})` : ''}`}
+                  onClick={() => onTabChange('suggestions')}
+                />
+              )}
             </div>
 
             {/* Tab content */}
@@ -173,19 +181,22 @@ export default function EditorSidePanel({
                   docked
                 />
               ) : (
-                <SuggestionQueue
-                  scannerSuggestions={scannerSuggestions}
-                  mlSuggestions={mlSuggestions}
-                  grammarIssues={grammarIssues}
-                  onJumpTo={onJumpTo}
-                  onAcceptScanner={onAcceptScanner}
-                  onRejectScanner={onRejectScanner}
-                  onApplyMl={onApplyMl}
-                  onDismissMl={onDismissMl}
-                  onApplyGrammar={onApplyGrammar}
-                  onDismissGrammar={onDismissGrammar}
-                  extraSections={extraSections}
-                />
+                !readOnly && (
+                  <SuggestionQueue
+                    scannerSuggestions={scannerSuggestions}
+                    activeScannerKey={activeScannerKey}
+                    mlSuggestions={mlSuggestions}
+                    grammarIssues={grammarIssues}
+                    onJumpTo={onJumpTo}
+                    onAcceptScanner={onAcceptScanner}
+                    onRejectScanner={onRejectScanner}
+                    onApplyMl={onApplyMl}
+                    onDismissMl={onDismissMl}
+                    onApplyGrammar={onApplyGrammar}
+                    onDismissGrammar={onDismissGrammar}
+                    extraSections={extraSections}
+                  />
+                )
               )}
             </div>
           </motion.div>
@@ -230,6 +241,7 @@ function TabButton({ active, icon, label, onClick }: TabButtonProps): JSX.Elemen
 
 interface SuggestionQueueProps {
   scannerSuggestions: ScannerSuggestion[]
+  activeScannerKey?: string | null
   mlSuggestions: Suggestion[]
   grammarIssues: GrammarIssue[]
   onJumpTo: (suggestion: ScannerSuggestion) => void
@@ -244,6 +256,7 @@ interface SuggestionQueueProps {
 
 function SuggestionQueue({
   scannerSuggestions,
+  activeScannerKey = null,
   mlSuggestions,
   grammarIssues,
   onJumpTo,
@@ -262,21 +275,38 @@ function SuggestionQueue({
         <SectionLabel>Detected formatting needs</SectionLabel>
         {scannerSuggestions.length === 0 ? (
           <EmptyNote>No formatting suggestions right now — keep typing and they will appear here.</EmptyNote>
-        ) : (
-          scannerSuggestions.map((s) => (
+        ) : scannerSuggestions.map((s) => {
+          const isActive = activeScannerKey === s.key
+            return (
             <div
               key={s.key}
               style={{
                 padding: '0.625rem',
                 borderRadius: '0.5rem',
-                border: '1px solid rgba(99, 102, 241, 0.2)',
-                backgroundColor: 'rgba(99, 102, 241, 0.05)',
+                border: isActive ? '2px solid #6366f1' : '1px solid rgba(99, 102, 241, 0.2)',
+                backgroundColor: isActive ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.05)',
                 marginBottom: '0.5rem',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.375rem' }}>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
                   {FORMAT_LABELS[s.format] ?? s.format}
+                  {isActive ? (
+                    <span
+                      style={{
+                        fontSize: '0.5625rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        color: '#6366f1',
+                        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                        borderRadius: '0.25rem',
+                        padding: '0.125rem 0.375rem',
+                      }}
+                    >
+                      Now showing
+                    </span>
+                  ) : null}
                 </span>
                 <span
                   style={{
@@ -307,10 +337,10 @@ function SuggestionQueue({
                   <X style={{ width: '12px', height: '12px' }} />
                   Reject
                 </QueueButton>
-              </div>
+</div>
             </div>
-          ))
-        )}
+            )
+          })}
       </section>
 
       {/* ML predictions */}

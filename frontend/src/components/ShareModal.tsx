@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { X, Link2, Copy, Trash2, Check } from 'lucide-react'
 import { api, type DocumentShare, type DocumentShareLink, type SharePermission } from '@/services/api'
 
@@ -25,6 +25,10 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
   const [linkPermission, setLinkPermission] = useState<SharePermission>('view')
   const [linkBusy, setLinkBusy] = useState<boolean>(false)
   const [copied, setCopied] = useState<boolean>(false)
+  const [linkExpiryOffset, setLinkExpiryOffset] = useState<string>('none')
+  const [customExpiryDate, setCustomExpiryDate] = useState<string>(
+    new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+  )
 
   /** Load both email shares and the copyable link for this document. */
   const loadAll = async (): Promise<void> => {
@@ -34,7 +38,17 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
     ])
     setShares(list)
     setShareLink(link)
-    if (link?.share_token) setLinkPermission(link.share_permission)
+    if (link?.share_token) {
+      setLinkPermission(link.share_permission)
+      if (!link.share_expires_at) {
+        setLinkExpiryOffset('none')
+      } else {
+        const days = Math.round((new Date(link.share_expires_at).getTime() - Date.now()) / 86400000)
+        const mapped = days === 1 ? '1' : days === 7 ? '7' : days === 30 ? '30' : 'custom'
+        setLinkExpiryOffset(days <= 0 ? 'none' : mapped)
+        if (mapped === 'custom') setCustomExpiryDate(link.share_expires_at.slice(0, 10))
+      }
+    }
   }
 
   useEffect(() => {
@@ -90,7 +104,7 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
     setLinkBusy(true)
     setError('')
     try {
-      const link = await api.documents.createShareLink(documentId, linkPermission)
+      const link = await api.documents.createShareLink(documentId, linkPermission, buildExpiryIso())
       setShareLink(link)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create share link')
@@ -105,12 +119,61 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
     setError('')
     try {
       await api.documents.revokeShareLink(documentId)
-      setShareLink({ share_token: null, share_permission: linkPermission })
+      setShareLink({ share_token: null, share_permission: linkPermission, share_expires_at: null })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to revoke share link')
     } finally {
       setLinkBusy(false)
     }
+  }
+
+  /** Persist permission/expiry changes without minting a new token. */
+  async function persistLinkMeta(nextPermission: SharePermission, nextExpiresAt: string | null): Promise<void> {
+    setLinkBusy(true)
+    setError('')
+    try {
+      const link = await api.documents.updateShareLink(documentId, nextPermission, nextExpiresAt)
+      setShareLink(link)
+      setLinkPermission(link.share_permission)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update share link')
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
+  /** Compute the expiry ISO string for the current picker state. */
+  function buildExpiryIso(offset: string = linkExpiryOffset, date: string = customExpiryDate): string | null {
+    if (offset === 'none') return null
+    if (offset === 'custom') {
+      if (!date) return null
+      return new Date(`${date}T23:59:59`).toISOString()
+    }
+    const days = Number(offset)
+    if (!Number.isFinite(days) || days <= 0) return null
+    return new Date(Date.now() + days * 86400000).toISOString()
+  }
+
+  const expiryLabel = useMemo(() => {
+    if (!shareLink?.share_expires_at) return null
+    const at = new Date(shareLink.share_expires_at).getTime()
+    if (at <= Date.now()) return 'expired'
+    return new Date(at).toLocaleString()
+  }, [shareLink?.share_expires_at])
+
+  async function handlePermissionChange(next: SharePermission): Promise<void> {
+    setLinkPermission(next)
+    if (shareLink?.share_token) await persistLinkMeta(next, buildExpiryIso())
+  }
+
+  async function handleExpiryChange(next: string): Promise<void> {
+    setLinkExpiryOffset(next)
+    if (shareLink?.share_token) await persistLinkMeta(linkPermission, buildExpiryIso(next))
+  }
+
+  async function handleCustomDateChange(date: string): Promise<void> {
+    setCustomExpiryDate(date)
+    if (shareLink?.share_token) await persistLinkMeta(linkPermission, buildExpiryIso('custom', date))
   }
 
   /** Build the full share URL and copy it to the clipboard. */
@@ -250,48 +313,96 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
                 </button>
               </>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0 }}>
-                <select
-                  value={linkPermission}
-                  onChange={(e) => setLinkPermission(e.target.value as SharePermission)}
-                  style={{
-                    padding: '0.375rem 0.25rem',
-                    borderRadius: '0.375rem',
-                    border: 'none',
-                    boxShadow: '0 0 0 1px var(--border-shadow)',
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--foreground)',
-                    fontFamily: 'inherit',
-                    fontSize: '0.75rem',
-                  }}
-                >
-                  <option value="view">{PERMISSION_LABELS.view}</option>
-                  <option value="comment">{PERMISSION_LABELS.comment}</option>
-                  <option value="edit">{PERMISSION_LABELS.edit}</option>
-                </select>
-                <button
-                  onClick={() => { void handleCreateLink() }}
-                  disabled={linkBusy}
-                  style={{
-                    padding: '0.45rem 0.625rem',
-                    borderRadius: '0.5rem',
-                    border: 'none',
-                    backgroundColor: 'var(--primary)',
-                    color: 'var(--primary-foreground)',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
-                    cursor: linkBusy ? 'not-allowed' : 'pointer',
-                    opacity: linkBusy ? 0.6 : 1,
-                    fontFamily: 'inherit',
-                  }}
-                >
-                  Create link
-                </button>
-              </div>
+              <button
+                onClick={() => { void handleCreateLink() }}
+                disabled={linkBusy}
+                style={{
+                  padding: '0.45rem 0.625rem',
+                  borderRadius: '0.5rem',
+                  border: 'none',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--primary-foreground)',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  cursor: linkBusy ? 'not-allowed' : 'pointer',
+                  opacity: linkBusy ? 0.6 : 1,
+                  fontFamily: 'inherit',
+                  flexShrink: 0,
+                }}
+              >
+                Create link
+              </button>
+            )}
+          </div>
+
+          {/* Persistent link settings — permission + expiry, applied without re-minting */}
+          <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+            <select
+              value={linkPermission}
+              onChange={(e) => { void handlePermissionChange(e.target.value as SharePermission) }}
+              disabled={linkBusy}
+              style={{
+                padding: '0.375rem 0.25rem',
+                borderRadius: '0.375rem',
+                border: 'none',
+                boxShadow: '0 0 0 1px var(--border-shadow)',
+                backgroundColor: 'var(--background)',
+                color: 'var(--foreground)',
+                fontFamily: 'inherit',
+                fontSize: '0.75rem',
+              }}
+            >
+              <option value="view">{PERMISSION_LABELS.view}</option>
+              <option value="comment">{PERMISSION_LABELS.comment}</option>
+              <option value="edit">{PERMISSION_LABELS.edit}</option>
+            </select>
+            <select
+              value={linkExpiryOffset}
+              onChange={(e) => { void handleExpiryChange(e.target.value) }}
+              disabled={linkBusy}
+              style={{
+                padding: '0.375rem 0.25rem',
+                borderRadius: '0.375rem',
+                border: 'none',
+                boxShadow: '0 0 0 1px var(--border-shadow)',
+                backgroundColor: 'var(--background)',
+                color: 'var(--foreground)',
+                fontFamily: 'inherit',
+                fontSize: '0.75rem',
+              }}
+            >
+              <option value="none">No expiry</option>
+              <option value="1">Expires in 1 day</option>
+              <option value="7">Expires in 7 days</option>
+              <option value="30">Expires in 30 days</option>
+              <option value="custom">Custom date</option>
+            </select>
+            {linkExpiryOffset === 'custom' && (
+              <input
+                type="date"
+                value={customExpiryDate}
+                onChange={(e) => { void handleCustomDateChange(e.target.value) }}
+                disabled={linkBusy}
+                style={{
+                  padding: '0.375rem 0.25rem',
+                  borderRadius: '0.375rem',
+                  border: 'none',
+                  boxShadow: '0 0 0 1px var(--border-shadow)',
+                  backgroundColor: 'var(--background)',
+                  color: 'var(--foreground)',
+                  fontFamily: 'inherit',
+                  fontSize: '0.75rem',
+                }}
+              />
             )}
           </div>
           <div style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', marginTop: '0.375rem' }}>
             Anyone with the link can open the document (requires login).
+            {shareLink?.share_token && expiryLabel && (
+              expiryLabel === 'expired'
+                ? <span style={{ color: 'var(--destructive, #dc2626)' }}> This link has expired.</span>
+                : <span> Expires {expiryLabel}.</span>
+            )}
           </div>
         </div>
 

@@ -33,7 +33,10 @@ export type ScannerState =
   | 'Dismissed'
 
 /** How often the scanner runs (ms). */
-const SCAN_INTERVAL_MS = 20_000
+const SCAN_INTERVAL_MS = 10_000
+
+/** Idle time after an editor change before a fresh sweep is scheduled (ms). */
+const RESCAN_DEBOUNCE_MS = 1_500
 
 /** How many heading-pattern lines to check per scan cycle. */
 const MAX_SCAN_NODES = 30
@@ -166,12 +169,11 @@ export function useAutoFormatScanner({
     })
 
     candidates.sort((a, b) => b.confidence - a.confidence)
-    const topSuggestions = candidates.slice(0, 5)
-    setSuggestions(topSuggestions)
+    setSuggestions(candidates)
 
     setActiveIdx((prev) => {
-      if (prev < 0 && topSuggestions.length > 0) return 0
-      if (prev >= topSuggestions.length) return topSuggestions.length > 0 ? 0 : -1
+      if (prev < 0 && candidates.length > 0) return 0
+      if (prev >= candidates.length) return candidates.length > 0 ? 0 : -1
       return prev
     })
   }, [editor, enabled, estimatePageNumber, minConfidence])
@@ -245,6 +247,26 @@ export function useAutoFormatScanner({
     return () => {
       clearTimeout(initialTimer)
       if (scanTimerRef.current) clearInterval(scanTimerRef.current)
+    }
+  }, [editor, enabled, scanDocument])
+
+  // Re-sweep shortly after any document edit (accept/reject/typing) so the
+  // next suggestion surfaces without waiting for the next interval tick.
+  useEffect(() => {
+    if (!enabled || !editor) return
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const onTransaction = (): void => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        void scanDocument()
+      }, RESCAN_DEBOUNCE_MS)
+    }
+
+    editor.on('transaction', onTransaction)
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      editor.off('transaction', onTransaction)
     }
   }, [editor, enabled, scanDocument])
 

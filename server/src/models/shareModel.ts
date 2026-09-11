@@ -18,13 +18,20 @@ export interface ShareWithDetails extends DocumentShare {
 export interface ShareLink {
   share_token: string | null
   share_permission: 'view' | 'comment' | 'edit'
+  share_expires_at: string | null
+}
+
+/** Whether an optional UTC expiry timestamp has already passed. */
+export function isShareLinkExpired(expiresAt: string | null | undefined, now: number = Date.now()): boolean {
+  if (!expiresAt) return false
+  return new Date(expiresAt).getTime() <= now
 }
 
 /** Read the current share link token for an owner's document, if any. */
 export async function getShareLink(documentId: string): Promise<ShareLink | null> {
   const { data, error } = await supabase
     .from('documents')
-    .select('share_token, share_permission')
+    .select('share_token, share_permission, share_expires_at')
     .eq('id', documentId)
     .single()
   if (error) throw new Error(`Failed to get share link: ${error.message}`)
@@ -36,12 +43,13 @@ export async function upsertShareLink(
   documentId: string,
   token: string,
   permission: 'view' | 'comment' | 'edit',
+  expiresAt: string | null,
 ): Promise<ShareLink> {
   const { data, error } = await supabase
     .from('documents')
-    .update({ share_token: token, share_permission: permission })
+    .update({ share_token: token, share_permission: permission, share_expires_at: expiresAt })
     .eq('id', documentId)
-    .select('share_token, share_permission')
+    .select('share_token, share_permission, share_expires_at')
     .single()
   if (error) throw new Error(`Failed to create share link: ${error.message}`)
   return data as ShareLink
@@ -51,7 +59,7 @@ export async function upsertShareLink(
 export async function revokeShareLink(documentId: string): Promise<void> {
   const { error } = await supabase
     .from('documents')
-    .update({ share_token: null, share_permission: 'view' })
+    .update({ share_token: null, share_permission: 'view', share_expires_at: null })
     .eq('id', documentId)
   if (error) throw new Error(`Failed to revoke share link: ${error.message}`)
 }

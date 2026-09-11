@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
 } from 'lucide-react'
 import { api } from '@/services/api'
 
@@ -102,6 +103,7 @@ export default function GrammarPanel({
   const [issues, setIssues] = useState<GrammarResult | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [expanded, setExpanded] = useState<boolean>(true)
+  const [failure, setFailure] = useState<string | null>(null)
   const autoCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastAutoCheckAtRef = useRef<number>(0)
   const lastCheckedTextRef = useRef<string>('')
@@ -124,6 +126,7 @@ export default function GrammarPanel({
 
     setLoading(true)
     setIssues(null)
+    setFailure(null)
 
     try {
       const [grammarResult, spellingResult] = await Promise.all([
@@ -135,11 +138,15 @@ export default function GrammarPanel({
       setIssues(result)
       onCheckComplete?.(result.issues)
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Grammar check failed.'
       const result: GrammarResult = {
         issues: [],
         overall:
-          error instanceof Error ? error.message : 'Grammar check failed.',
+          message +
+          ' Underlines cannot be drawn until the grammar and spell endpoints respond.',
       }
+      setFailure(message)
       setIssues(result)
       onCheckComplete?.([])
     } finally {
@@ -255,6 +262,77 @@ export default function GrammarPanel({
             style={{ overflow: 'hidden' }}
           >
             <div style={{ padding: '0.75rem', borderTop: '1px solid var(--border)' }}>
+              {failure ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.5rem',
+                    padding: '0.5rem 0.625rem',
+                    borderRadius: '0.375rem',
+                    backgroundColor: 'rgba(255, 91, 79, 0.1)',
+                    border: '1px solid rgba(255, 91, 79, 0.35)',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  <p style={{ fontSize: '0.75rem', color: '#ff5b4f', margin: 0, lineHeight: 1.4 }}>
+                    Grammar check failed: {failure}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void runCheck()}
+                    disabled={loading}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      flexShrink: 0,
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '0.375rem',
+                      border: 'none',
+                      backgroundColor: 'var(--foreground)',
+                      color: 'var(--background)',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      opacity: loading ? 0.5 : 1,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <RefreshCw style={{ width: '11px', height: '11px' }} />
+                    Retry
+                  </button>
+                </div>
+              ) : null}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.375rem' }}>
+                <button
+                  type="button"
+                  onClick={() => void runCheck()}
+                  disabled={loading}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    fontSize: '0.6875rem',
+                    fontWeight: 600,
+                    color: 'var(--muted-foreground)',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.5 : 1,
+                    fontFamily: 'inherit',
+                    padding: '0.125rem 0.25rem',
+                  }}
+                >
+                  <RefreshCw
+                    style={{ width: '11px', height: '11px', animation: loading ? 'spin 1s linear infinite' : 'none' }}
+                  />
+                  {loading ? 'Checking…' : 'Check now'}
+                </button>
+              </div>
+
               {issues ? (
                 <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', fontStyle: 'italic', margin: 0 }}>

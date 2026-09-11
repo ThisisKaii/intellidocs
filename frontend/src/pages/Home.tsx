@@ -558,8 +558,15 @@ export default function HomePage(): JSX.Element {
               {selectedIds.size > 0 && (
                 <button
                   onClick={() => {
-                    void handleRestore([...selectedIds])
-                    setSelectedIds(new Set())
+                    const ids = [...selectedIds]
+                    setConfirmDialog({
+                      title: `Restore ${ids.length} document${ids.length === 1 ? '' : 's'}?`,
+                      description: ids.length === 1
+                        ? 'The document will be moved back to your active documents.'
+                        : 'The selected documents will be moved back to your active documents.',
+                      confirmLabel: 'Restore',
+                      onConfirm: () => void handleRestore(ids),
+                    })
                   }}
                   className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-border text-foreground text-xs font-semibold cursor-pointer hover:bg-secondary"
                 >
@@ -591,7 +598,15 @@ export default function HomePage(): JSX.Element {
             onCancelEdit={handleCancelEdit}
             onSaveEdit={handleSaveEdit}
             onDelete={handleDelete}
-            onRestore={(docId) => void handleRestore([docId])}
+            onRestore={(docId) => {
+              const doc = trashDocuments.find((d) => d.id === docId)
+              setConfirmDialog({
+                title: 'Restore document?',
+                description: `"${doc?.title ?? 'This document'}" will be moved back to your active documents.`,
+                confirmLabel: 'Restore',
+                onConfirm: () => void handleRestore([docId]),
+              })
+            }}
             readOnlyView={selection.type === 'trash'}
             onTitleChange={handleTitleChange}
             onSelect={handleSelect}

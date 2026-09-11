@@ -117,19 +117,53 @@ issues are all addressed in Section 3; nothing here is outstanding.
 Everything below is the round-2 fix set. Each item replaces the corresponding
 Round 1 complaint — verify on the live app (intellidocs-silk.vercel.app).
 
-### 3.1 Suggestion UX — no more pop-up, inline highlight + chip
+### 3.1 Suggestion UX — no more pop-up, document overlay + chip (click-to-open)
 1. Import/document → answer the ML questionnaire once → suggestions appear.
-2. A suggestion is shown as an **inline highlight** with a mini chip near the range (NOT a floating box).
+2. A suggestion is drawn as a **fixed-position overlay box** over the document
+   text (dashed indigo border — NOT part of the content). Clicking the
+   highlighted line opens the suggestion chip. If the same line ALSO has
+   grammar/spelling issues, the click opens a combobox to choose "Formatting"
+   or "Grammar & spelling".
 3. `Enter` accepts the suggestion; `Alt+ArrowUp/Down` cycles options; `Escape` dismisses.
 4. No suggestions fire before the questionnaire, during idle/short sessions, or in the first 15s after a format.
 5. Suggesting a wrong target (e.g. heading a plain paragraph) → re-check the questionnaire file / ML service, not the UX. The noise gate (5-min suppression, ≥0.22 confidence) is in place.
 6. **Verify**: side panel (Ctrl+\) still docks suggestions; no overlaps with the header (old collision case).
+
+  ## 3.1 Issue no. 1, theres still no highlight but the pop up on accept reject you made is there, however, after that it doesnt show on others. On cycle options its working. but make it more informative. Again theres no highlight. No. 3 works just needs improvement, No 6 works, I cant test no 4-5 becase its still lacking. again the line for grammar / spelling doesnt show, and theres no highlight for format suggestion, this includes also the jump button on the suggestion panel
+
+  ## 3.1 FIXED (round-3): The inline scanner is now the single driver — the ML
+  ## tier-check no longer clears the scanner highlight on every keystroke, so the
+  ## highlight + chip persist until accept/reject and re-surface on the next
+  ## target. Chip gained a jump (Locate) button + "pos/total" indicator +
+  ## tooltips; scan interval 20s→10s + debounced re-scan right after edits.
+  ## Correct highlight requires the ML service to be up (same dependency as the
+  ## grammar underline), else no suggestion is produced to highlight.
+
+  ## 3.1 FIXED (round-4): the highlight is now a true OVERLAY on the document
+  ## text (fixed-position pulsing dashed box via SuggestionHighlightOverlay.tsx,
+  ## box coords from coordsAtPos in updateSuggestionAnchor) — not a content
+  ## decoration, never part of the saved doc. Action popup is click-to-open
+  ## (chip/tooltip no longer auto-shows): click the overlayed line to open the
+  ## formatting chip; when the line ALSO has grammar/spelling issues the click
+  ## opens a combobox (SuggestionActionsMenu.tsx) to pick Formatting or Grammar.
+  ## Editor side panel + chip share queue-position numbering ("Now showing"
+  ## badge on the active card). Scanner no longer caps suggestions at 5. old
+  ## TargetHighlightExtension.ts (content decoration) deleted. Local ML note:
+  ## server/.env must point ML_API_URL at the running FastAPI (default 8000);
+  ## the banner now shows the resolved URL + hint when 8001/8000 mismatch.
 
 ### 3.2 Grammar / spell check visibility
 1. Open an editor → **GrammarPanel is visible** by default in the sidebar.
 2. A text node with a spelling/grammar error gets a **wavy underline** (GrammarUnderlineExtension).
 3. Fixing via the overlay or panel updates the underline.
 4. **Note**: runtime depends on the deployed ML service exposing its grammar endpoints — now live in prod (ML deployed).
+
+  ## 3.2 I mentioned in ## 3.1
+
+  ## 3.2 FIXED (round-3): if the grammar/spell endpoints fail (ML down/quota),
+  the panel now shows a visible red error banner with Retry + a manual
+  "Check now" button instead of silently showing nothing. The wavy/straight
+  underline CSS + plugin wiring are confirmed present in the editor.
 
 ### 3.3 Trash + delete UX
 1. Home → delete → an inline **ConfirmDialog** asks first (no `window.confirm`).
@@ -138,11 +172,18 @@ Round 1 complaint — verify on the live app (intellidocs-silk.vercel.app).
 4. Each trash row has **Open / Restore / Delete permanently** icons (same visual family as Empty trash / Restore selected).
 5. Trash context menu shows Restore + Delete permanently only (no rename/delete-as-before).
 6. Empty trash → also confirm-dialog gated.
+  ## 3.3 Okay theres few improvements needed, first also add confirmation on the restore. second the suggestion panel overlay for format was showing on view only mode basically remove the behavioral learning and automated formatting feature on the view only. Third remove the suggestions panel on view only, and remain only the AI panel. Other than that, its good
+
+  ## 3.3 FIXED (round-3): restore (bulk + single + trash-readonly) is now
+  ConfirmDialog/window.confirm gated; view-only sessions disable the
+  scanner + inline chip and hide the Suggestions tab, leaving only the AI panel.
 
 ### 3.4 Preset dropdown z-index
 1. Open a document → StylesRibbon → open the preset dropdown.
 2. It must render **above** the editor (fixed-position anchor, z-index 9990), not clipped behind the page.
 3. Clicking outside closes it.
+
+  ## 3.4 Yep its fixed,
 
 ### 3.5 Bulk formatting via chat
 1. Ask the chatbot: "Make everything bold, italic and font size 20".
@@ -152,10 +193,28 @@ Round 1 complaint — verify on the live app (intellidocs-silk.vercel.app).
 5. Font size values outside 6–96pt are rejected.
 6. Behavior events fire per applied format (observable via telemetry/admin).
 
+  ## 3.5 So bulk format is working, however, it wont work if USER doesnt highlight the texts, make sure the AI can know which text to format and recieve context from the user, like saying Make the entire chapter 1 12pt and itll be 12pt, Use context-aware here so itll be useful. Additionally, the AI hallucinates on 2nd prompt, first prompt is "Make every bold, itallic and font size 15" and the AI did the MCP, second prompt is "Make it that they go back to normal font 12pt", but it got confused and asked me what should be the final and after i said "latter" it only hands me out an instruction, whatever the user says to format the AI will find the needed context to format and then prompt the user to accept / reject.
+
+  ## 3.5 FIXED (round-3): 
+  - Context-aware targets: "Make the entire chapter 1 12pt" now resolves the
+    chapter heading in the doc and applies the change to that chapter only —
+    no highlighting needed (chapters/sections/named sections supported).
+  - No-hallucination follow-ups: the client sends the last shown preview; the
+    server resolves "back to normal 12pt" into a "Clear formatting + 12pt"
+    preview (reusing the last change's scope/target) with a deterministic reply.
+  - Confirmation follow-ups ("latter", "yes", "do it") replay the last preview
+    with an accept/reject prompt instead of a rambling instruction.
+  - "12pt" (no "size" keyword) is now parsed as a font size.
+  - Verify: "Make every bold, italic and font size 15" → Apply; then
+    "Make it that they go back to normal font 12pt" → preview "Clear
+    formatting + font size 12pt ... entire document" → Apply.
+
 ### 3.6 MCP applyFormatting — commit works without left-click selection
 1. From the chatbot, run a formatting command that applies to the whole doc.
 2. `/mcp applyFormatting` with `mode: 'commit'` changes the live editor content.
 3. The same path still logs behavior events.
+
+  ## 3.6 Worked but refer to 3.5 for the issues
 
 ### 3.7 Drive listing + OAuth
 1. Connect Google Drive → after the consent popup returns, the dialog refreshes and lists files (auto postMessage handshake).
@@ -164,10 +223,20 @@ Round 1 complaint — verify on the live app (intellidocs-silk.vercel.app).
 4. If `FRONTEND_URL` is unset in some environment, the OAuth redirect falls back to the request Origin (no more "connected but keeps prompting").
 5. **Note**: Google app-store/unverified status can still cause OAuth re-prompts — that is Google's verification limbo, not the redirect code.
 
+  ## 3.7 Its not showing my files, "No importable documents found in your Drive.", i have 2 .docx files owned by me in the google account. Maybe its a fetch error?
+
+  ## 3.7 FIXED (round-3): the import dialog now surfaces the real API error
+  (red banner + Retry) instead of a generic empty state, so a fetch/OAuth
+  failure is visible. The strict Drive query fallback + filtering is unchanged.
+  Note: Google app verification (unverified status) can still cause OAuth
+  re-prompts — that is Google-side, not the app.
+
 ### 3.8 Dashboard sidebar
 1. My Documents / Recent / Trash nav items show **count badges**.
 2. Folders quick-access section lists the user's folders (click → folder view with breadcrumbs).
 3. Folder item highlights when its folder view is active.
+
+  ## 3.8 Okay its good.
 
 ### 3.9 Copyable share links (Google-Drive-style)
 1. Owner opens ShareModal → "Share via link" section.
@@ -178,6 +247,19 @@ Round 1 complaint — verify on the live app (intellidocs-silk.vercel.app).
 6. Revoked/expired link → 403 access denied.
 7. Migration `db/supabase/016_share_links.sql` applied to prod DB.
 
+  ## 3.9 For this, its working but the issues are 1. the view/comment/edit on link dissapears, it shouldnt do that. for the email i havent tested it but ill do it later. 2. creating a link as edit doesnt let the other edit it. And there is no timer selector (when the link will expire).
+
+  ## 3.9 FIXED (round-3):
+  1. The permission selector is now **persistent** — it stays visible once a
+     link exists and changes are applied via `PUT` without re-minting the token.
+  2. Edit links actually allow editing: the editor no longer forces read-only
+     for an `edit`-permission link, and doc updates pass the share token through.
+  3. Expiry picker added (No expiry / 1 / 7 / 30 days / custom date); stored in
+     `share_expires_at`; the recipient sees a countdown and expired links are
+     revoked server-side on read **and** write. Migration `017_share_expiry.sql`
+     must be applied to prod Supabase.
+  - Re-test with two accounts: owner creates Edit link (set 1-day expiry) →
+    second user opens it and edits; expired link → 403 / read-only banner.
 ---
 
 ## 4. Manual Acceptance — Master Implementation Plan (previously verified)

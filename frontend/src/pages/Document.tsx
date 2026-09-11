@@ -17,6 +17,7 @@ import GrammarPanel, { type GrammarIssue } from '@/components/editor/GrammarPane
 import type { Suggestion } from '@/components/editor/SuggestionPanel'
 import GrammarOverlay from '@/components/editor/GrammarOverlay'
 import InlineSuggestionChip from '@/components/editor/InlineSuggestionChip'
+import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import EditorSidePanel, { type SidePanelTab } from '@/components/editor/EditorSidePanel'
 import StylesRibbon, { STYLE_DRAG_MIME } from '@/components/editor/StylesRibbon'
@@ -31,7 +32,7 @@ import { ArrowLeft, Save, Moon, Sun, ShieldOff, Shield, PanelRight, PanelRightCl
 import { useAutoFormatScanner, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { confidenceThreshold, highlightColorCss } from '@/lib/editorPreferences'
-import { setHighlight, clearHighlight } from '@/components/editor/TargetHighlightExtension'
+import SuggestionHighlightOverlay, { type HighlightBox } from '@/components/editor/SuggestionHighlightOverlay'
 import {
   cacheDocumentRead,
   evictCachedDocument,
@@ -44,7 +45,6 @@ const MAX_SAVE_RETRIES = 3
 const AUTO_FORMAT_DELAY = 1200
 const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.22
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
-const AUTO_FORMAT_MIN_INTERVAL_MS = 15 * 1000
 
 export default function Document(): JSX.Element {
   const { id } = useParams()
@@ -70,7 +70,6 @@ export default function Document(): JSX.Element {
   const saveRetryCountRef = useRef<number>(0)
   const autoFormatTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressedAutoFormatsRef = useRef<Record<string, number>>({})
-  const lastAutoFormatRef = useRef<{ format: string; shownAt: number } | null>(null)
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
@@ -117,6 +116,9 @@ export default function Document(): JSX.Element {
   const [activeGrammarRect, setActiveGrammarRect] = useState<DOMRect | null>(null)
   const [suggestionRange, setSuggestionRange] = useState<{ from: number; to: number } | null>(null)
   const [suggestionAnchor, setSuggestionAnchor] = useState<{ x: number; y: number } | null>(null)
+  const [suggestionBox, setSuggestionBox] = useState<HighlightBox | null>(null)
+  const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number } | null>(null)
+  const editorCanvasRef = useRef<HTMLDivElement>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
 
@@ -135,7 +137,7 @@ export default function Document(): JSX.Element {
     rejectSuggestion: rejectScannerSuggestion,
   } = useAutoFormatScanner({
     editor,
-    enabled: !!editor,
+    enabled: !!editor && !readOnly,
     minConfidence: confidenceThreshold(prefs),
   })
 
@@ -160,6 +162,7 @@ export default function Document(): JSX.Element {
   /** Restore a trashed document straight from the read-only page, then go home. */
   async function handleRestoreFromReadonly(): Promise<void> {
     if (!id) return
+    if (!window.confirm('Restore this document? It will be moved back to your active documents.')) return
     try {
       await api.documents.restore(id)
       navigate('/dashboard', { replace: true })
@@ -185,49 +188,18 @@ export default function Document(): JSX.Element {
       const targetY = coords.top - containerRect.top + scrollTop - 200
       editorContainer.scrollTo({ top: targetY, behavior: 'smooth' })
     }
-
-    // Apply pulse highlight after a brief delay (let scroll settle)
-    setTimeout(() => {
-      if (!editor.isDestroyed) {
-        setHighlight(editor, suggestion.from, suggestion.to)
-      }
-    }, 400)
-
-    // Clear highlight after 6 seconds
-    setTimeout(() => {
-      if (!editor.isDestroyed) {
-        clearHighlight(editor)
-      }
-    }, 6000)
   }, [editor])
 
-  // Sync scanner's active suggestion into the inline highlight + chip.
-  // The highlight stays until the user accepts/rejects (no auto-clear).
+  // Sync the scanner's active suggestion into the document overlay highlight.
+  // The overlay is always drawn for the active suggestion; the action popup
+  // only opens when the user clicks the highlighted text.
   useEffect(() => {
-    if (!scannerActive) return
-
-    // If a cursor-based suggestion is already showing, don't override it.
-    if (formatPrompt && !suggestionRange) return
-
+    if (!scannerActive) {
+      setSuggestionRange(null)
+      return
+    }
     setSuggestionRange({ from: scannerActive.from, to: scannerActive.to })
-    if (editor && !editor.isDestroyed) {
-      setHighlight(editor, scannerActive.from, scannerActive.to)
-    }
-
-    if (!formatPrompt) {
-      setFormatPrompt({
-        format: scannerActive.format,
-        confidence: scannerActive.confidence,
-      })
-    }
-  }, [scannerActive, formatPrompt, suggestionRange, editor])
-
-  // Clear scanner highlight when scanner suggestions change and nothing is active
-  useEffect(() => {
-    if (editor && !editor.isDestroyed && scannerSuggestions.length === 0 && !formatPrompt) {
-      clearHighlight(editor)
-    }
-  }, [scannerSuggestions, formatPrompt, editor])
+  }, [scannerActive])
 
   useEffect(() => {
     if (!id) return
@@ -242,8 +214,12 @@ export default function Document(): JSX.Element {
 
         const doc = await api.documents.get(docId, shareToken)
         applyLoadedDocument(doc)
-        // Share-link visitors who are not the owner get a read-only session.
-        if (shareToken && doc.user_id !== user?.id) {
+        // Share-link visitors who are not the owner get a read-only session —
+        // unless the link grants edit permission and is not expired.
+        const linkExpired = Boolean(
+          doc.share_expires_at && new Date(doc.share_expires_at).getTime() <= Date.now(),
+        )
+        if (shareToken && doc.user_id !== user?.id && (doc.share_permission !== 'edit' || linkExpired)) {
           setViewOnly(true)
         }
         void cacheDocumentRead(doc)
@@ -334,16 +310,6 @@ export default function Document(): JSX.Element {
     setWordCount(text ? text.split(' ').filter((w) => w.length > 0).length : 0)
   }
 
-  function shouldSkipAutoFormatSuggestion(format: string): boolean {
-    const last = lastAutoFormatRef.current
-
-    if (!last) return false
-
-    if (last.format !== format) return false
-
-    return Date.now() - last.shownAt < AUTO_FORMAT_MIN_INTERVAL_MS
-  }
-
   function getPlainText(html: string): string {
     return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
   }
@@ -394,19 +360,6 @@ export default function Document(): JSX.Element {
     return labels[format] ?? format
   }
 
-  function isAutoFormatSuppressed(format: string): boolean {
-    const suppressedUntil = suppressedAutoFormatsRef.current[format]
-
-    if (!suppressedUntil) return false
-
-    if (Date.now() > suppressedUntil) {
-      delete suppressedAutoFormatsRef.current[format]
-      return false
-    }
-
-    return true
-  }
-
   function isFormatAlreadyActive(format: string): boolean {
     if (!editor) return false
     switch (format) {
@@ -443,15 +396,6 @@ export default function Document(): JSX.Element {
     }
   }
 
-  /** Resolve the current textblock's ProseMirror range for highlighting. */
-  function getActiveParagraphRange(): { from: number; to: number } | null {
-    if (!editor || editor.isDestroyed) return null
-    const { from } = editor.state.selection
-    const $pos = editor.state.doc.resolve(from)
-    if (!$pos.parent.isTextblock) return null
-    return { from: $pos.start(), to: $pos.end() }
-  }
-
   /** Alternatives offered by the chip's "change to" cycling. */
   const SUGGESTION_ALTERNATIVES: Record<string, string[]> = {
     heading1: ['heading1', 'heading2', 'heading3', 'bold', 'paragraph'],
@@ -473,24 +417,75 @@ export default function Document(): JSX.Element {
     if (idx < 0) return
     const next = list[(idx + direction + list.length) % list.length]
     setFormatPrompt({ format: next, confidence: formatPrompt.confidence })
-    if (editor && !editor.isDestroyed && suggestionRange) {
-      setHighlight(editor, suggestionRange.from, suggestionRange.to)
+  }
+
+  /** Union bounding rect (viewport space) of every DOM line covering the range. */
+  function getRangeUnionRect(editorInstance: Editor, from: number, to: number): DOMRect | null {
+    try {
+      const view = editorInstance.view
+      const { node: startNode, offset: startOffset } = view.domAtPos(from)
+      const { node: endNode, offset: endOffset } = view.domAtPos(to)
+      const range = document.createRange()
+      range.setStart(startNode, startOffset)
+      range.setEnd(endNode, endOffset)
+      const rects = Array.from(range.getClientRects())
+      if (rects.length === 0) return null
+      let left = Infinity
+      let top = Infinity
+      let right = -Infinity
+      let bottom = -Infinity
+      for (const rect of rects) {
+        left = Math.min(left, rect.left)
+        top = Math.min(top, rect.top)
+        right = Math.max(right, rect.right)
+        bottom = Math.max(bottom, rect.bottom)
+      }
+      if (right <= left || bottom <= top) return null
+      return new DOMRect(left, top, right - left, bottom - top)
+    } catch {
+      return null
     }
   }
 
   const updateSuggestionAnchor = useCallback((): void => {
     if (!editor || editor.isDestroyed || !suggestionRange) return
+    const { from, to } = suggestionRange
     const view = editor.view
-    const coords = view.coordsAtPos(suggestionRange.from + 1)
-    if (coords.left === 0 && coords.top === 0) return
-    setSuggestionAnchor({ x: coords.left, y: coords.top })
+
+    // Chip anchor (viewport space) — top-left of the range.
+    const start = view.coordsAtPos(from + 1)
+    if (start.left === 0 && start.top === 0) return
+    const endpoint = view.coordsAtPos(to <= from + 1 ? from + 1 : to - 1)
+    setSuggestionAnchor({ x: Math.min(start.left, endpoint.left), y: start.top })
+
+    // Overlay box — union of every DOM line covering the range (wrapped lines
+    // included), converted to editor-container coords so the overlay moves
+    // together with the content while scrolling.
+    const rect = getRangeUnionRect(editor, from, to)
+    const container = editorCanvasRef.current
+    if (!rect || !container) {
+      setSuggestionBox(null)
+      return
+    }
+    const cRect = container.getBoundingClientRect()
+    const computed = window.getComputedStyle(container)
+    const padLeft = parseFloat(computed.paddingLeft) || 0
+    const padTop = parseFloat(computed.paddingTop) || 0
+    setSuggestionBox({
+      top: rect.top - cRect.top - padTop,
+      left: rect.left - cRect.left - padLeft,
+      width: rect.width,
+      height: rect.height,
+    })
   }, [editor, suggestionRange])
 
-  // Recompute the chip anchor when the range, editor, window, or editor
-  // transactions change (covers typing, scrolling, and page layout shifts).
+  // Recompute the chip anchor + overlay highlight box when the range, editor,
+  // window, or editor transactions change (covers typing, scrolling, page
+  // layout shifts, and mark changes from the chip's "change to" cycling).
   useEffect(() => {
     if (!suggestionRange || !editor || editor.isDestroyed) {
       setSuggestionAnchor(null)
+      setSuggestionBox(null)
       return
     }
     const refresh = (): void => updateSuggestionAnchor()
@@ -504,13 +499,6 @@ export default function Document(): JSX.Element {
       editor.off('transaction', refresh)
     }
   }, [suggestionRange, editor, updateSuggestionAnchor])
-
-  // When the prompt clears, drop the chip range + anchor.
-  useEffect(() => {
-    if (!formatPrompt) {
-      setSuggestionRange((prev) => (prev ? null : prev))
-    }
-  }, [formatPrompt])
 
   // Keyboard: Enter accepts, Esc rejects, Alt+ArrowUp/Down cycles "change to".
   useEffect(() => {
@@ -576,7 +564,6 @@ export default function Document(): JSX.Element {
     }
 
     if (activeText.length < 3) {
-      setFormatPrompt(null)
       setSuggestions([])
       setShowSuggestions(false)
       return
@@ -586,7 +573,6 @@ export default function Document(): JSX.Element {
       const result = await api.formatting.tierCheck(activeText, id ?? '')
 
       if (result.format && isFormatAlreadyActive(result.format)) {
-        setFormatPrompt(null)
         setSuggestions([])
         setShowSuggestions(false)
         return
@@ -598,7 +584,6 @@ export default function Document(): JSX.Element {
           applyPromptFormat(result.format)
           handleFormat(result.format)
         }
-        setFormatPrompt(null)
         setSuggestions([])
         setShowSuggestions(false)
         return
@@ -606,7 +591,6 @@ export default function Document(): JSX.Element {
 
       // Tier 3 — ML prediction with confidence score.
       if (result.tier !== 'ml' || !result.format || result.confidence === undefined) {
-        setFormatPrompt(null)
         setSuggestions([])
         setShowSuggestions(false)
         return
@@ -617,7 +601,6 @@ export default function Document(): JSX.Element {
 
       // Regular body text / paragraphs don't need a formatting suggestion prompt
       if (predictedFormat === 'paragraph' || predictedFormat === 'body_text') {
-        setFormatPrompt(null)
         setSuggestions([])
         setShowSuggestions(false)
         return
@@ -628,23 +611,25 @@ export default function Document(): JSX.Element {
       const isHeadingFamily = ['heading1', 'heading2', 'heading3', 'h1', 'h2', 'h3'].includes(predictedFormat)
       const inList = editor?.isActive('bulletList') || editor?.isActive('orderedList') || editor?.isActive('listItem')
       if (isHeadingFamily && (isQuestionLine || inList)) {
-        setFormatPrompt(null)
         setSuggestions([])
         setShowSuggestions(false)
         return
       }
 
       if (confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) {
-        setFormatPrompt(null)
         setSuggestions([])
         setShowSuggestions(false)
         return
       }
 
-      // Scan candidate lines across the document to populate the Suggestions drawer
+      // Scan candidate lines across the document to populate the Suggestions drawer.
+      // The inline highlight + accept/reject chip are driven by the auto-format
+      // scanner (useAutoFormatScanner), which sweeps the whole document on an
+      // interval, so the prediction below only feeds the side drawer — the two
+      // engines can no longer overwrite each other's UI state.
       const lines = plainText.split('\n').map((l) => l.trim()).filter((l) => l.length >= 4 && l.length <= 120)
       const candidateLines = lines.slice(0, 8)
-      
+
       const newSuggestions: Suggestion[] = []
       if (predictedFormat !== 'paragraph' && predictedFormat !== 'body_text') {
         const confidencePercent = Math.min(98, Math.max(80, Math.round(confidence * 100 * 2.8)))
@@ -653,24 +638,6 @@ export default function Document(): JSX.Element {
           confidence: confidencePercent,
           reason: `Predicted ${formatSuggestionLabel(predictedFormat)} for current section based on academic layout patterns.`,
         })
-
-        if (!isAutoFormatSuppressed(predictedFormat) && !shouldSkipAutoFormatSuggestion(predictedFormat)) {
-          setFormatPrompt({
-            format: predictedFormat,
-            confidence: confidencePercent,
-          })
-          lastAutoFormatRef.current = {
-            format: predictedFormat,
-            shownAt: Date.now(),
-          }
-
-          // Highlight the active paragraph so the user sees what's being suggested
-          const range = getActiveParagraphRange()
-          if (range) {
-            setSuggestionRange(range)
-            if (editor && !editor.isDestroyed) setHighlight(editor, range.from, range.to)
-          }
-        }
       }
 
       // Check additional lines if present for the suggestions drawer
@@ -694,7 +661,6 @@ export default function Document(): JSX.Element {
         setSuggestions(newSuggestions)
         setShowSuggestions(true)
       } else {
-        setFormatPrompt(null)
         setSuggestions([])
         setShowSuggestions(false)
       }
@@ -751,7 +717,7 @@ export default function Document(): JSX.Element {
         margins: latestPageSetupRef.current.margins,
         orientation: latestPageSetupRef.current.orientation,
         formatting_history: nextFormatHistory,
-      })
+      }, shareToken)
       latestContentRef.current = nextContent
       setContent(nextContent)
       setLastSavedTitle(nextTitle)
@@ -881,11 +847,6 @@ export default function Document(): JSX.Element {
       acceptScannerSuggestion(scannerActive.key)
     }
 
-    // Clear any pulse highlight
-    if (editor && !editor.isDestroyed) {
-      clearHighlight(editor)
-    }
-
     if (id) {
       api.behavior
         .log({
@@ -950,11 +911,6 @@ export default function Document(): JSX.Element {
     // Dismiss the active scanner suggestion
     if (scannerActive) {
       rejectScannerSuggestion(scannerActive.key)
-    }
-
-    // Clear any pulse highlight on rejection
-    if (editor && !editor.isDestroyed) {
-      clearHighlight(editor)
     }
 
     setFormatPrompt(null)
@@ -1047,6 +1003,79 @@ export default function Document(): JSX.Element {
     []
   )
 
+  /** Locate the ProseMirror position of a grammar issue's text in the document. */
+  function findIssuePos(issue: GrammarIssue): number | null {
+    if (!editor || editor.isDestroyed) return null
+    const needle = issue.original.toLowerCase()
+    let found: number | null = null
+    editor.state.doc.descendants((node, pos) => {
+      if (found !== null) return false
+      if (node.isText && node.text) {
+        const idx = node.text.toLowerCase().indexOf(needle)
+        if (idx >= 0) found = pos + idx
+      }
+      return found === null
+    })
+    return found
+  }
+
+  /** Build a viewport rect for a grammar issue so the fix popover can anchor to it. */
+  function buildIssueRect(issue: GrammarIssue): DOMRect | null {
+    const pos = findIssuePos(issue)
+    if (pos === null || !editor || editor.isDestroyed) return null
+    const start = editor.view.coordsAtPos(pos)
+    const end = editor.view.coordsAtPos(pos + issue.original.length)
+    return new DOMRect(
+      start.left,
+      start.top,
+      Math.max(end.right - start.left, 12),
+      Math.max(start.bottom - start.top, 14)
+    )
+  }
+
+  /** Grammar/spelling issues whose text falls inside the highlighted suggestion block. */
+  const issuesOnRange = useCallback((): GrammarIssue[] => {
+    if (!editor || editor.isDestroyed || !suggestionRange) return []
+    const blockText = editor.state.doc
+      .textBetween(suggestionRange.from, suggestionRange.to, ' ')
+      .toLowerCase()
+    return grammarIssues.filter((issue) => issue.original && blockText.includes(issue.original.toLowerCase()))
+  }, [editor, suggestionRange, grammarIssues])
+
+  /** Open the formatting suggestion popup (chip) for the active suggestion. */
+  function openFormattingPopup(): void {
+    setActionsMenu(null)
+    if (scannerActive) {
+      setFormatPrompt({
+        format: scannerActive.format,
+        confidence: scannerActive.confidence,
+      })
+    }
+  }
+
+  /** Open the grammar fix popover for the first issue on the highlighted line. */
+  function openGrammarFromMenu(): void {
+    const issues = issuesOnRange()
+    const first = issues[0]
+    setActionsMenu(null)
+    if (first) {
+      const rect = buildIssueRect(first)
+      if (rect) handleGrammarClick(first, rect, findIssuePos(first) ?? 0)
+    }
+  }
+
+  /** Clicking the highlighted text opens a chooser when BOTH formats + grammar are present. */
+  function handleOverlayOpen(): void {
+    if (issuesOnRange().length > 0) {
+      setActionsMenu({
+        x: suggestionBox?.left ?? suggestionAnchor?.x ?? 0,
+        y: suggestionBox?.top ?? suggestionAnchor?.y ?? 0,
+      })
+    } else {
+      openFormattingPopup()
+    }
+  }
+
   // Push grammar issues into the editor's wavy-underline decorations whenever they change.
   useEffect(() => {
     if (!editor || !editor.commands.setGrammarIssues) return
@@ -1092,6 +1121,26 @@ export default function Document(): JSX.Element {
     pendingSaveRef.current = true
     await saveDocument()
   }
+
+  // Chip metadata: the chip's counter tracks the highlighted suggestion's queue
+  // position, while the up/down arrows cycle the "change to" alternatives.
+  const queuePosition = scannerActive
+    ? scannerSuggestions.findIndex((s) => s.key === scannerActive.key) + 1
+    : 0
+  const queueTotal = scannerActive ? scannerSuggestions.length : 0
+  const chipAlternatives = formatPrompt
+    ? SUGGESTION_ALTERNATIVES[formatPrompt.format] ?? [formatPrompt.format]
+    : []
+  const altPosition = formatPrompt ? chipAlternatives.indexOf(formatPrompt.format) : 0
+  const cycleNextLabel = altPosition >= 0 && altPosition < chipAlternatives.length - 1
+    ? formatSuggestionLabel(chipAlternatives[altPosition + 1])
+    : undefined
+  const cyclePrevLabel = altPosition > 0 ? formatSuggestionLabel(chipAlternatives[altPosition - 1]) : undefined
+
+  /** Jump to the currently highlighted suggestion (chip → locate button). */
+  const handleChipJump = useCallback((): void => {
+    if (scannerActive) jumpToScannerTarget(scannerActive)
+  }, [scannerActive, jumpToScannerTarget])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'hidden', backgroundColor: 'var(--background)' }}>
@@ -1489,7 +1538,9 @@ export default function Document(): JSX.Element {
         {/* Editor area — clean TipTap paper sheet */}
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div
+            ref={editorCanvasRef}
             style={{
+              position: 'relative',
               flex: 1,
               overflowY: 'auto',
               backgroundColor: 'var(--canvas-bg)',
@@ -1521,6 +1572,15 @@ export default function Document(): JSX.Element {
               headerNumberFormat={headerNumberFormat}
               footerNumberFormat={footerNumberFormat}
             />
+
+          {/* Overlay highlight drawn on the suggested document line, positioned
+              inside the scroll container so it moves with the content */}
+            {!readOnly && scannerActive && suggestionRange && suggestionBox && (
+              <SuggestionHighlightOverlay
+                box={suggestionBox}
+                onOpen={handleOverlayOpen}
+              />
+            )}
           </div>
         </main>
 
@@ -1535,6 +1595,7 @@ export default function Document(): JSX.Element {
           documentTitle={title}
           documentContent={chatContent}
           scannerSuggestions={scannerSuggestions}
+          activeScannerKey={scannerActive?.key ?? null}
           mlSuggestions={showSuggestions ? suggestions : []}
           grammarIssues={grammarIssues}
           onJumpTo={jumpToScannerTarget}
@@ -1545,6 +1606,7 @@ export default function Document(): JSX.Element {
           onApplyGrammar={handleGrammarApply}
           onDismissGrammar={handleGrammarDismiss}
           onFocusEditor={focusEditor}
+          readOnly={readOnly}
           extraSections={
             <>
               {/* Grammar & spell check — visible panel + wavy underlines in the editor */}
@@ -1678,13 +1740,30 @@ export default function Document(): JSX.Element {
         }}
       />
 
+      {/* Chooser when the highlighted line has both formatting + grammar/spelling */}
+      {actionsMenu && (
+        <SuggestionActionsMenu
+          anchor={actionsMenu}
+          formattingLabel={formatSuggestionLabel(scannerActive?.format ?? '')}
+          grammarCount={issuesOnRange().length}
+          onFormatting={openFormattingPopup}
+          onGrammar={openGrammarFromMenu}
+          onClose={() => setActionsMenu(null)}
+        />
+      )}
+
       {/* Inline suggestion chip — anchored above the highlighted block */}
-      {formatPrompt && suggestionRange && suggestionAnchor && (
+      {!readOnly && formatPrompt && suggestionRange && suggestionAnchor && (
         <InlineSuggestionChip
           anchor={suggestionAnchor}
           label={formatSuggestionLabel(formatPrompt.format)}
           confidence={formatPrompt.confidence}
+          queuePosition={queuePosition}
+          queueTotal={queueTotal}
+          nextLabel={cycleNextLabel}
+          prevLabel={cyclePrevLabel}
           onChangeTo={cycleSuggestionFormat}
+          onJump={handleChipJump}
           onAccept={() => handlePromptAccept(formatPrompt.format)}
           onReject={handlePromptReject}
         />

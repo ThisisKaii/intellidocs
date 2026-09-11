@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Locate, X } from 'lucide-react'
 
 interface InlineSuggestionChipProps {
   /** Viewport-space anchor (top-left of the highlighted block). */
@@ -7,8 +7,18 @@ interface InlineSuggestionChipProps {
   label: string
   /** Confidence percentage 0–100. */
   confidence: number
+  /** 1-based position of the highlighted suggestion within the queue. */
+  queuePosition?: number
+  /** Total number of suggestions currently in the queue. */
+  queueTotal?: number
+  /** Label of the next alternative (tooltip only). */
+  nextLabel?: string
+  /** Label of the previous alternative (tooltip only). */
+  prevLabel?: string
   /** Cycle through alternative formats (1 = next, -1 = previous). */
   onChangeTo: (direction: 1 | -1) => void
+  /** Scroll the editor to the highlighted target. */
+  onJump: () => void
   onAccept: () => void
   onReject: () => void
 }
@@ -23,7 +33,12 @@ export default function InlineSuggestionChip({
   anchor,
   label,
   confidence,
+  queuePosition,
+  queueTotal,
+  nextLabel,
+  prevLabel,
   onChangeTo,
+  onJump,
   onAccept,
   onReject,
 }: InlineSuggestionChipProps): JSX.Element {
@@ -66,10 +81,25 @@ export default function InlineSuggestionChip({
     <div style={chipStyle} onMouseDown={(e) => e.preventDefault()}>
       <span style={{ color: 'var(--foreground)' }}>{label}</span>
       <span style={{ color: 'var(--muted-foreground)', fontWeight: 500 }}>{Math.round(confidence)}%</span>
+      {queueTotal && queueTotal > 1 ? (
+        <span style={{ color: 'var(--muted-foreground)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+          {queuePosition}/{queueTotal}
+        </span>
+      ) : null}
       <span style={{ width: 1, height: 14, backgroundColor: 'var(--border)' }} />
       <button
         type="button"
-        title="Change to previous format (Alt+ArrowUp)"
+        title="Go to highlighted text"
+        style={buttonStyle}
+        onMouseDownCapture={onJump}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
+      >
+        <Locate style={{ width: 14, height: 14 }} />
+      </button>
+      <button
+        type="button"
+        title={prevLabel ? `Change to ${prevLabel} (Alt+ArrowUp)` : 'Change to previous format (Alt+ArrowUp)'}
         style={buttonStyle}
         onMouseDownCapture={() => onChangeTo(-1)}
         onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
@@ -79,7 +109,7 @@ export default function InlineSuggestionChip({
       </button>
       <button
         type="button"
-        title="Change to next format (Alt+ArrowDown)"
+        title={nextLabel ? `Change to ${nextLabel} (Alt+ArrowDown)` : 'Change to next format (Alt+ArrowDown)'}
         style={buttonStyle}
         onMouseDownCapture={() => onChangeTo(1)}
         onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
