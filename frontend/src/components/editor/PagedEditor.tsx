@@ -12,6 +12,7 @@ import {
 import type { GrammarIssue } from './GrammarPanel'
 import type { PageNumberFormat } from '@/services/api'
 import type { UnderlineStyle } from '@/lib/editorPreferences'
+import { SlashCommandMenu } from './SlashCommandMenu'
 
 /** Vertical gap between stacked page sheets, in px. */
 const PAGE_GAP = 40
@@ -318,14 +319,34 @@ export function PagedEditor({
             border-radius: 4px;
             box-shadow: var(--page-shadow);
           }
+          .rm-with-pagination .ProseMirror,
+          .rm-with-pagination .ProseMirror .ProseMirror-selectednode {
+            color: #171717;
+            caret-color: #171717;
+          }
+          .rm-with-pagination .ProseMirror blockquote {
+            border-left-color: #3a3f3e;
+            color: #4a5555;
+          }
+          .rm-with-pagination p.is-editor-empty:first-child::before {
+            color: #8b8f8d;
+          }
+          .rm-with-pagination .ProseMirror th {
+            color: #171717;
+          }
+          .rm-with-pagination .ProseMirror pre,
+          .rm-with-pagination .ProseMirror code {
+            background: #f0efea;
+          }
           .rm-with-pagination .rm-page-header,
           .rm-with-pagination .rm-page-footer {
             font-size: 0.6875rem;
-            color: var(--muted-foreground);
+            color: #6b7878;
           }
           ${romanStyle}`}
       </style>
       <TiptapCanvas editor={editor} />
+      <SlashCommandMenu editor={editor} />
       {loadProgress !== null && (
         <div
           style={{

@@ -9,6 +9,8 @@ import FontFamily from '@tiptap/extension-font-family'
 import TextAlign from '@tiptap/extension-text-align'
 import ImageResize from 'tiptap-extension-resize-image'
 import Paragraph from '@tiptap/extension-paragraph'
+import Heading from '@tiptap/extension-heading'
+import Blockquote from '@tiptap/extension-blockquote'
 import { Table } from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableCell from '@tiptap/extension-table-cell'
@@ -17,14 +19,16 @@ import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import Highlight from '@tiptap/extension-highlight'
 import { GrammarUnderlineExtension } from './GrammarUnderlineExtension'
+import { StyleGuideExtension } from './StyleGuideExtension'
+import { MarkdownTriggers } from './MarkdownTriggers'
 import { PageBreak } from './PageBreak'
+import EditorStylesPanel from './EditorStylesPanel'
+import { ACADEMIC_PRESETS } from './academicPresets'
 import {
   Undo2,
   Redo2,
-  Type,
   Heading1,
   Heading2,
-  Heading3,
   Quote,
   Code2,
   ChevronDown,
@@ -53,15 +57,17 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Check,
-  Sparkles,
+  Pencil,
   Download,
   FileText,
   Printer,
   FileCode,
+  GraduationCap,
 } from 'lucide-react'
 import { api, type PageNumberFormat } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { IndentExtension } from './IndentExtension'
+import { exportThesisWord, exportThesisPdf } from '@/lib/thesisExport'
 
 /** Download document content as a standalone clean HTML file. */
 function downloadHTML(html: string, title: string): void {
@@ -275,6 +281,11 @@ const CustomParagraph = Paragraph.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      styleSource: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-style-source'),
+        renderHTML: (a) => (a.styleSource ? { 'data-style-source': a.styleSource } : {}),
+      },
       style: {
         default: null,
         parseHTML: (el) => filterStyle(el.getAttribute('style')),
@@ -307,11 +318,41 @@ const CenteredImageResize = ImageResize.extend({
   },
 })
 
+const CustomHeading = Heading.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      styleSource: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-style-source'),
+        renderHTML: (a) => (a.styleSource ? { 'data-style-source': a.styleSource } : {}),
+      },
+    }
+  },
+})
+
+const CustomBlockquote = Blockquote.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      styleSource: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-style-source'),
+        renderHTML: (a) => (a.styleSource ? { 'data-style-source': a.styleSource } : {}),
+      },
+    }
+  },
+})
+
 export const editorExtensions = [
   StarterKit.configure({
     paragraph: false,
+    heading: false,
+    blockquote: false,
   }),
   CustomParagraph,
+  CustomHeading,
+  CustomBlockquote,
   PageBreak,
   TextStyle,
   Color,
@@ -328,6 +369,8 @@ export const editorExtensions = [
   Superscript,
   Highlight.configure({ multicolor: true }),
   GrammarUnderlineExtension,
+  StyleGuideExtension,
+  MarkdownTriggers,
 ]
 
 // ─── Editor factory hook ────────────────────────────────────────────────────
@@ -553,13 +596,29 @@ const FONT_FAMILIES = [
 
 const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48]
 
-const BLOCK_STYLES = [
-  { label: 'Paragraph',   tag: 'p',          icon: Type,     shortcut: 'Ctrl+Alt+0' },
-  { label: 'Heading 1',   tag: 'h1',         icon: Heading1, shortcut: 'Ctrl+Alt+1' },
-  { label: 'Heading 2',   tag: 'h2',         icon: Heading2, shortcut: 'Ctrl+Alt+2' },
-  { label: 'Heading 3',   tag: 'h3',         icon: Heading3, shortcut: 'Ctrl+Alt+3' },
-  { label: 'Blockquote',  tag: 'blockquote', icon: Quote,    shortcut: 'Ctrl+Shift+B' },
-  { label: 'Code Block',  tag: 'pre',        icon: Code2,    shortcut: 'Ctrl+Alt+C' },
+/** Preview typography rendered on a style tile. */
+interface StyleTilePreview {
+  fontSize?: string
+  fontWeight?: number
+  fontStyle?: 'normal' | 'italic'
+}
+
+interface StyleGalleryItem {
+  format: string
+  tag: string
+  label: string
+  preview: StyleTilePreview
+}
+
+/** Style-tile gallery: formats mapped to block tags for active highlighting. */
+const STYLE_GALLERY: StyleGalleryItem[] = [
+  { format: 'normal',     tag: 'p',          label: 'Normal',      preview: {} },
+  { format: 'h1',         tag: 'h1',         label: 'Heading 1',   preview: { fontSize: '14px', fontWeight: 700 } },
+  { format: 'h2',         tag: 'h2',         label: 'Heading 2',   preview: { fontSize: '13px', fontWeight: 700 } },
+  { format: 'h3',         tag: 'h3',         label: 'Heading 3',   preview: { fontSize: '12px', fontWeight: 600 } },
+  { format: 'title',      tag: 'h1',         label: 'Title',       preview: { fontSize: '15px', fontWeight: 700 } },
+  { format: 'blockquote', tag: 'blockquote', label: 'Quote',       preview: { fontSize: '11px', fontStyle: 'italic' } },
+  { format: 'caption',    tag: 'p',          label: 'Caption',     preview: { fontSize: '11px', fontStyle: 'italic' } },
 ]
 
 const PRESET_COLORS = [
@@ -607,6 +666,9 @@ interface ToolbarProps {
   onHeaderNumberFormatChange: (value: PageNumberFormat) => void
   onFooterNumberFormatChange: (value: PageNumberFormat) => void
   documentTitle?: string
+  onApplyStyle: (format: string) => void
+  onApplyPreset: (key: string) => void
+  activePreset: string | null
 }
 
 /**
@@ -636,8 +698,12 @@ export function TiptapToolbar({
   onHeaderNumberFormatChange,
   onFooterNumberFormatChange,
   documentTitle = 'Untitled Document',
+  onApplyStyle,
+  onApplyPreset,
+  activePreset,
 }: ToolbarProps): JSX.Element {
-  const [openStyle, setOpenStyle] = useState(false)
+  const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'styles'>('home')
+  const [openStylesManage, setOpenStylesManage] = useState(false)
   const [openFont, setOpenFont] = useState(false)
   const [openSize, setOpenSize] = useState(false)
   const [openColor, setOpenColor] = useState(false)
@@ -667,7 +733,7 @@ export function TiptapToolbar({
   }, [])
 
   function closeAllMenus(): void {
-    setOpenStyle(false)
+    setOpenStylesManage(false)
     setOpenFont(false)
     setOpenSize(false)
     setOpenColor(false)
@@ -695,9 +761,6 @@ export function TiptapToolbar({
     if (editor.isActive('codeBlock')) return 'pre'
     return 'p'
   })()
-
-  const activeBlockLabel =
-    BLOCK_STYLES.find((b) => b.tag === currentBlockTag)?.label || 'Paragraph'
 
   const currentFontFamily = (() => {
     if (!editor) return 'Times New Roman'
@@ -766,6 +829,7 @@ export function TiptapToolbar({
   return (
     <div
       ref={toolbarRef}
+      className="intellidocs-toolbar"
       style={{
         position: 'relative',
         display: 'flex',
@@ -790,6 +854,53 @@ export function TiptapToolbar({
         onChange={(e) => void handleFileSelected(e)}
       />
 
+      {/* Word-style tab strip: Home | Insert | Styles */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '2px',
+          flexBasis: '100%',
+          padding: '2px 4px 0',
+          borderBottom: '1px solid var(--border)',
+          marginBottom: '2px',
+        }}
+      >
+        {(['home', 'insert', 'styles'] as const).map((tabName) => (
+          <button
+            key={tabName}
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              closeAllMenus()
+              setActiveTab(tabName)
+            }}
+            title={tabName === 'home' ? 'Text editing and formatting' : tabName === 'insert' ? 'Insert content into the document' : 'Styles and academic presets'}
+            style={{
+              padding: '4px 12px 6px',
+              border: 'none',
+              background: 'none',
+              borderRadius: '6px 6px 0 0',
+              color: activeTab === tabName ? 'var(--primary)' : 'var(--muted-foreground)',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              textTransform: 'capitalize',
+              boxShadow: activeTab === tabName ? 'inset 0 -2px 0 0 var(--primary)' : 'none',
+            }}
+          >
+            {tabName}
+          </button>
+        ))}
+      </div>
+
+      {/* Home tab — text editing and formatting */}
+      <div
+        style={{
+          display: activeTab === 'home' ? 'contents' : 'none',
+        }}
+      >
       {/* History */}
       <div style={GROUP_STYLE}>
         <ToolButton
@@ -808,69 +919,54 @@ export function TiptapToolbar({
 
       <Divider />
 
-      {/* Block style dropdown */}
+      {/* Styles gallery — Word-style inline tiles with More popover */}
       <div style={{ position: 'relative' }}>
-        <button
-          type="button"
-          onMouseDown={(e) => {
-            e.preventDefault()
-            const next = !openStyle
-            closeAllMenus()
-            setOpenStyle(next)
-          }}
+        <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            height: '28px',
-            padding: '0 10px',
-            borderRadius: '6px',
-            border: 'none',
-            ...SHADOW_BORDER,
-            backgroundColor: 'transparent',
-            color: 'var(--foreground)',
-            fontSize: '12px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
+            gap: '2px',
+            overflowX: 'auto',
+            maxWidth: '400px',
+            scrollbarWidth: 'none',
           }}
         >
-          <Sparkles style={{ width: '14px', height: '14px', color: 'var(--foreground)', opacity: 0.7 }} />
-          <span>{activeBlockLabel}</span>
-          <ChevronDown style={{ width: '12px', height: '12px', opacity: 0.5 }} />
-        </button>
-
-        {openStyle && (
-          <Popover>
-            {BLOCK_STYLES.map((item) => (
-              <MenuItem
-                key={item.tag}
-                active={currentBlockTag === item.tag}
-                onClick={() => {
-                  closeAllMenus()
-                  run(`format_${item.tag}`, () => {
-                    if (!editor) return
-                    if (item.tag === 'p') editor.chain().focus().setParagraph().run()
-                    else if (/^h[1-6]$/.test(item.tag)) {
-                      const level = parseInt(item.tag.substring(1), 10) as 1 | 2 | 3
-                      editor.chain().focus().toggleHeading({ level }).run()
-                    } else if (item.tag === 'blockquote') {
-                      editor.chain().focus().toggleBlockquote().run()
-                    } else if (item.tag === 'pre') {
-                      editor.chain().focus().toggleCodeBlock().run()
-                    }
-                  })
+          {STYLE_GALLERY.map((item) => {
+            const active = currentBlockTag === item.tag
+            return (
+              <button
+                key={item.format}
+                type="button"
+                disabled={!editor}
+                title={item.label}
+                onClick={() =>
+                  run(`style_${item.format}`, () => onApplyStyle?.(item.format))
+                }
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '30px',
+                  padding: '0 9px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: active ? 'var(--accent-subtle)' : 'transparent',
+                  boxShadow: active ? 'inset 0 -2px 0 0 var(--accent-strong)' : 'none',
+                  color: 'var(--foreground)',
+                  fontSize: item.preview.fontSize ?? '12px',
+                  fontStyle: item.preview.fontStyle ?? 'normal',
+                  fontWeight: item.preview.fontWeight ?? 500,
+                  cursor: editor ? 'pointer' : 'default',
+                  fontFamily: 'inherit',
+                  flexShrink: 0,
+                  opacity: editor ? 1 : 0.4,
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <item.icon style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-                  {item.label}
-                </span>
-                {currentBlockTag === item.tag && <Check style={{ width: '14px', height: '14px' }} />}
-              </MenuItem>
-            ))}
-          </Popover>
-        )}
+                <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <Divider />
@@ -1226,6 +1322,24 @@ export function TiptapToolbar({
 
       <Divider />
 
+      {/* Clear formatting lives in the Home tab */}
+      <div style={GROUP_STYLE}>
+        <ToolButton
+          icon={RotateCcw}
+          title="Clear Formatting"
+          onClick={() =>
+            run('clear_formatting', () => editor?.chain().focus().unsetAllMarks().clearNodes().run())
+          }
+        />
+      </div>
+      </div>
+
+      {/* Insert tab — content that gets added to the document */}
+      <div
+        style={{
+          display: activeTab === 'insert' ? 'contents' : 'none',
+        }}
+      >
       {/* Inserts */}
       <div style={GROUP_STYLE}>
         <div style={{ position: 'relative' }}>
@@ -1319,15 +1433,128 @@ export function TiptapToolbar({
           title="Horizontal Line"
           onClick={() => run('horizontal_rule', () => editor?.chain().focus().setHorizontalRule().run())}
         />
-
-        <ToolButton
-          icon={RotateCcw}
-          title="Clear Formatting"
-          onClick={() =>
-            run('clear_formatting', () => editor?.chain().focus().unsetAllMarks().clearNodes().run())
-          }
-        />
       </div>
+      </div>
+
+      {/* Styles tab — document styles and academic presets */}
+      {activeTab === 'styles' && (
+        <div
+          style={{
+            flexBasis: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+            padding: '2px 0 6px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              overflowX: 'auto',
+              flexShrink: 0,
+              scrollbarWidth: 'none',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                color: 'var(--muted-foreground)',
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                padding: '0 4px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Presets
+            </span>
+            {ACADEMIC_PRESETS.map((preset) => {
+              const active = activePreset === preset.key
+              return (
+                <button
+                  key={preset.key}
+                  type="button"
+                  disabled={!editor}
+                  onClick={() => {
+                    if (editor) onApplyPreset(preset.key)
+                  }}
+                  title={preset.description}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    height: '30px',
+                    padding: '0 10px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: active ? 'var(--accent-subtle)' : 'transparent',
+                    boxShadow: active ? 'inset 0 -2px 0 0 var(--accent-strong)' : 'none',
+                    color: 'var(--foreground)',
+                    fontSize: '12px',
+                    fontWeight: active ? 700 : 500,
+                    cursor: editor ? 'pointer' : 'default',
+                    fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    opacity: editor ? 1 : 0.4,
+                  }}
+                >
+                  <GraduationCap style={{ width: '13px', height: '13px', opacity: 0.7 }} />
+                  {preset.name}
+                  {active && <Check style={{ width: '13px', height: '13px', color: 'var(--primary)' }} />}
+                </button>
+              )
+            })}
+
+            <Divider />
+
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                setOpenStylesManage((v) => !v)
+              }}
+              title="Add, edit, or remove custom styles and presets"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '5px',
+                height: '30px',
+                padding: '0 10px',
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: openStylesManage ? 'var(--secondary)' : 'transparent',
+                color: 'var(--foreground)',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+              }}
+            >
+              <Pencil style={{ width: '13px', height: '13px', opacity: 0.7 }} />
+              {openStylesManage ? 'Hide management' : 'Manage styles & presets'}
+            </button>
+          </div>
+
+          {openStylesManage && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
+              <div style={{ maxHeight: '38vh', overflowY: 'auto' }}>
+                <EditorStylesPanel
+                  editor={editor}
+                  onApplyStyle={onApplyStyle}
+                  onApplyPreset={onApplyPreset}
+                  activePreset={activePreset}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ flex: 1 }} />
 
@@ -1685,6 +1912,30 @@ export function TiptapToolbar({
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FileText style={{ width: '14px', height: '14px', opacity: 0.7 }} />
                   <span>Word (.doc / .docx)</span>
+                </span>
+              </MenuItem>
+
+              <MenuItem
+                onClick={() => {
+                  setOpenExport(false)
+                  if (editor) exportThesisWord(editor.getHTML(), documentTitle)
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <GraduationCap style={{ width: '14px', height: '14px', opacity: 0.7 }} />
+                  <span>Thesis Word (1.5&Prime; binding)</span>
+                </span>
+              </MenuItem>
+
+              <MenuItem
+                onClick={() => {
+                  setOpenExport(false)
+                  if (editor) exportThesisPdf(editor.getHTML(), documentTitle)
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileText style={{ width: '14px', height: '14px', opacity: 0.7 }} />
+                  <span>Defense-Ready PDF</span>
                 </span>
               </MenuItem>
 
@@ -2072,7 +2323,7 @@ const PROSE_STYLES = `
     height: 0;
     font-style: italic;
   }
-  .ProseMirror ::selection { background: rgba(99, 102, 241, 0.2); }
+  .ProseMirror ::selection { background: color-mix(in srgb, var(--selection) 60%, transparent); }
   .ProseMirror .ProseMirror-selectednode { outline: 2px solid var(--primary); outline-offset: 2px; }
   /* Suppress the ProseMirror selection outline on images — the library handles its own */
   .ProseMirror [data-resize-image-ui] { outline: none !important; }
@@ -2128,22 +2379,22 @@ const PROSE_STYLES = `
     text-decoration: underline;
     text-decoration-thickness: 1px;
     text-underline-offset: 3px;
-    text-decoration-color: #ef4444;
+    text-decoration-color: var(--error);
   }
   .ProseMirror .grammar-issue.grammar-straight.grammar-kind-spelling {
     text-decoration: underline;
     text-decoration-thickness: 1px;
     text-underline-offset: 3px;
-    text-decoration-color: #f59e0b;
+    text-decoration-color: var(--warning);
   }
   .ProseMirror .grammar-issue.grammar-wavy.grammar-kind-grammar {
-    text-decoration: underline wavy #ef4444;
+    text-decoration: underline wavy var(--error);
   }
   .ProseMirror .grammar-issue.grammar-wavy.grammar-kind-spelling {
-    text-decoration: underline wavy #f59e0b;
+    text-decoration: underline wavy var(--warning);
   }
   .ProseMirror .grammar-issue:hover {
-    background-color: rgba(239, 68, 68, 0.08);
+    background-color: color-mix(in srgb, var(--error) 8%, transparent);
   }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-2px); }

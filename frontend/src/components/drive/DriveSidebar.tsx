@@ -81,15 +81,20 @@ function DriveSidebar({
   }
 
   return (
-    <aside className="flex flex-col w-[260px] shrink-0 bg-background h-screen sticky top-0 overflow-y-auto">
+    <aside className="flex flex-col w-[260px] shrink-0 bg-secondary h-screen sticky top-0 overflow-y-auto">
       {/* ── Logo area ──────────────────────────────── */}
       <div className="flex items-center gap-2.5 px-5 h-16 shrink-0 mt-2">
-        <div className="flex items-center justify-center w-8 h-8 rounded bg-primary">
-          <FileText className="size-5 text-primary-foreground" strokeWidth={2} />
+        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary shadow-sm shadow-primary/30 text-primary-foreground">
+          <FileText className="size-5 stroke-[2.2]" />
         </div>
-        <span className="text-[1.25rem] font-medium tracking-tight text-foreground">
-          IntelliDocs
-        </span>
+        <div className="flex flex-col">
+          <span className="text-[1.2rem] font-bold tracking-tight text-foreground leading-tight">
+            IntelliDocs
+          </span>
+          <span className="text-[0.625rem] font-semibold tracking-wider uppercase text-primary">
+            Academic Suite
+          </span>
+        </div>
       </div>
 
       {/* ── New button ─────────────────────────────── */}
@@ -97,14 +102,13 @@ function DriveSidebar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              className="flex items-center justify-center gap-2 h-14 w-[120px] rounded-2xl bg-background text-foreground text-sm font-medium border-none cursor-pointer transition-all hover:bg-secondary active:scale-[0.98]"
-              style={{
-                fontFamily: 'inherit',
-                boxShadow: '0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15)',
-              }}
+              className="flex items-center justify-center gap-2.5 h-12 w-full rounded-2xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold border-none cursor-pointer transition-all shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/35 active:scale-[0.98]"
+              style={{ fontFamily: 'inherit' }}
             >
-              <Plus className="size-5" />
-              <span>New</span>
+              <div className="flex items-center justify-center size-6 rounded-lg bg-primary-foreground/20 text-primary-foreground">
+                <Plus className="size-4 stroke-[2.5]" />
+              </div>
+              <span>New Document</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" style={{ minWidth: '180px' }}>
@@ -141,8 +145,8 @@ function DriveSidebar({
               onClick={() => onSelectView({ type: item.selectionType })}
               className={`flex items-center gap-3 w-full px-4 h-10 rounded-full text-[0.875rem] border-none cursor-pointer text-left transition-colors ${
                 active
-                  ? 'font-medium text-primary bg-primary/15'
-                  : 'font-normal text-muted-foreground hover:bg-foreground/5'
+                  ? 'font-semibold text-foreground bg-accent shadow-xs'
+                  : 'font-medium text-muted-foreground hover:bg-primary/10 hover:text-foreground'
               }`}
               style={{ fontFamily: 'inherit' }}
             >
@@ -151,7 +155,7 @@ function DriveSidebar({
               {typeof count === 'number' && count > 0 && (
                 <span
                   className={`ml-auto text-[0.6875rem] font-medium rounded-full px-2 py-0.5 ${
-                    active ? 'bg-primary/15 text-primary' : 'bg-foreground/5 text-muted-foreground'
+                    active ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
                   }`}
                 >
                   {count}
@@ -194,18 +198,21 @@ function DriveSidebar({
         </div>
       )}
 
-      {/* ── Footer ─────────────────────────────────── */}
-      <div className="mt-auto px-6 py-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Storage</span>
+      {/* ── Storage status card ───────────────────── */}
+      <div className="mt-auto p-3.5 m-3 rounded-2xl bg-card border border-border shadow-xs">
+        <div className="flex items-center justify-between text-xs mb-1.5 font-medium">
+          <span className="text-primary font-bold flex items-center gap-1.5">
+            <HardDrive className="size-3.5" /> Storage
+          </span>
+          <span className="text-xs text-foreground font-semibold">124 MB / 500 MB</span>
         </div>
-        <div className="h-1 w-full rounded-full bg-secondary overflow-hidden">
-          <div
-            className="h-full rounded-full bg-foreground/30 transition-all"
-            style={{ width: '15%' }}
-          />
+        <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
+          <div className="h-full bg-primary rounded-full" style={{ width: '25%' }} />
         </div>
-        <div className="mt-2 text-xs text-muted-foreground">Free tier</div>
+        <div className="flex items-center justify-between mt-2 text-[0.6875rem]">
+          <span className="font-semibold text-primary">Student Tier</span>
+          <span className="text-muted-foreground">UCLM Capstone</span>
+        </div>
       </div>
     </aside>
   )

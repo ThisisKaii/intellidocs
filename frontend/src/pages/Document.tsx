@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type ChangeEvent, type DragEvent } from 'react'
+import { useEffect, useRef, useState, useCallback, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { api, type BehaviorSummaryResponse, type DocumentRecord, type PageNumberFormat } from '@/services/api'
 import {
@@ -20,15 +20,15 @@ import InlineSuggestionChip from '@/components/editor/InlineSuggestionChip'
 import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import EditorSidePanel, { type SidePanelTab } from '@/components/editor/EditorSidePanel'
-import StylesRibbon, { STYLE_DRAG_MIME } from '@/components/editor/StylesRibbon'
 import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
 import { applyStyleCommand } from '@/components/editor/styleCommands'
 import FormattingPanel from '@/components/editor/FormattingPanel'
 import McpDebugPanel from '@/components/editor/McpDebugPanel'
+import WordProgress from '@/components/editor/WordProgress'
 import { useTheme } from '@/context/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
 import ShareModal from '@/components/ShareModal'
-import { ArrowLeft, Save, Moon, Sun, ShieldOff, Shield, PanelRight, PanelRightClose, Share2 } from 'lucide-react'
+import { ArrowLeft, Moon, Sun, ShieldOff, Shield, PanelRight, PanelRightClose, Share2 } from 'lucide-react'
 import { useAutoFormatScanner, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { confidenceThreshold, highlightColorCss } from '@/lib/editorPreferences'
@@ -39,7 +39,7 @@ import {
   getCachedDocumentRead,
 } from '@/hooks/useDocumentCache'
 
-const AUTOSAVE_DELAY = 8000
+const AUTOSAVE_DELAY = 3000
 const MAX_SAVE_RETRIES = 3
 
 const AUTO_FORMAT_DELAY = 1200
@@ -118,6 +118,7 @@ export default function Document(): JSX.Element {
   const [suggestionAnchor, setSuggestionAnchor] = useState<{ x: number; y: number } | null>(null)
   const [suggestionBox, setSuggestionBox] = useState<HighlightBox | null>(null)
   const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number } | null>(null)
+  const [styleOutline, setStyleOutline] = useState<HighlightBox | null>(null)
   const editorCanvasRef = useRef<HTMLDivElement>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
@@ -447,6 +448,20 @@ export default function Document(): JSX.Element {
     }
   }
 
+  /** True when a block between `from` and `to` carries the applied-style tag. */
+  const hasStyleOriginIn = useCallback((from: number, to: number): boolean => {
+    if (!editor || editor.isDestroyed) return false
+    let found = false
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (!found && node.attrs.styleSource === 'applied_style') {
+        found = true
+        return false
+      }
+      return undefined
+    })
+    return found
+  }, [editor])
+
   const updateSuggestionAnchor = useCallback((): void => {
     if (!editor || editor.isDestroyed || !suggestionRange) return
     const { from, to } = suggestionRange
@@ -499,6 +514,57 @@ export default function Document(): JSX.Element {
       editor.off('transaction', refresh)
     }
   }, [suggestionRange, editor, updateSuggestionAnchor])
+
+  // Dashed outline around any selection that contains style/preset-originated
+  // formatting, so users can see which runs the style system produced.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || readOnly) {
+      setStyleOutline(null)
+      return
+    }
+    const container = editorCanvasRef.current
+    if (!container) {
+      setStyleOutline(null)
+      return
+    }
+    const refresh = (): void => {
+      if (!editor || editor.isDestroyed || !container) {
+        setStyleOutline(null)
+        return
+      }
+      const { empty, from, to } = editor.state.selection
+      if (empty || !(formattingPreset != null || hasStyleOriginIn(from, to))) {
+        setStyleOutline(null)
+        return
+      }
+      const rect = getRangeUnionRect(editor, from, to)
+      if (!rect) {
+        setStyleOutline(null)
+        return
+      }
+      const cRect = container.getBoundingClientRect()
+      const computed = window.getComputedStyle(container)
+      const padLeft = parseFloat(computed.paddingLeft) || 0
+      const padTop = parseFloat(computed.paddingTop) || 0
+      setStyleOutline({
+        top: rect.top - cRect.top - padTop,
+        left: rect.left - cRect.left - padLeft,
+        width: rect.width,
+        height: rect.height,
+      })
+    }
+    refresh()
+    editor.on('selectionUpdate', refresh)
+    editor.on('transaction', refresh)
+    container.addEventListener('scroll', refresh, { passive: true })
+    window.addEventListener('resize', refresh)
+    return () => {
+      editor.off('selectionUpdate', refresh)
+      editor.off('transaction', refresh)
+      container.removeEventListener('scroll', refresh)
+      window.removeEventListener('resize', refresh)
+    }
+  }, [editor, formattingPreset, readOnly, hasStyleOriginIn])
 
   // Keyboard: Enter accepts, Esc rejects, Alt+ArrowUp/Down cycles "change to".
   useEffect(() => {
@@ -983,17 +1049,6 @@ export default function Document(): JSX.Element {
     }
   }
 
-  /** Drop a dragged style tile onto a paragraph in the editor canvas. */
-  function handleStyleDrop(e: DragEvent): void {
-    e.preventDefault()
-    const format = e.dataTransfer.getData(STYLE_DRAG_MIME)
-    if (!format || !editor || editor.isDestroyed || !editor.isEditable) return
-    const coords = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
-    if (!coords) return
-    applyStyleCommand(editor, format, coords.pos, coords.pos)
-    handleFormat(format)
-  }
-
   /** Grammar underline click — open the anchored fix popover. */
   const handleGrammarClick = useCallback(
     (issue: GrammarIssue, rect: DOMRect, _pos: number): void => {
@@ -1111,15 +1166,6 @@ export default function Document(): JSX.Element {
   /** Focus the editor via TipTap's native focus command. */
   function focusEditor(): void {
     editor?.chain().focus().run()
-  }
-
-  async function handleManualSave(): Promise<void> {
-    if (autosaveTimer.current) {
-      clearTimeout(autosaveTimer.current)
-      autosaveTimer.current = null
-    }
-    pendingSaveRef.current = true
-    await saveDocument()
   }
 
   // Chip metadata: the chip's counter tracks the highlighted suggestion's queue
@@ -1244,11 +1290,26 @@ export default function Document(): JSX.Element {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
             <span
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.375rem',
                 fontSize: '0.75rem',
-                color: saveStatus === 'saving' ? 'var(--foreground)' : 'var(--muted-foreground)',
-                transition: 'color 200ms',
+                fontWeight: 600,
+                padding: '0.2rem 0.625rem',
+                borderRadius: '999px',
+                backgroundColor: saveStatus === 'saving' ? 'color-mix(in srgb, var(--info) 20%, transparent)' : saveStatus === 'error' ? 'color-mix(in srgb, var(--error) 15%, transparent)' : 'color-mix(in srgb, var(--success) 20%, transparent)',
+                color: saveStatus === 'saving' ? 'var(--info)' : saveStatus === 'error' ? 'var(--error)' : 'var(--success)',
+                transition: 'all 200ms ease',
               }}
             >
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '999px',
+                  backgroundColor: saveStatus === 'saving' ? 'var(--info)' : saveStatus === 'error' ? 'var(--error)' : 'var(--success)',
+                }}
+              />
               {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
             </span>
 
@@ -1262,55 +1323,24 @@ export default function Document(): JSX.Element {
                   alignItems: 'center',
                   gap: '0.375rem',
                   height: '32px',
-                  padding: '0 0.75rem',
+                  padding: '0 0.85rem',
                   borderRadius: '0.5rem',
                   border: 'none',
-                  boxShadow: '0 0 0 1px var(--border-shadow)',
-                  backgroundColor: 'transparent',
-                  color: 'var(--foreground)',
+                  backgroundColor: 'var(--primary)',
+                  color: '#ffffff',
                   fontSize: '0.8125rem',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: 'pointer',
                   fontFamily: 'inherit',
+                  boxShadow: '0 1px 3px color-mix(in srgb, var(--primary) 30%, transparent)',
                   transition: 'background-color 150ms',
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--accent-hover)' }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--primary)' }}
               >
                 <Share2 style={{ width: '14px', height: '14px' }} />
                 Share
               </button>
-            )}
-
-            {!readOnly && (
-            <button
-              type="button"
-              onClick={() => { void handleManualSave() }}
-              disabled={saveStatus === 'saving'}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.375rem',
-                height: '32px',
-                padding: '0 0.75rem',
-                borderRadius: '0.5rem',
-                border: 'none',
-                boxShadow: '0 0 0 1px var(--border-shadow)',
-                backgroundColor: 'transparent',
-                color: 'var(--foreground)',
-                fontSize: '0.8125rem',
-                fontWeight: 500,
-                cursor: saveStatus === 'saving' ? 'not-allowed' : 'pointer',
-                opacity: saveStatus === 'saving' ? 0.5 : 1,
-                fontFamily: 'inherit',
-                transition: 'background-color 150ms',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
-            >
-              <Save style={{ width: '14px', height: '14px' }} />
-              Save
-            </button>
             )}
 
             <button
@@ -1470,6 +1500,9 @@ export default function Document(): JSX.Element {
             footerNumberFormat={footerNumberFormat}
             onHeaderNumberFormatChange={handleHeaderNumberFormatChange}
             onFooterNumberFormatChange={handleFooterNumberFormatChange}
+            onApplyStyle={handleApplyRibbonStyle}
+            onApplyPreset={(key) => { void handleApplyAcademicPreset(key) }}
+            activePreset={formattingPreset}
           />
         </div>
         )}
@@ -1522,23 +1555,14 @@ export default function Document(): JSX.Element {
         </div>
       )}
 
-      {/* ── Styles ribbon ───────────────────────────────────── */}
-      {!readOnly && (
-        <StylesRibbon
-          editor={editor}
-          onApplyStyle={handleApplyRibbonStyle}
-          onApplyPreset={(key) => { void handleApplyAcademicPreset(key) }}
-          activePreset={formattingPreset}
-        />
-      )}
-
       {/* ── Body ──────────────────────────────────────────── */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div className="workspace-grid">
 
         {/* Editor area — clean TipTap paper sheet */}
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div
             ref={editorCanvasRef}
+            className={prefs.showStyleGuides ? 'guide-boundary' : undefined}
             style={{
               position: 'relative',
               flex: 1,
@@ -1548,11 +1572,18 @@ export default function Document(): JSX.Element {
               ['--agentic-pulse-color' as string]: highlightColorCss(prefs),
             }}
             onDragOver={(e) => {
-              if (!e.dataTransfer.types.includes(STYLE_DRAG_MIME)) return
               e.preventDefault()
-              e.dataTransfer.dropEffect = 'move'
             }}
-            onDrop={handleStyleDrop}
+            onDrop={(e) => {
+              e.preventDefault()
+              const styleFormat = e.dataTransfer.getData('application/x-intellidocs-style')
+              const presetKey = e.dataTransfer.getData('application/x-intellidocs-preset')
+              if (styleFormat) {
+                handleApplyRibbonStyle(styleFormat)
+              } else if (presetKey) {
+                void handleApplyAcademicPreset(presetKey)
+              }
+            }}
           >
             {activeAcademicPreset && <style>{activeAcademicPreset.css}</style>}
             <PagedEditor
@@ -1581,7 +1612,32 @@ export default function Document(): JSX.Element {
                 onOpen={handleOverlayOpen}
               />
             )}
+
+            {!readOnly && styleOutline && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: styleOutline.top,
+                  left: styleOutline.left,
+                  width: styleOutline.width,
+                  height: styleOutline.height,
+                  border: '1.5px dashed var(--accent-strong)',
+                  borderRadius: '4px',
+                  pointerEvents: 'none',
+                  opacity: 0.75,
+                }}
+              />
+            )}
           </div>
+
+          {/* Academic word & page target progress widget (plan point 25) */}
+          {!readOnly && (
+            <WordProgress
+              wordCount={wordCount}
+              targetWords={3000}
+              wordsPerPage={pageSize === 'a4' ? 300 : 275}
+            />
+          )}
         </main>
 
         {/* Right panel — docked editor assistant with suggestions queue */}
@@ -1607,6 +1663,12 @@ export default function Document(): JSX.Element {
           onDismissGrammar={handleGrammarDismiss}
           onFocusEditor={focusEditor}
           readOnly={readOnly}
+          onVersionRestored={(version) => {
+            // Push the restored snapshot back into both the editor and the
+            // page state so the canvas reflects the restored history point.
+            setContent(version.content)
+            handleContentChange(version.content)
+          }}
           extraSections={
             <>
               {/* Grammar & spell check — visible panel + wavy underlines in the editor */}
@@ -1687,7 +1749,7 @@ export default function Document(): JSX.Element {
                     <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
                       Accepted
                     </p>
-                    <p style={{ fontSize: '1rem', fontWeight: 600, color: '#10b981', margin: 0 }}>
+                    <p style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--success)', margin: 0 }}>
                       {countBehaviorBucket(behaviorSummary?.chatPreviewAccepted)}
                     </p>
                   </div>
@@ -1695,7 +1757,7 @@ export default function Document(): JSX.Element {
                     <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
                       Rejected
                     </p>
-                    <p style={{ fontSize: '1rem', fontWeight: 600, color: '#ff5b4f', margin: 0 }}>
+                    <p style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--error)', margin: 0 }}>
                       {countBehaviorBucket(behaviorSummary?.chatPreviewRejected)}
                     </p>
                   </div>

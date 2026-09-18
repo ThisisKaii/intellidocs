@@ -23,6 +23,12 @@ interface InlineSuggestionChipProps {
   onReject: () => void
 }
 
+/** Approximate chip height in px (padding + line-height). */
+const CHIP_HEIGHT = 36
+
+/** Minimum space above the viewport to render the chip above its anchor. */
+const MIN_SPACE_ABOVE = 48
+
 /**
  * Small inline chip anchored just above the highlighted block. Replaces the
  * floating bottom-bar prompt: the user sees the highlighted text plus a
@@ -42,11 +48,13 @@ export default function InlineSuggestionChip({
   onAccept,
   onReject,
 }: InlineSuggestionChipProps): JSX.Element {
+  const flipBelow = anchor.y < MIN_SPACE_ABOVE
+
   const chipStyle: React.CSSProperties = {
     position: 'fixed',
-    top: anchor.y - 14,
+    top: flipBelow ? anchor.y + CHIP_HEIGHT + 8 : anchor.y - 14,
     left: anchor.x,
-    transform: 'translate(-50%, -100%)',
+    transform: flipBelow ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
     zIndex: 900,
     display: 'flex',
     alignItems: 'center',
@@ -54,7 +62,7 @@ export default function InlineSuggestionChip({
     padding: '0.25rem 0.5rem',
     borderRadius: '999px',
     backgroundColor: 'var(--card)',
-    boxShadow: '0 0 0 1px var(--border-shadow), 0 8px 24px rgba(0,0,0,0.14)',
+    boxShadow: '0 0 0 1.5px #6fb3b8, 0 8px 24px rgba(56,128,135,0.18)',
     fontSize: '0.75rem',
     fontWeight: 600,
     color: 'var(--foreground)',
@@ -80,7 +88,20 @@ export default function InlineSuggestionChip({
   return (
     <div style={chipStyle} onMouseDown={(e) => e.preventDefault()}>
       <span style={{ color: 'var(--foreground)' }}>{label}</span>
-      <span style={{ color: 'var(--muted-foreground)', fontWeight: 500 }}>{Math.round(confidence)}%</span>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          fontSize: '0.6875rem',
+          fontWeight: 700,
+          padding: '0.1rem 0.4rem',
+          borderRadius: '999px',
+          backgroundColor: confidence >= 70 ? 'color-mix(in srgb, var(--highlight) 60%, transparent)' : confidence >= 45 ? 'color-mix(in srgb, var(--selection) 60%, transparent)' : 'color-mix(in srgb, var(--error) 12%, transparent)',
+          color: confidence >= 70 ? 'var(--text-primary)' : confidence >= 45 ? 'var(--text-primary)' : 'var(--error)',
+        }}
+      >
+        {Math.round(confidence)}%
+      </span>
       {queueTotal && queueTotal > 1 ? (
         <span style={{ color: 'var(--muted-foreground)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
           {queuePosition}/{queueTotal}
@@ -121,9 +142,9 @@ export default function InlineSuggestionChip({
       <button
         type="button"
         title="Apply (Enter)"
-        style={{ ...buttonStyle, color: '#10b981' }}
+        style={{ ...buttonStyle, color: '#388087' }}
         onMouseDownCapture={onAccept}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(16,185,129,0.12)' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(194,237,206,0.5)' }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
       >
         <Check style={{ width: 14, height: 14 }} strokeWidth={2.5} />

@@ -309,7 +309,7 @@ export default function FormattingPanel({
                   />
                   Own line only
                 </label>
-                {error && <p style={{ fontSize: '0.6875rem', color: '#ff5b4f', margin: 0 }}>{error}</p>}
+                {error && <p style={{ fontSize: '0.6875rem', color: 'var(--error)', margin: 0 }}>{error}</p>}
                 <button
                   type="button"
                   onClick={() => void handleCreateBinding()}

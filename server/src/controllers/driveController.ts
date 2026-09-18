@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { google } from 'googleapis'
+import { Readable } from 'stream'
 import * as driveModel from '../models/driveModel'
 import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
 
@@ -234,13 +235,43 @@ function isImportable(file: { name: string; mimeType: string }): boolean {
   return /\.(docx?|pdf|txt|rtf|odt)$/i.test(file.name)
 }
 
-/** Convert a googleapis download payload (Blob/Buffer/string/ArrayBuffer) into a Buffer. */
+/** Strip RTF control words and convert backslash-escaped text into plain paragraphs. */
+function rtfToParagraphs(buffer: Buffer): string {
+  const raw = buffer.toString('latin1')
+  // Remove RTF headers, fonts, colors and control-word commands, keep text groups.
+  return raw
+    .replace(/\\u-?\d+\s?/g, (m: string): string => {
+      // Unicode escape: \uNNNN for Unicode code points; map to a char when safe.
+      const num = Number(m.replace(/\\u/, '').trim())
+      return num >= 32 && num <= 0x10ffff ? String.fromCodePoint(num).replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '').trim() : ''
+    })
+    .replace(/'[0-9a-fA-F]{2}/g, (m: string): string => String.fromCharCode(parseInt(m.slice(1), 16)))
+    .replace(/\\\w+-?\d* ?/g, ' ') // strip control words like \par \b \i \cf2
+    .replace(/\\\{/g, '{')
+    .replace(/\\\}/g, '}')
+    .replace(/\\\\/g, '\\')
+    .split(/[\r\n]/)
+    .map((line: string) => line.replace(/\s+/g, ' ').trim())
+    .filter((line: string) => line.length > 0)
+    .map((line: string) => `<p>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
+    .join('\n')
+}
+
+/** Convert a googleapis download payload (stream/Blob/Buffer/string/ArrayBuffer) into a Buffer. */
 async function toBuffer(data: unknown): Promise<Buffer> {
   if (Buffer.isBuffer(data)) return data
   if (data instanceof Blob) return Buffer.from(await data.arrayBuffer())
   if (data instanceof ArrayBuffer) return Buffer.from(data)
   if (typeof data === 'string') return Buffer.from(data)
   if (Array.isArray(data)) return Buffer.from(data as number[])
+  // googleapis `alt: 'media'` downloads arrive as a passthrough Readable stream.
+  if (data instanceof Readable || (data && typeof (data as { pipe?: unknown }).pipe === 'function')) {
+    const chunks: Buffer[] = []
+    for await (const chunk of (data as Readable)) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    return Buffer.concat(chunks)
+  }
   throw new Error('Unsupported data type returned by Google Drive')
 }
 
@@ -273,29 +304,57 @@ export async function exportFile(req: Request, res: Response): Promise<void> {
 
     // Native Google Docs → export as HTML (tables/images/text preserved).
     if (mimeType === 'application/vnd.google-apps.document') {
-      const exported = await drive.files.export({ fileId, mimeType: 'text/html' })
+      const exported = await drive.files.export(
+        { fileId, mimeType: 'text/html' },
+        { responseType: 'arraybuffer' },
+      )
       const html = (await toBuffer(exported.data)).toString('utf-8')
       res.status(200).json({ title, html })
       return
     }
 
     // Other file types → download the raw bytes and convert.
-    const downloaded = await drive.files.get({ fileId, alt: 'media' })
+    // `responseType: 'arraybuffer'` guarantees intact binary bytes; without it
+    // googleapis may hand back a UTF-8-decoded string that corrupts .docx ZIPs.
+    const downloaded = await drive.files.get(
+      { fileId, alt: 'media' },
+      { responseType: 'arraybuffer' },
+    )
     const buffer = await toBuffer(downloaded.data)
 
     // Try the Python converter, then fall back to local conversion.
+    // The Python endpoint dispatches on the file name extension, so rebuild a
+    // name that matches the declared MIME type when Drive omits the extension.
+    const lowerTitle = title.toLowerCase()
+    const docxMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    let conversionFilename = title
+    if (mimeType === docxMime && !lowerTitle.endsWith('.docx')) {
+      conversionFilename = `${title}.docx`
+    } else if (mimeType === 'application/pdf' && !lowerTitle.endsWith('.pdf')) {
+      conversionFilename = `${title}.pdf`
+    }
+
     let html = ''
+    let converterError: string | null = null
     try {
-      const pyResult = await requestDocumentConversion(buffer, title)
+      const pyResult = await requestDocumentConversion(buffer, conversionFilename)
       if (pyResult?.html) html = pyResult.html
     } catch (pyError) {
+      converterError = pyError instanceof Error ? pyError.message : String(pyError)
       console.warn('Python converter unavailable for Drive file:', pyError)
     }
 
-    if (!html && mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    if (!html && (mimeType === docxMime || /\.docx$/i.test(title))) {
       const { convertToHtml } = await import('mammoth')
       const result = await convertToHtml({ buffer })
       html = result.value
+    } else if (!html && (mimeType === 'application/msword' || /\.doc$/i.test(title))) {
+      throw new Error(
+        'Legacy .doc format is not supported. Please open the file in Microsoft Word or Google Docs and save it as .docx, then import again.',
+      )
+    } else if (!html && mimeType === 'application/rtf') {
+      // RTF cannot be recovered from raw bytes locally; emit a readable message.
+      html = rtfToParagraphs(buffer)
     } else if (!html && mimeType === 'text/plain') {
       const text = buffer.toString('utf-8')
       html = text
@@ -303,8 +362,14 @@ export async function exportFile(req: Request, res: Response): Promise<void> {
         .filter((line) => line.trim().length > 0)
         .map((line) => `<p>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
         .join('\n')
+    } else if (!html && /\.pdf$/i.test(title)) {
+      // A real PDF without Python conversion would be mojibake — refuse loudly.
+      throw new Error(
+        converterError
+          ? `Document conversion service unavailable (${converterError}).`
+          : 'This PDF could not be converted. The document conversion service returned no content.'
+      )
     } else if (!html) {
-      // PDF or unknown binary — fall back to the Python service result or text.
       html = buffer.toString('utf-8')
         .split(/\r?\n/)
         .filter((line) => line.trim().length > 0)

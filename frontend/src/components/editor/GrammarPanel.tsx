@@ -236,8 +236,8 @@ export default function GrammarPanel({
                 padding: '0.125rem 0.5rem',
                 borderRadius: '0.25rem',
                 flexShrink: 0,
-                backgroundColor: displayedIssues.length === 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255, 91, 79, 0.1)',
-                color: displayedIssues.length === 0 ? '#10b981' : '#ff5b4f'
+                backgroundColor: displayedIssues.length === 0 ? 'color-mix(in srgb, var(--success) 10%, transparent)' : 'color-mix(in srgb, var(--error) 10%, transparent)',
+                color: displayedIssues.length === 0 ? 'var(--success)' : 'var(--error)'
               }}
             >
               {displayedIssues.length === 0
@@ -271,12 +271,12 @@ export default function GrammarPanel({
                     gap: '0.5rem',
                     padding: '0.5rem 0.625rem',
                     borderRadius: '0.375rem',
-                    backgroundColor: 'rgba(255, 91, 79, 0.1)',
-                    border: '1px solid rgba(255, 91, 79, 0.35)',
+                    backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--error) 35%, transparent)',
                     marginBottom: '0.75rem',
                   }}
                 >
-                  <p style={{ fontSize: '0.75rem', color: '#ff5b4f', margin: 0, lineHeight: 1.4 }}>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--error)', margin: 0, lineHeight: 1.4 }}>
                     Grammar check failed: {failure}
                   </p>
                   <button
@@ -340,7 +340,7 @@ export default function GrammarPanel({
                   </p>
 
                   {displayedIssues.length === 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--success)' }}>
                       <CheckCircle2 style={{ width: '16px', height: '16px' }} />
                       <span style={{ fontSize: '0.875rem' }}>No issues found</span>
                     </div>
@@ -364,8 +364,8 @@ export default function GrammarPanel({
                                 letterSpacing: '0.05em',
                                 padding: '0.125rem 0.5rem',
                                 borderRadius: '0.25rem',
-                                backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                                color: '#ea580c',
+                                backgroundColor: 'color-mix(in srgb, var(--warning) 10%, transparent)',
+                                color: 'var(--warning)',
                               }}
                             >
                               {issue.type}
@@ -374,7 +374,7 @@ export default function GrammarPanel({
                           <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: '0 0 0.375rem', lineHeight: 1.4 }}>
                             <span style={{ textDecoration: 'line-through', opacity: 0.8 }}>{issue.original}</span>
                             {' → '}
-                            <span style={{ color: '#10b981' }}>{issue.suggestion}</span>
+                            <span style={{ color: 'var(--success)' }}>{issue.suggestion}</span>
                           </p>
                           <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.5rem', lineHeight: 1.4 }}>
                             {issue.explanation}

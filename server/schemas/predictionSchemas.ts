@@ -7,6 +7,8 @@ export const predictionTextSchema = z.object({
     .trim()
     .min(1, 'Text is required')
     .max(50000, 'Text is too long'),
+  /** Isolation mode for research comparisons: baseline/isolated/hybrid. */
+  isolationMode: z.enum(['baseline', 'isolated', 'hybrid']).optional(),
 })
 
 /** Validate structured grammar issues returned by the Python service. */
@@ -44,6 +46,7 @@ export const pythonPredictionResponseSchema = z.object({
   predicted_format: z.string().min(1),
   confidence: z.number().min(0).max(1),
   feature_values: z.record(z.number()).default({}),
+  isolation_mode: z.enum(['baseline', 'isolated', 'hybrid']).optional(),
 })
 
 /** Validate page setup returned by the Python document converter. */

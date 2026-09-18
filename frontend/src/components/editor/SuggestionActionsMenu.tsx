@@ -86,7 +86,7 @@ export default function SuggestionActionsMenu({
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
         >
-          <Sparkles style={{ width: '14px', height: '14px', color: '#6366f1', flexShrink: 0 }} />
+          <Sparkles style={{ width: '14px', height: '14px', color: 'var(--primary)', flexShrink: 0 }} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             Formatting · {formattingLabel}
           </span>

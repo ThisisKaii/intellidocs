@@ -91,7 +91,7 @@ export default function GrammarOverlay({
             backgroundColor: 'var(--secondary)',
           }}
         >
-          <AlertCircle style={{ width: '16px', height: '16px', color: '#ef4444', flexShrink: 0 }} />
+          <AlertCircle style={{ width: '16px', height: '16px', color: 'var(--error)', flexShrink: 0 }} />
           <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)', flex: 1 }}>
             Grammar &amp; Spelling
           </span>
@@ -129,8 +129,8 @@ export default function GrammarOverlay({
               letterSpacing: '0.05em',
               padding: '0.125rem 0.5rem',
               borderRadius: '0.25rem',
-              backgroundColor: 'rgba(249, 115, 22, 0.1)',
-              color: '#ea580c',
+              backgroundColor: 'color-mix(in srgb, var(--warning) 10%, transparent)',
+              color: 'var(--warning)',
               marginBottom: '0.5rem',
             }}
           >
@@ -139,7 +139,7 @@ export default function GrammarOverlay({
           <p style={{ fontSize: '0.8125rem', lineHeight: 1.5, margin: '0 0 0.5rem', color: 'var(--foreground)' }}>
             <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>{issue.original}</span>
             <span style={{ color: 'var(--muted-foreground)' }}> → </span>
-            <span style={{ color: '#10b981', fontWeight: 600 }}>{issue.suggestion}</span>
+            <span style={{ color: 'var(--success)', fontWeight: 600 }}>{issue.suggestion}</span>
           </p>
           <p style={{ fontSize: '0.75rem', lineHeight: 1.45, margin: 0, color: 'var(--muted-foreground)' }}>
             {issue.explanation}

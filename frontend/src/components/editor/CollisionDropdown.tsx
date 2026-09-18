@@ -99,7 +99,7 @@ export default function CollisionDropdown({
             backgroundColor: 'var(--secondary)',
           }}
         >
-          <AlertTriangle style={{ width: '16px', height: '16px', color: '#d97706', flexShrink: 0 }} />
+          <AlertTriangle style={{ width: '16px', height: '16px', color: 'var(--warning)', flexShrink: 0 }} />
           <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)', flex: 1 }}>
             Suggestions overlap
           </span>
@@ -142,7 +142,7 @@ export default function CollisionDropdown({
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
-                color: issue.kind === 'spelling' ? '#d97706' : '#dc2626',
+                color: issue.kind === 'spelling' ? 'var(--warning)' : 'var(--error)',
                 marginBottom: '0.375rem',
               }}
             >
@@ -151,7 +151,7 @@ export default function CollisionDropdown({
             <p style={{ fontSize: '0.8125rem', lineHeight: 1.5, margin: '0 0 0.5rem', color: 'var(--foreground)' }}>
               <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>{issue.original}</span>
               <span style={{ color: 'var(--muted-foreground)' }}> → </span>
-              <span style={{ color: '#10b981', fontWeight: 600 }}>{issue.suggestion}</span>
+              <span style={{ color: 'var(--success)', fontWeight: 600 }}>{issue.suggestion}</span>
             </p>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
@@ -206,8 +206,8 @@ export default function CollisionDropdown({
               style={{
                 padding: '0.625rem',
                 borderRadius: '0.5rem',
-                border: '1px solid rgba(99, 102, 241, 0.25)',
-                backgroundColor: 'rgba(99, 102, 241, 0.06)',
+                border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)',
+                backgroundColor: 'color-mix(in srgb, var(--primary) 6%, transparent)',
               }}
             >
               <div
@@ -219,7 +219,7 @@ export default function CollisionDropdown({
                   fontWeight: 700,
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  color: '#6366f1',
+                  color: 'var(--primary)',
                   marginBottom: '0.375rem',
                 }}
               >

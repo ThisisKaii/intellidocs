@@ -1,4 +1,7 @@
-import { requestFormatPrediction } from '../ai/bridge/pythonBridge'
+import {
+  requestFormatPrediction,
+  type IsolationMode,
+} from '../ai/bridge/pythonBridge'
 
 export interface PredictFormatInput {
   text: string
@@ -7,12 +10,14 @@ export interface PredictFormatInput {
   isItalic?: boolean
   xPosition?: number
   userId?: string
+  isolationMode?: IsolationMode
 }
 
 export interface PredictFormatResult {
   predictedFormat: string
   confidence: number
   featureValues: Record<string, number>
+  isolationMode: string
 }
 
 // Request a formatting prediction from the Python ML service.
@@ -31,11 +36,13 @@ export async function predictFormat(
     isItalic: input.isItalic,
     xPosition: input.xPosition,
     userId: input.userId,
+    isolationMode: input.isolationMode,
   })
 
   return {
     predictedFormat: result.predictedFormat,
     confidence: result.confidence,
     featureValues: result.featureValues,
+    isolationMode: result.isolationMode,
   }
 }

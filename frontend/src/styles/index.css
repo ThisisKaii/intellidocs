@@ -24,69 +24,143 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  --color-brand-teal: #388087;
+  --color-brand-teal-dark: #27595e;
+  --color-brand-cyan: #6fb3b8;
+  --color-brand-ice: #badfe7;
+  --color-brand-mint: #c2edce;
+  --color-brand-cream: #f6f6f2;
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-info: var(--info);
+  --color-highlight: var(--highlight);
+  --color-selection: var(--selection);
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-subtle: var(--accent-subtle);
+
   --radius: 0.5rem;
 }
 
 @layer base {
   :root {
-    --background: #f8f9fa;
-    --foreground: #171717;
-    --card: #ffffff;
-    --card-foreground: #171717;
-    --popover: #ffffff;
-    --popover-foreground: #171717;
-    --primary: #171717;
+    /* Teal-and-paper palette — light mode (user spec) */
+    --canvas: #f6f6f2;
+    --page: #ffffff;
+    --surface: #ffffff;
+    --surface-sunken: #efefe9;
+    --border: #deded6;
+    --border-strong: #c4c4ba;
+    --text-primary: #1c2a2b;
+    --text-secondary: #5a6b6c;
+    --text-muted: #8b9899;
+    --accent-strong: #388087;
+    --accent-hover: #2c6a70;
+    --accent-subtle: #e4f1f3;
+    --selection: #badfe7;
+    --highlight: #c2edce;
+    --success: #3e8e5a;
+    --warning: #b5772b;
+    --error: #c0453f;
+    --info: #388087;
+
+    --background: var(--canvas);
+    --foreground: var(--text-primary);
+    --card: var(--surface);
+    --card-foreground: var(--text-primary);
+    --popover: var(--surface);
+    --popover-foreground: var(--text-primary);
+    --primary: var(--accent-strong);
     --primary-foreground: #ffffff;
-    --secondary: #f1f3f4;
-    --secondary-foreground: #171717;
-    --muted: #f6f3ed;
-    --muted-foreground: #666666;
-    --accent: #f6f3ed;
-    --accent-foreground: #171717;
-    --destructive: #ff5b4f;
+    --secondary: var(--surface-sunken);
+    --secondary-foreground: var(--text-primary);
+    --muted: var(--surface-sunken);
+    --muted-foreground: var(--text-secondary);
+    --accent: var(--accent-subtle);
+    --accent-foreground: var(--text-primary);
+    --destructive: var(--error);
     --destructive-foreground: #ffffff;
-    --border: #ebebeb;
-    --input: #ebebeb;
-    --ring: hsla(212, 100%, 48%, 1);
+    --input: var(--border-strong);
+    --ring: var(--accent-strong);
     --radius: 0.375rem;
-    --border-shadow: rgba(0, 0, 0, 0.08);
-    --border-shadow-light: rgb(235, 235, 235);
-    --card-shadow-inner: #fafafa;
+    --border-shadow: rgba(56, 128, 135, 0.18);
+    --border-shadow-light: rgb(224, 233, 230);
+    --card-shadow-inner: #fdfefe;
     /* Editor-specific: paper page and canvas */
-    --page-bg: #ffffff;
-    --canvas-bg: #e8e8e8;
-    --hf-zone-bg: #f7f7f7;
-    --page-shadow: rgba(0, 0, 0, 0.12) 0px 1px 3px, rgba(0, 0, 0, 0.08) 0px 4px 12px;
+    --page-bg: var(--page);
+    --canvas-bg: var(--canvas);
+    --hf-zone-bg: var(--page);
+    --page-shadow: rgba(28, 62, 63, 0.12) 0px 1px 3px, rgba(28, 62, 63, 0.08) 0px 4px 12px;
+    /* Colored style-boundary guides (point 20) */
+    --guide-title: #c2edce;
+    --guide-chapter: #c2edce;
+    --guide-h1: #6fb3b8;
+    --guide-h2h3: #badfe7;
+    --guide-quote: #6fb3b8;
+    --guide-generic: #badfe7;
   }
 
   .dark {
-    --background: #000000;
-    --foreground: #ededed;
-    --card: #0a0a0a;
-    --card-foreground: #ededed;
-    --popover: #0a0a0a;
-    --popover-foreground: #ededed;
-    --primary: #ededed;
-    --primary-foreground: #000000;
-    --secondary: #111111;
-    --secondary-foreground: #ededed;
-    --muted: #111111;
-    --muted-foreground: #888888;
-    --accent: #111111;
-    --accent-foreground: #ededed;
-    --destructive: #ff5b4f;
-    --destructive-foreground: #000000;
-    --border: #333333;
-    --input: #111111;
-    --ring: hsla(212, 100%, 48%, 1);
-    --border-shadow: rgba(255, 255, 255, 0.14);
+    /* Teal-and-paper palette — dark mode (editor-color-palette.md) */
+    --canvas: #15191a;
+    --page: #ffffff;
+    --surface: #22282a;
+    --surface-sunken: #191e1f;
+    --border: #323a3b;
+    --border-strong: #475152;
+    --text-primary: #e4e9e8;
+    --text-secondary: #9daaaa;
+    --text-muted: #6b7878;
+    --accent-strong: #6fb3b8;
+    --accent-hover: #8ac6ca;
+    --accent-subtle: #1f3739;
+    --selection: #2e5b60;
+    --highlight: #3a5e48;
+    --success: #7fc79a;
+    --warning: #e0a85c;
+    --error: #e8817b;
+    --info: #6fb3b8;
+
+    --background: var(--canvas);
+    --foreground: var(--text-primary);
+    --card: var(--surface);
+    --card-foreground: var(--text-primary);
+    --popover: var(--surface);
+    --popover-foreground: var(--text-primary);
+    --primary: var(--accent-strong);
+    --primary-foreground: #15191a;
+    --secondary: var(--surface-sunken);
+    --secondary-foreground: var(--text-primary);
+    --muted: var(--surface-sunken);
+    --muted-foreground: var(--text-secondary);
+    --accent: var(--accent-subtle);
+    --accent-foreground: var(--text-primary);
+    --destructive: var(--error);
+    --destructive-foreground: #15191a;
+    --input: var(--border-strong);
+    --ring: var(--accent-strong);
+    --border-shadow: rgba(23, 40, 41, 0.6);
     --border-shadow-light: rgba(255, 255, 255, 0.1);
     --card-shadow-inner: rgba(255, 255, 255, 0.04);
-    /* Editor-specific: paper page is always white; canvas keeps the dark theme */
-    --page-bg: #ffffff;
-    --canvas-bg: #0d0d0d;
-    --hf-zone-bg: #242426;
+    /* Editor-specific: paper page stays white in dark mode; canvas keeps dark */
+    --page-bg: var(--page);
+    --canvas-bg: var(--canvas);
+    --hf-zone-bg: var(--page);
     --page-shadow: rgba(0, 0, 0, 0.5) 0px 1px 3px, rgba(0, 0, 0, 0.35) 0px 4px 12px;
+    --guide-title: #2e5f50;
+    --guide-chapter: #2e5f50;
+    --guide-h1: #2e5a5c;
+    --guide-h2h3: #335d6e;
+    --guide-quote: #2e5a5c;
+    --guide-generic: #335d6e;
   }
 
   * {
@@ -162,7 +236,7 @@
   color: var(--foreground);
   min-height: 100%;
   outline: none;
-  caret-color: #171717;
+  caret-color: var(--text-secondary);
 }
 
 .intellidocs-editor:focus {
@@ -204,10 +278,10 @@
 }
 
 .intellidocs-editor blockquote {
-  border-left: 3px solid #171717;
+  border-left: 3px solid var(--border-strong);
   margin: 1.25rem 0;
   padding: 0.25rem 0 0.25rem 1rem;
-  color: #666666;
+  color: var(--text-secondary);
 }
 
 .intellidocs-editor ul,
@@ -297,6 +371,95 @@ div:hover > .card-menu-btn,
   background: #a3a3a3;
 }
 
+/* ── Point 18: Flexbook workspace — editor canvas left, AI panel docks right ── */
+.workspace-grid {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-grid > main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Point 7: multi-resolution responsive layout ── */
+@media (max-width: 1366px) and (min-width: 1025px) {
+  .intellidocs-page-editor {
+    max-width: 850px;
+    width: 100%;
+  }
+}
+
+@media (max-width: 1280px) {
+  .docs-grid {
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)) !important;
+  }
+}
+
+/* Mobile: canvas full width, assistant panel becomes a bottom drawer */
+@media (max-width: 768px) {
+  .workspace-grid > aside {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto !important;
+    width: 100% !important;
+    height: min(52vh, 480px);
+    z-index: 2000;
+    border-left: none !important;
+    border-top: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.22);
+  }
+  .intellidocs-toolbar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .intellidocs-page-editor {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .intellidocs-editor {
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+}
+
+/* Style-boundary guides (point 20) — colored dashed left edge per block level */
+.guide-boundary .style-guide--h1 {
+  background-image: repeating-linear-gradient(180deg, var(--guide-h1) 0 6px, transparent 6px 12px);
+  background-size: 3px 100%;
+  background-repeat: repeat-y;
+  background-position: left top;
+}
+.guide-boundary .style-guide--h2,
+.guide-boundary .style-guide--h3 {
+  background-image: repeating-linear-gradient(180deg, var(--guide-h2h3) 0 6px, transparent 6px 12px);
+  background-size: 3px 100%;
+  background-repeat: repeat-y;
+  background-position: left top;
+}
+.guide-boundary .style-guide--quote {
+  background-image: repeating-linear-gradient(180deg, var(--guide-quote) 0 6px, transparent 6px 12px);
+  background-size: 3px 100%;
+  background-repeat: repeat-y;
+  background-position: left top;
+}
+.guide-boundary .style-guide--title {
+  background-image: repeating-linear-gradient(180deg, var(--guide-title) 0 6px, transparent 6px 12px);
+  background-size: 3px 100%;
+  background-repeat: repeat-y;
+  background-position: left top;
+}
+
 @layer utilities {
   .font-geist {
     font-family: "Geist", "Inter", sans-serif;
@@ -339,4 +502,164 @@ div:hover > .card-menu-btn,
     font-weight: 500;
     line-height: 1.43;
   }
+}
+/* History diff compare (plan point 23): green additions, red strikethrough deletions. */
+.history-diff {
+  font-size: 0.75rem;
+  line-height: 1.6;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background-color: var(--card);
+  color: var(--foreground);
+  max-height: 10rem;
+  overflow-y: auto;
+  user-select: text;
+}
+.history-diff .diff-add {
+  background-color: rgba(194, 237, 206, 0.35);
+  color: #1e6b34;
+  border-radius: 0.25rem;
+  padding: 0 0.125rem;
+}
+.history-diff .diff-del {
+  background-color: rgba(248, 113, 113, 0.18);
+  color: #b91c1c;
+  text-decoration: line-through;
+  border-radius: 0.25rem;
+  padding: 0 0.125rem;
+}
+.dark .history-diff .diff-add { background-color: rgba(66, 160, 94, 0.30); color: #9be8b4; }
+.dark .history-diff .diff-del { background-color: rgba(248, 113, 113, 0.22); color: #fca5a5; }
+
+/* Slash command menu (plan point 24). */
+.slash-command-menu {
+  background-color: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0.25rem;
+  min-width: 240px;
+  max-width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: inherit;
+}
+.slash-cat-label {
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  color: var(--muted-foreground);
+  padding: 0.25rem 0.5rem 0.125rem;
+}
+.slash-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.4375rem;
+  cursor: pointer;
+  color: var(--foreground);
+}
+.slash-item svg { color: var(--muted-foreground); flex-shrink: 0; }
+.slash-item-selected {
+  background-color: var(--accent);
+}
+.slash-item-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: block;
+}
+.slash-item-desc {
+  font-size: 0.65625rem;
+  color: var(--muted-foreground);
+  display: block;
+}
+
+/* ─── Coolors Theme Utilities (#388087, #6FB3B8, #BADFE7, #C2EDCE, #F6F6F2) ─── */
+.badge-mint {
+  background-color: #c2edce;
+  color: #143d35;
+}
+.badge-cyan {
+  background-color: #badfe7;
+  color: #164347;
+}
+.badge-teal {
+  background-color: #388087;
+  color: #ffffff;
+}
+.bg-brand-teal {
+  background-color: #388087;
+}
+.text-brand-teal {
+  color: #388087;
+}
+.bg-brand-cyan {
+  background-color: #6fb3b8;
+}
+.text-brand-cyan {
+  color: #6fb3b8;
+}
+.bg-brand-ice {
+  background-color: #badfe7;
+}
+.border-brand-ice {
+  border-color: #badfe7;
+}
+.bg-brand-mint {
+  background-color: #c2edce;
+}
+.text-brand-mint {
+  color: #143d35;
+}
+.bg-brand-cream {
+  background-color: #f6f6f2;
+}
+
+/* ── Semantic-text-selection + Search/comment highlights (palette) ─── */
+::selection {
+  background-color: color-mix(in srgb, var(--selection) 60%, transparent);
+}
+
+/* ── Brand semantic grammar & spelling indicators (palette) ─────────── */
+[data-grammar-error] {
+  text-decoration: underline;
+  text-decoration-color: var(--error);
+  text-decoration-style: solid;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+[data-grammar-warning] {
+  text-decoration: underline;
+  text-decoration-color: var(--warning);
+  text-decoration-style: solid;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+[data-spelling-error] {
+  text-decoration: underline;
+  text-decoration-color: var(--error);
+  text-decoration-style: solid;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* ── Style boundary guides (point 20) ────────────────────────────── */
+[data-style-guide="chapter"],
+[data-style-guide="title"] {
+  border-left: 3px dashed var(--guide-title);
+  padding-left: 0.5rem;
+}
+[data-style-guide="h1"] {
+  border-left: 3px dashed var(--guide-h1);
+  padding-left: 0.5rem;
+}
+[data-style-guide="h2"],
+[data-style-guide="h3"] {
+  border-left: 2px dashed var(--guide-h2h3);
+  padding-left: 0.5rem;
+}
+[data-style-guide="quote"] {
+  border-left: 3px dashed var(--guide-quote);
+  padding-left: 0.75rem;
 }

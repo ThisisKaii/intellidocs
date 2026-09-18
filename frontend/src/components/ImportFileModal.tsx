@@ -133,8 +133,8 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
       setSuccess(true)
       onImported?.()
       onProgress?.({ done: total, total, currentName: '' })
+      // Keep the completed toast on screen until the user dismisses it (point 13).
       setTimeout(() => {
-        onProgress?.(null)
         onClose()
       }, 1200)
     } catch (err) {
@@ -145,10 +145,15 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
     }
   }
 
-  // Clear the global toast when the modal is closed mid-flight.
+  // Clear the global toast when the modal is closed mid-flight,
+  // but keep the completed success toast visible (point 13).
+  const successRef = useRef(false)
+  useEffect(() => {
+    successRef.current = success
+  }, [success])
   useEffect(() => {
     return () => {
-      onProgress?.(null)
+      if (!successRef.current) onProgress?.(null)
     }
   }, [onProgress])
 
@@ -222,15 +227,15 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
             onDrop={handleDrop}
             onClick={() => inputRef.current?.click()}
             style={{
-              border: `2px dashed ${dragging ? 'var(--primary)' : selectedFiles.length > 0 ? '#16a34a' : 'var(--border)'}`,
+              border: `2px dashed ${dragging ? 'var(--primary)' : selectedFiles.length > 0 ? 'var(--success)' : 'var(--border)'}`,
               borderRadius: '0.75rem',
               padding: '2rem 1.5rem',
               textAlign: 'center',
               cursor: uploading ? 'default' : 'pointer',
               backgroundColor: dragging
-                ? 'rgba(var(--primary-rgb, 59 130 246)/0.04)'
+                ? 'color-mix(in srgb, var(--primary) 4%, transparent)'
                 : selectedFiles.length > 0
-                ? 'rgba(34,197,94,0.04)'
+                ? 'color-mix(in srgb, var(--success) 4%, transparent)'
                 : 'var(--background)',
               transition: 'border-color 150ms, background-color 150ms',
               marginBottom: '1.25rem',
@@ -247,7 +252,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
 
             {selectedFiles.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.375rem' }}>
-                <FileText style={{ width: '32px', height: '32px', color: '#16a34a' }} />
+                <FileText style={{ width: '32px', height: '32px', color: 'var(--success)' }} />
                 <p style={{ fontWeight: 600, fontSize: '0.9375rem', margin: 0, color: 'var(--foreground)' }}>
                   {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} selected
                 </p>
@@ -312,7 +317,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
                     </span>
                   </div>
                   {index < importedCount && !uploading ? (
-                    <CheckCircle2 style={{ width: '14px', height: '14px', color: '#16a34a', flexShrink: 0 }} />
+                    <CheckCircle2 style={{ width: '14px', height: '14px', color: 'var(--success)', flexShrink: 0 }} />
                   ) : (
                     <button
                       type="button"
@@ -355,8 +360,8 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
                 marginBottom: '1rem',
               }}
             >
-              <AlertCircle style={{ width: '15px', height: '15px', color: '#dc2626', flexShrink: 0, marginTop: '1px' }} />
-              <p style={{ fontSize: '0.8125rem', color: '#dc2626', margin: 0 }}>{error}</p>
+              <AlertCircle style={{ width: '15px', height: '15px', color: 'var(--error)', flexShrink: 0, marginTop: '1px' }} />
+              <p style={{ fontSize: '0.8125rem', color: 'var(--error)', margin: 0 }}>{error}</p>
             </div>
           )}
 
@@ -374,8 +379,8 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
                 marginBottom: '1rem',
               }}
             >
-              <CheckCircle2 style={{ width: '15px', height: '15px', color: '#16a34a' }} />
-              <p style={{ fontSize: '0.8125rem', color: '#16a34a', margin: 0 }}>
+              <CheckCircle2 style={{ width: '15px', height: '15px', color: 'var(--success)' }} />
+              <p style={{ fontSize: '0.8125rem', color: 'var(--success)', margin: 0 }}>
                 Imported {importedCount} file{importedCount > 1 ? 's' : ''} successfully.
               </p>
             </div>
@@ -450,20 +455,13 @@ interface ImportProgressToastProps {
 
 /**
  * Google-Drive-style bottom-right import progress indicator.
- * Shows the active file name, a progress bar, and a "done" summary that
- * auto-dismisses a moment after the batch completes.
+ * Shows the active file name, a progress bar, and — when complete — a
+ * persistent success state that stays until explicitly dismissed (point 13).
  */
 export function ImportProgressToast({ progress, onDone }: ImportProgressToastProps): JSX.Element {
   const { done, total, currentName } = progress
   const finished = done >= total && total > 0
   const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0
-
-  useEffect(() => {
-    if (finished) {
-      const timer = setTimeout(onDone, 2500)
-      return () => clearTimeout(timer)
-    }
-  }, [finished, onDone])
 
   return (
     <div
@@ -486,7 +484,7 @@ export function ImportProgressToast({ progress, onDone }: ImportProgressToastPro
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
         {finished ? (
-          <CheckCircle2 style={{ width: '16px', height: '16px', color: '#16a34a', flexShrink: 0 }} />
+          <CheckCircle2 style={{ width: '16px', height: '16px', color: 'var(--success)', flexShrink: 0 }} />
         ) : (
           <Loader2 style={{ width: '16px', height: '16px', color: 'var(--primary)', flexShrink: 0, animation: 'spin 0.7s linear infinite' }} />
         )}
@@ -497,10 +495,33 @@ export function ImportProgressToast({ progress, onDone }: ImportProgressToastPro
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            flex: 1,
           }}
         >
-          {finished ? `${total} file${total > 1 ? 's' : ''} imported` : `Importing ${currentName || 'document'}…`}
+          {finished ? `Imported ${total} file${total > 1 ? 's' : ''}` : `Importing ${currentName || 'document'}…`}
         </span>
+        {finished && (
+          <button
+            type="button"
+            onClick={onDone}
+            aria-label="Dismiss import notification"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '22px',
+              height: '22px',
+              borderRadius: '0.375rem',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: 'var(--muted-foreground)',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <X style={{ width: '14px', height: '14px' }} />
+          </button>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
         <div style={{ flex: 1, height: '5px', borderRadius: '999px', backgroundColor: 'var(--secondary)', overflow: 'hidden' }}>
@@ -509,7 +530,7 @@ export function ImportProgressToast({ progress, onDone }: ImportProgressToastPro
               width: `${percent}%`,
               height: '100%',
               borderRadius: '999px',
-              backgroundColor: finished ? '#16a34a' : 'var(--primary)',
+              backgroundColor: finished ? 'var(--success)' : 'var(--primary)',
               transition: 'width 200ms ease',
             }}
           />
@@ -518,9 +539,13 @@ export function ImportProgressToast({ progress, onDone }: ImportProgressToastPro
           {percent}%
         </span>
       </div>
-      {!finished && (
+      {!finished ? (
         <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0.375rem 0 0' }}>
           {done} of {total} complete
+        </p>
+      ) : (
+        <p style={{ fontSize: '0.6875rem', color: 'var(--success, var(--success))', margin: '0.375rem 0 0' }}>
+          Your documents are ready to edit.
         </p>
       )}
     </div>

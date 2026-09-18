@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
-import { Document, CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
+import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion } from '../types/index'
 import { getRedisClient } from '../utils/redisClient'
 import { isShareLinkExpired } from './shareModel'
 
@@ -11,6 +11,12 @@ export const supabase = createClient(
 
 /** 1-hour TTL for cached document reads. */
 const DOC_CACHE_TTL = 3600
+
+/** Count words in a serialized HTML document by stripping tags first. */
+function countWords(content: string): number {
+  const text = content.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')
+  return text.trim() ? text.trim().split(/\s+/).length : 0
+}
 
 /** Cache is opt-in to keep local dev snappy when Redis is not running. */
 const DOC_CACHE_ENABLED = Boolean(
@@ -277,7 +283,14 @@ export async function updateDocument(
 
   if (error) throw new Error(`Failed to update document: ${error.message}`)
   void invalidateDocumentCache(id)
-  return data!
+
+  // Snapshot the new state for the undo-lock version history (best-effort).
+  const updated = data! as Document
+  if (updated.content) {
+    void snapshotDocumentVersion(updated, 'autosave')
+  }
+
+  return updated
 }
 
 export async function deleteDocument(
@@ -291,4 +304,111 @@ export async function deleteDocument(
     .eq('user_id', userId)
 
   if (error) throw new Error(`Failed to delete document: ${error.message}`)
+}
+
+/** Minimum time (ms) between consecutive snapshots for the same document. */
+const VERSION_THROTTLE_MS = 3000
+
+/** Insert a new version snapshot, throttled to avoid a row per keystroke. */
+export async function snapshotDocumentVersion(
+  doc: Document,
+  reason = 'autosave',
+): Promise<void> {
+  try {
+    const redis = await getRedisClient()
+    const key = `version:${doc.id}:last`
+    const raw = await redis.get(key)
+    if (raw) {
+      const last = Number(raw)
+      if (Date.now() - last < VERSION_THROTTLE_MS) return
+    }
+
+    const { error } = await supabase.from('document_versions').insert({
+      document_id: doc.id,
+      user_id: doc.user_id,
+      content: doc.content,
+      title: doc.title,
+      word_count: countWords(doc.content),
+      page_size: doc.page_size,
+      margins: doc.margins ?? null,
+      orientation: doc.orientation,
+      editor_prefs: null,
+      reason,
+    })
+    if (error) {
+      throw new Error(`Failed to snapshot document version: ${error.message}`)
+    }
+    await redis.set(key, String(Date.now()), { EX: 3600 })
+  } catch {
+    /* Version snapshotting is best-effort and must never break saves. */
+  }
+}
+
+/** List version snapshots for a document, newest first. */
+export async function getDocumentVersions(
+  documentId: string,
+  userId: string,
+): Promise<DocumentVersion[]> {
+  // Only the owner may read the version history of a document.
+  const doc = await getDocumentById(documentId, userId)
+
+  const { data, error } = await supabase
+    .from('document_versions')
+    .select('*')
+    .eq('document_id', doc.id)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error) throw new Error(`Failed to list document versions: ${error.message}`)
+  return data || []
+}
+
+/** Fetch a single version snapshot (owner only). */
+export async function getDocumentVersionById(
+  documentId: string,
+  versionId: string,
+  userId: string,
+): Promise<DocumentVersion> {
+  await getDocumentById(documentId, userId)
+
+  const { data, error } = await supabase
+    .from('document_versions')
+    .select('*')
+    .eq('document_id', documentId)
+    .eq('version_id', versionId)
+    .single()
+
+  if (error) {
+    const notFound = new Error('Document version not found') as Error & { status: number }
+    notFound.status = 404
+    throw notFound
+  }
+  return data
+}
+
+/** Restore a snapshot onto the document (newest state presumes latest content). */
+export async function restoreDocumentVersion(
+  documentId: string,
+  versionId: string,
+  userId: string,
+): Promise<Document> {
+  const version = await getDocumentVersionById(documentId, versionId, userId)
+
+  const { data, error } = await supabase
+    .from('documents')
+    .update({
+      content: version.content,
+      title: version.title,
+      page_size: version.page_size ?? undefined,
+      margins: version.margins ?? undefined,
+      orientation: version.orientation ?? undefined,
+    })
+    .eq('id', documentId)
+    .eq('user_id', userId)
+    .select()
+    .single()
+
+  if (error) throw new Error(`Failed to restore document version: ${error.message}`)
+  void invalidateDocumentCache(documentId)
+  return data!
 }

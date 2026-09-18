@@ -613,7 +613,7 @@ export default function AIChatbot({
                 : 'var(--border-shadow) 0px 0px 0px 1px, rgba(0, 0, 0, 0.08) 0px 4px 12px, inset 0px 0px 0px 1px var(--card-shadow-inner)',
               borderRadius: docked ? 0 : '0.75rem',
               overflow: 'hidden',
-              zIndex: 50,
+              zIndex: docked ? undefined : 50,
               display: 'flex',
               flexDirection: 'column',
             }}
@@ -752,7 +752,7 @@ export default function AIChatbot({
                     ) : null}
                     {m.command_applied && (
                       <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', opacity: 0.7, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ color: '#10b981' }}>✓</span> Applied: {m.command_applied}
+                        <span style={{ color: 'var(--success)' }}>✓</span> Applied: {m.command_applied}
                       </div>
                     )}
                   </div>

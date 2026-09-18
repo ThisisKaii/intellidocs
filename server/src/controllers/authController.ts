@@ -208,6 +208,12 @@ interface ApplyProfessorBody {
   reason: string
 }
 
+interface ApplyStudentBody {
+  studentId: string
+  college: string
+  degreeProgram: string
+}
+
 /**
  * Submit a faculty verification application.
  * Changes the user's role to 'professor' with verification_status = 'pending'.
@@ -272,6 +278,76 @@ export async function applyProfessor(req: AuthenticatedRequest, res: Response): 
 
     res.status(200).json({
       message: 'Professor application submitted successfully. An administrator will review your application.',
+      status: 'pending',
+    })
+  } catch {
+    res.status(500).json({ error: 'Failed to submit application' })
+  }
+}
+
+/**
+ * Submit a student role-application. Regular users may apply for Student
+ * status (verified student quota/benefits); submission sets verification to
+ * pending for admin review (plan point 19).
+ */
+export async function applyStudent(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: '401 Unauthorized: Session required' })
+      return
+    }
+
+    const { studentId, college, degreeProgram } = req.body as ApplyStudentBody
+
+    if (!studentId || !college || !degreeProgram) {
+      res.status(400).json({ error: 'All fields are required' })
+      return
+    }
+
+    // Fetch the student role_id
+    const { data: roleRow } = await supabase
+      .from('roles')
+      .select('role_id')
+      .eq('role_name', 'student')
+      .single()
+
+    if (!roleRow) {
+      res.status(500).json({ error: 'Student role not found in system' })
+      return
+    }
+
+    // Upsert the user profile to student with pending verification
+    const { error: upsertError } = await supabase
+      .from('user_profiles')
+      .upsert({
+        user_id: userId,
+        role_id: roleRow.role_id,
+        verification_status: 'pending',
+        phone: studentId,
+      }, { onConflict: 'user_id' })
+
+    if (upsertError) {
+      res.status(500).json({ error: 'Failed to submit application' })
+      return
+    }
+
+    // Notify admins for review
+    await supabase.from('notifications').insert({
+      user_id: userId,
+      type: 'student_application',
+      title: 'Student Application Submitted',
+      message: `Application submitted by ${req.user?.email}. College: ${college}, Degree Program: ${degreeProgram}, Student ID: ${studentId}`,
+      metadata: {
+        studentId,
+        college,
+        degreeProgram,
+        submittedAt: new Date().toISOString(),
+      },
+    })
+
+    res.status(200).json({
+      message: 'Student application submitted successfully. An administrator will review your application.',
       status: 'pending',
     })
   } catch {

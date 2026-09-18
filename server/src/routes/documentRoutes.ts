@@ -62,4 +62,8 @@ router.post('/:id/share-link', shareController.createShareLink)
 router.put('/:id/share-link', shareController.updateShareLink)
 router.delete('/:id/share-link', shareController.revokeShareLink)
 
+/** Undo-lock version history — owner can list and restore snapshots. */
+router.get('/:id/versions', documentController.getDocumentVersions)
+router.post('/:id/versions/:versionId/restore', documentController.restoreDocumentVersion)
+
 export default router

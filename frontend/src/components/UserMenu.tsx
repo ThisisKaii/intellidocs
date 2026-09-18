@@ -91,7 +91,7 @@ export function UserMenu(): JSX.Element {
               role="switch"
               aria-checked={isDark}
               aria-hidden="true"
-              className={`relative inline-flex w-9 h-5 rounded-full transition-colors ${isDark ? 'bg-primary' : 'bg-foreground/20'}`}
+              className={`relative inline-flex w-9 h-5 rounded-full transition-colors ring-1 ring-inset ring-border ${isDark ? 'bg-primary' : 'bg-foreground/25'}`}
             >
               <span
                 className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-background shadow-sm transition-transform ${isDark ? 'translate-x-4' : 'translate-x-0'}`}

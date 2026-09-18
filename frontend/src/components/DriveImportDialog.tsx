@@ -171,12 +171,12 @@ export default function DriveImportDialog({
                 gap: '0.5rem',
                 padding: '0.625rem 0.75rem',
                 borderRadius: '0.5rem',
-                backgroundColor: 'rgba(255, 91, 79, 0.1)',
-                border: '1px solid rgba(255, 91, 79, 0.35)',
+                backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--error) 35%, transparent)',
                 marginBottom: '0.75rem',
               }}
             >
-              <p style={{ fontSize: '0.75rem', color: '#ff5b4f', margin: 0, lineHeight: 1.4 }}>
+              <p style={{ fontSize: '0.75rem', color: 'var(--error)', margin: 0, lineHeight: 1.4 }}>
                 {error}
               </p>
               <button

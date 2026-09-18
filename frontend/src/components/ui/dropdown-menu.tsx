@@ -112,10 +112,10 @@ const DropdownMenuItem = React.forwardRef<
     onMouseEnter={(e) => {
       const isDestructive = className?.includes('text-destructive')
       ;(e.currentTarget as HTMLDivElement).style.backgroundColor = isDestructive
-        ? 'rgba(255, 91, 79, 0.08)'
+        ? 'color-mix(in srgb, var(--destructive) 8%, transparent)'
         : 'var(--secondary)'
       ;(e.currentTarget as HTMLDivElement).style.boxShadow = isDestructive
-        ? 'inset 0px 0px 0px 1px rgba(255, 91, 79, 0.12)'
+        ? 'inset 0px 0px 0px 1px color-mix(in srgb, var(--destructive) 12%, transparent)'
         : 'inset 0px 0px 0px 1px var(--border)'
       if (!isDestructive) {
         ;(e.currentTarget as HTMLDivElement).style.color = 'var(--foreground)'

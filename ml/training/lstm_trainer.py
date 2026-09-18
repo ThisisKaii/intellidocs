@@ -160,6 +160,18 @@ def main() -> None:
     output_path = save_lstm_model(model, args.user_id)
     print(f"✅ LSTM sequence model saved to: {output_path}")
 
+    # Upload to Supabase Storage (object {user_id}.pt) so prediction fetches it
+    # from cloud instead of a local directory (plan point 2).
+    try:
+        from storage import upload_user_model
+
+        if upload_user_model(output_path, args.user_id):
+            print("✅ LSTM model uploaded to Supabase Storage (user-models).")
+        else:
+            print("⚠️ Supabase Storage upload failed — model kept locally only.")
+    except Exception as exc:  # noqa: BLE001 - optional cloud feature
+        print(f"⚠️ Supabase Storage upload skipped: {exc}")
+
 
 if __name__ == "__main__":
     main()

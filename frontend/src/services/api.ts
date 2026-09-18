@@ -51,6 +51,22 @@ export interface DocumentRecord {
   updated_at: string
 }
 
+export interface DocumentVersion {
+  version_id: string
+  document_id: string
+  user_id: string
+  content: string
+  title: string
+  word_count: number | null
+  version_number: number | null
+  page_size: PageSizeKey | null
+  margins: MarginValues | null
+  orientation: PageOrientation | null
+  editor_prefs: Record<string, unknown> | null
+  reason: string
+  created_at: string
+}
+
 export interface FolderRecord {
   folder_id: string
   user_id: string
@@ -84,6 +100,7 @@ export interface PredictionResponse {
   confidence: number
   feature_values: Record<string, number>
   lstm_adjusted?: boolean
+  isolation_mode?: 'baseline' | 'isolated' | 'hybrid'
 }
 
 interface LoginResponse {
@@ -396,6 +413,18 @@ export const api = {
         body: JSON.stringify(payload),
       })
     },
+    /** Submit a student status application (regular user → pending student). */
+    applyStudent: async (payload: {
+      studentId: string
+      college: string
+      degreeProgram: string
+    }): Promise<{ message: string; status: string }> => {
+      return fetchAPI<{ message: string; status: string }>('auth/apply-student', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+    },
     /** Called after Google OAuth redirect to sync profile with Express backend. */
     googleSync: async (accessToken: string): Promise<GoogleSyncResponse> => {
       return fetchAPI<GoogleSyncResponse>('auth/google', {
@@ -515,7 +544,16 @@ export const api = {
         body: JSON.stringify({ is_isolated: isIsolated }),
       })
     },
-    /** Upload a local file (.docx, .txt, .html, .pdf) and create a document from it. */
+    /** List version snapshots for a document (owner only, newest first). */
+    versions: async (id: string): Promise<DocumentVersion[]> => {
+      return fetchAPI<DocumentVersion[]>(`documents/${id}/versions`)
+    },
+    /** Restore a specific version snapshot, returning the restored document. */
+    restoreVersion: async (id: string, versionId: string): Promise<DocumentRecord> => {
+      return fetchAPI<DocumentRecord>(`documents/${id}/versions/${versionId}/restore`, {
+        method: 'POST',
+      })
+    },
     import: async (file: File): Promise<DocumentRecord> => {
       const formData = new FormData()
       formData.append('file', file)
@@ -600,11 +638,15 @@ export const api = {
   },
 
   predictions: {
-    predict: async (text: string, userId?: string): Promise<PredictionResponse> => {
+    predict: async (
+      text: string,
+      userId?: string,
+      isolationMode?: 'baseline' | 'isolated' | 'hybrid'
+    ): Promise<PredictionResponse> => {
       return fetchAPI<PredictionResponse>('predictions/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, user_id: userId }),
+        body: JSON.stringify({ text, user_id: userId, isolationMode }),
       })
     },
     grammarCheck: async (text: string): Promise<GrammarCheckResponse> => {

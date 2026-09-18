@@ -13,6 +13,9 @@ Sections:
 - **4. Manual Acceptance — Master Plan feedback** — original Master-plan
   checks + the user's inline comments.
 - **5. Graphify / 6. Bug-Fix Discipline** — housekeeping.
+- **7. Acceptance — 26-Point Implementation Checklist** — every feature from
+  the latest implementation push (points 1–26), plus environment prerequisites
+  and known gaps. Tick every box before the defense.
 
 ---
 
@@ -23,7 +26,7 @@ Sections:
 ```bash
 cd server
 npx tsc --noEmit        # 0 errors expected
-npm test                # 5 suites / 28 tests pass
+npm test                # 5 suites / 33 tests pass
 npm run lint            # known pre-existing baseline errors only
 ```
 
@@ -296,3 +299,129 @@ After tests pass: run `graphify update .` (user runs — CLI/MCP unavailable in 
 
 - Any failing check above blocks ship; fix forward without layering guesses.
 - Re-run the full automated suite after each fix.
+
+---
+
+## 7. Acceptance — 26-Point Implementation Checklist (verify each item)
+
+Everything added in the latest implementation push. Verify **every single item**
+so nothing regresses before the defense. Grouped by phase — tick each one.
+
+### 7.0 Environment (do first — without this nothing below works)
+
+- [ ] `server/.env` has `ML_API_URL=http://localhost:8000` (NOT 8001 — the ML
+      service starts on 8001 by default, the bridge calls 8000). If prediction /
+      grammar / import-conversion fail with "ML service at ... failed", this is
+      the first thing to check. See the editor's red banner which now shows the
+      resolved URL + hint.
+- [ ] ML FastAPI is running: `ml/venv/Scripts/python.exe ml/src/main.py`.
+- [ ] Redis is reachable (behavior pipeline, suggestion cache, quotas).
+- [ ] Supabase: migrations through `019_document_versions_enhance.sql` applied
+      (prod + dev). `016` share links and `017` share expiry MUST be applied
+      before testing share links.
+- [ ] `ml/requirements.txt` includes `scipy` (numpy dependency of scikit-learn).
+- [ ] Supabase `user-models` bucket exists (for point 2 — LSTM upload).
+- [ ] Google OAuth: app must be past the "unverified app" limbo for clean Drive
+      flows (known Google-side blocker).
+
+### 7.1 Phase 2 — Editor UX (points 4, 5, 16, 20, 21)
+
+- [ ] **4. Overlay suggestions:** scan fires, suggestion draws as a dashed
+      overlay box ON the document text (not in saved content). Click the
+      line → chip opens; same line with grammar issues → combobox to pick
+      Formatting / Grammar & spelling.
+- [ ] **5. Adaptive popup:** narrow the viewport so the chip would overlap the
+      toolbar → it flips/relocates, no overlap with header.
+- [ ] **16. Autosave:** type → no explicit save button; changes persist after
+      reload (debounced autosave + Realtime). Pull the doc again — content is
+      fresh.
+- [ ] **20. Style-source tagging:** apply a style via the ribbon/presets →
+      the paragraph serializes with `data-style-source="applied_style"`;
+      default text has no such attribute.
+- [ ] **21. Markdown triggers:** type `#!# ` (H1 + centered + bold),
+      `##! ` (H2 + indent), `$$ ` (centered mono) at block start → format applies.
+
+### 7.2 Phase 3 — Version history + diff (points 22, 23)
+
+- [ ] **22. Snapshots:** edits create version snapshots; version list shows
+      numbered entries (1, 2, 3…) with word-count deltas.
+- [ ] **23. Diff compare:** History panel → "Show changes" → added words render
+      green, removed words red-strikethrough against the previous version.
+- [ ] Restore a version → document content reverts and a new snapshot is written.
+
+### 7.3 Phase 4 — Slash commands, word widget, thesis export (points 24, 25, 26)
+
+- [ ] **24. Slash menu:** type `/` in the editor → fixed-position command menu
+      (H1/H2/H3/Chapter/Quote/Bullet/Numbered/Table/Divider/Undo/Redo/Cut/
+      Copy/Paste/Clear). `Ctrl+K`/`Cmd+K` opens it too. Arrow-key navigation +
+      Enter applies.
+- [ ] **25. Word progress:** bottom bar shows word count, estimated pages,
+      reading time, and a progress bar vs the 3000-word target. Hidden in
+      read-only view.
+- [ ] **26. Thesis export:** toolbar Export menu → "Thesis Word (1.5″ binding)"
+      downloads a `.doc` with 1.5" left binding, roman page numbers for the
+      front matter, arabic restarting in the body. "Defense-Ready PDF" opens
+      the print dialog with letter margins. Verify the field codes —
+      { PAGE \* roman } and { PAGE \* arabic }.
+
+### 7.4 Phase 5 — Sharing, realtime, settings (points 14, 15, 19)
+
+- [ ] **14. Realtime shares:** user B shares a doc with you (or changes a
+      permission) → your "Shared with me" list refreshes WITHOUT reloading
+      (supabase Realtime on `document_shares`).
+- [ ] **15. Share action on cards:** file row dropdown + right-click context
+      menu both have "Share"; blocked (with message) for files already under
+      "Shared with me".
+- [ ] **19. Settings applications:** as role `user` (not student) — Settings
+      shows "Apply for Student Status" form (Student ID / Degree Program /
+      College) → submit → pending banner. `POST /auth/apply-student` returns
+      `status: pending`. Professor application flow still works.
+
+### 7.5 Phase 6 — Import + caching polish (points 3, 11, 12, 13)
+
+- [ ] **3. Drive import:** import a native Doc (HTML export), a .docx (Python
+      converter, Mammoth fallback), a PDF (Python converter — must NOT show
+      mojibake text), a plain .txt, and an .rtf. Large/drive files download as
+      a stream (no "Unsupported data type" 500). Reconnect Drive → files list.
+- [ ] **11. SWR cache:** load the dashboard, open a document, click back →
+      the list renders instantly from SWR cache while revalidating (no blank
+      spinner).
+- [ ] **12. Duplicate titles:** import/create a doc whose title already exists →
+      confirm dialog "Use 'Title (2)'" appears; accepting creates the numbered
+      copy; cancel keeps the duplicate but doesn't import. "Untitled document"
+      auto-numbers to "Untitled document (2)".
+- [ ] **13. Persistent toast:** import several files → the bottom-right toast
+      completes and STAYS (no auto-dismiss) with a dismiss **X**; closing the
+      modal mid-flight still clears it.
+
+### 7.6 Phase 7 — ML isolation + cloud models (points 17, 2)
+
+- [ ] **17. Isolation mode:** `POST /ai/predict` body `{ text, isolationMode }`:
+      `baseline` → base model only (no LSTM reweight, `lstm_adjusted=false`);
+      `isolated` (needs ≥5 recent user events + uploaded LSTM) → prediction
+      from the user LSTM alone; `hybrid` (default) → base + LSTM blend.
+      Response carries `isolation_mode`.
+- [ ] **2. Storage upload:** after `POST /ai/fine-tune`, the background job runs
+      BOTH `fine_tuner.py` (RandomForest .pkl, local) and `lstm_trainer.py`
+      (LSTM .pt → uploaded to Supabase `user-models` bucket as `{user_id}.pt`).
+      Verify the object appears in the bucket and `storage.download_user_model`
+      can fetch it.
+
+### 7.7 Cover the older acceptance items too (don't skip)
+
+- [ ] Rerun Section 3 (Round-2 re-test) — suggestion overlay, grammar
+      underline, trash UX, preset z-index, bulk chat formatting, Drive listing,
+      dashboard badges, share links (incl. expiry).
+- [ ] Rerun Section 4 items 1–3 (auth/professor application, grammar, hierarchy).
+- [ ] Items 4–10 in Section 4 (admin telemetry, professor workspace,
+      explainable AI, thesis checklist, citation styler, ghost formatting,
+      offline buffer) — previously on hold, still pending user verification.
+
+### 7.8 Known gaps to track
+
+- [ ] **Storage quota (point 10) is NOT implemented** — no per-user storage
+      limit enforcement exists yet. Decide whether to add before defense.
+- [ ] `npm audit` reports 45 vulnerabilities (1 low, 40 moderate, 4 high) —
+      review before any public deploy.
+- [ ] Large chunk warning in vite build (1.5 MB index.js) — consider manualChunks
+      code-splitting before defense demo.

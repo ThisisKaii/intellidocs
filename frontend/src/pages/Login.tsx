@@ -72,8 +72,10 @@ function Login(): JSX.Element {
         minHeight: '100vh',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'var(--background)',
+        background: 'linear-gradient(135deg, #f6f6f2 0%, #eaf3f4 50%, #badfe7 100%)',
         padding: '1.5rem',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
       <motion.div
@@ -89,38 +91,43 @@ function Login(): JSX.Element {
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              backgroundColor: 'var(--primary)',
+              width: '52px',
+              height: '52px',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, #388087 0%, #6fb3b8 100%)',
               marginBottom: '1.25rem',
+              boxShadow: '0 4px 16px rgba(56,128,135,0.35)',
             }}
           >
             <svg
               viewBox="0 0 24 24"
               fill="none"
-              stroke="var(--primary-foreground)"
+              stroke="#c2edce"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              style={{ width: '18px', height: '18px' }}
+              style={{ width: '24px', height: '24px' }}
             >
-              <path d="M12 2L2 22h20L12 2z" />
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
             </svg>
           </div>
           <h1
             style={{
-              fontSize: '1.375rem',
-              fontWeight: 600,
-              letterSpacing: '-0.025em',
-              color: 'var(--foreground)',
+              fontSize: '1.5rem',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              color: '#183538',
               margin: '0 0 0.375rem',
             }}
           >
             IntelliDocs
           </h1>
-          <p style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', margin: 0 }}>
-            Sign in to your account
+          <p style={{ fontSize: '0.875rem', color: '#517173', margin: 0 }}>
+            Sign in to your academic workspace
           </p>
         </div>
 
@@ -130,8 +137,7 @@ function Login(): JSX.Element {
             backgroundColor: 'var(--card)',
             borderRadius: '0.75rem',
             padding: '1.75rem',
-            boxShadow:
-              'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px',
+            boxShadow: '0 0 0 1px rgba(111, 179, 184, 0.35), 0 4px 24px rgba(56, 128, 135, 0.12)',
           }}
         >
           {/* Google Sign-In Button */}
@@ -232,7 +238,7 @@ function Login(): JSX.Element {
                 }}
                 onFocus={(e) => {
                   e.currentTarget.style.boxShadow =
-                    '0px 0px 0px 1px var(--border-shadow), 0 0 0 3px rgba(59,130,246,0.15)'
+                    '0 0 0 1.5px var(--ring), 0 0 0 4px color-mix(in srgb, var(--ring) 12%, transparent)'
                 }}
                 onBlur={(e) => {
                   e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow)'
@@ -264,7 +270,7 @@ function Login(): JSX.Element {
                   to="/forgot-password"
                   style={{
                     fontSize: '0.8125rem',
-                    color: 'var(--muted-foreground)',
+                    color: 'var(--primary)',
                     textDecoration: 'none',
                   }}
                 >
@@ -295,7 +301,7 @@ function Login(): JSX.Element {
                 }}
                 onFocus={(e) => {
                   e.currentTarget.style.boxShadow =
-                    '0px 0px 0px 1px var(--border-shadow), 0 0 0 3px rgba(59,130,246,0.15)'
+                    '0 0 0 1.5px var(--ring), 0 0 0 4px color-mix(in srgb, var(--ring) 12%, transparent)'
                 }}
                 onBlur={(e) => {
                   e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow)'
@@ -310,16 +316,17 @@ function Login(): JSX.Element {
               style={{
                 display: 'block',
                 width: '100%',
-                height: '38px',
-                borderRadius: '0.5rem',
+                height: '42px',
+                borderRadius: '0.625rem',
                 border: 'none',
-                backgroundColor: 'var(--primary)',
-                color: 'var(--primary-foreground)',
-                fontSize: '0.875rem',
-                fontWeight: 500,
+                background: loading ? '#6fb3b8' : 'linear-gradient(135deg, #388087 0%, #6fb3b8 100%)',
+                color: '#ffffff',
+                fontSize: '0.9375rem',
+                fontWeight: 700,
                 cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.65 : 1,
-                transition: 'opacity 150ms',
+                letterSpacing: '0.01em',
+                boxShadow: '0 2px 8px rgba(56,128,135,0.3)',
+                transition: 'opacity 150ms, box-shadow 150ms',
                 fontFamily: 'inherit',
               }}
             >
@@ -339,7 +346,7 @@ function Login(): JSX.Element {
           Don't have an account?{' '}
           <Link
             to="/register"
-            style={{ color: 'var(--foreground)', fontWeight: 500, textDecoration: 'none' }}
+            style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}
           >
             Create one
           </Link>

@@ -132,12 +132,12 @@ export default function SuggestionPanel({ suggestions, onApply, onDismiss }: Sug
                 width: '32px',
                 height: '32px',
                 borderRadius: '0.375rem',
-                backgroundColor: 'rgba(121, 40, 202, 0.1)',
+                backgroundColor: 'color-mix(in srgb, var(--accent-strong) 10%, transparent)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', fontWeight: 700, color: '#7928ca' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', fontWeight: 700, color: 'var(--accent-strong)' }}>
                   {s.confidence}%
                 </span>
               </div>
@@ -177,7 +177,7 @@ export default function SuggestionPanel({ suggestions, onApply, onDismiss }: Sug
                 <div
                   style={{
                     height: '100%',
-                    backgroundColor: '#7928ca',
+                    backgroundColor: 'var(--accent-strong)',
                     borderRadius: '9999px',
                     transition: 'width 300ms ease',
                     width: `${s.confidence}%`,

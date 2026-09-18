@@ -77,15 +77,15 @@ export default function FormatPrompt({
                 width: '32px',
                 height: '32px',
                 borderRadius: '8px',
-                backgroundColor: showJumpMode ? 'rgba(99, 102, 241, 0.1)' : 'rgba(121, 40, 202, 0.1)',
+                backgroundColor: 'color-mix(in srgb, var(--primary) 10%, transparent)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
                 {showJumpMode ? (
-                  <MapPin style={{ width: '16px', height: '16px', color: '#6366f1' }} />
+                  <MapPin style={{ width: '16px', height: '16px', color: 'var(--primary)' }} />
                 ) : (
-                  <Brain style={{ width: '16px', height: '16px', color: '#7928ca' }} />
+                  <Brain style={{ width: '16px', height: '16px', color: 'var(--accent-strong)' }} />
                 )}
               </div>
               <span style={{
@@ -95,7 +95,7 @@ export default function FormatPrompt({
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                backgroundColor: showJumpMode ? '#6366f1' : '#7928ca',
+                backgroundColor: showJumpMode ? 'var(--primary)' : 'var(--accent-strong)',
                 animation: showJumpMode ? 'none' : undefined,
               }} />
             </div>
@@ -157,8 +157,8 @@ export default function FormatPrompt({
           <span style={{
             fontSize: '0.625rem',
             fontWeight: 700,
-            color: showJumpMode ? '#6366f1' : '#7928ca',
-            backgroundColor: showJumpMode ? 'rgba(99, 102, 241, 0.1)' : 'rgba(121, 40, 202, 0.1)',
+            color: showJumpMode ? 'var(--primary)' : 'var(--accent-strong)',
+            backgroundColor: 'color-mix(in srgb, var(--primary) 10%, transparent)',
             padding: '0.125rem 0.5rem',
             borderRadius: '9999px',
             whiteSpace: 'nowrap',
@@ -176,9 +176,9 @@ export default function FormatPrompt({
               flexDirection: 'column',
               gap: '0.25rem',
               padding: '0.375rem 0.5rem',
-              backgroundColor: 'rgba(0,0,0,0.03)',
+              backgroundColor: 'color-mix(in srgb, var(--foreground) 4%, transparent)',
               borderRadius: '6px',
-              border: '1px solid rgba(0,0,0,0.06)',
+              border: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)',
               fontSize: '0.6875rem',
               lineHeight: 1.4,
             }}>
@@ -206,7 +206,7 @@ export default function FormatPrompt({
                 <span style={{
                   fontSize: '0.5625rem',
                   fontWeight: 600,
-                  color: '#22c55e',
+                  color: 'var(--success)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
                   flexShrink: 0,
@@ -240,7 +240,7 @@ export default function FormatPrompt({
                   padding: '0.375rem 0.75rem',
                   borderRadius: '6px',
                   border: 'none',
-                  backgroundColor: '#6366f1',
+                  backgroundColor: 'var(--primary)',
                   color: '#ffffff',
                   cursor: 'pointer',
                   fontFamily: 'inherit',

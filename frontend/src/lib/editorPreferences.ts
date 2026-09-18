@@ -18,6 +18,8 @@ export interface EditorPreferences {
   sensitivity: SuggestionSensitivity
   /** Accent color for in-canvas formatting suggestion highlights. */
   highlightColor: HighlightColor
+  /** Show colored dashed boundary guides around formatted preset/style blocks. */
+  showStyleGuides: boolean
 }
 
 const STORAGE_KEY = 'intellidocs:editor-preferences'
@@ -27,6 +29,7 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   underlineStyle: 'straight',
   sensitivity: 'medium',
   highlightColor: 'indigo',
+  showStyleGuides: true,
 }
 
 /** Map a chosen sensitivity to a minimum confidence the scanner must reach. */

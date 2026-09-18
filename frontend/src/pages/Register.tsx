@@ -225,14 +225,14 @@ function Register(): JSX.Element {
           {success && (
             <div
               style={{
-                backgroundColor: 'rgba(34,197,94,0.08)',
-                border: '1px solid rgba(34,197,94,0.25)',
+                backgroundColor: 'color-mix(in srgb, var(--success) 8%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--success) 25%, transparent)',
                 borderRadius: '0.5rem',
                 padding: '0.625rem 0.875rem',
                 marginBottom: '1.25rem',
               }}
             >
-              <p style={{ fontSize: '0.8125rem', color: '#16a34a', margin: 0 }}>{success}</p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--success)', margin: 0 }}>{success}</p>
             </div>
           )}
 

@@ -27,7 +27,15 @@ export const applyProfessorSchema = z.object({
   reason: z.string().trim().min(10, 'Please provide a brief reason (min 10 characters)').max(500),
 })
 
+/** Validate a student upgrade application request body. */
+export const applyStudentSchema = z.object({
+  studentId: z.string().trim().min(1, 'Student ID is required').max(50),
+  college: z.string().trim().min(1, 'College is required').max(200),
+  degreeProgram: z.string().trim().min(1, 'Degree program is required').max(200),
+})
+
 export type AuthBody = z.infer<typeof authBodySchema>
 export type GoogleAuthBody = z.infer<typeof googleAuthSchema>
 export type UpdateProfileBody = z.infer<typeof updateProfileSchema>
 export type ApplyProfessorBody = z.infer<typeof applyProfessorSchema>
+export type ApplyStudentBody = z.infer<typeof applyStudentSchema>

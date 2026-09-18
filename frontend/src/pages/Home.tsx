@@ -8,15 +8,29 @@ import { Search } from 'lucide-react'
 import UserMenu from '@/components/UserMenu'
 import DriveImportDialog from '@/components/DriveImportDialog'
 import ImportFileModal, { type ImportProgress, ImportProgressToast } from '@/components/ImportFileModal'
+import ShareModal from '@/components/ShareModal'
+import { supabase } from '@/lib/supabase'
+import { useDriveCache } from '@/hooks/useDriveCache'
 
 /** One day in milliseconds — used for the "Recent" filter. */
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Resolve a title to a unique name, appending " (2)", " (3)" etc. when it conflicts. */
+function uniqueTitle(base: string, existingTitles: string[]): string {
+  const clean = base.trim()
+  const used = new Set(existingTitles.map((t) => t.trim().toLowerCase()))
+  if (!used.has(clean.toLowerCase())) return clean
+  let n = 2
+  while (used.has(`${clean} (${n})`.toLowerCase())) n += 1
+  return `${clean} (${n})`
+}
 
 interface ConfirmDialogState {
   title: string
   description: string
   confirmLabel: string
   onConfirm: () => void
+  tone?: 'destructive' | 'primary'
 }
 
 /** Small centered confirmation modal used before any destructive action. */
@@ -44,8 +58,11 @@ function ConfirmDialog({
           </button>
           <button
             onClick={() => { dialog.onConfirm(); onClose() }}
-            className="inline-flex items-center h-9 px-4 rounded-lg border-none bg-destructive text-white text-sm font-medium cursor-pointer hover:opacity-90"
-            style={{ fontFamily: 'inherit' }}
+            className="inline-flex items-center h-9 px-4 rounded-lg border-none text-white text-sm font-medium cursor-pointer hover:opacity-90"
+            style={{
+              fontFamily: 'inherit',
+              backgroundColor: dialog.tone === 'primary' ? 'var(--primary, hsl(221 83% 53%))' : 'var(--destructive, hsl(0 72% 51%))',
+            }}
           >
             {dialog.confirmLabel}
           </button>
@@ -79,28 +96,23 @@ export default function HomePage(): JSX.Element {
   const [importFileOpen, setImportFileOpen] = useState<boolean>(false)
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
+  const [shareDocId, setShareDocId] = useState<string | null>(null)
 
   /* ── Load all documents once ───────────────────────── */
+  const driveCache = useDriveCache()
+
   useEffect(() => {
-    async function loadInitialData(): Promise<void> {
-      try {
-        setLoading(true)
-        const [docs, loadedFolders, trashList] = await Promise.all([
-          api.documents.list(),
-          api.folders.list(),
-          api.documents.trash(),
-        ])
-        setAllDocuments(docs)
-        setFolders(loadedFolders)
-        setTrashDocuments(trashList)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load drive data')
-      } finally {
-        setLoading(false)
-      }
+    if (driveCache.error) {
+      setError(driveCache.error)
+      setLoading(false)
+      return
     }
-    loadInitialData()
-  }, [])
+    if (!driveCache.data) return
+    setAllDocuments(driveCache.data.documents)
+    setFolders(driveCache.data.folders)
+    setTrashDocuments(driveCache.data.trash)
+    setLoading(driveCache.isLoading && !driveCache.data)
+  }, [driveCache.data, driveCache.isLoading, driveCache.error])
 
   /* ── Load folder-specific documents when navigating into a folder ── */
   useEffect(() => {
@@ -135,6 +147,25 @@ export default function HomePage(): JSX.Element {
       api.documents.trash().then(setTrashDocuments).catch(() => {})
     }
   }, [selection.type])
+
+  /* ── Supabase Realtime: refresh "Shared with me" instantly (plan point 14) ── */
+  useEffect(() => {
+    const channel = supabase
+      .channel('home-shares')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'document_shares' },
+        () => {
+          // Any change to shares — refresh the shared list so the collaborator
+          // sees their new document immediately.
+          api.documents.shared().then(setSharedDocuments).catch(() => {})
+        },
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   /* ── Derived: which documents to show ──────────────── */
   const visibleDocuments = useMemo(() => {
@@ -184,7 +215,8 @@ export default function HomePage(): JSX.Element {
   async function handleCreateDocument(): Promise<void> {
     try {
       setError('')
-      const doc = await api.documents.create('Untitled document')
+      const title = uniqueTitle('Untitled document', allDocuments.map((d) => d.title))
+      const doc = await api.documents.create(title)
       if (selection.type === 'folder' && selection.folderId) {
         try {
           await api.folders.addDocument(selection.folderId, doc.id)
@@ -205,17 +237,48 @@ export default function HomePage(): JSX.Element {
       .catch(() => setError('Failed to create folder'))
   }
 
+  /** Create a document inside the current selection (folder aware). */
+  async function createImportedDocument(displayTitle: string, html: string): Promise<void> {
+    const doc = await api.documents.create(displayTitle)
+    await api.documents.update(doc.id, { content: html })
+    if (selection.type === 'folder' && selection.folderId) {
+      try {
+        await api.folders.addDocument(selection.folderId, doc.id)
+      } catch { /* best-effort */ }
+    }
+    navigate(`/document/${doc.id}`)
+  }
+
   async function handleImportDoc(title: string, html: string): Promise<void> {
     try {
       setError('')
-      const doc = await api.documents.create(title)
-      await api.documents.update(doc.id, { content: html })
-      if (selection.type === 'folder' && selection.folderId) {
-        try {
-          await api.folders.addDocument(selection.folderId, doc.id)
-        } catch { /* best-effort */ }
+      const existing = new Set(allDocuments.map((d) => d.title.trim().toLowerCase()))
+      const collision = existing.has(title.trim().toLowerCase())
+
+      if (!collision) {
+        await createImportedDocument(title, html)
+        return
       }
-      navigate(`/document/${doc.id}`)
+
+      // Duplicate title: let the user keep the duplicate or auto-number it.
+      setConfirmDialog({
+        title: 'Title already exists',
+        description: `You already have a document named "${title}". Import a copy with a new name instead?`,
+        confirmLabel: 'Use "title (2)"',
+        tone: 'primary',
+        onConfirm: () => {
+          void createImportedDocument(uniqueTitle(title, allDocuments.map((d) => d.title)), html)
+            .then(() => {})
+            .catch((err) => {
+              setConfirmDialog({
+                title: 'Import failed',
+                description: err instanceof Error ? err.message : 'Failed to import document',
+                confirmLabel: 'OK',
+                onConfirm: () => {},
+              })
+            })
+        },
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import document')
     }
@@ -500,11 +563,11 @@ export default function HomePage(): JSX.Element {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground pointer-events-none" strokeWidth={2} />
               <input
                 type="text"
-                placeholder="Search in Drive"
+                placeholder="Search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="w-full h-12 pl-12 pr-4 rounded-full bg-muted hover:bg-muted/70 text-foreground text-[1rem] outline-none transition-colors focus:bg-card focus:shadow-md dark:focus:bg-card"
-                style={{ fontFamily: 'inherit', border: 'none' }}
+                className="w-full h-12 pl-12 pr-4 rounded-full bg-card text-foreground placeholder:text-muted-foreground text-[1rem] outline-none border border-border transition-colors hover:border-primary/60 focus:border-primary focus:shadow-md"
+                style={{ fontFamily: 'inherit' }}
               />
             </div>
 
@@ -613,6 +676,14 @@ export default function HomePage(): JSX.Element {
             onClearSelection={handleClearSelection}
             onMoveToFolder={handleMoveToFolder}
             onDragStart={handleDragStart}
+            onShare={(docId) => {
+              // Only owners can share — shared view is read-only.
+              if (selection.type === 'shared') {
+                setError('You can only share documents you own')
+                return
+              }
+              setShareDocId(docId)
+            }}
           />
         </main>
       </div>
@@ -641,6 +712,11 @@ export default function HomePage(): JSX.Element {
 
       {/* Destructive-action confirmation */}
       <ConfirmDialog dialog={confirmDialog} onClose={() => setConfirmDialog(null)} />
+
+      {/* Share document modal (plan point 15) */}
+      {shareDocId && (
+        <ShareModal documentId={shareDocId} onClose={() => setShareDocId(null)} />
+      )}
     </div>
   )
 }

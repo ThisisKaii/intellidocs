@@ -52,6 +52,16 @@ const HEADING_PATTERNS: Array<{ re: RegExp; format: string; confidence: number }
   { re: /^(background|methodology|results|discussion|summary|related work|literature review|problem statement|objectives|scope)\s*[:.]?\s*$/i, format: 'heading2', confidence: 80 },
 ]
 
+/** Markdown shortcuts — explicit author intent, so confidence is very high. */
+const MARKDOWN_PATTERNS: Array<{ re: RegExp; format: string; confidence: number }> = [
+  { re: /^###\s+\S+/, format: 'heading3', confidence: 98 },
+  { re: /^##\s+\S+/, format: 'heading2', confidence: 98 },
+  { re: /^#\s+\S+/, format: 'heading1', confidence: 98 },
+  { re: /^>\s+\S+/, format: 'blockquote', confidence: 98 },
+  { re: /^[-*]\s+\S+/, format: 'bulletList', confidence: 98 },
+  { re: /^\d+[.)]\s+\S+/, format: 'orderedList', confidence: 98 },
+]
+
 interface UseAutoFormatScannerOptions {
   editor: Editor | null
   enabled?: boolean
@@ -141,6 +151,23 @@ export function useAutoFormatScanner({
       if (/[?？]\s*$/.test(text)) return
       if (/^[a-dA-D][.)]\s/.test(text)) return
 
+for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
+        if (re.test(text)) {
+          const key = `${pos}:${format}`
+          if (!dismissedRef.current.has(key)) {
+            candidates.push({
+              key,
+              format,
+              confidence,
+              from: pos,
+              to: pos + node.nodeSize,
+              pageNumber: estimatePageNumber(pos),
+              preview: text.slice(0, 60),
+            })
+          }
+          return
+        }
+      }
       for (const { re, format, confidence } of HEADING_PATTERNS) {
         if (re.test(text)) {
           if (confidence / 100 < minConfidence) continue

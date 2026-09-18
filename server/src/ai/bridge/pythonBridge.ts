@@ -14,7 +14,11 @@ export interface PredictionResponse {
   predictedFormat: string
   confidence: number
   featureValues: Record<string, number>
+  isolationMode: string
 }
+
+/** Isolation modes control how the user model contributes to a prediction. */
+export type IsolationMode = 'baseline' | 'isolated' | 'hybrid'
 
 export interface GrammarIssue {
   type: string
@@ -66,6 +70,7 @@ export async function requestFormatPrediction(
     isItalic?: boolean
     xPosition?: number
     userId?: string
+    isolationMode?: IsolationMode
   }
 ): Promise<PredictionResponse> {
   const mlApiUrl = getMLApiUrl()
@@ -79,6 +84,7 @@ export async function requestFormatPrediction(
       is_bold: options?.isBold,
       is_italic: options?.isItalic,
       x_position: options?.xPosition,
+      isolation_mode: options?.isolationMode,
     }
   )
   const data = pythonPredictionResponseSchema.parse(response.data)
@@ -87,6 +93,7 @@ export async function requestFormatPrediction(
     predictedFormat: data.predicted_format,
     confidence: data.confidence,
     featureValues: data.feature_values ?? {},
+    isolationMode: data.isolation_mode ?? 'hybrid',
   }
 }
 

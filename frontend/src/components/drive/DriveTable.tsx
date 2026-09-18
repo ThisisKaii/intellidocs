@@ -18,6 +18,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Share2,
   Trash2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -65,6 +66,7 @@ interface DriveTableProps {
   onClearSelection: () => void
   onMoveToFolder: (docId: string, folderId: string) => void
   onDragStart: (e: React.DragEvent, id: string) => void
+  onShare?: (id: string) => void
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
@@ -99,6 +101,7 @@ function ContextMenuOverlay({
   onRename,
   onDelete,
   onRestore,
+  onShare,
   readOnlyView,
 }: {
   ctx: ContextMenuState
@@ -106,6 +109,7 @@ function ContextMenuOverlay({
   onRename: () => void
   onDelete: () => void
   onRestore: () => void
+  onShare?: () => void
   readOnlyView: boolean
 }): JSX.Element {
   return (
@@ -148,6 +152,16 @@ function ContextMenuOverlay({
               <Pencil className="size-3.5 text-muted-foreground" />
               Rename
             </button>
+            {ctx.item.kind === 'file' && onShare && (
+              <button
+                onClick={() => { onShare(); onClose() }}
+                className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-foreground bg-transparent border-none cursor-pointer rounded-lg hover:bg-secondary transition-colors text-left"
+                style={{ fontFamily: 'inherit' }}
+              >
+                <Share2 className="size-3.5 text-muted-foreground" />
+                Share
+              </button>
+            )}
             <button
               onClick={() => { onDelete(); onClose() }}
               className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-destructive bg-transparent border-none cursor-pointer rounded-lg hover:bg-destructive/8 transition-colors text-left"
@@ -199,6 +213,7 @@ export function DriveTable({
   onClearSelection,
   onMoveToFolder,
   onDragStart,
+  onShare,
 }: DriveTableProps): JSX.Element {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -283,7 +298,7 @@ export function DriveTable({
           <div className="flex gap-3">
             <button
               onClick={onCreate}
-              className="inline-flex items-center gap-2 h-10 px-5 rounded-lg bg-primary text-primary-foreground text-sm font-medium border-none cursor-pointer transition-opacity hover:opacity-90"
+              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-primary hover:bg-[#27595e] text-white text-sm font-semibold border-none cursor-pointer transition-all shadow-md shadow-primary/25"
               style={{ fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
             >
               <Plus className="size-4" /> New document
@@ -340,11 +355,11 @@ export function DriveTable({
                   className={`group relative flex items-center justify-between px-4 py-3.5 rounded-xl cursor-default transition-all duration-150 ${
                     isSelected
                       ? 'bg-primary/20'
-                      : 'bg-secondary hover:bg-secondary/70'
+                      : 'bg-secondary/70 hover:bg-[#badfe7]/25 dark:hover:bg-[#1e383b] border border-[#badfe7]/40 dark:border-[#234145]'
                   }`}
                 >
                   <div className="flex items-center gap-4 min-w-0 flex-1">
-                    <FolderIcon className="size-5 shrink-0 text-foreground" fill="currentColor" strokeWidth={1} />
+                    <FolderIcon className="size-5 shrink-0 text-primary dark:text-[#6fb3b8]" fill="var(--selection)" strokeWidth={1.5} />
                     {isEditing ? (
                       <input
                         value={editing.title}
@@ -531,6 +546,14 @@ export function DriveTable({
                             >
                               <Pencil className="size-3.5" /> Rename
                             </DropdownMenuItem>
+                            {onShare && item.kind === 'file' && (
+                              <DropdownMenuItem
+                                onSelect={() => onShare(item.id)}
+                                className="cursor-pointer gap-2 text-sm text-foreground"
+                              >
+                                <Share2 className="size-3.5" /> Share
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onSelect={() => onDelete(item.id, item.kind)}
@@ -559,6 +582,7 @@ export function DriveTable({
           onRename={() => onStartEdit(ctxMenu.item.id, ctxMenu.item.title, ctxMenu.item.kind)}
           onRestore={() => onRestore(ctxMenu.item.id)}
           onDelete={() => onDelete(ctxMenu.item.id, ctxMenu.item.kind)}
+          onShare={onShare ? () => onShare(ctxMenu.item.id) : undefined}
         />
       )}
     </div>

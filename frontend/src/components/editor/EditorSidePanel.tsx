@@ -9,14 +9,17 @@ import {
   Sparkles,
   CornerDownLeft,
   SpellCheck2,
+  History,
 } from 'lucide-react'
 import AIChatbot from './AIChatbot'
+import HistoryPanel from './HistoryPanel'
+import type { DocumentVersion } from '@/services/api'
 import { FORMAT_LABELS } from './SuggestionPanel'
 import type { ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import type { GrammarIssue } from './GrammarPanel'
 import type { Suggestion } from './SuggestionPanel'
 
-export type SidePanelTab = 'assistant' | 'suggestions'
+export type SidePanelTab = 'assistant' | 'suggestions' | 'history'
 
 interface EditorSidePanelProps {
   open: boolean
@@ -44,6 +47,8 @@ interface EditorSidePanelProps {
   readOnly?: boolean
   /** Extra tool sections rendered at the bottom of the Suggestions tab. */
   extraSections?: ReactNode
+  /** Called after a version snapshot is restored onto the document. */
+  onVersionRestored?: (version: DocumentVersion) => void
 }
 
 /** Collapsible docked side panel hosting the AI assistant and the suggestion queue. */
@@ -70,6 +75,7 @@ export default function EditorSidePanel({
   onFocusEditor,
   readOnly = false,
   extraSections,
+  onVersionRestored,
 }: EditorSidePanelProps): JSX.Element {
   return (
     <motion.aside
@@ -167,6 +173,14 @@ export default function EditorSidePanel({
                   onClick={() => onTabChange('suggestions')}
                 />
               )}
+              {!readOnly && (
+                <TabButton
+                  active={activeTab === 'history'}
+                  icon={<History style={{ width: '14px', height: '14px' }} />}
+                  label="History"
+                  onClick={() => onTabChange('history')}
+                />
+              )}
             </div>
 
             {/* Tab content */}
@@ -180,6 +194,14 @@ export default function EditorSidePanel({
                   onFocusEditor={onFocusEditor}
                   docked
                 />
+              ) : activeTab === 'history' ? (
+                !readOnly && (
+                  <HistoryPanel
+                    documentId={documentId}
+                    currentContent={documentContent}
+                    onRestored={(version) => onVersionRestored?.(version)}
+                  />
+                )
               ) : (
                 !readOnly && (
                   <SuggestionQueue
@@ -283,8 +305,8 @@ function SuggestionQueue({
               style={{
                 padding: '0.625rem',
                 borderRadius: '0.5rem',
-                border: isActive ? '2px solid #6366f1' : '1px solid rgba(99, 102, 241, 0.2)',
-                backgroundColor: isActive ? 'rgba(99, 102, 241, 0.12)' : 'rgba(99, 102, 241, 0.05)',
+                border: isActive ? '2px solid var(--primary)' : '1px solid color-mix(in srgb, var(--primary) 20%, transparent)',
+                backgroundColor: isActive ? 'color-mix(in srgb, var(--primary) 12%, transparent)' : 'color-mix(in srgb, var(--primary) 5%, transparent)',
                 marginBottom: '0.5rem',
               }}
             >
@@ -298,8 +320,8 @@ function SuggestionQueue({
                         fontWeight: 700,
                         textTransform: 'uppercase',
                         letterSpacing: '0.05em',
-                        color: '#6366f1',
-                        backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                        color: 'var(--primary)',
+                        backgroundColor: 'color-mix(in srgb, var(--primary) 15%, transparent)',
                         borderRadius: '0.25rem',
                         padding: '0.125rem 0.375rem',
                       }}
@@ -312,8 +334,8 @@ function SuggestionQueue({
                   style={{
                     fontSize: '0.625rem',
                     fontWeight: 700,
-                    color: '#6366f1',
-                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                    color: 'var(--primary)',
+                    backgroundColor: 'color-mix(in srgb, var(--primary) 10%, transparent)',
                     borderRadius: '0.25rem',
                     padding: '0.125rem 0.375rem',
                   }}
@@ -357,7 +379,7 @@ function SuggestionQueue({
                   {s.reason}
                 </p>
               </div>
-              <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#7928ca', width: '44px', textAlign: 'right' }}>
+              <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--accent-strong)', width: '44px', textAlign: 'right' }}>
                 {s.confidence}%
               </span>
               <button
@@ -423,7 +445,7 @@ function SuggestionQueue({
                 <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)', margin: 0 }}>
                   <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>{issue.original}</span>
                   <span style={{ color: 'var(--muted-foreground)' }}> → </span>
-                  <span style={{ color: '#10b981' }}>{issue.suggestion}</span>
+                  <span style={{ color: 'var(--success)' }}>{issue.suggestion}</span>
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '0.375rem', flexShrink: 0 }}>

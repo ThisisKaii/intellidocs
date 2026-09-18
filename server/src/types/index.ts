@@ -260,3 +260,20 @@ export interface PredictionResponse {
 }
 
 export type DocumentResponse = Document
+
+/** A snapshot of a document saved at a point in time. */
+export interface DocumentVersion {
+  version_id: string
+  document_id: string
+  user_id: string
+  content: string
+  title: string
+  word_count: number | null
+  version_number: number | null
+  page_size: PageSizeKey | null
+  margins: MarginValues | null
+  orientation: PageOrientation | null
+  editor_prefs: Record<string, unknown> | null
+  reason: string
+  created_at: string
+}

@@ -110,6 +110,13 @@ export default function SettingsPage(): JSX.Element {
             verificationStatus={user?.verificationStatus}
           />
 
+          {/* 3b. Student Status Application (visible to regular users) */}
+          {role !== 'student' && role !== 'professor' && role !== 'admin' && (
+            <StudentApplicationSection
+              verificationStatus={user?.verificationStatus}
+            />
+          )}
+
           {/* 4. Change Password */}
           <ChangePasswordSection />
 
@@ -371,6 +378,151 @@ function FacultyApplicationSection({
             required
             rows={3}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary resize-none"
+          />
+        </div>
+
+        {feedback && (
+          <p className={`text-sm flex items-center gap-1.5 ${feedback.ok ? 'text-green-600' : 'text-destructive'}`}>
+            {feedback.ok && <Check className="size-4" strokeWidth={2} />}
+            {!feedback.ok && <AlertTriangle className="size-4" strokeWidth={2} />}
+            {feedback.text}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="inline-flex w-fit items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saving ? 'Submitting…' : 'Submit Application'}
+        </button>
+      </form>
+    </section>
+  )
+}
+
+/** Student status application. Visible to regular users (role = user). */
+function StudentApplicationSection({
+  verificationStatus,
+}: {
+  verificationStatus?: string
+}): JSX.Element {
+  const [studentId, setStudentId] = useState('')
+  const [college, setCollege] = useState('')
+  const [degreeProgram, setDegreeProgram] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
+
+  if (verificationStatus === 'approved') {
+    return (
+      <section className="rounded-2xl bg-card border border-border p-6">
+        <h2 className="text-base font-medium mb-2 flex items-center gap-2">
+          <GraduationCap className="size-4 text-green-600" strokeWidth={1.75} />
+          Student Status
+        </h2>
+        <p className="text-sm text-green-600 flex items-center gap-1.5">
+          <Check className="size-4" strokeWidth={2} />
+          Your student application has been approved. Academic presets and chapter progress tracking are unlocked.
+        </p>
+      </section>
+    )
+  }
+
+  if (verificationStatus === 'pending') {
+    return (
+      <section className="rounded-2xl bg-card border border-border p-6">
+        <h2 className="text-base font-medium mb-2 flex items-center gap-2">
+          <GraduationCap className="size-4 text-yellow-600" strokeWidth={1.75} />
+          Student Application
+        </h2>
+        <p className="text-sm text-yellow-600 flex items-center gap-1.5">
+          <AlertTriangle className="size-4" strokeWidth={2} />
+          Your student application is under review by an administrator.
+        </p>
+      </section>
+    )
+  }
+
+  async function handleSubmit(e: FormEvent): Promise<void> {
+    e.preventDefault()
+    setFeedback(null)
+    setSaving(true)
+    try {
+      const res = await api.auth.applyStudent({
+        studentId: studentId.trim(),
+        college: college.trim(),
+        degreeProgram: degreeProgram.trim(),
+      })
+      setFeedback({ ok: true, text: res.message })
+      setStudentId('')
+      setCollege('')
+      setDegreeProgram('')
+    } catch (err) {
+      setFeedback({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Failed to submit application',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="rounded-2xl bg-card border border-border p-6">
+      <h2 className="text-base font-medium mb-2 flex items-center gap-2">
+        <GraduationCap className="size-4 text-muted-foreground" strokeWidth={1.75} />
+        Apply for Student Status
+      </h2>
+      <p className="text-xs text-muted-foreground mb-4">
+        Verify yourself as a student to unlock the UCLM Capstone Thesis presets, word-target checklist, and a larger storage quota.
+      </p>
+
+      {verificationStatus === 'rejected' && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 mb-4">
+          <p className="text-xs text-destructive">
+            Your previous student application was not approved. You may re-apply with updated credentials.
+          </p>
+        </div>
+      )}
+
+      <form onSubmit={(e) => { void handleSubmit(e) }} className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="student-id" className="text-sm text-muted-foreground">Student ID</label>
+            <input
+              id="student-id"
+              type="text"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              placeholder="e.g. UCLM-2026-1234"
+              required
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="degree-program" className="text-sm text-muted-foreground">Degree Program</label>
+            <input
+              id="degree-program"
+              type="text"
+              value={degreeProgram}
+              onChange={(e) => setDegreeProgram(e.target.value)}
+              placeholder="e.g. Bachelor of Science in Computer Science"
+              required
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label htmlFor="student-college" className="text-sm text-muted-foreground">College</label>
+          <input
+            id="student-college"
+            type="text"
+            value={college}
+            onChange={(e) => setCollege(e.target.value)}
+            placeholder="e.g. College of Computer Studies"
+            required
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
           />
         </div>
 

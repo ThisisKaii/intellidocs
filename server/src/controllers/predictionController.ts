@@ -12,6 +12,7 @@ import { consumeAIQuota } from '../models/aiQuotaModel'
 
 interface TextBody {
   text?: string
+  isolationMode?: 'baseline' | 'isolated' | 'hybrid'
 }
 
 /** Read and validate the current user id from the authenticated request. */
@@ -81,6 +82,9 @@ export async function predictFormatting(
       return
     }
 
+    const { isolationMode } = req.body as TextBody
+    const userIdFromBody = (req.body as TextBody & { userId?: string }).userId
+
     const allowed = await enforceQuota(userId, 'predict', res)
     if (!allowed) {
       return
@@ -102,7 +106,7 @@ export async function predictFormatting(
       console.error('Suggestion cache read failed', error)
     }
 
-    const prediction = await predictFormat({ text })
+    const prediction = await predictFormat({ text, userId: userIdFromBody, isolationMode })
 
     try {
       await cacheSuggestion(userId, text, {
@@ -118,6 +122,7 @@ export async function predictFormatting(
       predicted_format: prediction.predictedFormat,
       confidence: prediction.confidence,
       feature_values: prediction.featureValues,
+      isolation_mode: prediction.isolationMode,
       cached: false,
     })
   } catch (error) {

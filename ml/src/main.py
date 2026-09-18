@@ -69,6 +69,12 @@ class PredictRequest(BaseModel):
     current_heading_level: Optional[int] = None
     is_inside_table: Optional[bool] = None
     is_list_item: Optional[bool] = None
+    # Isolation mode controls how the user model contributes (research).
+
+    #   "baseline"  → base model ONLY, no user LSTM adjustment
+    #   "isolated"  → user model ONLY, base-model predictions are ignored
+    #   "hybrid"    → base model + user LSTM reweighting (default)
+    isolation_mode: Optional[str] = None
 
 
 class PredictResponse(BaseModel):
@@ -162,6 +168,82 @@ def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> flo
     except Exception as e:
         print(f"⚠️ LSTM inference warning for user {user_id}: {e}")
         return 0.0
+
+
+def predict_with_user_lstm(user_id: str, request: PredictRequest) -> Optional[tuple[str, float]]:
+    """Return a (format, confidence) prediction computed ONLY from the user's LSTM model.
+
+    Used by isolation_mode="isolated". Returns None when the user model or
+    recent sequence history is unavailable, so the caller can fall back to the
+    base-model path instead of failing the request.
+    """
+    model_file = os.path.join(LSTM_DIR, f"user_{user_id}.pt")
+    if not os.path.exists(model_file):
+        # Prefer the Supabase Storage cache; the local dir is a fallback.
+        try:
+            from storage import download_user_model
+
+            cached_model = download_user_model(user_id)
+        except Exception as exc:
+            print(f"Isolated-model lookup warning for {user_id}: {exc}")
+            cached_model = None
+        model_file = cached_model or model_file
+    if not os.path.exists(model_file):
+        return None
+
+    try:
+        from training.lstm_trainer import ACTION_TO_IDX, FormattingLSTM
+
+        payload = torch.load(model_file, map_location=torch.device("cpu"))
+        model = FormattingLSTM(vocab_size=len(payload["vocab"]))
+        model.load_state_dict(payload["state_dict"])
+        model.eval()
+
+        duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
+        if not os.path.exists(duckdb_path):
+            return None
+
+        import duckdb
+
+        conn = duckdb.connect(duckdb_path)
+        df = conn.execute(
+            "SELECT action FROM behavior_events WHERE user_id = ? ORDER BY event_ts DESC LIMIT 5",
+            [user_id],
+        ).fetchdf()
+        conn.close()
+
+        if df.empty or len(df) < 5:
+            return None
+
+        actions = [
+            ACTION_TO_IDX.get(a, 0) for a in reversed(df["action"].tolist())
+        ]
+        input_tensor = torch.tensor([actions], dtype=torch.long)
+
+        with torch.no_grad():
+            logits = model(input_tensor)
+            probs = torch.softmax(logits, dim=1)[0]
+            best_idx = int(probs.argmax(dim=0))
+            best_conf = float(probs[best_idx])
+
+        best_format = next(
+            (f for f, i in ACTION_TO_IDX.items() if i == best_idx),
+            None,
+        )
+        if best_format is None:
+            return None
+        return (best_format, best_conf)
+    except Exception as e:
+        print(f"⚠️ Isolated LSTM prediction warning for user {user_id}: {e}")
+        return None
+
+
+def resolve_isolation_mode(mode: Optional[str]) -> str:
+    """Normalize an isolation-mode string, defaulting to hybrid."""
+    normalized = (mode or "hybrid").strip().lower()
+    if normalized in ("baseline", "isolated", "hybrid"):
+        return normalized
+    return "hybrid"
 
 
 def build_feature_row(request: PredictRequest) -> pd.DataFrame:
@@ -259,9 +341,8 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
 
     # Suppress heading predictions inside tables and list items to prevent layout disruption
     if not in_table and not in_list:
-        # Hierarchical topological outline rules (Phase 2)
         if word_count <= 14 and "\n" not in text:
-            if (
+            heading1_match = (
                 lower.startswith("chapter")
                 or bool(re.match(r"^(chapter\s+\d+|[ivx]+\.|\d+\.)\s+", lower))
                 or lower in [
@@ -269,7 +350,14 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
                     "results", "discussion", "conclusion", "references",
                     "table of contents", "acknowledgments", "appendix"
                 ]
-            ):
+            )
+            # Topological outline rule: a Heading 1 cannot immediately be followed by
+            # another Heading 1. When the previous block is already heading1, suppress
+            # the suggestion instead of nudging it down.
+            if heading1_match and prev_fmt == "heading1":
+                heading1_match = False
+
+            if heading1_match:
                 # After a title or body → heading1 (confidence 0.98 per spec)
                 confidence = 0.98 if prev_fmt in ("none", "body", "title") else 0.95
                 return PredictResponse(
@@ -279,7 +367,8 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
                     feature_values={"word_count": word_count, "academic_heading1_prior": 1.0, "hierarchy_context": 1.0},
                     lstm_adjusted=False,
                 )
-            if bool(re.match(r"^\d+\.\d+\s+", text)):
+            heading2_match = bool(re.match(r"^\d+\.\d+\s+", text)) and prev_fmt != "heading2"
+            if heading2_match:
                 # Under heading1 → heading2 (confidence 0.98 per spec)
                 confidence = 0.98 if heading_level == 1 else 0.95
                 return PredictResponse(
@@ -289,7 +378,8 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
                     feature_values={"word_count": word_count, "academic_heading2_prior": 1.0, "hierarchy_context": 1.0},
                     lstm_adjusted=False,
                 )
-            if bool(re.match(r"^\d+\.\d+\.\d+\s+", text)):
+            heading3_match = bool(re.match(r"^\d+\.\d+\.\d+\s+", text)) and prev_fmt != "heading3"
+            if heading3_match:
                 # Under heading2 → heading3 (confidence 0.98 per spec)
                 confidence = 0.98 if heading_level == 2 else 0.95
                 return PredictResponse(
@@ -310,33 +400,44 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
         )
 
     lstm_adjusted = False
+    isolation_mode = resolve_isolation_mode(request.isolation_mode)
+    predicted_format: Optional[str] = None
+    confidence: float = 0.0
+
     try:
-        payload = load_model_payload()
-        model = payload["model"]
-        feature_columns = payload["feature_columns"]
+        # "isolated" → the user model alone decides the formatting label.
+        if isolation_mode == "isolated" and request.user_id:
+            isolated = predict_with_user_lstm(request.user_id, request)
+            if isolated is not None:
+                predicted_format, confidence = isolated
 
-        feature_frame = build_feature_row(request)
-        for column in feature_columns:
-            if column not in feature_frame.columns:
-                feature_frame[column] = 0
+        if predicted_format is None:
+            payload = load_model_payload()
+            model = payload["model"]
+            feature_columns = payload["feature_columns"]
 
-        ordered_features = feature_frame[feature_columns]
+            feature_frame = build_feature_row(request)
+            for column in feature_columns:
+                if column not in feature_frame.columns:
+                    feature_frame[column] = 0
 
-        prediction = model.predict(ordered_features)[0]
-        probabilities = model.predict_proba(ordered_features)[0]
-        rf_confidence = float(max(probabilities))
+            ordered_features = feature_frame[feature_columns]
 
-        if request.user_id:
-            lstm_score = compute_lstm_sequence_adjustment(
-                request.user_id, str(prediction)
-            )
-            if lstm_score > 0:
-                confidence = (0.7 * rf_confidence) + (0.3 * lstm_score)
-                lstm_adjusted = True
+            prediction = model.predict(ordered_features)[0]
+            probabilities = model.predict_proba(ordered_features)[0]
+            rf_confidence = float(max(probabilities))
+
+            if request.user_id and isolation_mode == "hybrid":
+                lstm_score = compute_lstm_sequence_adjustment(
+                    request.user_id, str(prediction)
+                )
+                if lstm_score > 0:
+                    confidence = (0.7 * rf_confidence) + (0.3 * lstm_score)
+                    lstm_adjusted = True
+                else:
+                    confidence = rf_confidence
             else:
                 confidence = rf_confidence
-        else:
-            confidence = rf_confidence
 
     except FileNotFoundError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
@@ -346,12 +447,14 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
             detail=f"Prediction failed: {error}",
         ) from error
 
-    feature_values = {
-        column: float(ordered_features.iloc[0][column]) for column in feature_columns
-    }
+    feature_values: dict[str, float] = {}
+    if "feature_columns" in locals() and "ordered_features" in locals():
+        feature_values = {
+            column: float(ordered_features.iloc[0][column]) for column in feature_columns
+        }
 
     return PredictResponse(
-        predicted_format=str(prediction),
+        predicted_format=str(predicted_format),
         confidence=round(confidence, 4),
         model_path=MODEL_PATH,
         feature_values=feature_values,
@@ -492,16 +595,27 @@ class FineTuneResponse(BaseModel):
 
 @app.post("/fine-tune", response_model=FineTuneResponse)
 async def trigger_fine_tune(request: FineTuneRequest) -> FineTuneResponse:
-    """Trigger supervised user fine-tuning in a background thread."""
+    """Trigger supervised user fine-tuning in a background thread.
+
+    Runs the RandomForest fine-tuner and the LSTM sequence trainer, then uploads
+    the LSTM artifact to Supabase Storage so predictions reuse it from cloud.
+    """
     import subprocess
     import threading
 
     fine_tuner_path = ROOT_DIR / "training" / "fine_tuner.py"
+    lstm_trainer_path = ROOT_DIR / "training" / "lstm_trainer.py"
     python_exec = sys.executable
 
     def run_fine_tuner() -> None:
         subprocess.run(
             [python_exec, str(fine_tuner_path), "--user-id", request.user_id],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            [python_exec, str(lstm_trainer_path), "--user-id", request.user_id, "--epochs", "8"],
             cwd=str(ROOT_DIR),
             capture_output=True,
             text=True,

@@ -211,9 +211,9 @@ export default function AdminDashboard(): JSX.Element {
               borderRadius: '0.5rem',
               padding: '0.75rem 1rem',
               marginBottom: '1.5rem',
-              backgroundColor: message.type === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-              border: `1px solid ${message.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-              color: message.type === 'success' ? '#15803d' : '#b91c1c',
+              backgroundColor: message.type === 'success' ? 'color-mix(in srgb, var(--success) 12%, transparent)' : 'color-mix(in srgb, var(--error) 12%, transparent)',
+              border: `1px solid ${message.type === 'success' ? 'color-mix(in srgb, var(--success) 30%, transparent)' : 'color-mix(in srgb, var(--error) 30%, transparent)'}`,
+              color: message.type === 'success' ? 'var(--success)' : 'var(--error)',
               fontSize: '0.875rem',
               fontWeight: 500,
             }}
@@ -227,9 +227,9 @@ export default function AdminDashboard(): JSX.Element {
           <div style={{ padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid var(--border)', backgroundColor: 'var(--card)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>
               <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Pending Professors</span>
-              <Clock style={{ width: '16px', height: '16px', color: '#eab308' }} />
+              <Clock style={{ width: '16px', height: '16px', color: 'var(--warning)' }} />
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: pendingProfessors.length > 0 ? '#eab308' : 'var(--foreground)' }}>
+            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: pendingProfessors.length > 0 ? 'var(--warning)' : 'var(--foreground)' }}>
               {pendingProfessors.length}
             </div>
           </div>
@@ -376,7 +376,7 @@ export default function AdminDashboard(): JSX.Element {
 
             {pendingProfessors.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--muted-foreground)' }}>
-                <CheckCircle2 style={{ width: '36px', height: '36px', color: '#16a34a', margin: '0 auto 0.75rem' }} />
+                <CheckCircle2 style={{ width: '36px', height: '36px', color: 'var(--success)', margin: '0 auto 0.75rem' }} />
                 <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 500 }}>No pending professor applications</p>
                 <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem' }}>
                   All professor registration requests have been reviewed.
@@ -402,7 +402,7 @@ export default function AdminDashboard(): JSX.Element {
                         <span style={{ fontWeight: 600, fontSize: '0.9375rem' }}>
                           {applicant.display_name || applicant.user_id}
                         </span>
-                        <span style={{ fontSize: '0.75rem', padding: '0.125rem 0.5rem', borderRadius: '9999px', backgroundColor: 'rgba(234,179,8,0.15)', color: '#ca8a04', fontWeight: 600 }}>
+                        <span style={{ fontSize: '0.75rem', padding: '0.125rem 0.5rem', borderRadius: '9999px', backgroundColor: 'color-mix(in srgb, var(--warning) 15%, transparent)', color: 'var(--warning)', fontWeight: 600 }}>
                           PENDING VERIFICATION
                         </span>
                       </div>
@@ -424,7 +424,7 @@ export default function AdminDashboard(): JSX.Element {
                           padding: '0 0.875rem',
                           borderRadius: '0.375rem',
                           border: 'none',
-                          backgroundColor: '#16a34a',
+                          backgroundColor: 'var(--success)',
                           color: '#fff',
                           fontSize: '0.8125rem',
                           fontWeight: 600,
@@ -449,7 +449,7 @@ export default function AdminDashboard(): JSX.Element {
                           borderRadius: '0.375rem',
                           border: '1px solid var(--border)',
                           backgroundColor: 'transparent',
-                          color: '#dc2626',
+                          color: 'var(--error)',
                           fontSize: '0.8125rem',
                           fontWeight: 600,
                           cursor: 'pointer',
@@ -504,16 +504,16 @@ export default function AdminDashboard(): JSX.Element {
                             borderRadius: '9999px',
                             backgroundColor:
                               u.verification_status === 'approved'
-                                ? 'rgba(34,197,94,0.12)'
+                                ? 'color-mix(in srgb, var(--success) 12%, transparent)'
                                 : u.verification_status === 'pending'
-                                ? 'rgba(234,179,8,0.12)'
-                                : 'rgba(239,68,68,0.12)',
+                                ? 'color-mix(in srgb, var(--warning) 12%, transparent)'
+                                : 'color-mix(in srgb, var(--error) 12%, transparent)',
                             color:
                               u.verification_status === 'approved'
-                                ? '#16a34a'
+                                ? 'var(--success)'
                                 : u.verification_status === 'pending'
-                                ? '#ca8a04'
-                                : '#dc2626',
+                                ? 'var(--warning)'
+                                : 'var(--error)',
                           }}
                         >
                           {u.verification_status}
@@ -603,8 +603,8 @@ export default function AdminDashboard(): JSX.Element {
                         padding: '0 0.75rem',
                         borderRadius: '0.375rem',
                         border: 'none',
-                        backgroundColor: 'rgba(239,68,68,0.12)',
-                        color: '#dc2626',
+                        backgroundColor: 'color-mix(in srgb, var(--error) 12%, transparent)',
+                        color: 'var(--error)',
                         fontSize: '0.8125rem',
                         fontWeight: 600,
                         cursor: 'pointer',

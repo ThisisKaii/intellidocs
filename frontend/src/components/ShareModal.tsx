@@ -226,7 +226,7 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
         </div>
 
         {error && (
-          <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', backgroundColor: 'rgba(239,68,68,0.1)', color: 'var(--destructive, #dc2626)', fontSize: '0.8125rem' }}>
+          <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', backgroundColor: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', fontSize: '0.8125rem' }}>
             {error}
           </div>
         )}
@@ -400,7 +400,7 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
             Anyone with the link can open the document (requires login).
             {shareLink?.share_token && expiryLabel && (
               expiryLabel === 'expired'
-                ? <span style={{ color: 'var(--destructive, #dc2626)' }}> This link has expired.</span>
+                ? <span style={{ color: 'var(--destructive)' }}> This link has expired.</span>
                 : <span> Expires {expiryLabel}.</span>
             )}
           </div>

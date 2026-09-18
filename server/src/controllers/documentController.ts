@@ -13,6 +13,48 @@ const { PDFParse } = require('pdf-parse') as {
   }
 }
 
+/** Return the version history for a document (owner only, newest first). */
+export async function getDocumentVersions(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id } = req.params
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    if (!id) {
+      res.status(400).json({ error: 'Document ID is required' })
+      return
+    }
+    const versions = await documentModel.getDocumentVersions(id, userId)
+    res.json(versions)
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status
+    res.status(status ?? 500).json({ error: (error as Error).message })
+  }
+}
+
+/** Restore a specific version snapshot onto the document (owner only). */
+export async function restoreDocumentVersion(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id, versionId } = req.params
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    if (!id || !versionId) {
+      res.status(400).json({ error: 'Document ID and version ID are required' })
+      return
+    }
+    const restored = await documentModel.restoreDocumentVersion(id, versionId, userId)
+    res.json(restored)
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status
+    res.status(status ?? 500).json({ error: (error as Error).message })
+  }
+}
+
 
 /** Return all documents owned by the authenticated user. */
 export async function getAllDocuments(req: Request, res: Response) {
