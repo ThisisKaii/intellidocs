@@ -13,6 +13,8 @@ export interface GrammarIssue {
   type: string
   original: string
   suggestion: string
+  /** Plausible alternative corrections (spelling) the user can pick from. */
+  suggestions?: string[]
   explanation: string
   actionable?: boolean
   /** Underline category — grammar issues render red, spelling issues render amber. */
@@ -50,7 +52,7 @@ function buildGrammarResult(
     }[]
   },
   spelling: {
-    issues: { word: string; suggestion: string | null; type: string }[]
+    issues: { word: string; suggestion: string | null; suggestions?: string[]; type: string }[]
     count: number
     message: string
   }
@@ -64,16 +66,25 @@ function buildGrammarResult(
     kind: 'grammar',
   }))
 
-  const spellingIssues: GrammarIssue[] = spelling.issues.map((issue) => ({
-    type: issue.suggestion ? issue.type : 'spelling-review',
-    original: issue.word,
-    suggestion: issue.suggestion ?? 'Review spelling manually',
-    explanation: issue.suggestion
-      ? 'Possible spelling issue detected by the spell checker.'
-      : 'Possible non-word detected, but no safe automatic replacement was found.',
-    actionable: Boolean(issue.suggestion),
-    kind: 'spelling',
-  }))
+  const spellingIssues: GrammarIssue[] = spelling.issues.map((issue) => {
+    const options =
+      issue.suggestions && issue.suggestions.length > 0
+        ? issue.suggestions
+        : issue.suggestion
+          ? [issue.suggestion]
+          : []
+    return {
+      type: issue.suggestion ? issue.type : 'spelling-review',
+      original: issue.word,
+      suggestion: options[0] ?? 'Review spelling manually',
+      suggestions: options,
+      explanation: options.length > 0
+        ? 'Possible spelling issue detected by the spell checker.'
+        : 'Possible non-word detected, but no safe automatic replacement was found.',
+      actionable: options.length > 0,
+      kind: 'spelling',
+    }
+  })
 
   const issues = [...grammarIssues, ...spellingIssues]
 

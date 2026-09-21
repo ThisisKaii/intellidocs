@@ -6,7 +6,7 @@ import type { GrammarIssue } from './GrammarPanel'
 interface GrammarOverlayProps {
   issue: GrammarIssue | null
   anchorRect: DOMRect | null
-  onApply: (issue: GrammarIssue) => void
+  onApply: (issue: GrammarIssue, suggestion: string) => void
   onDismiss: (issue: GrammarIssue) => void
   onClose: () => void
 }
@@ -138,9 +138,43 @@ export default function GrammarOverlay({
           </div>
           <p style={{ fontSize: '0.8125rem', lineHeight: 1.5, margin: '0 0 0.5rem', color: 'var(--foreground)' }}>
             <span style={{ textDecoration: 'line-through', opacity: 0.75 }}>{issue.original}</span>
-            <span style={{ color: 'var(--muted-foreground)' }}> → </span>
-            <span style={{ color: 'var(--success)', fontWeight: 600 }}>{issue.suggestion}</span>
           </p>
+
+          {/* Spelling issues with multiple plausible candidates offer a pick-list. */}
+          {(issue.suggestions ?? []).length > 1 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '0.5rem' }}>
+              {(issue.suggestions ?? []).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => onApply(issue, option)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    width: '100%',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '0.375rem',
+                    color: 'var(--success)',
+                    backgroundColor: 'color-mix(in srgb, var(--success) 8%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--success) 25%, transparent)',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: '0.8125rem', lineHeight: 1.5, margin: '0 0 0.5rem', color: 'var(--foreground)' }}>
+              <span style={{ color: 'var(--muted-foreground)' }}>→ </span>
+              <span style={{ color: 'var(--success)', fontWeight: 600 }}>{issue.suggestion}</span>
+            </p>
+          )}
+
           <p style={{ fontSize: '0.75rem', lineHeight: 1.45, margin: 0, color: 'var(--muted-foreground)' }}>
             {issue.explanation}
           </p>
@@ -179,7 +213,7 @@ export default function GrammarOverlay({
           </button>
           <button
             type="button"
-            onClick={() => onApply(issue)}
+            onClick={() => onApply(issue, issue.suggestion)}
             disabled={issue.actionable === false}
             style={{
               display: 'inline-flex',

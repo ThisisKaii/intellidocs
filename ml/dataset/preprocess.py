@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Any
 
 import pandas as pd
@@ -31,6 +32,24 @@ def infer_format_label(text: str) -> str:
     stripped = text.strip()
     if not stripped:
         return "paragraph"
+    # Title: short ALL-CAPS or Title Case line at document start
+    if len(stripped) <= 120 and stripped == stripped.upper() and stripped[0].isalpha():
+        return "title"
+
+    # Code block: fenced or 4-space indented or contains code keywords
+    if (
+        stripped.startswith("```")
+        or stripped.startswith("    ")
+        or re.match(r"\b(def |class |SELECT |INSERT |import |function |return )\b", stripped)
+    ):
+        return "code_block"
+
+    # Reference entry: APA "Author, A. (2024)." or IEEE "[1] Author"
+    if re.match(r"^[A-Z][a-zA-Z'\-]+,\s+[A-Z]\..*\(\d{4}\)", stripped) or re.match(
+        r"^\[\d+\]\s+[A-Z]", stripped
+    ):
+        return "reference_entry"
+
     # Order matters: check longer/more-specific markers first
     if stripped.startswith("= = = ") and stripped.endswith(" = = ="):
         return "heading3"
@@ -48,8 +67,6 @@ def infer_format_label(text: str) -> str:
         return "ordered_list"
     if stripped.startswith("> "):
         return "blockquote"
-    if stripped.startswith("```") or stripped.startswith("    "):
-        return "code_block"
     return "paragraph"
 
 

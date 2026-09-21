@@ -46,8 +46,15 @@ function Login(): JSX.Element {
     try {
       const response = await api.auth.login(email, password)
       login(
-        { id: response.user.id, email: response.user.email },
-        response.session.access_token
+        {
+          id: response.user.id,
+          email: response.user.email,
+          role: response.user.role,
+          verificationStatus: response.user.verificationStatus,
+          displayName: response.user.displayName ?? null,
+        },
+        response.session.access_token,
+        response.session.refresh_token
       )
       navigate('/dashboard')
     } catch (err) {

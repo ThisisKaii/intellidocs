@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
-import { updateOwnProfile } from '../models/userModel'
+import { updateOwnProfile, getUserStorageSummary } from '../models/userModel'
 import { resolvePendingShares } from '../models/shareModel'
 import { AuthenticatedRequest } from '../types/express'
 
@@ -200,6 +200,27 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
   }
 }
 
+/** Return the signed-in user's storage usage vs their account quota. */
+export async function getUserStorage(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: '401 Unauthorized: Session required' })
+      return
+    }
+
+    const summary = await getUserStorageSummary(userId)
+    if (!summary) {
+      res.status(404).json({ error: 'Storage summary unavailable' })
+      return
+    }
+
+    res.status(200).json(summary)
+  } catch {
+    res.status(500).json({ error: 'Failed to load storage summary' })
+  }
+}
+
 interface ApplyProfessorBody {
   college: string
   department: string
@@ -256,12 +277,15 @@ export async function applyProfessor(req: AuthenticatedRequest, res: Response): 
       }, { onConflict: 'user_id' })
 
     if (upsertError) {
-      res.status(500).json({ error: 'Failed to submit application' })
+      console.error('applyProfessor: user_profiles upsert failed:', upsertError.message)
+      res.status(500).json({ error: `Failed to submit application: ${upsertError.message}` })
       return
     }
 
-    // Store application details in notification for admin review
-    await supabase.from('notifications').insert({
+    // Store application details in notification for admin review.
+    // A failed insert means the queue would never see this application, so it
+    // must be treated as a submission failure, not swallowed.
+    const { error: notifError } = await supabase.from('notifications').insert({
       user_id: userId,
       type: 'professor_application',
       title: 'Professor Application Submitted',
@@ -276,11 +300,18 @@ export async function applyProfessor(req: AuthenticatedRequest, res: Response): 
       },
     })
 
+    if (notifError) {
+      console.error('applyProfessor: notification insert failed:', notifError.message)
+      res.status(500).json({ error: `Failed to submit application: ${notifError.message}` })
+      return
+    }
+
     res.status(200).json({
       message: 'Professor application submitted successfully. An administrator will review your application.',
       status: 'pending',
     })
-  } catch {
+  } catch (err) {
+    console.error('applyProfessor: unexpected error:', err instanceof Error ? err.message : err)
     res.status(500).json({ error: 'Failed to submit application' })
   }
 }
@@ -328,12 +359,14 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
       }, { onConflict: 'user_id' })
 
     if (upsertError) {
-      res.status(500).json({ error: 'Failed to submit application' })
+      console.error('applyStudent: user_profiles upsert failed:', upsertError.message)
+      res.status(500).json({ error: `Failed to submit application: ${upsertError.message}` })
       return
     }
 
-    // Notify admins for review
-    await supabase.from('notifications').insert({
+    // Notify admins for review. A failed insert drops the application from the
+    // admin queue, so it is a submission failure, not something to ignore.
+    const { error: notifError } = await supabase.from('notifications').insert({
       user_id: userId,
       type: 'student_application',
       title: 'Student Application Submitted',
@@ -346,11 +379,18 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
       },
     })
 
+    if (notifError) {
+      console.error('applyStudent: notification insert failed:', notifError.message)
+      res.status(500).json({ error: `Failed to submit application: ${notifError.message}` })
+      return
+    }
+
     res.status(200).json({
       message: 'Student application submitted successfully. An administrator will review your application.',
       status: 'pending',
     })
-  } catch {
+  } catch (err) {
+    console.error('applyStudent: unexpected error:', err instanceof Error ? err.message : err)
     res.status(500).json({ error: 'Failed to submit application' })
   }
 }

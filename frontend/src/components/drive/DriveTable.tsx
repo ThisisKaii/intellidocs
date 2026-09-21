@@ -387,7 +387,7 @@ export function DriveTable({
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
-                          className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-foreground/5 shrink-0 ml-2"
+                          className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-100 md:opacity-0 transition-opacity hover:bg-foreground/5 shrink-0 ml-2"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <MoreVertical className="size-4" />
@@ -428,8 +428,8 @@ export function DriveTable({
             <div className="flex items-center gap-4 px-4 py-3 text-xs font-semibold text-muted-foreground border-b border-border">
               <span className="w-8" />
               <span className="flex-1">Name</span>
-              <span className="w-32 text-left">Reason suggested</span>
-              <span className="w-32 text-left">Owner</span>
+              <span className="w-32 text-left hidden md:block">Reason suggested</span>
+              <span className="w-32 text-left hidden md:block">Owner</span>
               <span className="w-8" />
             </div>
 
@@ -481,19 +481,24 @@ export function DriveTable({
                         </button>
                       </div>
                     ) : (
-                      <span className="text-sm font-medium text-foreground truncate block" title={item.title}>
-                        {item.title}
-                      </span>
+                      <>
+                        <span className="text-sm font-medium text-foreground truncate block" title={item.title}>
+                          {item.title}
+                        </span>
+                        <span className="block md:hidden text-xs text-muted-foreground truncate mt-0.5">
+                          You opened • {formatDate(item.updatedAt)}
+                        </span>
+                      </>
                     )}
                   </div>
 
                   {/* Reason suggested (using Modified date) */}
-                  <span className="w-32 text-left text-[0.8125rem] text-muted-foreground shrink-0 truncate">
+                  <span className="w-32 text-left text-[0.8125rem] text-muted-foreground shrink-0 truncate hidden md:block">
                     You opened • {formatDate(item.updatedAt)}
                   </span>
 
                   {/* Owner (mocked to match Drive screenshot) */}
-                  <div className="w-32 flex items-center gap-2 text-left text-[0.8125rem] text-muted-foreground shrink-0">
+                  <div className="w-32 items-center gap-2 text-left text-[0.8125rem] text-muted-foreground shrink-0 hidden md:flex">
                     <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center overflow-hidden shrink-0">
                       <span className="text-[10px] font-bold text-primary-foreground">
                         {displayName.substring(0, 2).toUpperCase()}
@@ -533,7 +538,7 @@ export function DriveTable({
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
-                              className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-secondary"
+                              className="flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-100 md:opacity-0 transition-opacity hover:bg-secondary"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <MoreVertical className="size-4" />

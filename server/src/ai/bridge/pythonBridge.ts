@@ -37,6 +37,8 @@ export interface GrammarCheckResponse {
 export interface SpellingIssue {
   word: string
   suggestion: string | null
+  /** Candidate corrections the spell checker considers plausible. */
+  suggestions?: string[]
   type: string
 }
 

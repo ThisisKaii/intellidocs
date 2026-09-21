@@ -75,3 +75,19 @@ export async function evictCachedDocument(id: string): Promise<void> {
     /* best-effort */
   }
 }
+
+/** Wipe every cached document read so nothing leaks across accounts on logout. */
+export async function clearDocumentCache(): Promise<void> {
+  try {
+    const db = await openDb()
+    const tx = db.transaction(STORE, 'readwrite')
+    tx.objectStore(STORE).clear()
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => resolve()
+    })
+    db.close()
+  } catch {
+    /* best-effort */
+  }
+}

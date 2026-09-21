@@ -1,4 +1,4 @@
-import useSWR from 'swr'
+import useSWR, { mutate } from 'swr'
 import { api, type DocumentRecord, type FolderRecord } from '@/services/api'
 
 const KEY = 'drive-cache'
@@ -50,4 +50,12 @@ export function useDriveCache(): {
       await mutate(loadAll(), { optimisticData: data, rollbackOnError: true })
     },
   }
+}
+
+/**
+ * Drop the in-memory SWR document listing so a freshly logged-in account
+ * never sees the previous user's documents until the next full reload.
+ */
+export async function clearDriveCache(): Promise<void> {
+  await mutate(KEY, undefined, { revalidate: false })
 }

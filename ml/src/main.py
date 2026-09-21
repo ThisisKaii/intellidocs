@@ -1,7 +1,9 @@
+import json
 import os
 import pickle
 import sys
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
@@ -41,10 +43,29 @@ LSTM_DIR = os.getenv("LSTM_MODEL_DIR", DEFAULT_LSTM_DIR)
 _MODEL_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 MODEL_CACHE_TTL_SECONDS = 24 * 60 * 60
 
+# Tier-3 cascade: when the RandomForest confidence drops below this threshold,
+# the DistilBERT INT8 ONNX model gets the deciding vote.
+TIER3_CONFIDENCE_THRESHOLD = min(
+    max(float(os.getenv("TIER3_CONFIDENCE_THRESHOLD", "0.70")), 0.0), 1.0
+)
+_ONNX_RUNTIME: dict[str, tuple[Any, dict[str, str]]] = {}
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Warm up the Tier-3 ONNX runtime at startup; failures degrade gracefully."""
+    try:
+        load_onnx_runtime()
+    except Exception as exc:  # noqa: BLE001 - graceful degradation on missing artifacts
+        print(f"⚠️ ONNX startup warmup skipped: {exc}")
+    yield
+
+
 app = FastAPI(
     title="IntelliDocs ML API",
-    description="Machine Learning API for hybrid RandomForest + LSTM formatting prediction and grammar checking",
-    version="0.2.0",
+    description="Machine Learning API for hybrid rule + RandomForest + DistilBERT ONNX formatting prediction and grammar checking",
+    version="0.3.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -139,7 +160,7 @@ def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> flo
 
         # Query recent sequence from DuckDB
         duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
-        if not os.path.exists(duckdb_path):
+        if not duckdb_path.startswith("md:") and not os.path.exists(duckdb_path):
             return 0.0
 
         import duckdb
@@ -200,7 +221,7 @@ def predict_with_user_lstm(user_id: str, request: PredictRequest) -> Optional[tu
         model.eval()
 
         duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
-        if not os.path.exists(duckdb_path):
+        if not duckdb_path.startswith("md:") and not os.path.exists(duckdb_path):
             return None
 
         import duckdb
@@ -244,6 +265,85 @@ def resolve_isolation_mode(mode: Optional[str]) -> str:
     if normalized in ("baseline", "isolated", "hybrid"):
         return normalized
     return "hybrid"
+
+
+def load_onnx_runtime() -> Optional[tuple[Any, dict[str, str]]]:
+    """Lazily download + load the DistilBERT INT8 ONNX session and its label map.
+
+    The model is streamed from the `ml-models` Supabase bucket into the 24h temp
+    cache (with a local ml/models fallback). Returns None on any failure so the
+    cascade degrades to the RandomForest result instead of erroring.
+    """
+    cached = _ONNX_RUNTIME.get("runtime")
+    if cached is not None:
+        return cached
+
+    try:
+        import onnxruntime as ort
+
+        from storage import download_base_onnx_model
+
+        onnx_path, labels_path = download_base_onnx_model()
+        if not onnx_path or not labels_path:
+            return None
+
+        with open(labels_path, "r", encoding="utf-8") as file_handle:
+            label_map = json.load(file_handle)
+        id2label = label_map.get("id2label", {})
+        if not id2label:
+            return None
+
+        session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        _ONNX_RUNTIME["runtime"] = (session, id2label)
+        print(f"[OK] Tier-3 DistilBERT ONNX loaded from {onnx_path}")
+        return (session, id2label)
+    except Exception as exc:  # noqa: BLE001 - optional feature
+        print(f"⚠️ ONNX load warning: {exc}")
+        return None
+
+
+def predict_with_onnx(text: str) -> Optional[tuple[str, float]]:
+    """Return a (format, confidence) prediction from the DistilBERT Tier-3 model.
+
+    Uses CPU inference (~20ms). Falls back to None when the runtime or tokenizer
+    is unavailable so callers keep the Tier-2 RandomForest result.
+    """
+    runtime = load_onnx_runtime()
+    if runtime is None:
+        return None
+
+    session, id2label = runtime
+    try:
+        from transformers import AutoTokenizer
+
+        import numpy as np
+
+        tokenizer_dir = os.getenv(
+            "DISTILBERT_TOKENIZER_DIR",
+            str(ROOT_DIR / "models" / "distilbert_tokenizer"),
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_dir if os.path.isdir(tokenizer_dir) else "distilbert-base-uncased"
+        )
+        inputs = tokenizer(text, return_tensors="np", truncation=True, max_length=128)
+        feed = {
+            name: inputs[name]
+            for name in [inp.name for inp in session.get_inputs()]
+            if name in inputs
+        }
+        logits = session.run(None, feed)[0][0]
+        exp = np.exp(logits - np.max(logits))
+        probabilities = exp / exp.sum()
+        best_index = int(np.argmax(probabilities))
+        confidence = float(probabilities[best_index])
+    except Exception as exc:  # noqa: BLE001 - optional feature
+        print(f"⚠️ ONNX inference warning: {exc}")
+        return None
+
+    best_format = id2label.get(str(best_index))
+    if best_format is None:
+        return None
+    return (best_format, confidence)
 
 
 def build_feature_row(request: PredictRequest) -> pd.DataFrame:
@@ -307,7 +407,7 @@ async def root() -> dict[str, str]:
     """Return a simple welcome payload."""
     return {
         "message": "Welcome to IntelliDocs ML API",
-        "version": "0.2.0",
+        "version": "0.3.0",
     }
 
 
@@ -399,6 +499,38 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
             lstm_adjusted=False,
         )
 
+    # Fast-path heuristics for the three expanded taxonomy labels, checked
+    # before the RandomForest so they never get crowded out by the large
+    # "paragraph" class.
+    if len(text) <= 120 and text == text.upper() and text[0].isalpha():
+        return PredictResponse(
+            predicted_format="title",
+            confidence=0.96,
+            model_path=MODEL_PATH,
+            feature_values={"word_count": word_count, "uppercase_prior": 1.0},
+            lstm_adjusted=False,
+        )
+
+    if text.startswith("```") or re.search(
+        r"\b(SELECT|INSERT|def |class |function |import )\b", text
+    ):
+        return PredictResponse(
+            predicted_format="code_block",
+            confidence=0.97,
+            model_path=MODEL_PATH,
+            feature_values={"word_count": word_count, "code_keyword_prior": 1.0},
+            lstm_adjusted=False,
+        )
+
+    if re.match(r"^[A-Z][a-zA-Z'\-]+,\s+[A-Z]\..*\(\d{4}\)", text):
+        return PredictResponse(
+            predicted_format="reference_entry",
+            confidence=0.96,
+            model_path=MODEL_PATH,
+            feature_values={"word_count": word_count, "citation_prior": 1.0},
+            lstm_adjusted=False,
+        )
+
     lstm_adjusted = False
     isolation_mode = resolve_isolation_mode(request.isolation_mode)
     predicted_format: Optional[str] = None
@@ -426,6 +558,18 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
             prediction = model.predict(ordered_features)[0]
             probabilities = model.predict_proba(ordered_features)[0]
             rf_confidence = float(max(probabilities))
+
+            # Tier-3 cascade: when the Tier-2 RandomForest is unsure, let the
+            # DistilBERT INT8 ONNX model vote only if its confidence is higher.
+            if rf_confidence < TIER3_CONFIDENCE_THRESHOLD:
+                onnx_result = predict_with_onnx(text)
+                if onnx_result is not None:
+                    onnx_format, onnx_confidence = onnx_result
+                    if onnx_confidence > rf_confidence:
+                        prediction = onnx_format
+                        rf_confidence = onnx_confidence
+
+            predicted_format = str(prediction)
 
             if request.user_id and isolation_mode == "hybrid":
                 lstm_score = compute_lstm_sequence_adjustment(

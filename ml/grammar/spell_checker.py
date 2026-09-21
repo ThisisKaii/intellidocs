@@ -5,6 +5,7 @@ from spellchecker import SpellChecker
 
 
 SPELL_PATTERN = re.compile(r"\b[a-zA-Z']+\b")
+SPELL_MAX_SUGGESTIONS = 5
 spellchecker = SpellChecker()
 
 
@@ -13,11 +14,12 @@ def extract_words(text: str) -> list[str]:
     return SPELL_PATTERN.findall(text)
 
 
-def build_issue(word: str, suggestion: str | None) -> dict[str, Any]:
-    """Build a structured spelling issue payload."""
+def build_issue(word: str, suggestions: list[str]) -> dict[str, Any]:
+    """Build a structured spelling issue with several plausible corrections."""
     return {
         "word": word,
-        "suggestion": suggestion,
+        "suggestion": suggestions[0] if suggestions else None,
+        "suggestions": suggestions,
         "type": "spelling",
     }
 
@@ -76,9 +78,34 @@ def check_spelling(text: str) -> dict[str, Any]:
 
     issues: list[dict[str, Any]] = []
     for word in misspelled:
-        correction = spellchecker.correction(word)
-        suggestion = correction if is_reliable_correction(word, correction) else None
-        issues.append(build_issue(word, suggestion))
+        raw_candidates = spellchecker.candidates(word) or {}
+        # pyspellchecker yields a dict {word: probability} when a frequency
+        # table is loaded, but a plain set when only the lean dictionary is.
+        ranked = (
+            sorted(raw_candidates.items(), key=lambda kv: kv[1], reverse=True)
+            if isinstance(raw_candidates, dict)
+            else [(candidate, 0) for candidate in raw_candidates]
+        )
+        candidates: list[str] = []
+        for candidate, _ in ranked:
+            if len(candidates) >= SPELL_MAX_SUGGESTIONS:
+                break
+            if is_reliable_correction(word, candidate):
+                candidates.append(candidate)
+        # Prefer the checker's strongest single correction as the top pick,
+        # with the rest of the plausible candidates offered as alternates.
+        top_pick = spellchecker.correction(word)
+        if top_pick and top_pick != word and top_pick in candidates:
+            candidates.remove(top_pick)
+            candidates.insert(0, top_pick)
+        elif (
+            top_pick
+            and top_pick != word
+            and is_reliable_correction(word, top_pick)
+            and top_pick not in candidates
+        ):
+            candidates.insert(0, top_pick)
+        issues.append(build_issue(word, candidates[:SPELL_MAX_SUGGESTIONS]))
 
     return {
         "issues": issues,

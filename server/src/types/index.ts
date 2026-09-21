@@ -4,6 +4,13 @@
 export type RoleName = 'student' | 'professor' | 'admin'
 export type VerificationStatus = 'pending' | 'approved' | 'rejected'
 
+/** Signed-in user's own storage usage versus their account quota. */
+export interface StorageSummary {
+  usedBytes: number
+  quotaBytes: number
+  role: RoleName
+}
+
 /** Page-number style for headers/footers. */
 export type PageNumberFormat = 'none' | 'number' | 'roman'
 
@@ -183,6 +190,83 @@ export interface VerifyProfessorRequest {
   notes?: string
 }
 
+/** Application metadata attached to a pending verification applicant. */
+export interface ApplicantDetails {
+  applicantType?: string | null
+  college?: string | null
+  department?: string | null
+  facultyId?: string | null
+  institutionalEmail?: string | null
+  studentId?: string | null
+  degreeProgram?: string | null
+  reason?: string | null
+  submittedAt?: string | null
+}
+
+/** A pending Student or Professor applicant in the admin verification queue. */
+export interface AdminApplicant {
+  profile_id: string
+  user_id: string
+  email: string | null
+  display_name: string | null
+  applied_role: RoleName
+  verification_status: VerificationStatus
+  applied_at: string
+  application_details: ApplicantDetails
+}
+
+export interface VerifyApplicantRequest {
+  status: 'approved' | 'rejected'
+  role?: RoleName
+  notes?: string
+}
+
+/** A user row in the admin directory with email and document stats. */
+export interface AdminUserRecord {
+  id: string
+  user_id: string
+  role_id: number
+  role_name: RoleName | null
+  verification_status: VerificationStatus
+  display_name: string | null
+  email: string | null
+  phone: string | null
+  document_count: number
+  created_at: string
+  updated_at: string
+}
+
+/** A document row visible only to admins during moderation. */
+export interface AdminDocumentRecord {
+  id: string
+  title: string
+  user_id: string
+  email: string | null
+  is_deleted: boolean
+  revision_count: number
+  created_at: string
+  updated_at: string
+}
+
+/** Platform-wide health metrics returned to the admin reports tab. */
+export interface SystemReport {
+  totalUsers: number
+  pendingApplicants: number
+  byRole: Record<RoleName, number>
+  totalDocuments: number
+  activeDocuments: number
+  softDeletedDocuments: number
+  totalFormattingActions: number
+  feedback: {
+    total: number
+    accepted: number
+    rejected: number
+    acceptanceRate: string
+    byType: Record<string, { total: number; accepted: number; rejected: number; acceptanceRate: string }>
+  }
+  generatedAt: string
+}
+
 export type SharePermission = 'view' | 'comment' | 'edit'
 
 /** A document share row (owner grants access to a collaborator). */
@@ -227,12 +311,46 @@ export interface Notification {
   created_at: string
 }
 
+export interface FormatBehaviorPayload {
+  text?: string
+  format?: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  fontSize?: number | null
+  textAlign?: string
+}
+
 export interface BehaviorEvent {
   action: string
   timestamp: string
   documentId: string
   blockId?: string
-  payload?: Record<string, unknown>
+  payload?: FormatBehaviorPayload & Record<string, unknown>
+}
+
+export interface LearnedFormatPattern {
+  format: string
+  snippet: string
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  fontSize: number | null
+  textAlign?: string
+  count: number
+  lastAt: string
+}
+
+export interface LearnedFormatMatch {
+  format: string
+  snippet: string
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  fontSize: number | null
+  textAlign?: string
+  confidence: number
+  count: number
 }
 
 export interface BehaviorSummaryLatestEvent extends BehaviorEvent {
@@ -276,4 +394,16 @@ export interface DocumentVersion {
   editor_prefs: Record<string, unknown> | null
   reason: string
   created_at: string
+}
+
+/** Format state captured with a version snapshot (stored in editor_prefs). */
+export interface FormatSnapshot {
+  formatting_history: string[]
+  formatting_preset: string | null
+  header_content: string
+  footer_content: string
+  show_header: boolean
+  show_footer: boolean
+  header_number_format: PageNumberFormat
+  footer_number_format: PageNumberFormat
 }

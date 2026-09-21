@@ -24,11 +24,31 @@ export interface Suggestion {
   format: string
   confidence: number
   reason: string
+  /** Display label override for combined/learned formats. */
+  label?: string
+  /** Present on learned cross-document suggestions — reproduces the observed format. */
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  fontSize?: number | null
+  textAlign?: string
+  /** Distinguishes learned matches (behavior memory) from ML model predictions. */
+  suggestionSource?: 'learned' | 'ml'
+}
+
+/** Primary label for a suggestion, folding font-size into display when needed. */
+export function formatLabel(s: Suggestion): string {
+  if (s.label) return s.label
+  const base = FORMAT_LABELS[s.format] ?? s.format
+  if (typeof s.fontSize === 'number' && s.fontSize > 0 && !FORMAT_LABELS[s.format]) {
+    return `${s.fontSize}pt`
+  }
+  return base
 }
 
 interface SuggestionPanelProps {
   suggestions: Suggestion[]
-  onApply: (format: string) => void
+  onApply: (suggestion: Suggestion) => void
   onDismiss: () => void
 }
 
@@ -109,7 +129,7 @@ export default function SuggestionPanel({ suggestions, onApply, onDismiss }: Sug
               type="button"
               onMouseDown={(e) => {
                 e.preventDefault()
-                onApply(s.format)
+                onApply(s)
               }}
               style={{
                 width: '100%',
@@ -151,7 +171,7 @@ export default function SuggestionPanel({ suggestions, onApply, onDismiss }: Sug
                   margin: '0 0 0.125rem',
                   letterSpacing: '-0.01em',
                 }}>
-                  {FORMAT_LABELS[s.format] || s.format}
+                  {formatLabel(s)}
                 </p>
                 <p style={{
                   fontFamily: 'var(--font-sans)',

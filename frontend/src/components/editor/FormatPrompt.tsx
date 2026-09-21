@@ -5,6 +5,14 @@ import { FORMAT_LABELS } from './SuggestionPanel'
 export interface FormatSuggestion {
   format: string
   confidence: number
+  /** Display label override used when the chip shows a combined format. */
+  label?: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  fontSize?: number | null
+  textAlign?: string
+  suggestionSource?: 'learned' | 'ml'
 }
 
 interface FormatPromptProps {

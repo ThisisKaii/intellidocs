@@ -14,6 +14,8 @@ import {
   AlertTriangle,
   GraduationCap,
   Sparkles,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/services/api'
@@ -23,6 +25,7 @@ import {
   setEditorPreferences,
   type EditorPreferences,
 } from '@/lib/editorPreferences'
+import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
 
 const ROLE_LABELS: Record<string, string> = {
   student: 'Student',
@@ -53,7 +56,7 @@ export default function SettingsPage(): JSX.Element {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="max-w-2xl mx-auto px-6 py-10">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <Link
           to="/dashboard"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground no-underline transition-colors hover:text-foreground"
@@ -314,7 +317,7 @@ function FacultyApplicationSection({
       )}
 
       <form onSubmit={(e) => { void handleSubmit(e) }} className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-2">
             <label htmlFor="college" className="text-sm text-muted-foreground">College</label>
             <input
@@ -341,7 +344,7 @@ function FacultyApplicationSection({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-2">
             <label htmlFor="inst-email" className="text-sm text-muted-foreground">Institutional Email</label>
             <input
@@ -486,7 +489,7 @@ function StudentApplicationSection({
       )}
 
       <form onSubmit={(e) => { void handleSubmit(e) }} className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-2">
             <label htmlFor="student-id" className="text-sm text-muted-foreground">Student ID</label>
             <input
@@ -1002,6 +1005,7 @@ function TwoFactorAuthSection(): JSX.Element {
 /** Persisted editor & AI preferences: underline style, sensitivity, highlight color. */
 function EditorPersonalizationSection(): JSX.Element {
   const [prefs, setPrefs] = useState(() => getEditorPreferences())
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
 
   function update(next: Partial<EditorPreferences>): void {
     setPrefs(setEditorPreferences(next))
@@ -1102,7 +1106,40 @@ function EditorPersonalizationSection(): JSX.Element {
             Used for in-canvas formatting suggestion highlights and the suggestion pulse.
           </p>
         </div>
+
+        <div className="border-t border-border pt-5">
+          <label className="text-sm font-medium text-foreground block mb-1">
+            Personalization profile (.idocprofile)
+          </label>
+          <p className="text-xs text-muted-foreground mb-3">
+            Export your learned formatting rules and custom dictionary as a portable file, or import
+            a profile shared by a professor or teammate.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium border border-border bg-transparent text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <Download className="size-4" />
+              Export profile
+            </button>
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium border border-border bg-transparent text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <Upload className="size-4" />
+              Import profile
+            </button>
+          </div>
+        </div>
       </div>
+
+      <PersonalizationProfileModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+      />
     </section>
   )
 }

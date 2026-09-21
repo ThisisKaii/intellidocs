@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>IntelliDocs System Storyboard</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f1f5f9;
+    color: #0f172a;
+    margin: 0;
+    padding: 32px 24px;
+  }
+  .header {
+    text-align: center;
+    max-width: 980px;
+    margin: 0 auto 12px auto;
+  }
+  .header h1 {
+    font-size: 26px;
+    margin: 0 0 8px 0;
+    color: #0f172a;
+  }
+  .header p {
+    font-size: 14px;
+    color: #64748b;
+    margin: 0;
+    line-height: 1.6;
+  }
+  .narrative {
+    max-width: 980px;
+    margin: 0 auto 28px auto;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-left: 4px solid #388087;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #334155;
+    line-height: 1.65;
+  }
+  .stack {
+    max-width: 1560px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .frame-card {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+  }
+  .frame-header {
+    padding: 12px 18px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .frame-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #388087;
+    color: #ffffff;
+  }
+  .frame-fig {
+    font-size: 11px;
+    font-weight: 700;
+    color: #0369a1;
+    background: #e0f2fe;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+  .frame-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .frame-module {
+    font-size: 11.5px;
+    color: #64748b;
+  }
+  .frame-body {
+    padding: 16px 18px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+  }
+  @media (max-width: 760px) {
+    .frame-body { grid-template-columns: 1fr; }
+  }
+  .block h4 {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 8px 0;
+  }
+  .desc {
+    font-size: 13px;
+    color: #334155;
+    line-height: 1.55;
+    margin-bottom: 10px;
+  }
+  table.items {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  table.items th {
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 600;
+    text-align: left;
+    padding: 7px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 11.5px;
+  }
+  table.items td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+  }
+  table.items tr:last-child td {
+    border-bottom: none;
+  }
+  ol.logic {
+    margin: 0;
+    padding-left: 22px;
+    font-size: 13px;
+    color: #334155;
+    line-height: 1.7;
+  }
+  ol.logic li {
+    margin-bottom: 5px;
+  }
+  ol.logic li ul {
+    margin: 4px 0 8px 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>IntelliDocs Story Board</h1>
+  <p>Figure 29&ndash;35: Storyboard for IntelliDocs presenting the full user experience through a sequence of visual screens, from landing page and authentication through document management and the editor.</p>
+</div>
+
+<div class="narrative">
+  <strong>Storyboard narrative (from the manuscript):</strong> It begins with the user visiting the landing page and proceeding to either sign in to an existing account or register a new one. From there, the user is directed to the dashboard where they can view recent document activity, manage storage, and create or import documents. The storyboard then shows how users navigate their document library through the Recent Documents and My Documents screens, where confidence score indicators provide a quick overview of how well the system has learned their formatting habits. It further illustrates the core editing experience inside the Document Editor, where the system displays inline formatting suggestions with visible confidence scores derived from the user's behavioral learning profile, and where the Gemini AI assistant panel is available for natural language formatting queries. Finally, the storyboard covers the Trash screen, showing how users can manage and recover recently deleted documents before permanent removal.
+</div>
+
+<div class="stack">
+
+  <!-- SCREEN 1: LANDING PAGE -->
+  <div class="frame-card">
+    <div class="frame-header">
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="frame-badge">Screen 1</span>
+        <span class="frame-title">Landing Page</span>
+      </span>
+      <span class="frame-fig">Figure 29</span>
+    </div>
+    <div class="frame-body">
+      <div>
+        <div class="block">
+          <h4>Module Type</h4>
+          <div class="desc">User Authentication Module. This screen serves as the entry point of IntelliDocs. It displays the system tagline, a brief description of the platform, and two call-to-action buttons that direct users to either start writing or learn more about the system.</div>
+          <h4>Items</h4>
+          <table class="items">
+            <thead><tr><th>Items</th><th>Type</th><th>Required?</th><th>Data Type</th><th>Size</th></tr></thead>
+            <tbody>
+              <tr><td>Start Writing Button</td><td>Button</td><td>Yes</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Learn More Button</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="block">
+        <h4>Logic</h4>
+        <ol class="logic">
+          <li>The user visits the IntelliDocs website.</li>
+          <li>The system displays the landing page with the tagline and CTA buttons.</li>
+          <li>The user clicks the "Start Writing" button.</li>
+          <li>The system redirects the user to the Login screen.</li>
+          <li>Alternatively, the user clicks "Learn More" to view system information.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: LOGIN -->
+  <div class="frame-card">
+    <div class="frame-header">
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="frame-badge">Screen 2</span>
+        <span class="frame-title">Login</span>
+      </span>
+      <span class="frame-fig">Figure 30</span>
+    </div>
+    <div class="frame-body">
+      <div>
+        <div class="block">
+          <h4>Module Type</h4>
+          <div class="desc">User Authentication Module. This screen allows registered users to securely sign in to their IntelliDocs workspace by entering their institutional email address and password.</div>
+          <h4>Items</h4>
+          <table class="items">
+            <thead><tr><th>Items</th><th>Type</th><th>Required?</th><th>Data Type</th><th>Size</th></tr></thead>
+            <tbody>
+              <tr><td>Email Address</td><td>Textbox</td><td>Yes</td><td>VARCHAR</td><td>255</td></tr>
+              <tr><td>Password</td><td>Textbox</td><td>Yes</td><td>VARCHAR</td><td>255</td></tr>
+              <tr><td>Forgot Password</td><td>Link</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Sign In Button</td><td>Button</td><td>Yes</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Create Account</td><td>Link</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="block">
+        <h4>Logic</h4>
+        <ol class="logic">
+          <li>The user enters their institutional email address and password in the provided fields.</li>
+          <li>The user clicks the "Sign In" button.</li>
+          <li>The system validates the credentials against the Supabase Auth database.</li>
+          <li>If the credentials are valid, the user is redirected to the Dashboard.</li>
+          <li>If the credentials are incorrect, an error message is displayed: "Invalid email or password. Please try again."</li>
+          <li>If the user does not have an account, they click "Create account" to go to the Register screen.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: REGISTER -->
+  <div class="frame-card">
+    <div class="frame-header">
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="frame-badge">Screen 3</span>
+        <span class="frame-title">Register</span>
+      </span>
+      <span class="frame-fig">Figure 31</span>
+    </div>
+    <div class="frame-body">
+      <div>
+        <div class="block">
+          <h4>Module Type</h4>
+          <div class="desc">User Authentication Module. This screen allows new users to create an IntelliDocs account by providing their full name, email address, and a secure password.</div>
+          <h4>Items</h4>
+          <table class="items">
+            <thead><tr><th>Items</th><th>Type</th><th>Required?</th><th>Data Type</th><th>Size</th></tr></thead>
+            <tbody>
+              <tr><td>Full Name</td><td>Textbox</td><td>Yes</td><td>VARCHAR</td><td>120</td></tr>
+              <tr><td>Email Address</td><td>Textbox</td><td>Yes</td><td>VARCHAR</td><td>255</td></tr>
+              <tr><td>Password</td><td>Textbox</td><td>Yes</td><td>VARCHAR</td><td>255</td></tr>
+              <tr><td>Confirm Password</td><td>Textbox</td><td>Yes</td><td>VARCHAR</td><td>255</td></tr>
+              <tr><td>Create Account Button</td><td>Button</td><td>Yes</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Sign In Link</td><td>Link</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="block">
+        <h4>Logic</h4>
+        <ol class="logic">
+          <li>The user fills in their full name, email address, password, and confirmed password.</li>
+          <li>The user clicks the "Create Research Account" button.</li>
+          <li>The system validates that all required fields are filled and that the passwords match.</li>
+          <li>The system checks if the email address is already registered.
+            <ul><li>If the email is taken, an error message is displayed: "Email address is already registered."</li></ul>
+          </li>
+          <li>If the data is valid, the system creates the account and redirects the user to the Dashboard.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 4: DASHBOARD -->
+  <div class="frame-card">
+    <div class="frame-header">
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="frame-badge">Screen 4</span>
+        <span class="frame-title">Dashboard</span>
+      </span>
+      <span class="frame-fig">Figure 32</span>
+    </div>
+    <div class="frame-body">
+      <div>
+        <div class="block">
+          <h4>Module Type</h4>
+          <div class="desc">Document Management Module. This screen is the main home screen of IntelliDocs after login. It shows recent document activity, cloud storage usage, and quick access to create new documents, folders, or import files from Google Drive.</div>
+          <h4>Items</h4>
+          <table class="items">
+            <thead><tr><th>Items</th><th>Type</th><th>Required?</th><th>Data Type</th><th>Size</th></tr></thead>
+            <tbody>
+              <tr><td>New Document Button</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>New Folder Button</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Import from Drive Button</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Recent Activity List</td><td>List</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Storage Usage Display</td><td>Display</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="block">
+        <h4>Logic</h4>
+        <ol class="logic">
+          <li>The system displays the dashboard after successful login.</li>
+          <li>The system loads and displays the user's recent document activity.</li>
+          <li>The system displays the current cloud storage usage.</li>
+          <li>The user may click "+ New Document" to create a new document.</li>
+          <li>The user may click an existing document in the recent activity list to open it in the editor.</li>
+          <li>The user may click "Import from Drive" to import a document from Google Drive.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 5: MY DOCUMENTS -->
+  <div class="frame-card">
+    <div class="frame-header">
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="frame-badge">Screen 5</span>
+        <span class="frame-title">My Documents</span>
+      </span>
+      <span class="frame-fig">Figure 33</span>
+    </div>
+    <div class="frame-body">
+      <div>
+        <div class="block">
+          <h4>Module Type</h4>
+          <div class="desc">Document Management Module. This screen shows the full document manager with all files and folders in a list or grid view. Users can see document names, last modified dates, confidence scores, and owners.</div>
+          <h4>Items</h4>
+          <table class="items">
+            <thead><tr><th>Items</th><th>Type</th><th>Required?</th><th>Data Type</th><th>Size</th></tr></thead>
+            <tbody>
+              <tr><td>Document List</td><td>List</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Confidence Score Bar</td><td>Display</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Last Modified Date</td><td>Display</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Owner Display</td><td>Display</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>View Toggle (List/Grid)</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Sort Button</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="block">
+        <h4>Logic</h4>
+        <ol class="logic">
+          <li>The system loads all documents and folders belonging to the user.</li>
+          <li>The system displays each document with its name, last modified date, confidence score, and owner.</li>
+          <li>The user may toggle between list and grid view using the view toggle buttons.</li>
+          <li>The user may sort documents using the Sort button.</li>
+          <li>The user clicks a document to open it in the Document Editor.</li>
+          <li>The user may click a folder to navigate into it and view its contents.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 6: RECENT DOCUMENTS -->
+  <div class="frame-card">
+    <div class="frame-header">
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="frame-badge">Screen 6</span>
+        <span class="frame-title">Recent Documents</span>
+      </span>
+      <span class="frame-fig">Storyboard narrative</span>
+    </div>
+    <div class="frame-body">
+      <div>
+        <div class="block">
+          <h4>Module Type</h4>
+          <div class="desc">Document Management Module. This screen surfaces the user's recently opened documents. Confidence score indicators provide a quick overview of how well the system has learned the user's formatting habits.</div>
+        </div>
+      </div>
+      <div class="block">
+        <h4>Logic</h4>
+        <div class="desc">The system loads the user's recently opened documents and shows a confidence score indicator on each, reflecting how well the behavioral learning model matches that document's formatting history.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 7: DOCUMENT EDITOR -->
+  <div class="frame-card">
+    <div class="frame-header">
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="frame-badge">Screen 7</span>
+        <span class="frame-title">Document Editor</span>
+      </span>
+      <span class="frame-fig">Figure 34</span>
+    </div>
+    <div class="frame-body">
+      <div>
+        <div class="block">
+          <h4>Module Type</h4>
+          <div class="desc">Document Editor Module. This is the core screen of IntelliDocs. It provides a custom contentEditable document editor with a full formatting toolbar. Inline confidence score suggestions appear directly on the text. The Gemini AI assistant panel is accessible on the right side for user-directed formatting queries and natural language commands.</div>
+          <h4>Items</h4>
+          <table class="items">
+            <thead><tr><th>Items</th><th>Type</th><th>Required?</th><th>Data Type</th><th>Size</th></tr></thead>
+            <tbody>
+              <tr><td>Formatting Toolbar</td><td>Toolbar</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Content Editor Area</td><td>Textbox</td><td>Yes</td><td>TEXT</td><td>N/A</td></tr>
+              <tr><td>Inline Suggestion</td><td>Badge / Display</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Confidence Score</td><td>Display</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Gemini Assistant</td><td>Panel</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Ask Gemini Input</td><td>Textbox</td><td>No</td><td>VARCHAR</td><td>500</td></tr>
+              <tr><td>Export Button</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Auto-Save Status</td><td>Display</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="block">
+        <h4>Logic</h4>
+        <ol class="logic">
+          <li>The user opens or creates a document and is directed to the editor screen.</li>
+          <li>The system loads the document content and formatting history.</li>
+          <li>As the user types, the BehaviorListener captures formatting actions in real time.</li>
+          <li>The ML model analyzes the text context and generates a formatting suggestion with a confidence score.</li>
+          <li>The suggestion is displayed inline directly on the relevant text.</li>
+          <li>The user accepts the suggestion by pressing Tab or rejects it by pressing Escape.
+            <ul>
+              <li>If accepted, the formatting is applied and the action is logged to the behavioral pipeline.</li>
+              <li>If rejected, the rejection is logged as a negative training signal.</li>
+            </ul>
+          </li>
+          <li>The system auto-saves the document content periodically via Supabase Realtime.</li>
+          <li>The user may open the Gemini Assistant panel and type a query for AI-assisted formatting.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 8: TRASH -->
+  <div class="frame-card">
+    <div class="frame-header">
+      <span style="display:flex; gap:8px; align-items:center;">
+        <span class="frame-badge">Screen 8</span>
+        <span class="frame-title">Trash</span>
+      </span>
+      <span class="frame-fig">Figure 35</span>
+    </div>
+    <div class="frame-body">
+      <div>
+        <div class="block">
+          <h4>Module Type</h4>
+          <div class="desc">Document Management Module. This screen displays recently deleted documents with the number of days remaining before permanent deletion. Users can restore documents or permanently remove them.</div>
+          <h4>Items</h4>
+          <table class="items">
+            <thead><tr><th>Items</th><th>Type</th><th>Required?</th><th>Data Type</th><th>Size</th></tr></thead>
+            <tbody>
+              <tr><td>Deleted Documents</td><td>List</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Days Remaining</td><td>Display</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Restore Button</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Permanent Delete</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+              <tr><td>Empty Trash Button</td><td>Button</td><td>No</td><td>N/A</td><td>N/A</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="block">
+        <h4>Logic</h4>
+        <ol class="logic">
+          <li>The system loads all documents deleted by the user that have not yet been permanently removed.</li>
+          <li>Each deleted document displays the title, deletion date, and remaining days before permanent deletion.</li>
+          <li>Documents approaching permanent deletion within 24 hours are highlighted with a warning.</li>
+          <li>The user clicks "Restore" to recover a deleted document.
+            <ul><li>The system moves the document back to the user's document list.</li></ul>
+          </li>
+          <li>The user clicks the delete icon to permanently remove a specific document.</li>
+          <li>The user clicks "Empty Trash" to permanently delete all items in the trash.
+            <ul><li>The system prompts the user to confirm before permanently deleting all items.</li></ul>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

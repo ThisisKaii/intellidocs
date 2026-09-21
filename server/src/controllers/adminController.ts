@@ -1,6 +1,52 @@
 import { Response } from 'express'
 import { AuthenticatedRequest } from '../types/express'
 import * as adminModel from '../models/adminModel'
+import { VerifyApplicantBody } from '../../schemas/adminSchemas'
+
+export async function getPendingApplicants(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const list = await adminModel.getPendingApplicants()
+    res.json(list)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch pending applicants'
+    res.status(500).json({ error: message })
+  }
+}
+
+/** Approve or reject a pending Student/Professor applicant, granting the requested role on approval. */
+export async function verifyApplicant(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const targetUserId = req.params.userId
+    const payload = req.body as VerifyApplicantBody
+
+    if (!targetUserId) {
+      res.status(400).json({ error: 'Missing userId' })
+      return
+    }
+
+    const result = await adminModel.verifyApplicant(targetUserId, payload.status, payload.role, payload.notes)
+    res.json({
+      message: `Application ${payload.status} successfully`,
+      newRole: payload.role ?? null,
+      profile: result,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to update verification status'
+    res.status(500).json({ error: message })
+  }
+}
+
+/** List documents across all users for moderation (bypasses user isolation). */
+export async function getAllDocuments(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const query = typeof req.query.q === 'string' ? req.query.q : undefined
+    const docs = await adminModel.getAllDocumentsForAdmin(query)
+    res.json(docs)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch documents'
+    res.status(500).json({ error: message })
+  }
+}
 
 export async function getPendingProfessors(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {

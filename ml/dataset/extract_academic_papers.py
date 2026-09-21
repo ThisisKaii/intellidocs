@@ -299,6 +299,24 @@ def infer_format_label(line: ExtractedLine, body_font_size: float) -> str:
     words = text.split()
     font_delta = line.font_size - body_font_size
 
+    # Title: short ALL-CAPS line (e.g., document title on a cover page)
+    if len(text) <= 120 and text == text.upper() and text[0].isalpha():
+        return "title"
+
+    # Code block: fenced or 4-space indented or contains code keywords
+    if (
+        text.startswith("```")
+        or text.startswith("    ")
+        or re.match(r"\b(def |class |SELECT |INSERT |import |function |return )\b", text)
+    ):
+        return "code_block"
+
+    # Reference entry: APA "Author, A. (2024)." or IEEE "[1] Author"
+    if re.match(r"^[A-Z][a-zA-Z'\-]+,\s+[A-Z]\..*\(\d{4}\)", text) or re.match(
+        r"^\[\d+\]\s+[A-Z]", text
+    ):
+        return "reference_entry"
+
     if CAPTION_PATTERN.match(text):
         return "caption"
 

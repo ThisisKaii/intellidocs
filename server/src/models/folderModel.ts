@@ -206,7 +206,10 @@ export async function getDocumentsForFolder(
 
   const { data, error } = await supabase
     .from('documents')
-    .select('*')
+    .select(
+      // Exclude `content` (can be multi-MB) — the folder view only needs metadata.
+      'id,user_id,title,header_content,footer_content,show_header,show_footer,header_number_format,footer_number_format,page_size,margins,orientation,formatting_history,is_isolated,formatting_preset,is_deleted,deleted_at,share_permission,share_token,share_expires_at,created_at,updated_at'
+    )
     .eq('user_id', userId)
     .in('id', documentIds)
     .order('updated_at', { ascending: false })
@@ -215,5 +218,5 @@ export async function getDocumentsForFolder(
     throw new Error(`Failed to fetch folder documents: ${error.message}`)
   }
 
-  return data ?? []
+  return (data || []).map((row) => ({ ...row, content: '' }))
 }

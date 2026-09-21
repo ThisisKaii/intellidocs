@@ -14,7 +14,7 @@ import {
 import AIChatbot from './AIChatbot'
 import HistoryPanel from './HistoryPanel'
 import type { DocumentVersion } from '@/services/api'
-import { FORMAT_LABELS } from './SuggestionPanel'
+import { FORMAT_LABELS, formatLabel } from './SuggestionPanel'
 import type { ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import type { GrammarIssue } from './GrammarPanel'
 import type { Suggestion } from './SuggestionPanel'
@@ -38,7 +38,7 @@ interface EditorSidePanelProps {
   onJumpTo: (suggestion: ScannerSuggestion) => void
   onAcceptScanner: (key: string) => void
   onRejectScanner: (key: string) => void
-  onApplyMl: (format: string) => void
+  onApplyMl: (suggestion: Suggestion) => void
   onDismissMl: () => void
   onApplyGrammar: (issue: GrammarIssue) => void
   onDismissGrammar: (issue: GrammarIssue) => void
@@ -269,7 +269,7 @@ interface SuggestionQueueProps {
   onJumpTo: (suggestion: ScannerSuggestion) => void
   onAcceptScanner: (key: string) => void
   onRejectScanner: (key: string) => void
-  onApplyMl: (format: string) => void
+  onApplyMl: (suggestion: Suggestion) => void
   onDismissMl: () => void
   onApplyGrammar: (issue: GrammarIssue) => void
   onDismissGrammar: (issue: GrammarIssue) => void
@@ -373,7 +373,7 @@ function SuggestionQueue({
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.625rem', borderRadius: '0.5rem', border: '1px solid var(--border)', marginBottom: '0.375rem' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)', margin: 0 }}>
-                  {FORMAT_LABELS[s.format] ?? s.format}
+                  {formatLabel(s)}
                 </p>
                 <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {s.reason}
@@ -384,7 +384,7 @@ function SuggestionQueue({
               </span>
               <button
                 type="button"
-                onClick={() => onApplyMl(s.format)}
+                onClick={() => onApplyMl(s)}
                 style={{
                   fontSize: '0.6875rem',
                   fontWeight: 700,

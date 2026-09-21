@@ -9,7 +9,7 @@ import {
   Upload,
   type LucideIcon,
 } from 'lucide-react'
-import type { FolderRecord } from '@/services/api'
+import type { FolderRecord, StorageSummary } from '@/services/api'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,6 +45,24 @@ interface DriveSidebarProps {
   trashCount?: number
   /** Quick-access folders listed under the navigation. */
   folders?: FolderRecord[]
+  /** Whether the slide-over drawer is open on mobile (< 1024px). Desktop ignores it. */
+  isOpen: boolean
+  /** Close the mobile drawer after any navigation/selection. */
+  onClose: () => void
+  /** Signed-in user's storage usage and quota for the status card. */
+  storage?: StorageSummary | null
+}
+
+/** Format a byte count into a compact human-readable string (e.g. 12.5 MB). */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.max(0, Math.round(bytes / 1024))} KB`
+}
+
+/** Capitalize the first letter of a word, e.g. 'student' → 'Student'. */
+function capitalize(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1)
 }
 
 const NAV_ITEMS: SidebarItem[] = [
@@ -66,6 +84,9 @@ function DriveSidebar({
   recentCount,
   trashCount,
   folders,
+  isOpen,
+  onClose,
+  storage,
 }: DriveSidebarProps): JSX.Element {
   function isNavActive(item: SidebarItem): boolean {
     if (selection.type === 'folder') return false
@@ -81,7 +102,11 @@ function DriveSidebar({
   }
 
   return (
-    <aside className="flex flex-col w-[260px] shrink-0 bg-secondary h-screen sticky top-0 overflow-y-auto">
+    <aside
+      className={`flex flex-col w-[260px] shrink-0 bg-secondary h-screen overflow-y-auto fixed inset-y-0 left-0 z-40 shadow-xl transition-transform duration-300 ease-in-out lg:static lg:sticky lg:top-0 lg:shadow-none lg:translate-x-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
       {/* ── Logo area ──────────────────────────────── */}
       <div className="flex items-center gap-2.5 px-5 h-16 shrink-0 mt-2">
         <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary shadow-sm shadow-primary/30 text-primary-foreground">
@@ -112,19 +137,19 @@ function DriveSidebar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" style={{ minWidth: '180px' }}>
-            <DropdownMenuItem onClick={onCreate} className="gap-2 py-2 cursor-pointer">
+            <DropdownMenuItem onClick={() => { onClose(); onCreate() }} className="gap-2 py-2 cursor-pointer">
               <FileText className="size-4" /> New Document
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onCreateFolder} className="gap-2 py-2 cursor-pointer">
+            <DropdownMenuItem onClick={() => { onClose(); onCreateFolder() }} className="gap-2 py-2 cursor-pointer">
               <FolderIcon className="size-4 text-primary" /> New Folder
             </DropdownMenuItem>
             {onImportFromFile && (
-              <DropdownMenuItem onClick={onImportFromFile} className="gap-2 py-2 cursor-pointer">
+              <DropdownMenuItem onClick={() => { onClose(); onImportFromFile() }} className="gap-2 py-2 cursor-pointer">
                 <Upload className="size-4 text-primary" /> Import from File
               </DropdownMenuItem>
             )}
             {onImportFromDrive && (
-              <DropdownMenuItem onClick={onImportFromDrive} className="gap-2 py-2 cursor-pointer">
+              <DropdownMenuItem onClick={() => { onClose(); onImportFromDrive() }} className="gap-2 py-2 cursor-pointer">
                 <HardDrive className="size-4 text-primary" /> Import from Drive
               </DropdownMenuItem>
             )}
@@ -142,7 +167,10 @@ function DriveSidebar({
             <button
               key={item.id}
               type="button"
-              onClick={() => onSelectView({ type: item.selectionType })}
+              onClick={() => {
+                onSelectView({ type: item.selectionType })
+                onClose()
+              }}
               className={`flex items-center gap-3 w-full px-4 h-10 rounded-full text-[0.875rem] border-none cursor-pointer text-left transition-colors ${
                 active
                   ? 'font-semibold text-foreground bg-accent shadow-xs'
@@ -179,9 +207,10 @@ function DriveSidebar({
                 <button
                   key={folder.folder_id}
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
                     onSelectView({ type: 'folder', folderId: folder.folder_id, folderName: folder.name })
-                  }
+                    onClose()
+                  }}
                   className={`flex items-center gap-3 w-full px-4 h-9 rounded-full text-[0.8125rem] border-none cursor-pointer text-left transition-colors ${
                     active
                       ? 'font-medium text-primary bg-primary/15'
@@ -204,13 +233,18 @@ function DriveSidebar({
           <span className="text-primary font-bold flex items-center gap-1.5">
             <HardDrive className="size-3.5" /> Storage
           </span>
-          <span className="text-xs text-foreground font-semibold">124 MB / 500 MB</span>
+          <span className="text-xs text-foreground font-semibold">
+            {storage ? `${formatBytes(storage.usedBytes)} / ${formatBytes(storage.quotaBytes)}` : '— / —'}
+          </span>
         </div>
         <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
-          <div className="h-full bg-primary rounded-full" style={{ width: '25%' }} />
+          <div
+            className="h-full bg-primary rounded-full"
+            style={{ width: storage ? `${Math.min(100, Math.round((storage.usedBytes / storage.quotaBytes) * 100))}%` : '0%' }}
+          />
         </div>
         <div className="flex items-center justify-between mt-2 text-[0.6875rem]">
-          <span className="font-semibold text-primary">Student Tier</span>
+          <span className="font-semibold text-primary">{storage ? `${capitalize(storage.role)} Tier` : 'Student Tier'}</span>
           <span className="text-muted-foreground">UCLM Capstone</span>
         </div>
       </div>

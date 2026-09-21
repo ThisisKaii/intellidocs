@@ -31,6 +31,7 @@ export const pythonGrammarCheckResponseSchema = z.object({
 export const pythonSpellingIssueSchema = z.object({
   word: z.string().min(1),
   suggestion: z.string().nullable(),
+  suggestions: z.array(z.string()).optional(),
   type: z.string().min(1),
 })
 
@@ -41,9 +42,24 @@ export const pythonSpellingCheckResponseSchema = z.object({
   message: z.string().min(1),
 })
 
+/** Formatting labels in the ML taxonomy (11 total after the 8 → 11 expansion). */
+export const formatLabelSchema = z.enum([
+  'title',
+  'heading1',
+  'heading2',
+  'heading3',
+  'paragraph',
+  'blockquote',
+  'caption',
+  'ordered_list',
+  'unordered_list',
+  'code_block',
+  'reference_entry',
+])
+
 /** Validate formatting prediction responses returned by the Python service. */
 export const pythonPredictionResponseSchema = z.object({
-  predicted_format: z.string().min(1),
+  predicted_format: formatLabelSchema,
   confidence: z.number().min(0).max(1),
   feature_values: z.record(z.number()).default({}),
   isolation_mode: z.enum(['baseline', 'isolated', 'hybrid']).optional(),
@@ -70,6 +86,7 @@ export const pythonConversionResponseSchema = z.object({
 })
 
 export type PredictionTextInput = z.infer<typeof predictionTextSchema>
+export type FormatLabel = z.infer<typeof formatLabelSchema>
 export type PythonGrammarIssue = z.infer<typeof pythonGrammarIssueSchema>
 export type PythonGrammarCheckResponse = z.infer<
   typeof pythonGrammarCheckResponseSchema

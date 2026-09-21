@@ -150,9 +150,15 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
     const text = (req.body as { text: string }).text
     const documentId = (req.body as { documentId: string }).documentId
 
+    // Live-collab personalization: resolve the document's own owner and use
+    // their bindings/preset, so a shared collaborator inherits the document's
+    // formatting personality instead of their own (or a 500 for non-owners).
+    const ownerId = await formattingModel.getOwnerOfDocument(documentId)
+    const effectiveUserId = ownerId ?? userId
+
     const [bindings, presetKey] = await Promise.all([
-      formattingModel.getBindings(userId),
-      formattingModel.getDocumentPreset(documentId, userId),
+      formattingModel.getBindings(effectiveUserId),
+      formattingModel.getDocumentPreset(documentId, effectiveUserId),
     ])
 
     const presetRules = presetKey
@@ -176,7 +182,25 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
         return
       }
 
-      const prediction = await predictFormat({ text })
+      const prediction = await predictFormat({ text, userId: effectiveUserId })
+
+      // Learned text→format match from the user's behavior across documents.
+      if (prediction.learned) {
+        res.status(200).json({
+          tier: 'learned',
+          format: prediction.learned.format,
+          confidence: prediction.learned.confidence,
+          bold: prediction.learned.bold,
+          italic: prediction.learned.italic,
+          underline: prediction.learned.underline,
+          fontSize: prediction.learned.fontSize,
+          textAlign: prediction.learned.textAlign,
+          snippet: prediction.learned.snippet,
+          reason: 'Matches formatting you applied to similar text in another document',
+        })
+        return
+      }
+
       res.status(200).json({
         tier: 'ml',
         format: prediction.predictedFormat,

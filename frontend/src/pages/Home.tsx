@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, type DocumentRecord, type FolderRecord } from '@/services/api'
+import { api, type DocumentRecord, type FolderRecord, type StorageSummary } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
-import { Search } from 'lucide-react'
+import { FileText, FolderIcon, HardDrive, Menu, Plus, Search, Upload } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import UserMenu from '@/components/UserMenu'
 import DriveImportDialog from '@/components/DriveImportDialog'
 import ImportFileModal, { type ImportProgress, ImportProgressToast } from '@/components/ImportFileModal'
@@ -83,6 +89,7 @@ export default function HomePage(): JSX.Element {
   const [folderDocuments, setFolderDocuments] = useState<DocumentRecord[]>([])
   const [folders, setFolders] = useState<FolderRecord[]>([])
   const [currentFolderChildren, setCurrentFolderChildren] = useState<FolderRecord[]>([])
+  const [storageSummary, setStorageSummary] = useState<StorageSummary | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string>('')
 
@@ -94,6 +101,7 @@ export default function HomePage(): JSX.Element {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [driveOpen, setDriveOpen] = useState<boolean>(false)
   const [importFileOpen, setImportFileOpen] = useState<boolean>(false)
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false)
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
   const [shareDocId, setShareDocId] = useState<string | null>(null)
@@ -113,6 +121,16 @@ export default function HomePage(): JSX.Element {
     setTrashDocuments(driveCache.data.trash)
     setLoading(driveCache.isLoading && !driveCache.data)
   }, [driveCache.data, driveCache.isLoading, driveCache.error])
+
+  /* ── Load the user's own storage usage for the sidebar card ── */
+  useEffect(() => {
+    let cancelled = false
+    api.auth
+      .storage()
+      .then((summary) => { if (!cancelled) setStorageSummary(summary) })
+      .catch(() => { /* Storage is non-critical; keep the card muted on failure. */ })
+    return () => { cancelled = true }
+  }, [])
 
   /* ── Load folder-specific documents when navigating into a folder ── */
   useEffect(() => {
@@ -154,7 +172,12 @@ export default function HomePage(): JSX.Element {
       .channel('home-shares')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'document_shares' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'document_shares',
+          filter: user?.email ? `shared_with_email=eq.${user.email}` : undefined,
+        },
         () => {
           // Any change to shares — refresh the shared list so the collaborator
           // sees their new document immediately.
@@ -165,7 +188,7 @@ export default function HomePage(): JSX.Element {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [user?.email])
 
   /* ── Derived: which documents to show ──────────────── */
   const visibleDocuments = useMemo(() => {
@@ -551,33 +574,55 @@ export default function HomePage(): JSX.Element {
         recentCount={allDocuments.filter((d) => new Date(d.updated_at).getTime() > Date.now() - RECENT_MS).length}
         trashCount={trashDocuments.length}
         folders={folders}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        storage={storageSummary}
       />
+
+      {/* Mobile drawer backdrop (below sidebar z-40, above content) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-xs lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* ── Main ─────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 bg-background h-screen overflow-hidden px-4 pb-4">
         {/* ── Top Header ────────────────────────────── */}
         <header className="w-full flex-shrink-0 pt-3 pb-3">
-          <div className="flex items-center justify-between h-14">
-            {/* Search */}
-            <div className="flex-1 max-w-2xl relative ml-4">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground pointer-events-none" strokeWidth={2} />
-              <input
-                type="text"
-                placeholder="Search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="w-full h-12 pl-12 pr-4 rounded-full bg-card text-foreground placeholder:text-muted-foreground text-[1rem] outline-none border border-border transition-colors hover:border-primary/60 focus:border-primary focus:shadow-md"
+          <div className="flex items-center justify-between h-14 gap-2">
+            {/* Hamburger (mobile only) + Search */}
+            <div className="flex items-center flex-1 min-w-0 gap-2">
+              <button
+                type="button"
+                aria-label="Open navigation"
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden flex items-center justify-center size-12 shrink-0 rounded-full bg-card text-foreground border border-border cursor-pointer hover:bg-secondary transition-colors"
                 style={{ fontFamily: 'inherit' }}
-              />
+              >
+                <Menu className="size-5" />
+              </button>
+              <div className="flex-1 max-w-2xl relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground pointer-events-none" strokeWidth={2} />
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="w-full h-12 pl-12 pr-4 rounded-full bg-card text-foreground placeholder:text-muted-foreground text-[1rem] outline-none border border-border transition-colors hover:border-primary/60 focus:border-primary focus:shadow-md"
+                  style={{ fontFamily: 'inherit' }}
+                />
+              </div>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-3 shrink-0 ml-4">
+            <div className="flex items-center gap-3 shrink-0 ml-2">
               {user?.role === 'admin' && (
                 <button
                   onClick={() => navigate('/admin')}
                   title="Admin Dashboard"
-                  className="inline-flex items-center gap-2 h-9 px-3.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold border-none cursor-pointer transition-opacity hover:opacity-90"
+                  className="hidden md:inline-flex items-center gap-2 h-9 px-3.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold border-none cursor-pointer transition-opacity hover:opacity-90"
                 >
                   Admin Dashboard
                 </button>
@@ -717,6 +762,36 @@ export default function HomePage(): JSX.Element {
       {shareDocId && (
         <ShareModal documentId={shareDocId} onClose={() => setShareDocId(null)} />
       )}
+
+      {/* Mobile "+ New" FAB (below md) */}
+      <div className="fixed bottom-6 right-5 z-40 md:hidden">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Create new"
+              className="flex items-center justify-center size-14 rounded-full bg-[#388087] text-white border-none cursor-pointer shadow-lg shadow-primary/30 hover:bg-[#2d6b72] active:scale-95 transition-all"
+              style={{ fontFamily: 'inherit' }}
+            >
+              <Plus className="size-6" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="top" style={{ minWidth: '190px' }}>
+            <DropdownMenuItem onClick={() => void handleCreateDocument()} className="gap-2 py-2.5 cursor-pointer">
+              <FileText className="size-4" /> New Document
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleCreateFolder} className="gap-2 py-2.5 cursor-pointer">
+              <FolderIcon className="size-4 text-primary" /> New Folder
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setImportFileOpen(true)} className="gap-2 py-2.5 cursor-pointer">
+              <Upload className="size-4 text-primary" /> Import from File
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDriveOpen(true)} className="gap-2 py-2.5 cursor-pointer">
+              <HardDrive className="size-4 text-primary" /> Import from Drive
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   )
 }

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Clock, RotateCcw, History, Diff } from 'lucide-react'
+import { Clock, RotateCcw, History, Diff, Palette } from 'lucide-react'
 import { api, type DocumentVersion } from '@/services/api'
 import { diffWords } from '@/lib/htmlDiff'
+import { readFormatSnapshot } from '@/lib/formatSnapshot'
 
 interface HistoryPanelProps {
   documentId: string | undefined
@@ -106,7 +107,7 @@ export default function HistoryPanel({
       >
         <History style={{ width: '14px', height: '14px', flexShrink: 0, color: 'var(--primary)' }} />
         <span>
-          Autosave snapshots. “Show Changes” compares a snapshot to the current text — additions in green, removals struck through red.
+          Autosave snapshots capture the text plus the document formatting (page setup, headers/footers, formatting history). “Show Changes” compares a snapshot to the current text — additions in green, removals struck through red. Restore rolls back both text and formatting.
         </span>
       </div>
 
@@ -126,6 +127,14 @@ export default function HistoryPanel({
             v.word_count != null && idx + 1 < versions.length && versions[idx + 1].word_count != null
               ? v.word_count - (versions[idx + 1].word_count ?? 0)
               : null
+          const snapshot = readFormatSnapshot(v.editor_prefs)
+          const hasFormatState =
+            snapshot.formatting_history.length > 0 ||
+            snapshot.formatting_preset != null ||
+            snapshot.show_header ||
+            snapshot.show_footer ||
+            snapshot.header_number_format !== 'none' ||
+            snapshot.footer_number_format !== 'none'
           return (
             <div key={v.version_id} style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
               <div
@@ -150,6 +159,27 @@ export default function HistoryPanel({
                         {delta > 0
                           ? `(+${delta} words)`
                           : `(${delta} words)`}
+                      </span>
+                    )}
+                    {hasFormatState && (
+                      <span
+                        title="This snapshot stores the document formatting applied at that time — Restore will roll back to it too."
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.2rem',
+                          marginLeft: '0.5rem',
+                          fontSize: '0.625rem',
+                          fontWeight: 600,
+                          color: 'var(--primary)',
+                          border: '1px solid var(--primary)',
+                          borderRadius: '999px',
+                          padding: '0 0.375rem',
+                          verticalAlign: 'middle',
+                        }}
+                      >
+                        <Palette style={{ width: '9px', height: '9px' }} />
+                        {snapshot.formatting_preset ?? 'Format'}
                       </span>
                     )}
                   </p>

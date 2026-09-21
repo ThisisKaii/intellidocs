@@ -15,6 +15,7 @@ import professorRoutes from './routes/professorRoutes'
 import notificationRoutes from './routes/notificationRoutes'
 import adminRoutes from './routes/adminRoutes'
 import formattingRoutes from './routes/formattingRoutes'
+import profileRoutes from './routes/profileRoutes'
 import mcpRouter from './mcp/mcpServer'
 import { authMiddleware } from './middleware/authMiddleware'
 
@@ -60,6 +61,7 @@ app.use('/professor', authMiddleware, professorRoutes)
 app.use('/notifications', authMiddleware, notificationRoutes)
 app.use('/admin', adminRoutes)
 app.use('/formatting', authMiddleware, formattingRoutes)
+app.use('/profile', authMiddleware, profileRoutes)
 app.use('/mcp', authMiddleware, mcpRouter)
 
 // 404 handler

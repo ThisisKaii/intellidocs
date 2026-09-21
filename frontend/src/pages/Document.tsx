@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { api, type BehaviorSummaryResponse, type DocumentRecord, type PageNumberFormat } from '@/services/api'
+import { api, type BehaviorSummaryResponse, type DocumentRecord, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
 import {
   TiptapToolbar,
   type Editor,
@@ -11,6 +11,7 @@ import {
 import { PagedEditor } from '@/components/editor/PagedEditor'
 import {
   type BehaviorEvent,
+  type BehaviorEventPayload,
   createBehaviorEvent,
 } from '@/components/editor/behaviorListener'
 import GrammarPanel, { type GrammarIssue } from '@/components/editor/GrammarPanel'
@@ -28,19 +29,63 @@ import WordProgress from '@/components/editor/WordProgress'
 import { useTheme } from '@/context/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
 import ShareModal from '@/components/ShareModal'
+import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
 import { ArrowLeft, Moon, Sun, ShieldOff, Shield, PanelRight, PanelRightClose, Share2 } from 'lucide-react'
 import { useAutoFormatScanner, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { confidenceThreshold, highlightColorCss } from '@/lib/editorPreferences'
+import { readFormatSnapshot } from '@/lib/formatSnapshot'
 import SuggestionHighlightOverlay, { type HighlightBox } from '@/components/editor/SuggestionHighlightOverlay'
 import {
   cacheDocumentRead,
   evictCachedDocument,
   getCachedDocumentRead,
 } from '@/hooks/useDocumentCache'
+import { supabase } from '@/lib/supabase'
+import { type RealtimeChannel } from '@supabase/supabase-js'
 
 const AUTOSAVE_DELAY = 3000
 const MAX_SAVE_RETRIES = 3
+
+const AVATAR_COLORS = [
+  '#ff5b4f', '#3b82f6', '#10b981', '#f59e0b',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+]
+
+/** Deterministic avatar color for a collaborator. */
+function avatarColor(userId: string): string {
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash * 31 + userId.charCodeAt(i)) >>> 0
+  }
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+/** Two-letter initials for an avatar circle. */
+function avatarInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+/** Live content snapshot broadcast on a document channel. */
+interface DocSyncPayload {
+  content: string
+  title?: string
+  header_content?: string
+  footer_content?: string
+  sender_id: string
+  timestamp: number
+}
+
+/** Presence-tracked collaborator entry. */
+interface RemotePresence {
+  user_id: string
+  display_name: string
+  color: string
+  updated_at: number
+}
 
 const AUTO_FORMAT_DELAY = 1200
 const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.22
@@ -58,6 +103,9 @@ export default function Document(): JSX.Element {
   const readOnly = searchParams.get('readonly') === '1' || viewOnly
   const [docOwnerId, setDocOwnerId] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState<boolean>(false)
+  const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false)
+  const docChannelRef = useRef<RealtimeChannel | null>(null)
+  const [remotePresence, setRemotePresence] = useState<Map<string, RemotePresence>>(new Map())
 
   const [editor, setEditor] = useState<Editor | null>(null)
 
@@ -70,6 +118,10 @@ export default function Document(): JSX.Element {
   const saveRetryCountRef = useRef<number>(0)
   const autoFormatTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suppressedAutoFormatsRef = useRef<Record<string, number>>({})
+  // Set while a grammar/spelling replacement dispatches its own transaction.
+  // The resulting content change must not re-trigger auto-formatting (especially
+  // the auto-apply tier) — fixing a typo should never reformat the paragraph.
+  const suppressAutoFormatRef = useRef<boolean>(false)
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
@@ -111,6 +163,8 @@ export default function Document(): JSX.Element {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
+  // Learned-format match awaiting a click: highlight only, popup opens on click.
+  const [pendingLearnedFormat, setPendingLearnedFormat] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
   const [activeGrammarIssue, setActiveGrammarIssue] = useState<GrammarIssue | null>(null)
   const [activeGrammarRect, setActiveGrammarRect] = useState<DOMRect | null>(null)
@@ -230,6 +284,74 @@ export default function Document(): JSX.Element {
     }
     loadDocument()
   }, [id])
+
+  /* ── Supabase Realtime: live doc sync + collaborator presence ───────── */
+  useEffect(() => {
+    if (!id || !user?.id) return
+    const docId = id
+    const displayName = (user.displayName || user.email?.split('@')[0] || 'Anonymous').trim()
+    const color = avatarColor(user.id)
+
+    const channel = supabase.channel(`document:${docId}`, {
+      config: {
+        broadcast: { self: false },
+        presence: { key: user.id },
+      },
+    })
+    docChannelRef.current = channel
+
+    // Live content sync — apply whole-document snapshots from peers without
+    // triggering a local autosave or echoing the broadcast back.
+    channel.on('broadcast', { event: 'doc_sync' }, ({ payload }: { payload: DocSyncPayload }) => {
+      if (!payload || typeof payload.content !== 'string') return
+      if (readOnly) return
+      if (latestContentRef.current === payload.content) return
+      latestContentRef.current = payload.content
+      setContent(payload.content)
+      if (typeof payload.title === 'string' && payload.title) {
+        latestTitleRef.current = payload.title
+        setTitle(payload.title)
+      }
+      if (typeof payload.header_content === 'string' && payload.footer_content !== undefined) {
+        if (typeof payload.footer_content === 'string') {
+          latestHeaderRef.current = payload.header_content
+          latestFooterRef.current = payload.footer_content
+          setHeaderContent(payload.header_content)
+          setFooterContent(payload.footer_content)
+        }
+      }
+    })
+
+    const refreshPresence = (): void => {
+      const seen: RemotePresence[] = []
+      for (const list of Object.values(channel.presenceState())) {
+        const first = list[0] as unknown as RemotePresence | undefined
+        if (first?.user_id) seen.push(first)
+      }
+      setRemotePresence(new Map(seen.map((entry) => [entry.user_id, entry])))
+    }
+
+    channel
+      .on('presence', { event: 'sync' }, refreshPresence)
+      .on('presence', { event: 'join' }, refreshPresence)
+      .on('presence', { event: 'leave' }, refreshPresence)
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({
+            user_id: user.id,
+            display_name: displayName,
+            color,
+            updated_at: Date.now(),
+          })
+        }
+      })
+
+    return () => {
+      docChannelRef.current = null
+      supabase.removeChannel(channel)
+      setRemotePresence(new Map())
+    }
+  }, [id, user?.id, readOnly, user?.displayName, user?.email])
 
   /** Apply a loaded document record to all editor state. */
   function applyLoadedDocument(doc: DocumentRecord): void {
@@ -378,6 +500,135 @@ export default function Document(): JSX.Element {
     }
   }
 
+  /** Read `{"fontSize":"14pt"}` style attributes as a whole number in points. */
+  function extractFontSizePt(raw: unknown): number | null {
+    if (typeof raw !== 'string') return null
+    const ptMatch = raw.match(/([\d.]+)pt/)
+    if (ptMatch) return Math.round(parseFloat(ptMatch[1]))
+    const pxMatch = raw.match(/([\d.]+)px/)
+    if (pxMatch) return Math.round((parseFloat(pxMatch[1]) * 72) / 96)
+    return null
+  }
+
+  /** Resolve alignment from either the extension's textAlign attr or the inline
+   *  style attr that CustomParagraph preserves through save/load. */
+  function resolveTextAlign(editorValue: Editor): string | undefined {
+    const candidates: unknown[] = [
+      editorValue.getAttributes('paragraph').textAlign,
+      editorValue.getAttributes('heading').textAlign,
+      editorValue.getAttributes('paragraph').style,
+      editorValue.getAttributes('heading').style,
+    ]
+    for (const raw of candidates) {
+      if (typeof raw !== 'string' || raw.length === 0) continue
+      const direct = raw.trim()
+      if (['left', 'center', 'right', 'justify'].includes(direct)) return direct
+      const styleMatch = raw.match(/text-align:\s*([a-z]+)/i)
+      if (styleMatch) return styleMatch[1].toLowerCase()
+    }
+    return undefined
+  }
+
+  /** Snapshot the text + mark state at the format-apply site for behavior learning. */
+  function captureFormatPayload(formatType: string): BehaviorEventPayload | undefined {
+    if (!editor || editor.isDestroyed) return undefined
+    const { from, to } = editor.state.selection
+    let text: string
+    if (from !== to) {
+      text = editor.state.doc.textBetween(from, to).trim()
+    } else {
+      const $pos = editor.state.doc.resolve(from)
+      text = $pos.parent.textContent.trim()
+    }
+    if (text.length < 3) return undefined
+    return {
+      text,
+      format: formatType,
+      bold: editor.isActive('bold'),
+      italic: editor.isActive('italic'),
+      underline: editor.isActive('underline'),
+      fontSize: extractFontSizePt(editor.getAttributes('textStyle').fontSize),
+      textAlign: resolveTextAlign(editor),
+    }
+  }
+
+  /** Human label for a learned format (e.g. "Bold + 14pt + Center"). */
+  function buildLearnedLabel(result: TierCheckResponse): string {
+    const parts: string[] = []
+    if (result.bold) parts.push('Bold')
+    if (result.italic) parts.push('Italic')
+    if (result.underline) parts.push('Underline')
+    if (typeof result.fontSize === 'number' && result.fontSize > 0) {
+      parts.push(`${result.fontSize}pt`)
+    }
+    if (result.textAlign && result.textAlign !== 'left') {
+      parts.push(result.textAlign.charAt(0).toUpperCase() + result.textAlign.slice(1))
+    }
+    if (parts.length === 0) {
+      return formatSuggestionLabel(result.format ?? 'paragraph')
+    }
+    return parts.join(' + ')
+  }
+
+  /** Build a suggestion card for a learned cross-document format match. */
+  function buildLearnedSuggestion(result: TierCheckResponse): Suggestion {
+    const label = buildLearnedLabel(result)
+    const confidencePercent = Math.min(98, Math.max(80, Math.round((result.confidence ?? 0) * 100 * 2.8)))
+    return {
+      format: result.format ?? 'paragraph',
+      confidence: confidencePercent,
+      reason: `You formatted matching text as ${label} in another document`,
+      label,
+      bold: result.bold,
+      italic: result.italic,
+      underline: result.underline,
+      fontSize: result.fontSize ?? undefined,
+      textAlign: result.textAlign,
+      suggestionSource: 'learned',
+    }
+  }
+
+  /** Reproduce a learned suggestion's full format (marks + size + alignment) on the selection. */
+  function applyLearnedFormat(
+    s: Pick<Suggestion, 'format' | 'bold' | 'italic' | 'underline' | 'fontSize' | 'textAlign'>
+  ): { from: number; to: number } | null {
+    if (!editor || editor.isDestroyed || !editor.isEditable) return null
+
+    // A caret (no selection) expands to the whole block so marks, size, and
+    // alignment apply without requiring the user to highlight text first —
+    // matching the chatbot's block-level apply behavior.
+    const { from: selFrom, to: selTo } = editor.state.selection
+    let from = selFrom
+    let to = selTo
+    if (from === to) {
+      const $pos = editor.state.doc.resolve(from)
+      from = $pos.before()
+      to = $pos.after()
+    }
+
+    const chain = editor.chain().focus()
+    chain.setTextSelection({ from, to })
+    if (s.bold) chain.setBold()
+    if (s.italic) chain.setItalic()
+    if (s.underline) chain.setUnderline()
+    if (typeof s.fontSize === 'number' && s.fontSize > 0) {
+      chain.setFontSize(`${s.fontSize}pt`)
+    }
+    // Block type first, then alignment LAST — converting a paragraph to a
+    // heading resets the paragraph's text-align attribute, so alignment
+    // must be applied after the node type change to survive.
+    if (s.format === 'blockquote') chain.setBlockquote()
+    else if (s.format === 'heading1' || s.format === 'h1') chain.setHeading({ level: 1 })
+    else if (s.format === 'heading2' || s.format === 'h2') chain.setHeading({ level: 2 })
+    else if (s.format === 'heading3' || s.format === 'h3') chain.setHeading({ level: 3 })
+    if (s.textAlign && ['left', 'center', 'right', 'justify'].includes(s.textAlign)) {
+      chain.setTextAlign(s.textAlign)
+    }
+    chain.run()
+
+    return { from, to }
+  }
+
   function applyPromptFormat(format: string): void {
     if (!editor || !editor.isEditable) return
     if (isFormatAlreadyActive(format)) return
@@ -413,6 +664,9 @@ export default function Document(): JSX.Element {
   /** Cycle the chip's current format to the next/previous alternative. */
   function cycleSuggestionFormat(direction: 1 | -1): void {
     if (!formatPrompt) return
+    // Learned formats reproduce a stored combination — don't let arrow-cycling
+    // replace the primary format and drop the captured attributes.
+    if (formatPrompt.suggestionSource === 'learned') return
     const list = SUGGESTION_ALTERNATIVES[formatPrompt.format] ?? [formatPrompt.format]
     const idx = list.indexOf(formatPrompt.format)
     if (idx < 0) return
@@ -467,10 +721,28 @@ export default function Document(): JSX.Element {
     const { from, to } = suggestionRange
     const view = editor.view
 
-    // Chip anchor (viewport space) — top-left of the range.
-    const start = view.coordsAtPos(from + 1)
+    // The range may outlive the content it was computed on (content replaced,
+    // undo shrank the doc, another doc loaded). ProseMirror throws a
+    // RangeError for positions outside the document, so bail out before
+    // querying coordinates for a stale range.
+    const docSize = editor.state.doc.content.size
+    if (from < 0 || to > docSize || to < from || from >= docSize) return
+
+    // Chip anchor (viewport space) — top-left of the range. Even with the
+    // bounds check above, a coordinate query can race the editor's own state
+    // during a transaction, so treat any leftover range error as "no anchor".
+    let start: { left: number; top: number } | null = null
+    let endpoint: { left: number; top: number } | null = null
+    try {
+      start = view.coordsAtPos(from + 1)
+      endpoint = view.coordsAtPos(to <= from + 1 ? from + 1 : to - 1)
+    } catch {
+      setSuggestionAnchor(null)
+      setSuggestionBox(null)
+      return
+    }
+    if (!start || !endpoint) return
     if (start.left === 0 && start.top === 0) return
-    const endpoint = view.coordsAtPos(to <= from + 1 ? from + 1 : to - 1)
     setSuggestionAnchor({ x: Math.min(start.left, endpoint.left), y: start.top })
 
     // Overlay box — union of every DOM line covering the range (wrapped lines
@@ -579,7 +851,7 @@ export default function Document(): JSX.Element {
       }
       if (event.key === 'Enter') {
         event.preventDefault()
-        handlePromptAccept(formatPrompt.format)
+        handlePromptAccept(formatPrompt)
         return
       }
       if (event.altKey && event.key === 'ArrowDown') {
@@ -597,6 +869,17 @@ export default function Document(): JSX.Element {
   }, [formatPrompt, suggestionRange])
 
   function scheduleAutoFormatPrediction(nextContent: string): void {
+    // Content changes caused by a grammar/spelling replacement are skipped so
+    // the corrected paragraph never triggers an automatic format apply.
+    if (suppressAutoFormatRef.current) {
+      suppressAutoFormatRef.current = false
+      if (autoFormatTimer.current) {
+        clearTimeout(autoFormatTimer.current)
+        autoFormatTimer.current = null
+      }
+      return
+    }
+
     if (autoFormatTimer.current) {
       clearTimeout(autoFormatTimer.current)
     }
@@ -649,6 +932,63 @@ export default function Document(): JSX.Element {
         if (result.format) {
           applyPromptFormat(result.format)
           handleFormat(result.format)
+        }
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
+
+      // Learned tier — a text→format match from the user's own behavior in
+      // another document. Surfaces as an inline chip + highlight (never auto-applies).
+      if (result.tier === 'learned') {
+        if (!result.format || result.confidence === undefined) {
+          setSuggestions([])
+          setShowSuggestions(false)
+          return
+        }
+
+        const headingFamily = ['heading1', 'heading2', 'heading3', 'h1', 'h2', 'h3', 'blockquote'].includes(result.format)
+        const inList = editor?.isActive('bulletList') || editor?.isActive('orderedList') || editor?.isActive('listItem')
+        if (headingFamily && inList) {
+          setSuggestions([])
+          setShowSuggestions(false)
+          return
+        }
+        if (result.confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) {
+          setSuggestions([])
+          setShowSuggestions(false)
+          return
+        }
+
+        if (result.format !== 'paragraph' && result.format !== 'body_text') {
+          // Highlight the matched block and pop the inline chip at the caret.
+          const { from: selFrom, to: selTo } = editor.state.selection
+          let rangeFrom: number
+          let rangeTo: number
+          if (selFrom !== selTo) {
+            rangeFrom = selFrom
+            rangeTo = selTo
+          } else {
+            const $pos = editor.state.doc.resolve(selFrom)
+            rangeFrom = $pos.before()
+            rangeTo = $pos.after()
+          }
+          setSuggestionRange({ from: rangeFrom, to: rangeTo })
+          // Highlight the matched block first; the chip pops only on click.
+          setPendingLearnedFormat({
+            format: result.format,
+            confidence: Math.min(98, Math.max(80, Math.round(result.confidence * 100 * 2.8))),
+            label: buildLearnedLabel(result),
+            bold: result.bold,
+            italic: result.italic,
+            underline: result.underline,
+            fontSize: result.fontSize ?? undefined,
+            textAlign: result.textAlign,
+            suggestionSource: 'learned',
+          })
+          setSuggestions([buildLearnedSuggestion(result)])
+          setShowSuggestions(true)
+          return
         }
         setSuggestions([])
         setShowSuggestions(false)
@@ -791,6 +1131,25 @@ export default function Document(): JSX.Element {
       saveRetryCountRef.current = 0
       setSaveStatus('saved')
       if (id) void evictCachedDocument(id)
+
+      // Broadcast the finished stroke to collaborators on the live channel.
+      const channel = docChannelRef.current
+      if (channel) {
+        void channel
+          .send({
+            type: 'broadcast',
+            event: 'doc_sync',
+            payload: {
+              content: nextContent,
+              title: nextTitle,
+              header_content: latestHeaderRef.current,
+              footer_content: latestFooterRef.current,
+              sender_id: user?.id ?? '',
+              timestamp: Date.now(),
+            },
+          })
+          .catch(() => {})
+      }
     } catch (error) {
       console.error('Autosave failed', error)
       // Give up after a few consecutive failures instead of retrying forever.
@@ -893,7 +1252,7 @@ export default function Document(): JSX.Element {
       return nextHistory
     })
     if (id) {
-      const event = createBehaviorEvent(formatType, id)
+      const event = createBehaviorEvent(formatType, id, undefined, captureFormatPayload(formatType))
       setBehaviorEvents((prev) => [...prev, event])
       api.behavior.log(event).catch((err) => console.error('Behavior log failed', err))
     }
@@ -903,10 +1262,23 @@ export default function Document(): JSX.Element {
     updateWordCount(nextContent)
   }
 
-  function handlePromptAccept(format: string): void {
+  function handlePromptAccept(format: string | FormatSuggestion): void {
     if (editor && !editor.isEditable) return
-    applyPromptFormat(format)
-    handleFormat(format)
+    const applied = typeof format === 'string' ? format : format.format
+    const confidence =
+      typeof format === 'string' ? formatPrompt?.confidence : format.confidence
+
+    if (typeof format === 'object' && format.suggestionSource === 'learned') {
+      // Keep the applied block highlighted after accept so the user sees
+      // exactly which text received the learned format.
+      const appliedRange = applyLearnedFormat(format)
+      if (appliedRange) {
+        setSuggestionRange(appliedRange)
+      }
+    } else {
+      applyPromptFormat(applied)
+    }
+    handleFormat(applied)
 
     // Dismiss the active scanner suggestion
     if (scannerActive) {
@@ -916,7 +1288,7 @@ export default function Document(): JSX.Element {
     if (id) {
       api.behavior
         .log({
-          action: `auto_preview_accepted:${format}`,
+          action: `auto_preview_accepted:${applied}`,
           timestamp: new Date().toISOString(),
           documentId: id,
         })
@@ -926,8 +1298,8 @@ export default function Document(): JSX.Element {
         .logFeedback({
           documentId: id,
           predictionType: 'format_prompt',
-          predictedFormat: format,
-          confidence: formatPrompt?.confidence,
+          predictedFormat: applied,
+          confidence,
           accepted: true,
         })
         .catch((error) => console.error('Format prompt acceptance feedback failed', error))
@@ -936,6 +1308,7 @@ export default function Document(): JSX.Element {
     void loadBehaviorSummary()
 
     setFormatPrompt(null)
+    setPendingLearnedFormat(null)
     setSuggestions([])
     setShowSuggestions(false)
   }
@@ -980,20 +1353,23 @@ export default function Document(): JSX.Element {
     }
 
     setFormatPrompt(null)
+    setPendingLearnedFormat(null)
     setSuggestions([])
     setShowSuggestions(false)
   }
 
-  function handleGrammarApply(issue: GrammarIssue): void {
+  function handleGrammarApply(issue: GrammarIssue, suggestion?: string): void {
     if (!editor || !editor.isEditable) return
 
-    function preserveReplacementCase(originalText: string, suggestion: string): string {
-      if (!originalText || !suggestion) return suggestion
-      if (originalText === originalText.toUpperCase()) return suggestion.toUpperCase()
+    function preserveReplacementCase(originalText: string, replacementSuggestion: string): string {
+      if (!originalText || !replacementSuggestion) return replacementSuggestion
+      if (originalText === originalText.toUpperCase()) return replacementSuggestion.toUpperCase()
       if (originalText[0] === originalText[0].toUpperCase())
-        return suggestion[0].toUpperCase() + suggestion.slice(1)
-      return suggestion
+        return replacementSuggestion[0].toUpperCase() + replacementSuggestion.slice(1)
+      return replacementSuggestion
     }
+
+    const replacementSuggestion = suggestion ?? issue.suggestion
 
     // Apply grammar fix via TipTap's transaction system
     const { state, dispatch } = editor.view
@@ -1007,13 +1383,16 @@ export default function Document(): JSX.Element {
       const idx = text.toLowerCase().indexOf(needle)
       if (idx !== -1) {
         const matchedText = text.substring(idx, idx + issue.original.length)
-        const replacement = preserveReplacementCase(matchedText, issue.suggestion)
-        tr.replaceWith(pos + idx, pos + idx + issue.original.length, state.schema.text(replacement))
+        const replacement = preserveReplacementCase(matchedText, replacementSuggestion)
+        tr.replaceWith(pos + idx, pos + idx + issue.original.length, state.schema.text(replacement, node.marks))
         applied = true
       }
     })
 
-    if (applied) dispatch(tr)
+    if (applied) {
+      suppressAutoFormatRef.current = true
+      dispatch(tr)
+    }
     setGrammarIssues((prev) => prev.filter((i) => i !== issue))
   }
 
@@ -1047,6 +1426,8 @@ export default function Document(): JSX.Element {
         console.error('Failed to persist academic preset', err)
       }
     }
+    // Persist the preset's page geometry and log a snapshot with the format state.
+    scheduleSave()
   }
 
   /** Grammar underline click — open the anchored fix popover. */
@@ -1100,6 +1481,11 @@ export default function Document(): JSX.Element {
   /** Open the formatting suggestion popup (chip) for the active suggestion. */
   function openFormattingPopup(): void {
     setActionsMenu(null)
+    if (pendingLearnedFormat) {
+      setFormatPrompt(pendingLearnedFormat)
+      setPendingLearnedFormat(null)
+      return
+    }
     if (scannerActive) {
       setFormatPrompt({
         format: scannerActive.format,
@@ -1126,6 +1512,10 @@ export default function Document(): JSX.Element {
         x: suggestionBox?.left ?? suggestionAnchor?.x ?? 0,
         y: suggestionBox?.top ?? suggestionAnchor?.y ?? 0,
       })
+    } else if (pendingLearnedFormat) {
+      // Learned cross-document match clicked: promote the highlight to the chip.
+      setFormatPrompt(pendingLearnedFormat)
+      setPendingLearnedFormat(null)
     } else {
       openFormattingPopup()
     }
@@ -1288,6 +1678,50 @@ export default function Document(): JSX.Element {
 
           {/* Right: save status + actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+            {/* Live collaborator avatars (Supabase Realtime presence) */}
+            {remotePresence.size > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {Array.from(remotePresence.values())
+                  .sort((a, b) => (a.user_id === user?.id ? -1 : b.user_id === user?.id ? 1 : 0))
+                  .slice(0, 4)
+                  .map((entry) => {
+                    const isSelf = entry.user_id === user?.id
+                    const isOwner = entry.user_id === docOwnerId
+                    const label = `${entry.display_name}${isSelf ? ' (You)' : isOwner ? ' (Owner)' : ' (Collaborator)'} — Editing now`
+                    return (
+                      <button
+                        key={entry.user_id}
+                        type="button"
+                        title={label}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '26px',
+                          height: '26px',
+                          borderRadius: '999px',
+                          border: '2px solid var(--card)',
+                          backgroundColor: entry.color,
+                          color: '#ffffff',
+                          fontSize: '0.625rem',
+                          fontWeight: 700,
+                          cursor: 'default',
+                          fontFamily: 'inherit',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
+                        }}
+                      >
+                        {avatarInitials(entry.display_name)}
+                      </button>
+                    )
+                  })}
+                {remotePresence.size > 4 && (
+                  <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--muted-foreground)' }}>
+                    +{remotePresence.size - 4}
+                  </span>
+                )}
+              </div>
+            )}
+
             <span
               style={{
                 display: 'inline-flex',
@@ -1503,6 +1937,7 @@ export default function Document(): JSX.Element {
             onApplyStyle={handleApplyRibbonStyle}
             onApplyPreset={(key) => { void handleApplyAcademicPreset(key) }}
             activePreset={formattingPreset}
+            onOpenPersonalization={() => setProfileModalOpen(true)}
           />
         </div>
         )}
@@ -1606,7 +2041,7 @@ export default function Document(): JSX.Element {
 
           {/* Overlay highlight drawn on the suggested document line, positioned
               inside the scroll container so it moves with the content */}
-            {!readOnly && scannerActive && suggestionRange && suggestionBox && (
+            {!readOnly && (scannerActive || pendingLearnedFormat) && suggestionRange && suggestionBox && (
               <SuggestionHighlightOverlay
                 box={suggestionBox}
                 onOpen={handleOverlayOpen}
@@ -1657,7 +2092,7 @@ export default function Document(): JSX.Element {
           onJumpTo={jumpToScannerTarget}
           onAcceptScanner={acceptScannerSuggestion}
           onRejectScanner={rejectScannerSuggestion}
-          onApplyMl={(fmt) => handlePromptAccept(fmt)}
+          onApplyMl={(s) => handlePromptAccept(s)}
           onDismissMl={() => handlePromptReject()}
           onApplyGrammar={handleGrammarApply}
           onDismissGrammar={handleGrammarDismiss}
@@ -1666,8 +2101,40 @@ export default function Document(): JSX.Element {
           onVersionRestored={(version) => {
             // Push the restored snapshot back into both the editor and the
             // page state so the canvas reflects the restored history point.
+            const snapshot = readFormatSnapshot(version.editor_prefs)
+            latestTitleRef.current = version.title
+            setTitle(version.title)
             setContent(version.content)
             handleContentChange(version.content)
+            if (version.page_size) {
+              latestPageSetupRef.current.pageSize = version.page_size
+              setPageSize(version.page_size)
+            }
+            if (version.margins) {
+              latestPageSetupRef.current.margins = version.margins
+              setMargins(version.margins)
+            }
+            if (version.orientation) {
+              latestPageSetupRef.current.orientation = version.orientation
+              setOrientation(version.orientation)
+            }
+            latestHeaderRef.current = snapshot.header_content
+            latestFooterRef.current = snapshot.footer_content
+            setHeaderContent(snapshot.header_content)
+            setFooterContent(snapshot.footer_content)
+            latestHeaderSettingsRef.current = {
+              showHeader: snapshot.show_header,
+              showFooter: snapshot.show_footer,
+              headerNumberFormat: snapshot.header_number_format,
+              footerNumberFormat: snapshot.footer_number_format,
+            }
+            setShowHeader(snapshot.show_header)
+            setShowFooter(snapshot.show_footer)
+            setHeaderNumberFormat(snapshot.header_number_format)
+            setFooterNumberFormat(snapshot.footer_number_format)
+            latestFormatHistoryRef.current = snapshot.formatting_history
+            setFormatHistory(snapshot.formatting_history)
+            setFormattingPreset(snapshot.formatting_preset)
           }}
           extraSections={
             <>
@@ -1806,7 +2273,7 @@ export default function Document(): JSX.Element {
       {actionsMenu && (
         <SuggestionActionsMenu
           anchor={actionsMenu}
-          formattingLabel={formatSuggestionLabel(scannerActive?.format ?? '')}
+          formattingLabel={formatSuggestionLabel(pendingLearnedFormat?.format ?? scannerActive?.format ?? '')}
           grammarCount={issuesOnRange().length}
           onFormatting={openFormattingPopup}
           onGrammar={openGrammarFromMenu}
@@ -1818,7 +2285,7 @@ export default function Document(): JSX.Element {
       {!readOnly && formatPrompt && suggestionRange && suggestionAnchor && (
         <InlineSuggestionChip
           anchor={suggestionAnchor}
-          label={formatSuggestionLabel(formatPrompt.format)}
+          label={formatPrompt.label ?? formatSuggestionLabel(formatPrompt.format)}
           confidence={formatPrompt.confidence}
           queuePosition={queuePosition}
           queueTotal={queueTotal}
@@ -1826,7 +2293,7 @@ export default function Document(): JSX.Element {
           prevLabel={cyclePrevLabel}
           onChangeTo={cycleSuggestionFormat}
           onJump={handleChipJump}
-          onAccept={() => handlePromptAccept(formatPrompt.format)}
+          onAccept={() => handlePromptAccept(formatPrompt)}
           onReject={handlePromptReject}
         />
       )}
@@ -1834,6 +2301,11 @@ export default function Document(): JSX.Element {
       {shareOpen && id && (
         <ShareModal documentId={id} onClose={() => setShareOpen(false)} />
       )}
+
+      <PersonalizationProfileModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+      />
     </div>
   )
 }

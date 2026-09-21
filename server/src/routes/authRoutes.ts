@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent } from '../controllers/authController'
+import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getUserStorage } from '../controllers/authController'
 import { authMiddleware } from '../middleware/authMiddleware'
 import { authArcjet, signupArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
@@ -16,6 +16,9 @@ router.post('/google', authArcjet, validateBody(googleAuthSchema), googleAuth)
 
 /** Update the signed-in user's own profile (display name). */
 router.patch('/profile', authMiddleware, validateBody(updateProfileSchema), updateProfile)
+
+/** Return the signed-in user's storage usage vs their account quota. */
+router.get('/storage', authMiddleware, getUserStorage)
 
 /** Submit a faculty verification application (student → pending professor). */
 router.post('/apply-professor', authMiddleware, validateBody(applyProfessorSchema), applyProfessor)

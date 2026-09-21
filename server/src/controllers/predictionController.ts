@@ -83,7 +83,10 @@ export async function predictFormatting(
     }
 
     const { isolationMode } = req.body as TextBody
-    const userIdFromBody = (req.body as TextBody & { userId?: string }).userId
+    // Personalization target — frontend sends snake_case user_id (may differ
+    // from the authenticated caller for owner-scoped predictions).
+    const user_id = (req.body as TextBody & { user_id?: string }).user_id
+    const predictionTargetId = user_id || userId
 
     const allowed = await enforceQuota(userId, 'predict', res)
     if (!allowed) {
@@ -106,7 +109,27 @@ export async function predictFormatting(
       console.error('Suggestion cache read failed', error)
     }
 
-    const prediction = await predictFormat({ text, userId: userIdFromBody, isolationMode })
+    const prediction = await predictFormat({ text, userId: predictionTargetId, isolationMode })
+
+    // Learned text→format match bypasses the (stale) suggestion cache.
+    if (prediction.learned) {
+      res.status(200).json({
+        predicted_format: prediction.learned.format,
+        confidence: prediction.learned.confidence,
+        feature_values: {},
+        isolation_mode: 'learned',
+        learned: {
+          snippet: prediction.learned.snippet,
+          bold: prediction.learned.bold,
+          italic: prediction.learned.italic,
+          underline: prediction.learned.underline,
+          fontSize: prediction.learned.fontSize,
+          count: prediction.learned.count,
+        },
+        cached: false,
+      })
+      return
+    }
 
     try {
       await cacheSuggestion(userId, text, {

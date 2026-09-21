@@ -1,5 +1,7 @@
 import { createContext, useState, useEffect, ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import { clearDocumentCache } from '../hooks/useDocumentCache'
+import { clearDriveCache } from '../hooks/useDriveCache'
 
 export interface UserAuthData {
   id: string
@@ -14,7 +16,7 @@ interface AuthContextType {
   token: string | null
   loading: boolean
   isAuthenticated: boolean
-  login: (user: UserAuthData, token: string) => void
+  login: (user: UserAuthData, token: string, refreshToken?: string) => void
   logout: () => void
   /** Merges partial profile updates (e.g. display name) into the current user. */
   updateUser: (patch: Partial<UserAuthData>) => void
@@ -41,9 +43,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error('Failed to parse saved user', e)
         }
       }
+      // Refresh the persisted session in the background so the access
+      // token never silently expires while the app is open.
+      void refreshStoredSession()
     }
     setLoading(false)
   }, [])
+
+  /**
+   * Swap the stored access token for a fresh one using the saved refresh
+   * token. Keeps the user signed in past the ~1h access-token lifetime.
+   */
+  async function refreshStoredSession(): Promise<void> {
+    const accessToken = localStorage.getItem('authToken')
+    const refreshToken = localStorage.getItem('authRefreshToken')
+    if (!accessToken || !refreshToken) return
+    try {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
+      const session = data.session
+      if (error || !session) return
+      localStorage.setItem('authToken', session.access_token)
+      if (session.refresh_token) {
+        localStorage.setItem('authRefreshToken', session.refresh_token)
+      }
+      setToken(session.access_token)
+    } catch (e) {
+      console.error('Failed to refresh session on start', e)
+    }
+  }
 
   // Listen for global auth events dispatched by api.ts
   useEffect(() => {
@@ -54,18 +84,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized)
   }, [])
 
-  const login = (userData: UserAuthData, authToken: string) => {
+  const login = (userData: UserAuthData, authToken: string, refreshToken?: string) => {
     setUser(userData)
     setToken(authToken)
     localStorage.setItem('authToken', authToken)
     localStorage.setItem('authUser', JSON.stringify(userData))
+    if (refreshToken) {
+      localStorage.setItem('authRefreshToken', refreshToken)
+    }
   }
 
   const logout = () => {
     setUser(null)
     setToken(null)
     localStorage.removeItem('authToken')
+    localStorage.removeItem('authRefreshToken')
     localStorage.removeItem('authUser')
+    // Flush per-user caches so the next account can never see this one's data.
+    void clearDriveCache()
+    void clearDocumentCache()
   }
 
   const updateUser = (patch: Partial<UserAuthData>) => {

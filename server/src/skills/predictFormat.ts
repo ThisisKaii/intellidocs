@@ -2,6 +2,8 @@ import {
   requestFormatPrediction,
   type IsolationMode,
 } from '../ai/bridge/pythonBridge'
+import { matchLearnedFormat } from './matchLearnedFormat'
+import type { LearnedFormatMatch } from '../types/index'
 
 export interface PredictFormatInput {
   text: string
@@ -18,9 +20,12 @@ export interface PredictFormatResult {
   confidence: number
   featureValues: Record<string, number>
   isolationMode: string
+  learned?: LearnedFormatMatch
 }
 
-// Request a formatting prediction from the Python ML service.
+// Predict the next format for the given text. The user's learned text→format
+// memory (from behavior events across documents) takes priority over the ML
+// prediction when it contains a match for the current text.
 export async function predictFormat(
   input: PredictFormatInput
 ): Promise<PredictFormatResult> {
@@ -28,6 +33,17 @@ export async function predictFormat(
 
   if (!text) {
     throw new Error('Prediction text is required')
+  }
+
+  const learned = await matchLearnedFormat(input.userId, text)
+  if (learned) {
+    return {
+      predictedFormat: 'learned',
+      confidence: learned.confidence,
+      featureValues: {},
+      isolationMode: 'learned',
+      learned,
+    }
   }
 
   const result = await requestFormatPrediction(text, {

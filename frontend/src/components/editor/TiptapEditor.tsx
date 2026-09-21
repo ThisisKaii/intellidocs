@@ -19,6 +19,7 @@ import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import Highlight from '@tiptap/extension-highlight'
 import { GrammarUnderlineExtension } from './GrammarUnderlineExtension'
+import { HarperLinterExtension } from './HarperLinterExtension'
 import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { PageBreak } from './PageBreak'
@@ -63,6 +64,7 @@ import {
   Printer,
   FileCode,
   GraduationCap,
+  UserCog,
 } from 'lucide-react'
 import { api, type PageNumberFormat } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
@@ -369,6 +371,7 @@ export const editorExtensions = [
   Superscript,
   Highlight.configure({ multicolor: true }),
   GrammarUnderlineExtension,
+  HarperLinterExtension,
   StyleGuideExtension,
   MarkdownTriggers,
 ]
@@ -669,6 +672,7 @@ interface ToolbarProps {
   onApplyStyle: (format: string) => void
   onApplyPreset: (key: string) => void
   activePreset: string | null
+  onOpenPersonalization?: () => void
 }
 
 /**
@@ -701,6 +705,7 @@ export function TiptapToolbar({
   onApplyStyle,
   onApplyPreset,
   activePreset,
+  onOpenPersonalization,
 }: ToolbarProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'styles'>('home')
   const [openStylesManage, setOpenStylesManage] = useState(false)
@@ -1867,6 +1872,40 @@ export function TiptapToolbar({
         )}
       </div>
 
+      {/* Personalization profile export/import */}
+      {onOpenPersonalization && (
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              closeAllMenus()
+              onOpenPersonalization()
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              height: '28px',
+              padding: '0 10px',
+              borderRadius: '6px',
+              border: 'none',
+              ...SHADOW_BORDER,
+              backgroundColor: 'transparent',
+              color: 'var(--foreground)',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+            title="Export or import your personalization profile (.idocprofile)"
+          >
+            <UserCog style={{ width: '14px', height: '14px', opacity: 0.7 }} />
+            <span>Personalization</span>
+          </button>
+        </div>
+      )}
+
       {/* Export document */}
       <div style={{ position: 'relative' }}>
         <button
@@ -2395,6 +2434,13 @@ const PROSE_STYLES = `
   }
   .ProseMirror .grammar-issue:hover {
     background-color: color-mix(in srgb, var(--error) 8%, transparent);
+  }
+  .ProseMirror .harper-underline {
+    text-decoration: underline;
+    text-decoration-skip-ink: none;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    text-decoration-color: #7c3aed;
   }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-2px); }

@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
-import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion } from '../types/index'
+import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion, FormatSnapshot, PageNumberFormat } from '../types/index'
 import { getRedisClient } from '../utils/redisClient'
 import { isShareLinkExpired } from './shareModel'
 
@@ -8,6 +8,14 @@ export const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!,
 )
+
+/**
+ * Column set for list endpoints. Excludes the heavyweight `content` column:
+ * documents can contain several MB of formatted text, and fetching it for
+ * every row on the home screen exceeded Supabase's statement timeout.
+ */
+const LIST_COLUMNS =
+  'id,user_id,title,header_content,footer_content,show_header,show_footer,header_number_format,footer_number_format,page_size,margins,orientation,formatting_history,is_isolated,formatting_preset,is_deleted,deleted_at,share_permission,share_token,share_expires_at,created_at,updated_at'
 
 /** 1-hour TTL for cached document reads. */
 const DOC_CACHE_TTL = 3600
@@ -62,38 +70,39 @@ async function invalidateDocumentCache(id: string): Promise<void> {
 export async function getDocuments(userId: string): Promise<Document[]> {
   const { data, error } = await supabase
     .from('documents')
-    .select('*')
+    .select(LIST_COLUMNS)
     .eq('user_id', userId)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
   if (error) throw new Error(`Failed to get documents: ${error.message}`)
-  return data || []
+  return (data || []).map((row) => ({ ...row, content: '' }))
 }
 
 /** Return documents in the trash (soft-deleted, owned by the user). */
 export async function getTrashDocuments(userId: string): Promise<Document[]> {
   const { data, error } = await supabase
     .from('documents')
-    .select('*')
+    .select(LIST_COLUMNS)
     .eq('user_id', userId)
     .eq('is_deleted', true)
     .order('deleted_at', { ascending: false })
   if (error) throw new Error(`Failed to get trash documents: ${error.message}`)
-  return data || []
+  return (data || []).map((row) => ({ ...row, content: '' }))
 }
 
 /** Return documents shared to this user by others (active non-deleted shares). */
 export async function getSharedDocuments(userId: string): Promise<Document[]> {
   const { data, error } = await supabase
     .from('documents')
-    .select('*, document_shares!inner(permission, owner_id)')
+    .select(`${LIST_COLUMNS}, document_shares!inner(permission, owner_id)`)
     .eq('document_shares.shared_with', userId)
     .eq('is_deleted', false)
 
   if (error) throw new Error(`Failed to get shared documents: ${error.message}`)
 
-  return (data || []).map((d: Document & { document_shares?: { permission: string; owner_id: string }[] }) => ({
+  return (data || []).map((d: Omit<Document, 'content'> & { document_shares?: { permission: string; owner_id: string }[] }) => ({
     ...d,
+    content: '',
     share_permission: (d.document_shares?.[0]?.permission ?? 'view') as Document['share_permission'],
     shared_by: d.document_shares?.[0]?.owner_id,
   }))
@@ -309,6 +318,58 @@ export async function deleteDocument(
 /** Minimum time (ms) between consecutive snapshots for the same document. */
 const VERSION_THROTTLE_MS = 3000
 
+/** Format state bundled into every version snapshot (stored in editor_prefs). */
+const buildFormatSnapshot = (doc: Document): FormatSnapshot => ({
+  formatting_history: Array.isArray(doc.formatting_history)
+    ? (doc.formatting_history as string[])
+    : [],
+  formatting_preset: doc.formatting_preset ?? null,
+  header_content: doc.header_content ?? '',
+  footer_content: doc.footer_content ?? '',
+  show_header: doc.show_header ?? false,
+  show_footer: doc.show_footer ?? false,
+  header_number_format: doc.header_number_format ?? 'none',
+  footer_number_format: doc.footer_number_format ?? 'none',
+})
+
+/** Read a format snapshot back from a version's editor_prefs (defensive). */
+const readFormatSnapshot = (
+  raw: Record<string, unknown> | null | undefined,
+): FormatSnapshot => {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      formatting_history: [],
+      formatting_preset: null,
+      header_content: '',
+      footer_content: '',
+      show_header: false,
+      show_footer: false,
+      header_number_format: 'none',
+      footer_number_format: 'none',
+    }
+  }
+  const stringArray = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((x): x is string => typeof x === 'string') : []
+  const stringOf = (value: unknown, fallback: string): string =>
+    typeof value === 'string' ? value : fallback
+  const boolOf = (value: unknown, fallback: boolean): boolean =>
+    typeof value === 'boolean' ? value : fallback
+  const numberFormat = (value: unknown): PageNumberFormat =>
+    value === 'number' || value === 'roman' ? value : 'none'
+
+  return {
+    formatting_history: stringArray(raw.formatting_history),
+    formatting_preset:
+      typeof raw.formatting_preset === 'string' ? raw.formatting_preset : null,
+    header_content: stringOf(raw.header_content, ''),
+    footer_content: stringOf(raw.footer_content, ''),
+    show_header: boolOf(raw.show_header, false),
+    show_footer: boolOf(raw.show_footer, false),
+    header_number_format: numberFormat(raw.header_number_format),
+    footer_number_format: numberFormat(raw.footer_number_format),
+  }
+}
+
 /** Insert a new version snapshot, throttled to avoid a row per keystroke. */
 export async function snapshotDocumentVersion(
   doc: Document,
@@ -332,7 +393,7 @@ export async function snapshotDocumentVersion(
       page_size: doc.page_size,
       margins: doc.margins ?? null,
       orientation: doc.orientation,
-      editor_prefs: null,
+      editor_prefs: buildFormatSnapshot(doc),
       reason,
     })
     if (error) {
@@ -393,6 +454,7 @@ export async function restoreDocumentVersion(
   userId: string,
 ): Promise<Document> {
   const version = await getDocumentVersionById(documentId, versionId, userId)
+  const prefs = readFormatSnapshot(version.editor_prefs)
 
   const { data, error } = await supabase
     .from('documents')
@@ -402,6 +464,14 @@ export async function restoreDocumentVersion(
       page_size: version.page_size ?? undefined,
       margins: version.margins ?? undefined,
       orientation: version.orientation ?? undefined,
+      header_content: prefs.header_content,
+      footer_content: prefs.footer_content,
+      show_header: prefs.show_header,
+      show_footer: prefs.show_footer,
+      header_number_format: prefs.header_number_format,
+      footer_number_format: prefs.footer_number_format,
+      formatting_history: prefs.formatting_history,
+      formatting_preset: prefs.formatting_preset,
     })
     .eq('id', documentId)
     .eq('user_id', userId)

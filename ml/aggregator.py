@@ -47,7 +47,8 @@ def run_once() -> int:
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
     duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
 
-    os.makedirs(os.path.dirname(duckdb_path), exist_ok=True)
+    if not duckdb_path.startswith("md:") and os.path.dirname(duckdb_path):
+        os.makedirs(os.path.dirname(duckdb_path), exist_ok=True)
 
     r = redis.from_url(redis_url, decode_responses=True)
     conn = duckdb.connect(duckdb_path)

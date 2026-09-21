@@ -1,11 +1,13 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import {
+  Document,
   FormatPreset,
   FormatBinding,
   CreateFormatBindingRequest,
   UpdateFormatBindingRequest,
 } from '../types/index'
+import { snapshotDocumentVersion } from './documentModel'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -105,6 +107,20 @@ export async function deleteBinding(
 
 // ── Document ↔ preset association ────────────────────────────────────────────
 
+/** Return the owner user id of a document, or null if it does not exist. */
+export async function getOwnerOfDocument(
+  documentId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('documents')
+    .select('user_id')
+    .eq('id', documentId)
+    .single()
+
+  if (error) return null
+  return data?.user_id ?? null
+}
+
 /** Read the preset key currently assigned to a document. */
 export async function getDocumentPreset(
   documentId: string,
@@ -127,11 +143,17 @@ export async function setDocumentPreset(
   userId: string,
   preset: string
 ): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('documents')
     .update({ formatting_preset: preset })
     .eq('id', documentId)
     .eq('user_id', userId)
+    .select()
+    .single()
 
   if (error) throw new Error(`Failed to set document preset: ${error.message}`)
+
+  // Preset-only changes need their own history entry so the user can roll
+  // previous the format state back even when no content was touched.
+  if (data) void snapshotDocumentVersion(data as Document, 'preset')
 }

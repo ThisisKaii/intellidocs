@@ -34,7 +34,8 @@ export default function AuthCallback(): JSX.Element {
             role: result.role,
             verificationStatus: result.verificationStatus,
           },
-          session.access_token
+          session.access_token,
+          session.refresh_token
         )
 
         navigate('/dashboard', { replace: true })

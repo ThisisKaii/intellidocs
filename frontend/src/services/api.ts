@@ -3,12 +3,24 @@
 // ???
 /// <reference types="vite/client" />
 
+import { supabase } from '../lib/supabase'
+import {
+  AdminApplicant,
+  AdminDocumentRecord,
+  AdminUserRecord,
+  RoleName,
+  SystemReport,
+  VerifyApplicantBody,
+} from '../types/admin'
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 interface User {
   id: string
   email: string
   displayName?: string | null
+  role?: 'student' | 'professor' | 'admin'
+  verificationStatus?: 'pending' | 'approved' | 'rejected'
 }
 
 export type PageNumberFormat = 'none' | 'number' | 'roman'
@@ -76,10 +88,22 @@ export interface FolderRecord {
   updated_at: string
 }
 
+export interface BehaviorEventPayload {
+  text?: string
+  format?: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  fontSize?: number | null
+  textAlign?: string
+}
+
 export interface BehaviorEvent {
   action: string
   timestamp: string
   documentId: string
+  blockId?: string
+  payload?: BehaviorEventPayload
 }
 
 export interface BehaviorSummaryLatestEvent extends BehaviorEvent {
@@ -105,7 +129,7 @@ export interface PredictionResponse {
 
 interface LoginResponse {
   user: User
-  session: { access_token: string }
+  session: { access_token: string; refresh_token: string }
   message: string
 }
 
@@ -114,6 +138,13 @@ interface GoogleSyncResponse {
   role: 'student' | 'professor' | 'admin'
   verificationStatus: 'pending' | 'approved' | 'rejected'
   message: string
+}
+
+/** Signed-in user's own storage usage vs their account quota. */
+export interface StorageSummary {
+  usedBytes: number
+  quotaBytes: number
+  role: 'student' | 'professor' | 'admin'
 }
 
 interface RegisterResponse {
@@ -174,11 +205,45 @@ export interface FormatBinding {
 }
 
 export interface TierCheckResponse {
-  tier: 'binding' | 'preset' | 'ml' | 'none'
+  tier: 'binding' | 'preset' | 'ml' | 'learned' | 'none'
   format?: string
   confidence?: number
   reason?: string
   feature_values?: Record<string, number>
+  /** Present on learned-tier responses — reproduces the user's own format. */
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  fontSize?: number | null
+  textAlign?: string
+  snippet?: string
+}
+
+export type ProfileScope = 'formatting' | 'grammar' | 'both'
+
+/** A portable .idocprofile format binding (no ownership/timestamps). */
+export interface PortableFormatBinding {
+  trigger_condition: TriggerCondition
+  format_to_apply: string
+  priority: number
+}
+
+/** Portable personalization bundle exchanged as an .idocprofile file. */
+export interface IdocProfile {
+  version: string
+  creator_email?: string
+  exported_at?: string
+  scope: ProfileScope
+  formatting?: { custom_bindings: PortableFormatBinding[] }
+  grammar_spelling?: { custom_dictionary: string[]; ignored_patterns: string[] }
+}
+
+export interface ProfileImportResult {
+  message: string
+  added_bindings: number
+  skipped_bindings: number
+  added_words: number
+  added_patterns: number
 }
 
 export interface DocumentShare {
@@ -216,6 +281,8 @@ export interface GrammarCheckResponse {
 export interface SpellingIssue {
   word: string
   suggestion: string | null
+  /** Candidate corrections the spell checker considers plausible. */
+  suggestions?: string[]
   type: string
 }
 
@@ -332,51 +399,133 @@ function getAuthToken(): string | null {
   return localStorage.getItem('authToken')
 }
 
-async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const token = getAuthToken()
-  const headers = {
-    ...options?.headers,
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
+/** Small sleep helper used between fetch retries. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
-  const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
-    ...options,
-    headers,
+/** Remove all persisted auth tokens and user data (used on final 401 only). */
+function clearAuthSession(): void {
+  localStorage.removeItem('authToken')
+  localStorage.removeItem('authRefreshToken')
+  localStorage.removeItem('authUser')
+}
+
+/** Singleton refresh promise so concurrent 401s share one Supabase refresh. */
+let sessionRefreshPromise: Promise<boolean> | null = null
+
+/**
+ * Attempt to refresh the Supabase session using the stored refresh token.
+ * Persists the rotated access (and refresh) token if the refresh succeeds.
+ */
+async function recoverAuthSession(): Promise<boolean> {
+  if (sessionRefreshPromise) return sessionRefreshPromise
+
+  sessionRefreshPromise = (async () => {
+    const accessToken = localStorage.getItem('authToken')
+    const refreshToken = localStorage.getItem('authRefreshToken')
+    if (!accessToken || !refreshToken) return false
+
+    try {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
+      const session = data.session
+      if (error || !session) return false
+      localStorage.setItem('authToken', session.access_token)
+      if (session.refresh_token) {
+        localStorage.setItem('authRefreshToken', session.refresh_token)
+      }
+      return true
+    } catch {
+      return false
+    }
+  })().finally(() => {
+    sessionRefreshPromise = null
   })
 
-  if (response.status === 204) {
-    return null as T
-  }
+  return sessionRefreshPromise
+}
 
-  if (!response.ok) {
-    const errorBody: unknown = await response.json().catch(() => null)
-    let errorMessage = 'Network response was not ok'
-    if (
-      typeof errorBody === 'object' &&
-      errorBody !== null &&
-      'error' in errorBody &&
-      typeof (errorBody as { error?: unknown }).error === 'string'
-    ) {
-      errorMessage = (errorBody as { error: string }).error
-    } else {
-      errorMessage = `HTTP ${response.status}: Request failed`
+async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const isSafeMethod = !options?.method || options.method === 'GET' || options.method === 'HEAD'
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const token = getAuthToken()
+    const response: Response = await fetch(`${API_BASE_URL}/${endpoint}`, {
+      ...options,
+      headers: {
+        ...options?.headers,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }).catch(async (): Promise<Response> => {
+      // Network-level failure (e.g. server mid-restart). Retry for safe methods.
+      if (isSafeMethod && attempt < 2) {
+        await delay(attempt === 0 ? 300 : 1000)
+        return fetch(`${API_BASE_URL}/${endpoint}`, {
+          ...options,
+          headers: {
+            ...options?.headers,
+            ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
+          },
+        })
+      }
+      throw new Error('Network error: unable to reach the server.')
+    })
+
+    if (response.status === 204) {
+      return null as T
     }
 
-    // Attach HTTP status code to error
-    const err = new Error(errorMessage) as Error & { status?: number }
-    err.status = response.status
+    if (response.ok) {
+      return response.json() as Promise<T>
+    }
+
+    const rawBody: string = await response.text().catch(() => '')
+
+    let errorMessage = `HTTP ${response.status}: Request failed`
+    try {
+      const parsed = JSON.parse(rawBody) as { error?: unknown }
+      if (typeof parsed.error === 'string') errorMessage = parsed.error
+    } catch {
+      /* body is not JSON (e.g. proxy HTML error page) */
+    }
+
+    // TEMP DIAGNOSTIC: identify the source of repeated 500s on first login.
+    if (response.status >= 500) {
+      console.error('[api:diag]', endpoint, 'status=', response.status, 'body=', rawBody.slice(0, 300))
+    }
 
     if (response.status === 401) {
-      localStorage.removeItem('authToken')
+      if (attempt === 0 && (await recoverAuthSession())) {
+        continue // tokens rotated, retry with the new Authorization header
+      }
+      clearAuthSession()
       window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { status: 401, message: errorMessage } }))
-    } else if (response.status === 403) {
+      const err = new Error(errorMessage) as Error & { status?: number }
+      err.status = 401
+      throw err
+    }
+
+    if (response.status === 403) {
       window.dispatchEvent(new CustomEvent('auth:forbidden', { detail: { status: 403, message: errorMessage } }))
     }
 
+    // Transient server-side failure (e.g. Express/tsx warm-up or Supabase hiccup).
+    if (response.status >= 500 && isSafeMethod && attempt < 2) {
+      await delay(attempt === 0 ? 300 : 1000)
+      continue
+    }
+
+    const err = new Error(errorMessage) as Error & { status?: number }
+    err.status = response.status
     throw err
   }
 
-  return response.json() as Promise<T>
+  const err = new Error('Request failed after retries') as Error & { status?: number }
+  err.status = 502
+  throw err
 }
 
 export const api = {
@@ -440,6 +589,10 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ display_name: displayName }),
       })
+    },
+    /** Return the signed-in user's storage usage vs their account quota. */
+    storage: async (): Promise<StorageSummary> => {
+      return fetchAPI<StorageSummary>('auth/storage')
     },
   },
 
@@ -637,6 +790,21 @@ export const api = {
     },
   },
 
+  profile: {
+    /** Download the current user's .idocprofile bundle for a scope. */
+    export: async (scope: ProfileScope = 'both'): Promise<IdocProfile> => {
+      return fetchAPI<IdocProfile>(`profile/export?scope=${scope}`)
+    },
+    /** Import and merge an .idocprofile bundle into the current user's profile. */
+    import: async (profile: IdocProfile): Promise<ProfileImportResult> => {
+      return fetchAPI<ProfileImportResult>('profile/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+      })
+    },
+  },
+
   predictions: {
     predict: async (
       text: string,
@@ -812,28 +980,32 @@ export const api = {
   },
 
   admin: {
-    getPendingProfessors: async (): Promise<any[]> => {
-      return fetchAPI<any[]>('admin/professors/pending')
+    getPendingApplicants: async (): Promise<AdminApplicant[]> => {
+      return fetchAPI<AdminApplicant[]>('admin/applicants/pending')
     },
-    verifyProfessor: async (userId: string, status: 'approved' | 'rejected', notes?: string): Promise<{ message: string }> => {
-      return fetchAPI<{ message: string }>(`admin/professors/${userId}/verify`, {
+    verifyApplicant: async (userId: string, body: VerifyApplicantBody): Promise<{ message: string; newRole: RoleName | null }> => {
+      return fetchAPI<{ message: string; newRole: RoleName | null }>(`admin/applicants/${userId}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, notes }),
+        body: JSON.stringify(body),
       })
     },
-    getAllUsers: async (): Promise<any[]> => {
-      return fetchAPI<any[]>('admin/users')
+    getAllUsers: async (): Promise<AdminUserRecord[]> => {
+      return fetchAPI<AdminUserRecord[]>('admin/users')
     },
-    updateUserRole: async (userId: string, roleId: number): Promise<any> => {
-      return fetchAPI<any>(`admin/users/${userId}/role`, {
+    updateUserRole: async (userId: string, roleId: number): Promise<{ message: string; newRole: string }> => {
+      return fetchAPI<{ message: string; newRole: string }>(`admin/users/${userId}/role`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roleId }),
       })
     },
-    getSystemReports: async (): Promise<any> => {
-      return fetchAPI<any>('admin/reports')
+    getSystemReports: async (): Promise<SystemReport> => {
+      return fetchAPI<SystemReport>('admin/reports')
+    },
+    getAllDocuments: async (query?: string): Promise<AdminDocumentRecord[]> => {
+      const qs = query && query.trim().length > 0 ? `?q=${encodeURIComponent(query.trim())}` : ''
+      return fetchAPI<AdminDocumentRecord[]>(`admin/documents${qs}`)
     },
     deleteDocument: async (documentId: string): Promise<{ message: string }> => {
       return fetchAPI<{ message: string }>(`admin/documents/${documentId}`, {

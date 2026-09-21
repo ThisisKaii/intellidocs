@@ -10,6 +10,7 @@ function Register(): JSX.Element {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
@@ -27,6 +28,10 @@ function Register(): JSX.Element {
       setError('Password must be at least 6 characters.')
       return
     }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
 
     setLoading(true)
 
@@ -40,7 +45,8 @@ function Register(): JSX.Element {
           role: 'student',
           verificationStatus: 'approved',
         },
-        loginResponse.session.access_token
+        loginResponse.session.access_token,
+        loginResponse.session.refresh_token
       )
       setSuccess('Account created. Redirecting…')
       setTimeout(() => navigate('/dashboard'), 1500)
@@ -68,6 +74,10 @@ function Register(): JSX.Element {
 
   function handlePasswordChange(event: ChangeEvent<HTMLInputElement>) {
     setPassword(event.target.value)
+  }
+
+  function handleConfirmPasswordChange(event: ChangeEvent<HTMLInputElement>) {
+    setConfirmPassword(event.target.value)
   }
 
   const inputStyle: React.CSSProperties = {
@@ -298,6 +308,44 @@ function Register(): JSX.Element {
               >
                 Must be at least 6 characters
               </p>
+            </div>
+
+            {/* Confirm Password */}
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label
+                htmlFor="reg-confirm-password"
+                style={{
+                  display: 'block',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  color: 'var(--foreground)',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                Confirm Password
+              </label>
+              <input
+                id="reg-confirm-password"
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={handleConfirmPasswordChange}
+                required
+                style={inputStyle}
+                onFocus={onFocus}
+                onBlur={onBlur}
+              />
+              {confirmPassword && password !== confirmPassword && (
+                <p
+                  style={{
+                    fontSize: '0.75rem',
+                    color: 'var(--destructive)',
+                    margin: '0.375rem 0 0',
+                  }}
+                >
+                  Passwords do not match
+                </p>
+              )}
             </div>
 
             <div style={{ marginTop: '1.25rem' }}>

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>IntelliDocs Capstone Manuscript Documentation & Architectural Artifacts</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f8fafc;
+    color: #0f172a;
+    margin: 0;
+    padding: 40px 24px;
+  }
+  .container {
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .header h1 {
+    font-size: 28px;
+    margin: 0 0 8px 0;
+    color: #0f172a;
+  }
+  .header p {
+    font-size: 15px;
+    color: #64748b;
+    margin: 0;
+  }
+  .note {
+    text-align: center;
+    font-size: 12.5px;
+    color: #64748b;
+    margin: 0 0 36px 0;
+    line-height: 1.55;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.15s, box-shadow 0.15s;
+    text-decoration: none;
+    color: inherit;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.08);
+    border-color: #388087;
+  }
+  .badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #e0f2fe;
+    color: #0369a1;
+    align-self: flex-start;
+    margin-bottom: 12px;
+  }
+  .badge.b { background: #dcfce7; color: #15803d; }
+  .badge.c { background: #fef9c3; color: #a16207; }
+  .badge.d { background: #ede9fe; color: #6d28d9; }
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 6px 0;
+  }
+  .card-desc {
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+  .card-link {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #388087;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>IntelliDocs Manuscript Architectural Artifacts</h1>
+    <p>Interactive figures and technical specifications matching the IntelliDocs capstone manuscript</p>
+  </div>
+  <p class="note">Figure references follow the manuscript: Figures 17–28 &mdash; Use Case Diagram and System Use Case Models &middot; Figures 29&ndash;35 &mdash; Storyboard &middot; Figures 36&ndash;39 &mdash; Database Design &amp; ERD &middot; Table 24 &mdash; List of Modules &middot; Tables 4&ndash;22 &mdash; Data Dictionary</p>
+
+  <div class="grid">
+    <!-- 1 -->
+    <a href="ucd_student.html" target="_blank" class="card">
+      <div>
+        <span class="badge">UML Diagram &mdash; Fig. 17&ndash;24</span>
+        <div class="card-title">Use Case Diagram — Student Actor</div>
+        <div class="card-desc">Figure 17 overall Use Case Diagram of IntelliDocs plus Figures 18&ndash;24: the full System Use Case Model specifications for the Student-facing flow &mdash; Authenticate Account, Manage Documents, Manage Folders, Edit Documents, Predict Formatting, Track Behavior, and Use AI Assistant, each with purpose, trigger, pre/post-conditions, and step tables.</div>
+      </div>
+      <div class="card-link">Open Diagram ➔</div>
+    </a>
+
+    <!-- 2 -->
+    <a href="ucd_professor.html" target="_blank" class="card">
+      <div>
+        <span class="badge">UML Diagram &mdash; Fig. 25</span>
+        <div class="card-title">Use Case Diagram — Professor Actor</div>
+        <div class="card-desc">Figure 17 (Professor view) plus Figure 25: the System Use Case Model &mdash; Review Document, covering submission, approval/rejection with notes, and review status tracking.</div>
+      </div>
+      <div class="card-link">Open Diagram ➔</div>
+    </a>
+
+    <!-- 3 -->
+    <a href="ucd_admin.html" target="_blank" class="card">
+      <div>
+        <span class="badge">UML Diagram &mdash; Fig. 26&ndash;28</span>
+        <div class="card-title">Use Case Diagram — Admin Actor</div>
+        <div class="card-desc">Figure 17 (Administrator view) plus Figures 26&ndash;28: System Use Case Models &mdash; Manage User, Manage Reports, and Moderate Documents.</div>
+      </div>
+      <div class="card-link">Open Diagram ➔</div>
+    </a>
+
+    <!-- 4 -->
+    <a href="storyboard.html" target="_blank" class="card">
+      <div>
+        <span class="badge">UX Design &mdash; Fig. 29&ndash;35</span>
+        <div class="card-title">System Storyboard</div>
+        <div class="card-desc">Figures 29&ndash;35: the 8-screen storyboard journey &mdash; Landing, Login, Register, Dashboard, My Documents, Recent Documents, Document Editor (with inline confidence-score suggestions and Gemini assistant), and Trash &mdash; with items tables and logic steps.</div>
+      </div>
+      <div class="card-link">Open Storyboard ➔</div>
+    </a>
+
+    <!-- 5 -->
+    <a href="erd.html" target="_blank" class="card">
+      <div>
+        <span class="badge d">Data Architecture &mdash; Fig. 36&ndash;39</span>
+        <div class="card-title">Database Design &amp; Entity Relationship Diagram</div>
+        <div class="card-desc">Figure 36 Supabase Database Design (14 relational tables), Figure 37 Redis (behavior buffer, suggestion cache, quota tracker), Figure 38 DuckDB analytical store, and Figure 39 the Entity-Relationship Diagram of IntelliDocs.</div>
+      </div>
+      <div class="card-link">Open ERD ➔</div>
+    </a>
+
+    <!-- 6 -->
+    <a href="modules.html" target="_blank" class="card">
+      <div>
+        <span class="badge b">System Architecture &mdash; Table 24</span>
+        <div class="card-title">List of Modules</div>
+        <div class="card-desc">Table 24: the modules assigned to each of the four developers &mdash; Amamence, Alenton, Dagupan, and Asingua &mdash; across 11 module groups (Account Management, Document Management, Folder Management, Document Editor, Formatting Prediction, Behavioral Learning, Grammar and Spelling, AI Chat Overlay, Document Comments, Document Review, Admin Management) with per-user-type point scores.</div>
+      </div>
+      <div class="card-link">Open Module Catalog ➔</div>
+    </a>
+
+    <!-- 7 -->
+    <a href="data_dictionary.html" target="_blank" class="card">
+      <div>
+        <span class="badge c">Data Specifications &mdash; Tables 4&ndash;22</span>
+        <div class="card-title">Data Dictionary</div>
+        <div class="card-desc">Field-level schema documentation for all 19 manuscript tables &mdash; 14 Supabase (USERS through GOOGLE_TOKENS), 3 Redis, and 2 DuckDB &mdash; with column names, data types, uniqueness, descriptions, nullability, and PK/FK designations.</div>
+      </div>
+      <div class="card-link">Open Data Dictionary ➔</div>
+    </a>
+  </div>
+</div>
+
+</body>
+</html>
