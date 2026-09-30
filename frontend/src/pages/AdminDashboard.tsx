@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { api } from '../services/api'
+import { exportAdminReportPdf } from '../lib/reportExport'
 import {
   Shield,
   UserCheck,
@@ -754,9 +755,35 @@ export default function AdminDashboard(): JSX.Element {
         {/* Tab 3: System Analytics & Reports */}
         {activeTab === 'reports' && (
           <div style={{ backgroundColor: 'var(--card)', borderRadius: '0.75rem', border: '1px solid var(--border)', padding: '1.5rem' }}>
-            <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: '0 0 1rem' }}>
-              Aggregated System Analytics
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0 }}>
+                Aggregated System Analytics
+              </h2>
+              <button
+                type="button"
+                onClick={() => { if (reports) exportAdminReportPdf(reports, users) }}
+                disabled={!reports}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  height: '34px',
+                  padding: '0 0.875rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'var(--background)',
+                  color: 'var(--foreground)',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  cursor: reports ? 'pointer' : 'not-allowed',
+                  opacity: reports ? 1 : 0.65,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <FileText style={{ width: '15px', height: '15px' }} />
+                Export PDF
+              </button>
+            </div>
 
             {reports ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -807,7 +834,7 @@ export default function AdminDashboard(): JSX.Element {
 
                 <div>
                   <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, margin: '0 0 0.5rem' }}>
-                    Acceptance by Feedback Channel (RQ4)
+                    Acceptance by Feedback Channel
                   </h3>
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
@@ -835,6 +862,43 @@ export default function AdminDashboard(): JSX.Element {
                     {Object.keys(reports.feedback.byType).length === 0 && (
                       <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0.5rem 0 0' }}>
                         No AI feedback recorded yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, margin: '0 0 0.5rem' }}>
+                    Users &amp; Roles
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--muted-foreground)' }}>
+                          <th style={{ padding: '0.625rem' }}>Name</th>
+                          <th style={{ padding: '0.625rem' }}>Email</th>
+                          <th style={{ padding: '0.625rem' }}>Role</th>
+                          <th style={{ padding: '0.625rem' }}>Status</th>
+                          <th style={{ padding: '0.625rem' }}>Documents</th>
+                          <th style={{ padding: '0.625rem' }}>Joined</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {users.map((user) => (
+                          <tr key={user.user_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '0.625rem', fontWeight: 500 }}>{user.display_name || '—'}</td>
+                            <td style={{ padding: '0.625rem' }}>{user.email || '—'}</td>
+                            <td style={{ padding: '0.625rem' }}>{user.role_name ? roleLabels[user.role_name] : '—'}</td>
+                            <td style={{ padding: '0.625rem' }}>{user.verification_status}</td>
+                            <td style={{ padding: '0.625rem' }}>{user.document_count}</td>
+                            <td style={{ padding: '0.625rem' }}>{new Date(user.created_at).toLocaleDateString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {users.length === 0 && (
+                      <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0.5rem 0 0' }}>
+                        No user accounts loaded.
                       </p>
                     )}
                   </div>
@@ -981,12 +1045,12 @@ export default function AdminDashboard(): JSX.Element {
               Capstone Research Data &amp; Empirical Exporter
             </h2>
             <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1.5rem' }}>
-              Export structured datasets for Chapter 4 empirical analysis covering RQ1 accuracy, RQ2 time savings, RQ4 UI channel acceptance, and RQ5 per-user learning curves.
+              Export structured datasets for Chapter 4 empirical analysis: prediction accuracy, time savings, interface channel acceptance, and per-user learning curves.
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
               <div style={{ padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.375rem' }}>Overall Acceptance Rate (RQ1)</p>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.375rem' }}>Overall Acceptance Rate</p>
                 <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
                   {reports?.feedback.acceptanceRate ?? '—'}
                 </p>
@@ -1016,7 +1080,7 @@ export default function AdminDashboard(): JSX.Element {
                 Export Thesis Chapter 4 Empirical Dataset
               </h3>
               <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1rem', maxWidth: '480px', marginLeft: 'auto', marginRight: 'auto' }}>
-                Downloads a timestamped CSV containing prediction accuracy by confidence tier, format distribution, UI-channel acceptance rates (RQ4), per-user learning curves (RQ5), and time-savings telemetry (RQ2).
+                Downloads a timestamped CSV containing prediction accuracy by confidence tier, format distribution, UI-channel acceptance rates, per-user learning curves, and time-savings telemetry.
               </p>
               <button
                 type="button"

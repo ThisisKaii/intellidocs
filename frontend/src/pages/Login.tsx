@@ -1,6 +1,8 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { Eye, EyeOff } from 'lucide-react'
+import { LogoMark } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 
@@ -8,8 +10,10 @@ function Login(): JSX.Element {
   const navigate = useNavigate()
   const { login, loginWithGoogle } = useAuth()
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+const [password, setPassword] = useState('')
+// Controls whether the password field renders as text or masked dots.
+const [showPassword, setShowPassword] = useState(false)
+const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleGoogleSignIn() {
@@ -17,7 +21,7 @@ function Login(): JSX.Element {
     setLoading(true)
     try {
       await loginWithGoogle()
-      // loginWithGoogle redirects to Google — no further action needed here
+      // loginWithGoogle redirects to Google â€” no further action needed here
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed')
       setLoading(false)
@@ -79,7 +83,8 @@ function Login(): JSX.Element {
         minHeight: '100vh',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #f6f6f2 0%, #eaf3f4 50%, #badfe7 100%)',
+        // Theme-aware so Login and Register stay consistent in both modes.
+        backgroundColor: 'var(--canvas)',
         padding: '1.5rem',
         position: 'relative',
         overflow: 'hidden',
@@ -95,45 +100,25 @@ function Login(): JSX.Element {
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
+              display: 'flex',
               justifyContent: 'center',
-              width: '52px',
-              height: '52px',
-              borderRadius: '14px',
-              background: 'linear-gradient(135deg, #388087 0%, #6fb3b8 100%)',
               marginBottom: '1.25rem',
-              boxShadow: '0 4px 16px rgba(56,128,135,0.35)',
             }}
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#c2edce"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ width: '24px', height: '24px' }}
-            >
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10 9 9 9 8 9" />
-            </svg>
+            <LogoMark size={52} title="IntelliDocs" />
           </div>
           <h1
             style={{
               fontSize: '1.5rem',
               fontWeight: 700,
               letterSpacing: '-0.03em',
-              color: '#183538',
+              color: 'var(--text-primary)',
               margin: '0 0 0.375rem',
             }}
           >
             IntelliDocs
           </h1>
-          <p style={{ fontSize: '0.875rem', color: '#517173', margin: 0 }}>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', margin: 0 }}>
             Sign in to your academic workspace
           </p>
         </div>
@@ -144,7 +129,11 @@ function Login(): JSX.Element {
             backgroundColor: 'var(--card)',
             borderRadius: '0.75rem',
             padding: '1.75rem',
-            boxShadow: '0 0 0 1px rgba(111, 179, 184, 0.35), 0 4px 24px rgba(56, 128, 135, 0.12)',
+            // Teal outline plus a soft glow. Expressed with --ring so the card
+            // keeps the same treatment in light and dark mode. Register uses an
+            // identical value - keep the two in sync.
+            boxShadow:
+              '0 0 0 1px color-mix(in srgb, var(--ring) 35%, transparent), 0 4px 24px color-mix(in srgb, var(--ring) 12%, transparent)',
           }}
         >
           {/* Google Sign-In Button */}
@@ -284,36 +273,70 @@ function Login(): JSX.Element {
                   Forgot password?
                 </Link>
               </div>
-              <input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={handlePasswordChange}
-                required
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  height: '38px',
-                  borderRadius: '0.5rem',
-                  border: 'none',
-                  boxShadow: '0px 0px 0px 1px var(--border-shadow)',
-                  backgroundColor: 'var(--background)',
-                  color: 'var(--foreground)',
-                  fontSize: '0.875rem',
-                  padding: '0 0.75rem',
-                  outline: 'none',
-                  transition: 'box-shadow 150ms',
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.boxShadow =
-                    '0 0 0 1.5px var(--ring), 0 0 0 4px color-mix(in srgb, var(--ring) 12%, transparent)'
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow)'
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={handlePasswordChange}
+                  required
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    height: '38px',
+                    borderRadius: '0.5rem',
+                    border: 'none',
+                    boxShadow: '0px 0px 0px 1px var(--border-shadow)',
+                    backgroundColor: 'var(--background)',
+                    color: 'var(--foreground)',
+                    fontSize: '0.875rem',
+                    // Right padding reserves room for the reveal button so
+                    // text never runs underneath it.
+                    padding: '0 2.5rem 0 0.75rem',
+                    outline: 'none',
+                    transition: 'box-shadow 150ms',
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.boxShadow =
+                      '0 0 0 1.5px var(--ring), 0 0 0 4px color-mix(in srgb, var(--ring) 12%, transparent)'
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow)'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  style={{
+                    position: 'absolute',
+                    right: '0.375rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '28px',
+                    height: '28px',
+                    padding: 0,
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    background: 'transparent',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {showPassword ? (
+                    <EyeOff size={16} strokeWidth={1.75} />
+                  ) : (
+                    <Eye size={16} strokeWidth={1.75} />
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Submit */}
@@ -326,18 +349,19 @@ function Login(): JSX.Element {
                 height: '42px',
                 borderRadius: '0.625rem',
                 border: 'none',
-                background: loading ? '#6fb3b8' : 'linear-gradient(135deg, #388087 0%, #6fb3b8 100%)',
-                color: '#ffffff',
+                backgroundColor: 'var(--primary)',
+                color: 'var(--primary-foreground)',
                 fontSize: '0.9375rem',
                 fontWeight: 700,
                 cursor: loading ? 'not-allowed' : 'pointer',
                 letterSpacing: '0.01em',
                 boxShadow: '0 2px 8px rgba(56,128,135,0.3)',
+                opacity: loading ? 0.7 : 1,
                 transition: 'opacity 150ms, box-shadow 150ms',
                 fontFamily: 'inherit',
               }}
             >
-              {loading ? 'Signing in…' : 'Sign in'}
+              {loading ? 'Signing inâ€¦' : 'Sign in'}
             </button>
           </form>
         </div>

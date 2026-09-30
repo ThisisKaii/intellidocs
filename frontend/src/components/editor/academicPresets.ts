@@ -119,7 +119,29 @@ const IEEE: PresetInput = {
   },
 }
 
-export const ACADEMIC_PRESETS: AcademicPreset[] = [APA_7TH, IEEE].map(withComputedCss)
+/** UCLM capstone / thesis style: 1.5" binding margin, uppercase chapter headings. */
+const UCLM_CAPSTONE: PresetInput = {
+  key: 'uclm_capstone',
+  name: 'UCLM Capstone (Thesis)',
+  description:
+    'UCLM spec — 1.5" left binding margin, double-spaced Times New Roman 12pt, uppercase centered chapter headings, roman preliminary page numbers.',
+  pageSize: 'letter',
+  orientation: 'portrait',
+  margins: { top: 1, bottom: 1, left: 1.5, right: 1 },
+  fontFamily: "'Times New Roman', Times, serif",
+  baseFontSize: '12pt',
+  lineHeight: 2,
+  firstLineIndent: '0.5in',
+  headings: {
+    level1: { textAlign: 'center', fontSize: '12pt', fontWeight: 700, textTransform: 'uppercase' },
+    level2: { textAlign: 'left', fontSize: '12pt', fontWeight: 700, textTransform: 'none' },
+    level3: { textAlign: 'left', fontSize: '12pt', fontWeight: 400, textTransform: 'none', note: 'Italicized' },
+  },
+}
+
+export const ACADEMIC_PRESETS: AcademicPreset[] = [APA_7TH, IEEE, UCLM_CAPSTONE].map(
+  withComputedCss
+)
 
 /**
  * Finalize each preset's scoped CSS from its declared styling. Keeps the

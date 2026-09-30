@@ -284,6 +284,50 @@
   color: var(--text-secondary);
 }
 
+/* Callouts are labelled blockquotes: data-callout drives the accent colour and
+   the ::before label. A plain blockquote (no data-callout) is unaffected. */
+.intellidocs-editor blockquote[data-callout] {
+  position: relative;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: color-mix(in srgb, var(--callout-accent) 8%, transparent);
+  border-left-color: var(--callout-accent);
+  color: var(--foreground);
+}
+
+.intellidocs-editor blockquote[data-callout]::before {
+  content: attr(data-callout-label);
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--callout-accent);
+}
+
+.intellidocs-editor blockquote[data-callout='note'] {
+  --callout-accent: var(--info);
+}
+
+.intellidocs-editor blockquote[data-callout='warning'] {
+  --callout-accent: var(--warning);
+}
+
+/* --info and --accent-strong resolve to the same value in both themes, so
+   `key` is distinguished from `note` by a heavier background tint rather than
+   by hue. */
+.intellidocs-editor blockquote[data-callout='key'] {
+  --callout-accent: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-strong) 18%, transparent);
+  font-weight: 500;
+}
+
+.intellidocs-editor blockquote[data-callout='example'] {
+  --callout-accent: var(--text-muted);
+}
+
 .intellidocs-editor ul,
 .intellidocs-editor ol {
   margin: 0.75rem 0;
@@ -642,6 +686,84 @@ div:hover > .card-menu-btn,
   text-decoration-style: solid;
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
+}
+
+/* ── Suggestion & style-origin outlines (in-flow DOM wrappers) ───── */
+/* These wrap the target block in the document DOM via ProseMirror node
+   decorations, so they are drawn in the content flow with no measured
+   coordinates and can never fall behind the floating suggestion chips,
+   which live in a much higher z-index layer. The pulse animates the
+   outline and background rather than opacity, so the text stays crisp. */
+.agentic-highlight-overlay {
+  position: relative;
+  border-radius: 6px;
+  outline: 2px dashed rgba(99, 102, 241, 0.85);
+  outline-offset: 3px;
+  background-color: rgba(99, 102, 241, 0.08);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);
+  cursor: pointer;
+  animation: agenticOverlayPulse 2s ease-in-out infinite;
+  transition: background-color 150ms ease;
+}
+.agentic-highlight-overlay:hover {
+  background-color: rgba(99, 102, 241, 0.16);
+}
+@keyframes agenticOverlayPulse {
+  0%,
+  100% {
+    outline-color: rgba(99, 102, 241, 0.85);
+  }
+  50% {
+    outline-color: rgba(99, 102, 241, 0.3);
+  }
+}
+.style-origin-outline {
+  border-radius: 4px;
+  outline: 1.5px dashed var(--accent-strong);
+  outline-offset: 2px;
+  background-color: color-mix(in srgb, var(--accent-strong) 5%, transparent);
+}
+
+/* ── Document blueprint placeholders (section 9) ─────────────────── */
+/*
+ * Dashed box drawn around a blueprint section the student has not written
+ * yet. Applied as a ProseMirror node decoration, so the border is a purely
+ * visual layer and never reaches the saved document HTML. The
+ * ::before pseudo-element carries the standard-reference hint; it is
+ * positioned outside the text so it never reflows the placeholder copy.
+ */
+.doc-guide {
+  position: relative;
+  border: 1.5px dashed color-mix(in srgb, var(--accent-strong) 45%, transparent);
+  border-radius: 6px;
+  padding: 14px 12px;
+  margin: 6px 0;
+  background-color: color-mix(in srgb, var(--accent-strong) 3%, transparent);
+}
+.doc-guide::before {
+  content: attr(data-guide);
+  position: absolute;
+  top: -7px;
+  left: 12px;
+  padding: 0 6px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  font-style: normal;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+  background-color: var(--page-bg);
+  white-space: nowrap;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: reduce) {
+  .agentic-highlight-overlay {
+    animation: none;
+  }
 }
 
 /* ── Style boundary guides (point 20) ────────────────────────────── */

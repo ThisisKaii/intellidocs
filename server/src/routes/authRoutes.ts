@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getUserStorage } from '../controllers/authController'
+import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getUserStorage, getMe } from '../controllers/authController'
 import { authMiddleware } from '../middleware/authMiddleware'
 import { authArcjet, signupArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
@@ -19,6 +19,12 @@ router.patch('/profile', authMiddleware, validateBody(updateProfileSchema), upda
 
 /** Return the signed-in user's storage usage vs their account quota. */
 router.get('/storage', authMiddleware, getUserStorage)
+
+/**
+ * Return the signed-in user's current role and verification status, read fresh
+ * so an administrator's approval is reflected without a new sign-in.
+ */
+router.get('/me', authMiddleware, getMe)
 
 /** Submit a faculty verification application (student → pending professor). */
 router.post('/apply-professor', authMiddleware, validateBody(applyProfessorSchema), applyProfessor)

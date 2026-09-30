@@ -61,7 +61,14 @@ def parse_manuscript_dataframe(file_paths: List[str]) -> pd.DataFrame:
 
 def load_training_data(csv_path: str) -> pd.DataFrame:
     """Load primary manuscript training data from processed CSV datasets."""
+    # formatting_examples.csv is the unified multi-corpus output of
+    # dataset/preprocess.py (WikiText-103 + thesis structure + synthetic rows),
+    # so it is preferred. The merged CSV is kept as a fallback for the older
+    # single-corpus pipeline; without this ordering the unified dataset would
+    # never reach training whenever the merged file still existed.
     candidate_paths = [
+        "ml/dataset/processed/formatting_examples.csv",
+        "dataset/processed/formatting_examples.csv",
         "ml/dataset/processed/formatting_examples_merged.csv",
         "dataset/processed/formatting_examples_merged.csv",
         "ml/dataset/processed/academic_paper_formatting_examples.csv",

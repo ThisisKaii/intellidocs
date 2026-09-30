@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react'
 import { useEditor, useEditorState, EditorContent, type Editor } from '@tiptap/react'
 import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus'
 import type { EditorState } from '@tiptap/pm/state'
@@ -19,12 +19,13 @@ import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import Highlight from '@tiptap/extension-highlight'
 import { GrammarUnderlineExtension } from './GrammarUnderlineExtension'
+import { SuggestionDecorationsExtension } from './SuggestionDecorationsExtension'
+import { BlueprintGuideExtension } from './BlueprintGuideExtension'
 import { HarperLinterExtension } from './HarperLinterExtension'
 import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { PageBreak } from './PageBreak'
 import EditorStylesPanel from './EditorStylesPanel'
-import { ACADEMIC_PRESETS } from './academicPresets'
 import {
   Undo2,
   Redo2,
@@ -58,18 +59,28 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Check,
-  Pencil,
   Download,
   FileText,
   Printer,
   FileCode,
   GraduationCap,
   UserCog,
+  BadgeInfo,
 } from 'lucide-react'
 import { api, type PageNumberFormat } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { IndentExtension } from './IndentExtension'
 import { exportThesisWord, exportThesisPdf } from '@/lib/thesisExport'
+import {
+  snapshotTableContext,
+  snapshotTableShape,
+  snapshotImageContext,
+  type BehaviorEventPayload,
+  type ImageAlignment,
+  type TableAlignment,
+} from './behaviorListener'
+import { ImageResizeBehaviorExtension } from './ImageResizeBehaviorExtension'
+import { NodeSelection } from '@tiptap/pm/state'
 
 /** Download document content as a standalone clean HTML file. */
 function downloadHTML(html: string, title: string): void {
@@ -279,6 +290,27 @@ export const CustomTableHeader = TableHeader.extend({
 
 // ─── Editor extensions (single source of truth) ─────────────────────────────
 
+/**
+ * Blueprint placeholder attributes, shared by every block type that can carry
+ * one. `guide` is the standard-reference hint drawn inside the dashed box;
+ * `guideText` is the original placeholder text, which BlueprintGuideExtension
+ * compares against to detect that the student has written over the placeholder.
+ */
+const guideAttributes = {
+  guide: {
+    default: null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-guide'),
+    renderHTML: (a: { guide: string | null }) =>
+      a.guide ? { 'data-guide': a.guide } : {},
+  },
+  guideText: {
+    default: null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-guide-text'),
+    renderHTML: (a: { guideText: string | null }) =>
+      a.guideText ? { 'data-guide-text': a.guideText } : {},
+  },
+}
+
 const CustomParagraph = Paragraph.extend({
   addAttributes() {
     return {
@@ -293,29 +325,181 @@ const CustomParagraph = Paragraph.extend({
         parseHTML: (el) => filterStyle(el.getAttribute('style')),
         renderHTML: (a) => (a.style ? { style: a.style } : {}),
       },
+      ...guideAttributes,
     }
   },
 })
 
 /** Center-aligned ImageResize: sets containerStyle to center by default. */
+/**
+ * Build the wrapper style for an image from its alignment.
+ * Kept as a function so the attribute default, the HTML parser, and the
+ * `setImageAlignment` command all derive the same string.
+ */
+function imageContainerStyle(alignment: ImageAlignment, width?: number | null): string {
+  const sizing = width ? `width: ${width}px; height: auto; cursor: pointer;` : 'cursor: pointer;'
+  switch (alignment) {
+    case 'left':
+      return `${sizing} margin: 0 auto 0 0;`
+    case 'right':
+      return `${sizing} margin: 0 0 0 auto;`
+    case 'float':
+      return `${sizing} margin: 0.5rem 0 1rem 1.5rem; float: left;`
+    case 'center':
+    default:
+      return `${sizing} margin: 0 auto;`
+  }
+}
+
 const CenteredImageResize = ImageResize.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      // How the image sits in the text column. Drives containerStyle.
+      alignment: {
+        default: 'center',
+        parseHTML: (element) =>
+          (element.getAttribute('data-alignment') as ImageAlignment | null) ?? 'center',
+        renderHTML: (attributes) => {
+          const value = attributes.alignment as ImageAlignment | null
+          if (!value || value === 'center') return {}
+          return { 'data-alignment': value }
+        },
+      },
+      // True once the image carries a caption paragraph right below it. The
+      // marker round-trips so `imageHasCaption` survives save/load.
+      caption: {
+        default: null,
+        parseHTML: (element) => (element.dataset.caption === 'true' ? true : null),
+        renderHTML: (attributes) => (attributes.caption ? { 'data-caption': 'true' } : {}),
+      },
       containerStyle: {
-        default: 'margin: 0 auto;',
+        default: null,
         parseHTML: (element) => {
           const raw = element.getAttribute('containerstyle')
           if (raw) return raw
           const width = element.getAttribute('width')
-          if (width) return `width: ${width}px; height: auto; cursor: pointer; margin: 0 auto;`
-          return 'margin: 0 auto;'
+          const alignment =
+            (element.getAttribute('data-alignment') as ImageAlignment | null) ?? 'center'
+          return imageContainerStyle(alignment, width ? Number(width) : null)
         },
         renderHTML: (attributes) => {
-          if (!attributes.containerStyle) return {}
-          return { containerstyle: attributes.containerStyle }
+          const style = attributes.containerStyle
+            ? (attributes.containerStyle as string)
+            : imageContainerStyle(
+                (attributes.alignment as ImageAlignment | null) ?? 'center',
+                attributes.width as number | null,
+              )
+          return { containerstyle: style }
         },
       },
+    }
+  },
+})
+
+/**
+ * Add a `setImageAlignment` command to the image extension.
+ * The stock image extension has no alignment command, so it is added here and
+ * rewrites containerStyle so the wrapper follows the new alignment.
+ */
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    imageAlignment: {
+      setImageAlignment: (alignment: ImageAlignment) => ReturnType
+    }
+    imageCaption: {
+      addImageCaption: () => ReturnType
+    }
+  }
+}
+
+const AlignedImageResize = CenteredImageResize.extend({
+  addCommands() {
+    return {
+      setImageAlignment:
+        (alignment: ImageAlignment) =>
+        ({ commands }) =>
+          commands.updateAttributes('image', {
+            alignment,
+            containerStyle: imageContainerStyle(alignment),
+          }),
+      /**
+       * Insert a caption paragraph directly below the selected image and mark
+       * the image as captioned. The paragraph is tagged `style_source:
+       * image_caption` so the behavioral model can learn the pairing; its
+       * centered-italic treatment mirrors the "Caption" style tile.
+       */
+      addImageCaption:
+        () =>
+        ({ state, chain }) => {
+          const { selection } = state
+          const node =
+            selection instanceof NodeSelection && selection.node.type.name === 'image'
+              ? selection.node
+              : undefined
+          if (!node) return chain().run()
+          const imagePos = selection.from
+          const imageEnd = imagePos + node.nodeSize
+          return chain()
+            .setNodeSelection(imagePos)
+            .updateAttributes('image', { caption: true })
+            .insertContentAt(imageEnd, {
+              type: 'paragraph',
+              attrs: { styleSource: 'image_caption' },
+            })
+            .setTextSelection({ from: imageEnd + 1, to: imageEnd + 1 })
+            .setTextAlign('center')
+            .setFontSize('11pt')
+            .toggleItalic()
+            .run()
+        },
+    }
+  },
+})
+
+/**
+ * Table alignment (left / center / right) as a node attribute.
+ * The stock TipTap table extension has no alignment command, so the attribute
+ * is declared here and a `setTableAlignment` command is added below.
+ */
+const AlignedTable = Table.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      alignment: {
+        default: 'center',
+        parseHTML: (element) =>
+          (element.getAttribute('data-alignment') as TableAlignment | null) ?? 'center',
+        renderHTML: (attributes) => {
+          const value = attributes.alignment as TableAlignment | null
+          if (!value || value === 'center') return {}
+          return { 'data-alignment': value }
+        },
+      },
+    }
+  },
+})
+
+/**
+ * Add a `setTableAlignment` command to the table extension.
+ * Alignment is a table-level property, so it writes to the ancestor table node
+ * rather than the current text position.
+ */
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    tableAlignment: {
+      setTableAlignment: (alignment: TableAlignment) => ReturnType
+    }
+  }
+}
+
+const TableAlignmentExtension = AlignedTable.extend({
+  addCommands() {
+    return {
+      setTableAlignment:
+        (alignment: TableAlignment) =>
+        ({ commands }) =>
+          commands.updateAttributes('table', { alignment }),
     }
   },
 })
@@ -329,22 +513,87 @@ const CustomHeading = Heading.extend({
         parseHTML: (el) => el.getAttribute('data-style-source'),
         renderHTML: (a) => (a.styleSource ? { 'data-style-source': a.styleSource } : {}),
       },
+      ...guideAttributes,
     }
   },
 })
+
+/**
+ * Callout variants available in the editor.
+ * A callout is a labelled blockquote, so it reuses the existing blockquote node
+ * instead of introducing a new node type.
+ */
+const CALLOUT_VARIANTS = ['note', 'warning', 'key', 'example'] as const
+type CalloutVariant = (typeof CALLOUT_VARIANTS)[number]
+
+/** Display label for each callout variant, shown in the callout's top-left. */
+const CALLOUT_LABELS: Record<CalloutVariant, string> = {
+  note: 'Note',
+  warning: 'Warning',
+  key: 'Key Point',
+  example: 'Example',
+}
 
 const CustomBlockquote = Blockquote.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      /**
+       * Which callout this blockquote represents, or null for a plain quote.
+       * Rendered as data-callout so the saved HTML round-trips.
+       */
+      calloutType: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-callout'),
+        // The label is stored alongside the variant because CSS attr() cannot
+        // transform text, so the capitalised form has to live in the markup.
+        renderHTML: (a) => {
+          const variant = a.calloutType as CalloutVariant | null
+          if (!variant || !CALLOUT_LABELS[variant]) return {}
+          return {
+            'data-callout': variant,
+            'data-callout-label': CALLOUT_LABELS[variant],
+          }
+        },
+      },
       styleSource: {
         default: null,
         parseHTML: (el) => el.getAttribute('data-style-source'),
         renderHTML: (a) => (a.styleSource ? { 'data-style-source': a.styleSource } : {}),
       },
+      ...guideAttributes,
+    }
+  },
+  addCommands() {
+    return {
+      /**
+       * Turn the current block into a callout of the given variant. Wraps in a
+       * blockquote first when the selection is not already in one.
+       */
+      setCallout:
+        (variant: CalloutVariant) =>
+        ({ chain }) =>
+          chain()
+            .setBlockquote()
+            .updateAttributes('blockquote', { calloutType: variant })
+            .run(),
+      /** Return a callout to an ordinary blockquote. */
+      clearCallout:
+        () =>
+        ({ commands }) =>
+          commands.updateAttributes('blockquote', { calloutType: null }),
     }
   },
 })
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    callout: {
+      setCallout: (variant: CalloutVariant) => ReturnType
+      clearCallout: () => ReturnType
+    }
+  }
+}
 
 export const editorExtensions = [
   StarterKit.configure({
@@ -362,8 +611,8 @@ export const editorExtensions = [
   FontSizeExtension,
   IndentExtension,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
-  CenteredImageResize.configure({ inline: false, allowBase64: true }),
-  Table.configure({ resizable: true }),
+  AlignedImageResize.configure({ inline: false, allowBase64: true }),
+  TableAlignmentExtension.configure({ resizable: true }),
   TableRow,
   CustomTableCell,
   CustomTableHeader,
@@ -371,9 +620,12 @@ export const editorExtensions = [
   Superscript,
   Highlight.configure({ multicolor: true }),
   GrammarUnderlineExtension,
+  SuggestionDecorationsExtension,
+  BlueprintGuideExtension,
   HarperLinterExtension,
   StyleGuideExtension,
   MarkdownTriggers,
+  ImageResizeBehaviorExtension,
 ]
 
 // ─── Editor factory hook ────────────────────────────────────────────────────
@@ -638,7 +890,7 @@ const PRESET_HIGHLIGHTS = [
 
 interface ToolbarProps {
   editor: Editor | null
-  onFormatApplied?: (action: string) => void
+  onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
   pageSize: PageSizeKey
   onPageSizeChange: (size: PageSizeKey) => void
   margins: MarginValues
@@ -708,12 +960,13 @@ export function TiptapToolbar({
   onOpenPersonalization,
 }: ToolbarProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'styles'>('home')
-  const [openStylesManage, setOpenStylesManage] = useState(false)
   const [openFont, setOpenFont] = useState(false)
   const [openSize, setOpenSize] = useState(false)
   const [openColor, setOpenColor] = useState(false)
   const [openHighlight, setOpenHighlight] = useState(false)
   const [openTableMenu, setOpenTableMenu] = useState(false)
+  const [openImageMenu, setOpenImageMenu] = useState(false)
+  const [openCalloutMenu, setOpenCalloutMenu] = useState(false)
   const [openPageSetup, setOpenPageSetup] = useState(false)
   const [openExport, setOpenExport] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -725,6 +978,24 @@ export function TiptapToolbar({
     editor,
     selector: ({ transactionNumber }) => transactionNumber,
   })
+
+  // Report image resizes for behavior tracking. Assigned to per-editor storage
+  // because the shared extension array is built once at module scope, so the
+  // handler cannot be passed as a static extension option.
+  useEffect(() => {
+    if (!editor) return
+    editor.storage.imageResizeBehavior.onResize = (report) => {
+      onFormatApplied?.('image_resize', {
+        contextNode: 'image',
+        imageWidth: report.width,
+        imageHeight: report.height,
+        imageAlignment: report.alignment,
+      })
+    }
+    return () => {
+      editor.storage.imageResizeBehavior.onResize = null
+    }
+  }, [editor, onFormatApplied])
 
   // Close all popovers when clicking outside the toolbar.
   useEffect(() => {
@@ -738,20 +1009,122 @@ export function TiptapToolbar({
   }, [])
 
   function closeAllMenus(): void {
-    setOpenStylesManage(false)
     setOpenFont(false)
     setOpenSize(false)
     setOpenColor(false)
     setOpenHighlight(false)
     setOpenTableMenu(false)
+    setOpenImageMenu(false)
     setOpenPageSetup(false)
     setOpenExport(false)
   }
 
-  /** Run a TipTap command and report the action for behavior tracking. */
-  function run(actionName: string, command: () => void): void {
+  /**
+   * Run a TipTap command and report the action for behavior tracking.
+   * `payload` carries structured-object context (table shape, image size) for
+   * the full-spectrum learning pipeline. Pass a function to snapshot the editor
+   * AFTER the command runs, which is what structural actions need: a
+   * table_row_add should record the resulting size, not the previous one.
+   */
+  function run(
+    actionName: string,
+    command: () => void,
+    payload?: BehaviorEventPayload | (() => BehaviorEventPayload | undefined)
+  ): void {
     command()
-    onFormatApplied?.(actionName)
+    const resolved = typeof payload === 'function' ? payload() : payload
+    onFormatApplied?.(actionName, resolved)
+  }
+
+  /** Table dimensions for the table containing the selection, if any. */
+  function tableShapePayload(): BehaviorEventPayload | undefined {
+    const shape = editor ? snapshotTableShape(editor) : undefined
+    return shape ? { contextNode: 'table', ...shape } : undefined
+  }
+
+  /**
+   * Full table context, snapshotted after the command runs so a header toggle
+   * reports the header state it produced rather than the previous one.
+   */
+  function tableContextPayload(): BehaviorEventPayload | undefined {
+    const context = editor ? snapshotTableContext(editor) : undefined
+    return context ? { contextNode: 'table', ...context } : undefined
+  }
+
+  /** Image context for the image toolbar actions, snapshotted after the command. */
+  function imageContextPayload(): BehaviorEventPayload | undefined {
+    const context = editor ? snapshotImageContext(editor) : undefined
+    return context ? { contextNode: 'image', ...context } : undefined
+  }
+
+  /**
+   * Live table context for the toolbar: drives the header-toggle and alignment
+   * labels. Read during render, after the transaction, so the menu reflects the
+   * current selection rather than the state before the last action.
+   */
+  const tableContext = useMemo(
+    () => (editor ? snapshotTableContext(editor) : undefined),
+    [editor, editor?.state]
+  )
+
+  /** Live image context for the toolbar: drives the alignment and caption labels. */
+  const imageContext = useMemo(
+    () => (editor ? snapshotImageContext(editor) : undefined),
+    [editor, editor?.state]
+  )
+
+  /** The callout variant of the blockquote the cursor is in, if any. */
+  const currentCallout = useMemo<CalloutVariant | null>(() => {
+    if (!editor || editor.isDestroyed) return null
+    const { $from } = editor.state.selection
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      const node = $from.node(depth)
+      if (node.type.name === 'blockquote' && node.attrs.calloutType) {
+        return node.attrs.calloutType as CalloutVariant
+      }
+    }
+    return null
+  }, [editor, editor?.state])
+
+  /**
+   * Indenting inside a blockquote is reported as the structural action
+   * blockquote_indent so the model can learn it separately from list nesting.
+   */
+  function indentActionName(base: 'indent' | 'outdent'): string {
+    if (base === 'indent' && editor && !editor.isDestroyed && editor.isActive('blockquote')) {
+      return 'blockquote_indent'
+    }
+    return base
+  }
+
+  /**
+   * Insert an image and report its real pixel size to the behavior pipeline.
+   * The image is preloaded first because a freshly inserted node has no
+   * measured size yet, and the dimensions are what the ML features learn from.
+   * A failed or cross-origin-blocked load still inserts the image and reports
+   * the action without dimensions.
+   */
+  function insertImageFromUrl(url: string): void {
+    const insert = (payload: BehaviorEventPayload): void => {
+      run('insert_image', () => editor?.chain().focus().setImage({ src: url }).run(), payload)
+    }
+
+    const probe = new Image()
+    probe.onload = () => {
+      insert({
+        contextNode: 'image',
+        imageWidth: probe.naturalWidth || undefined,
+        imageHeight: probe.naturalHeight || undefined,
+      })
+    }
+    probe.onerror = () => insert({ contextNode: 'image' })
+    probe.src = url
+  }
+
+  /** Blockquote context for a structural indent, when applicable. */
+  function blockquoteContextPayload(): BehaviorEventPayload | undefined {
+    if (!editor || editor.isDestroyed || !editor.isActive('blockquote')) return undefined
+    return { contextNode: 'blockquote' }
   }
 
   const isActive = (mark: string | Record<string, unknown>): boolean =>
@@ -1316,12 +1689,16 @@ export function TiptapToolbar({
         <ToolButton
           icon={Outdent}
           title="Outdent"
-          onClick={() => run('outdent', () => editor?.chain().focus().outdent().run())}
+          onClick={() =>
+            run('outdent', () => editor?.chain().focus().outdent().run(), blockquoteContextPayload)
+          }
         />
         <ToolButton
           icon={Indent}
           title="Indent"
-          onClick={() => run('indent', () => editor?.chain().focus().indent().run())}
+          onClick={() =>
+            run(indentActionName('indent'), () => editor?.chain().focus().indent().run())
+          }
         />
       </div>
 
@@ -1363,8 +1740,15 @@ export function TiptapToolbar({
               <MenuItem
                 onClick={() => {
                   closeAllMenus()
-                  run('insert_table', () =>
-                    editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+                  run(
+                    'insert_table',
+                    () =>
+                      editor
+                        ?.chain()
+                        .focus()
+                        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+                        .run(),
+                    { contextNode: 'table', tableRows: 3, tableCols: 3, tableHasHeader: true }
                   )
                 }}
               >
@@ -1375,12 +1759,50 @@ export function TiptapToolbar({
               </MenuItem>
               {editor?.isActive('table') && (
                 <>
-                  <MenuItem onClick={() => { closeAllMenus(); editor.chain().focus().addRowAfter().run() }}>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_row_add', () => editor.chain().focus().addRowAfter().run(), tableShapePayload)
+                    }}
+                  >
                     Add Row Below
                   </MenuItem>
-                  <MenuItem onClick={() => { closeAllMenus(); editor.chain().focus().addColumnAfter().run() }}>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_col_add', () => editor.chain().focus().addColumnAfter().run(), tableShapePayload)
+                    }}
+                  >
                     Add Column Right
                   </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_header_toggle', () => editor.chain().focus().toggleHeaderRow().run(), tableContextPayload)
+                    }}
+                  >
+                    Toggle Header Row
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      const next: TableAlignment =
+                        tableContext?.tableAlignment === 'left' ? 'center' : 'left'
+                      run('table_alignment_change', () => editor.chain().focus().setTableAlignment(next).run(), tableContextPayload)
+                    }}
+                  >
+                    {tableContext?.tableAlignment === 'left' ? 'Align Left' : 'Align Center'}
+                  </MenuItem>
+                  {tableContext?.tableAlignment === 'left' && (
+                    <MenuItem
+                      onClick={() => {
+                        closeAllMenus()
+                        run('table_alignment_change', () => editor.chain().focus().setTableAlignment('right').run(), tableContextPayload)
+                      }}
+                    >
+                      Align Right
+                    </MenuItem>
+                  )}
                   <MenuItem
                     onClick={() => { closeAllMenus(); editor.chain().focus().deleteTable().run() }}
                     style={{ color: 'var(--destructive)' }}
@@ -1393,16 +1815,102 @@ export function TiptapToolbar({
           )}
         </div>
 
+        {/* Callouts: a labelled blockquote variant, reported as callout_insert. */}
+        <div style={{ position: 'relative' }}>
+          <ToolButton
+            icon={BadgeInfo}
+            title="Callout"
+            active={editor?.isActive('blockquote') && Boolean(currentCallout)}
+            onClick={() => setOpenCalloutMenu((v) => !v)}
+          />
+          {openCalloutMenu && (
+            <Popover width={180}>
+              {CALLOUT_VARIANTS.map((variant) => (
+                <MenuItem
+                  key={variant}
+                  onClick={() => {
+                    closeAllMenus()
+                    run(
+                      'callout_insert',
+                      () => editor?.chain().focus().setCallout(variant).run(),
+                      { contextNode: 'callout', blockType: variant }
+                    )
+                  }}
+                >
+                  {CALLOUT_LABELS[variant]}
+                </MenuItem>
+              ))}
+              {currentCallout && (
+                <MenuItem
+                  onClick={() => {
+                    closeAllMenus()
+                    run('callout_insert', () => editor?.chain().focus().clearCallout().run(), {
+                      contextNode: 'blockquote',
+                    })
+                  }}
+                  style={{ color: 'var(--muted-foreground)' }}
+                >
+                  Remove Callout
+                </MenuItem>
+              )}
+            </Popover>
+          )}
+        </div>
+
         <ToolButton
           icon={ImageIcon}
           title="Insert Image URL"
           onClick={() => {
             const url = window.prompt('Enter Image URL:')
             if (url) {
-              run('insert_image', () => editor?.chain().focus().setImage({ src: url }).run())
+              insertImageFromUrl(url)
             }
           }}
         />
+
+        {/* Image alignment only makes sense with an image selected. */}
+        {imageContext && (
+          <div style={{ position: 'relative' }}>
+            <ToolButton
+              icon={AlignCenter}
+              title={`Image Alignment: ${imageContext.imageAlignment}`}
+              onClick={() => setOpenImageMenu((v) => !v)}
+            />
+            {openImageMenu && (
+              <Popover width={190}>
+                {(['left', 'center', 'right', 'float'] as ImageAlignment[]).map((value) => (
+                  <MenuItem
+                    key={value}
+                    onClick={() => {
+                      closeAllMenus()
+    setOpenImageMenu(false)
+    setOpenCalloutMenu(false)
+                      run('image_alignment', () => editor?.chain().focus().setImageAlignment(value).run(), imageContextPayload)
+                    }}
+                    style={
+                      imageContext.imageAlignment === value
+                        ? { fontWeight: 600, color: 'var(--primary)' }
+                        : undefined
+                    }
+                  >
+                    <span style={{ textTransform: 'capitalize' }}>{value}</span>
+                  </MenuItem>
+                ))}
+                {!imageContext.imageHasCaption && (
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      setOpenImageMenu(false)
+                      run('image_caption_add', () => editor?.chain().focus().addImageCaption().run(), imageContextPayload)
+                    }}
+                  >
+                    Add Caption
+                  </MenuItem>
+                )}
+              </Popover>
+            )}
+          </div>
+        )}
 
         <button
           type="button"
@@ -1441,123 +1949,15 @@ export function TiptapToolbar({
       </div>
       </div>
 
-      {/* Styles tab — document styles and academic presets */}
+      {/* Styles tab — document styles and academic presets in one nav strip */}
       {activeTab === 'styles' && (
-        <div
-          style={{
-            flexBasis: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-            padding: '2px 0 6px',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              overflowX: 'auto',
-              flexShrink: 0,
-              scrollbarWidth: 'none',
-            }}
-          >
-            <span
-              style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                color: 'var(--muted-foreground)',
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                padding: '0 4px',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Presets
-            </span>
-            {ACADEMIC_PRESETS.map((preset) => {
-              const active = activePreset === preset.key
-              return (
-                <button
-                  key={preset.key}
-                  type="button"
-                  disabled={!editor}
-                  onClick={() => {
-                    if (editor) onApplyPreset(preset.key)
-                  }}
-                  title={preset.description}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    height: '30px',
-                    padding: '0 10px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    backgroundColor: active ? 'var(--accent-subtle)' : 'transparent',
-                    boxShadow: active ? 'inset 0 -2px 0 0 var(--accent-strong)' : 'none',
-                    color: 'var(--foreground)',
-                    fontSize: '12px',
-                    fontWeight: active ? 700 : 500,
-                    cursor: editor ? 'pointer' : 'default',
-                    fontFamily: 'inherit',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                    opacity: editor ? 1 : 0.4,
-                  }}
-                >
-                  <GraduationCap style={{ width: '13px', height: '13px', opacity: 0.7 }} />
-                  {preset.name}
-                  {active && <Check style={{ width: '13px', height: '13px', color: 'var(--primary)' }} />}
-                </button>
-              )
-            })}
-
-            <Divider />
-
-            <button
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                setOpenStylesManage((v) => !v)
-              }}
-              title="Add, edit, or remove custom styles and presets"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '5px',
-                height: '30px',
-                padding: '0 10px',
-                borderRadius: '6px',
-                border: 'none',
-                backgroundColor: openStylesManage ? 'var(--secondary)' : 'transparent',
-                color: 'var(--foreground)',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }}
-            >
-              <Pencil style={{ width: '13px', height: '13px', opacity: 0.7 }} />
-              {openStylesManage ? 'Hide management' : 'Manage styles & presets'}
-            </button>
-          </div>
-
-          {openStylesManage && (
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
-              <div style={{ maxHeight: '38vh', overflowY: 'auto' }}>
-                <EditorStylesPanel
-                  editor={editor}
-                  onApplyStyle={onApplyStyle}
-                  onApplyPreset={onApplyPreset}
-                  activePreset={activePreset}
-                />
-              </div>
-            </div>
-          )}
+        <div style={{ flexBasis: '100%' }}>
+          <EditorStylesPanel
+            editor={editor}
+            onApplyStyle={onApplyStyle}
+            onApplyPreset={onApplyPreset}
+            activePreset={activePreset}
+          />
         </div>
       )}
 
@@ -2137,7 +2537,13 @@ function TiptapBubbleMenu({ editor }: { editor: Editor | null }): JSX.Element | 
 }
 
 /** Quick-insert toolbar shown at the start of an empty paragraph. */
-function TiptapFloatingMenu({ editor }: { editor: Editor | null }): JSX.Element | null {
+function TiptapFloatingMenu({
+  editor,
+  onFormatApplied,
+}: {
+  editor: Editor | null
+  onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
+}): JSX.Element | null {
   useEditorState({
     editor,
     selector: ({ transactionNumber }) => transactionNumber,
@@ -2189,14 +2595,27 @@ function TiptapFloatingMenu({ editor }: { editor: Editor | null }): JSX.Element 
         <ToolButton
           icon={TableIcon}
           title="Table"
-          onClick={() =>
-            editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-          }
+          onClick={() => {
+            editor
+              .chain()
+              .focus()
+              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+              .run()
+            onFormatApplied?.('insert_table', {
+              contextNode: 'table',
+              tableRows: 3,
+              tableCols: 3,
+              tableHasHeader: true,
+            })
+          }}
         />
         <ToolButton
           icon={Code2}
           title="Code Block"
-          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+          onClick={() => {
+            editor.chain().focus().toggleCodeBlock().run()
+            onFormatApplied?.('code_block_insert', { contextNode: 'code_block' })
+          }}
         />
         <ToolButton
           icon={HRLine}
@@ -2452,18 +2871,19 @@ const PROSE_STYLES = `
 
 interface TiptapCanvasProps {
   editor: Editor | null
+  onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
 }
 
 /**
  * Renders the TipTap editor canvas with bubble + floating menus and prose styles.
  * Document.tsx places this inside the paper sheet.
  */
-export function TiptapCanvas({ editor }: TiptapCanvasProps): JSX.Element {
+export function TiptapCanvas({ editor, onFormatApplied }: TiptapCanvasProps): JSX.Element {
   return (
     <>
       <style>{PROSE_STYLES}</style>
       <TiptapBubbleMenu editor={editor} />
-      <TiptapFloatingMenu editor={editor} />
+      <TiptapFloatingMenu editor={editor} onFormatApplied={onFormatApplied} />
       {editor && <EditorContent editor={editor} />}
     </>
   )

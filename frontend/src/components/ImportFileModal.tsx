@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect, type DragEvent, type ChangeEvent } from 'react'
-import { Upload, X, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Upload, X, FileText, AlertCircle, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { api } from '../services/api'
 
 interface ImportFileModalProps {
@@ -451,6 +451,16 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
 interface ImportProgressToastProps {
   progress: ImportProgress
   onDone: () => void
+  /**
+   * Byte-level progress for an async large-file import. When provided it
+   * replaces the batch `done/total` ratio, because a single 200MB download has
+   * no meaningful "1 of 1" progress to show.
+   */
+  percent?: number
+  /** Phase label for an async import, e.g. "Downloading from Drive…". */
+  phase?: string
+  /** Failure message; switches the toast into an error state. */
+  error?: string
 }
 
 /**
@@ -458,10 +468,20 @@ interface ImportProgressToastProps {
  * Shows the active file name, a progress bar, and — when complete — a
  * persistent success state that stays until explicitly dismissed (point 13).
  */
-export function ImportProgressToast({ progress, onDone }: ImportProgressToastProps): JSX.Element {
+export function ImportProgressToast({
+  progress,
+  onDone,
+  percent,
+  phase,
+  error,
+}: ImportProgressToastProps): JSX.Element {
   const { done, total, currentName } = progress
-  const finished = done >= total && total > 0
-  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0
+  const failed = Boolean(error)
+  const finished = !failed && done >= total && total > 0
+  const batchPercent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0
+  // An explicit percent (async import) wins over the batch ratio.
+  const shownPercent = typeof percent === 'number' ? Math.min(100, Math.round(percent)) : batchPercent
+  const showDismiss = finished || failed
 
   return (
     <div
@@ -485,6 +505,8 @@ export function ImportProgressToast({ progress, onDone }: ImportProgressToastPro
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
         {finished ? (
           <CheckCircle2 style={{ width: '16px', height: '16px', color: 'var(--success)', flexShrink: 0 }} />
+        ) : failed ? (
+          <AlertTriangle style={{ width: '16px', height: '16px', color: 'var(--error)', flexShrink: 0 }} />
         ) : (
           <Loader2 style={{ width: '16px', height: '16px', color: 'var(--primary)', flexShrink: 0, animation: 'spin 0.7s linear infinite' }} />
         )}
@@ -498,9 +520,13 @@ export function ImportProgressToast({ progress, onDone }: ImportProgressToastPro
             flex: 1,
           }}
         >
-          {finished ? `Imported ${total} file${total > 1 ? 's' : ''}` : `Importing ${currentName || 'document'}…`}
+          {failed
+            ? `Import failed: ${currentName || 'document'}`
+            : finished
+              ? `Imported ${total} file${total > 1 ? 's' : ''}`
+              : phase || `Importing ${currentName || 'document'}…`}
         </span>
-        {finished && (
+        {showDismiss && (
           <button
             type="button"
             onClick={onDone}
@@ -527,19 +553,27 @@ export function ImportProgressToast({ progress, onDone }: ImportProgressToastPro
         <div style={{ flex: 1, height: '5px', borderRadius: '999px', backgroundColor: 'var(--secondary)', overflow: 'hidden' }}>
           <div
             style={{
-              width: `${percent}%`,
+              width: `${shownPercent}%`,
               height: '100%',
               borderRadius: '999px',
-              backgroundColor: finished ? 'var(--success)' : 'var(--primary)',
+              backgroundColor: failed ? 'var(--error)' : finished ? 'var(--success)' : 'var(--primary)',
               transition: 'width 200ms ease',
             }}
           />
         </div>
         <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', flexShrink: 0 }}>
-          {percent}%
+          {shownPercent}%
         </span>
       </div>
-      {!finished ? (
+      {failed ? (
+        <p style={{ fontSize: '0.6875rem', color: 'var(--error)', margin: '0.375rem 0 0', lineHeight: 1.4 }}>
+          {error}
+        </p>
+      ) : !finished && phase ? (
+        <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0.375rem 0 0' }}>
+          {phase}
+        </p>
+      ) : !finished ? (
         <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0.375rem 0 0' }}>
           {done} of {total} complete
         </p>

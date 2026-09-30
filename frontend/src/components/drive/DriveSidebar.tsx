@@ -5,11 +5,13 @@ import {
   Share2,
   Plus,
   FolderIcon,
+  GraduationCap,
   HardDrive,
   Upload,
   type LucideIcon,
 } from 'lucide-react'
 import type { FolderRecord, StorageSummary } from '@/services/api'
+import { LogoMark } from '@/components/Logo'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -109,9 +111,7 @@ function DriveSidebar({
     >
       {/* ── Logo area ──────────────────────────────── */}
       <div className="flex items-center gap-2.5 px-5 h-16 shrink-0 mt-2">
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary shadow-sm shadow-primary/30 text-primary-foreground">
-          <FileText className="size-5 stroke-[2.2]" />
-        </div>
+        <LogoMark size={36} title="IntelliDocs" />
         <div className="flex flex-col">
           <span className="text-[1.2rem] font-bold tracking-tight text-foreground leading-tight">
             IntelliDocs
@@ -203,6 +203,8 @@ function DriveSidebar({
           <nav className="flex flex-col px-3 gap-0.5">
             {folders.slice(0, 6).map((folder) => {
               const active = selection.type === 'folder' && selection.folderId === folder.folder_id
+              const isClass = folder.folder_type === 'class'
+              const Icon = isClass ? GraduationCap : FolderIcon
               return (
                 <button
                   key={folder.folder_id}
@@ -211,15 +213,34 @@ function DriveSidebar({
                     onSelectView({ type: 'folder', folderId: folder.folder_id, folderName: folder.name })
                     onClose()
                   }}
+                  title={isClass && folder.class_code ? `${folder.name} · ${folder.class_code}` : folder.name}
                   className={`flex items-center gap-3 w-full px-4 h-9 rounded-full text-[0.8125rem] border-none cursor-pointer text-left transition-colors ${
                     active
-                      ? 'font-medium text-primary bg-primary/15'
-                      : 'font-normal text-muted-foreground hover:bg-foreground/5'
+                      ? isClass
+                        ? 'font-medium text-accent-foreground bg-accent/20'
+                        : 'font-medium text-primary bg-primary/15'
+                      : isClass
+                        ? 'font-normal text-foreground/80 hover:bg-accent/15'
+                        : 'font-normal text-muted-foreground hover:bg-foreground/5'
                   }`}
                   style={{ fontFamily: 'inherit' }}
                 >
-                  <FolderIcon className={`size-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} strokeWidth={active ? 2 : 1.75} />
+                  <Icon
+                    className={`size-4 shrink-0 ${
+                      isClass
+                        ? 'text-accent-foreground dark:text-[#6fb3b8]'
+                        : active
+                          ? 'text-primary'
+                          : 'text-muted-foreground'
+                    }`}
+                    strokeWidth={active ? 2 : 1.75}
+                  />
                   <span className="truncate">{folder.name}</span>
+                  {isClass && (
+                    <span className="ml-auto shrink-0 text-[0.625rem] font-semibold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-accent/25 text-accent-foreground dark:bg-[#1e383b] dark:text-[#6fb3b8]">
+                      {folder.class_code || 'Class'}
+                    </span>
+                  )}
                 </button>
               )
             })}

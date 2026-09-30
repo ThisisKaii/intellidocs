@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="IntelliDocs">
+  <style>
+    .spark { fill: #388087; stroke: #388087; }
+    .ink { fill: #1a1c1d; stroke: #1a1c1d; }
+    @media (prefers-color-scheme: dark) {
+      .spark { fill: #6fb3b8; stroke: #6fb3b8; }
+      .ink { fill: #f2f5f5; stroke: #f2f5f5; }
+    }
+  </style>
+  <path class="spark" d="M32 3 V9 M21 7.5 L25.2 11.7 M43 7.5 L38.8 11.7" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  <circle class="spark" cx="32" cy="20" r="6"/>
+  <path class="ink" d="M29 30 H35 V54 H29 Z" stroke="none"/>
+  <path class="ink" d="M35 33 H43 A10.5 10.5 0 0 1 43 54 H35" stroke-width="5.5" fill="none"/>
+  <path class="ink" d="M23 57 H49" stroke-width="3" stroke-linecap="round" fill="none"/>
+</svg>

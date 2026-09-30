@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, type DocumentRecord, type FolderRecord, type StorageSummary } from '@/services/api'
+import { api, type DocumentRecord, type DriveFile, type FolderRecord, type FolderType, type StorageSummary, type UserPreset } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
+import { useImportJob } from '@/hooks/useImportJob'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
 import { FileText, FolderIcon, HardDrive, Menu, Plus, Search, Upload } from 'lucide-react'
@@ -13,6 +14,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 import UserMenu from '@/components/UserMenu'
 import DriveImportDialog from '@/components/DriveImportDialog'
+import FolderCreateModal from '@/components/drive/FolderCreateModal'
+import DocumentCreateModal from '@/components/DocumentCreateModal'
+import {
+  buildBlueprintHtml,
+  type DocumentBlueprint,
+} from '@/components/editor/documentBlueprints'
 import ImportFileModal, { type ImportProgress, ImportProgressToast } from '@/components/ImportFileModal'
 import ShareModal from '@/components/ShareModal'
 import { supabase } from '@/lib/supabase'
@@ -101,8 +108,20 @@ export default function HomePage(): JSX.Element {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [driveOpen, setDriveOpen] = useState<boolean>(false)
   const [importFileOpen, setImportFileOpen] = useState<boolean>(false)
+  const [folderModalOpen, setFolderModalOpen] = useState<boolean>(false)
+  const [createModalOpen, setCreateModalOpen] = useState<boolean>(false)
+  const [createSubmitting, setCreateSubmitting] = useState<boolean>(false)
+  const [createModalError, setCreateModalError] = useState<string>('')
+  const [userPresets, setUserPresets] = useState<UserPreset[]>([])
+  const [folderSubmitting, setFolderSubmitting] = useState<boolean>(false)
+  const [folderModalError, setFolderModalError] = useState<string>('')
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false)
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
+  /** Job id for an async Drive import over the 15MB threshold, if any. */
+  const [driveImportJobId, setDriveImportJobId] = useState<string | null>(null)
+  /** Guards against importing the same finished job twice across re-renders. */
+  const handledJobRef = useRef<string | null>(null)
+  const driveImport = useImportJob(driveImportJobId)
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
   const [shareDocId, setShareDocId] = useState<string | null>(null)
 
@@ -165,6 +184,18 @@ export default function HomePage(): JSX.Element {
       api.documents.trash().then(setTrashDocuments).catch(() => {})
     }
   }, [selection.type])
+
+  /* ── User blueprint forks: offer them in the new-document modal ── */
+  useEffect(() => {
+    api.formatting
+      .listUserPresets()
+      .then(setUserPresets)
+      .catch(() => {
+        /* The user-presets table is not applied yet, or the fetch failed.
+         * The modal simply shows the standard blueprints only. */
+        setUserPresets([])
+      })
+  }, [])
 
   /* ── Supabase Realtime: refresh "Shared with me" instantly (plan point 14) ── */
   useEffect(() => {
@@ -236,10 +267,29 @@ export default function HomePage(): JSX.Element {
   /* ── Actions ───────────────────────────────────────── */
 
   async function handleCreateDocument(): Promise<void> {
+    setCreateModalError('')
+    setCreateModalOpen(true)
+  }
+
+  /**
+   * Create the document described by the new-document modal. A blueprint seeds
+   * the structural sections and binds its preset in the same insert, so the
+   * editor opens already structured instead of as an empty page.
+   */
+  async function submitCreateDocument(input: {
+    title: string
+    blueprint: DocumentBlueprint
+    presetKey: string | null
+  }): Promise<void> {
     try {
       setError('')
-      const title = uniqueTitle('Untitled document', allDocuments.map((d) => d.title))
-      const doc = await api.documents.create(title)
+      setCreateModalError('')
+      setCreateSubmitting(true)
+      const doc = await api.documents.create(input.title, {
+        content: buildBlueprintHtml(input.blueprint),
+        formatting_preset: input.presetKey ?? undefined,
+      })
+      setCreateModalOpen(false)
       if (selection.type === 'folder' && selection.folderId) {
         try {
           await api.folders.addDocument(selection.folderId, doc.id)
@@ -247,17 +297,41 @@ export default function HomePage(): JSX.Element {
       }
       navigate(`/document/${doc.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create document')
+      setCreateModalError(
+        err instanceof Error ? err.message : 'Failed to create document'
+      )
+    } finally {
+      setCreateSubmitting(false)
     }
   }
 
   function handleCreateFolder(): void {
-    // Trigger the sidebar inline create — we simply create via API and refresh
-    const name = prompt('Folder name:')
-    if (!name?.trim()) return
-    api.folders.create(name.trim())
-      .then((created) => setFolders((prev) => [...prev, created]))
-      .catch(() => setError('Failed to create folder'))
+    setFolderModalError('')
+    setFolderModalOpen(true)
+  }
+
+  /** Create the folder described by the modal, then refresh the sidebar list. */
+  async function submitCreateFolder(input: {
+    name: string
+    folderType: FolderType
+    classCode?: string
+    academicTerm?: string
+  }): Promise<void> {
+    setFolderSubmitting(true)
+    setFolderModalError('')
+    try {
+      const created = await api.folders.create(input.name, {
+        folderType: input.folderType,
+        classCode: input.classCode,
+        academicTerm: input.academicTerm,
+      })
+      setFolders((prev) => [...prev, created])
+      setFolderModalOpen(false)
+    } catch (err) {
+      setFolderModalError(err instanceof Error ? err.message : 'Failed to create folder')
+    } finally {
+      setFolderSubmitting(false)
+    }
   }
 
   /** Create a document inside the current selection (folder aware). */
@@ -306,6 +380,62 @@ export default function HomePage(): JSX.Element {
       setError(err instanceof Error ? err.message : 'Failed to import document')
     }
   }
+
+  /**
+   * Import a Google Drive file. The dialog hands the file over and closes
+   * immediately, so the download/conversion runs here and reports through the
+   * bottom-right progress toast instead of blocking the dialog.
+   *
+   * Files over 15MB come back as 202 with a job id: the server keeps working
+   * after the response, so this switches to polling instead of awaiting HTML.
+   */
+  async function handleDriveImport(file: DriveFile): Promise<void> {
+    setError('')
+    setImportProgress({ done: 0, total: 1, currentName: file.name })
+
+    try {
+      const res = await api.drive.exportFile(file.id)
+
+      // A 202 body carries jobId and no html field at all, so discriminate on
+      // the presence of html rather than on an optional jobId.
+      if (!('html' in res)) {
+        setDriveImportJobId(res.jobId)
+        return
+      }
+
+      setImportProgress({ done: 1, total: 1, currentName: '' })
+      await api.documents.list().then(setAllDocuments).catch(() => undefined)
+      await handleImportDoc(res.title, res.html)
+    } catch (err) {
+      setImportProgress(null)
+      setError(err instanceof Error ? err.message : `Failed to import "${file.name}".`)
+    }
+  }
+
+  /** Adopt a finished async import: create the document, then clear the toast. */
+  useEffect(() => {
+    const job = driveImport.job
+    if (!driveImport.done || !job) return
+    if (handledJobRef.current === job.id) return
+    handledJobRef.current = job.id
+
+    void (async () => {
+      try {
+        setImportProgress({ done: 1, total: 1, currentName: '' })
+        await api.documents.list().then(setAllDocuments).catch(() => undefined)
+        if (job.html) {
+          await handleImportDoc(job.title || job.fileName, job.html)
+        }
+        setDriveImportJobId(null)
+      } catch (err) {
+        setImportProgress(null)
+        setError(err instanceof Error ? err.message : 'Failed to finish the import.')
+      }
+    })()
+    // Intentionally keyed on the job id only: the object identity changes on
+    // every poll tick and would re-trigger the import.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driveImport.done, driveImport.job])
 
   /** Sidebar navigation. */
   function handleSelectView(sel: FolderSelection): void {
@@ -729,6 +859,11 @@ export default function HomePage(): JSX.Element {
               }
               setShareDocId(docId)
             }}
+            onFoldersChanged={() => {
+              // Roster edits change the class folder's student/submission
+              // counts, so pull the folder list again to refresh the badges.
+              void driveCache.refresh()
+            }}
           />
         </main>
       </div>
@@ -736,7 +871,7 @@ export default function HomePage(): JSX.Element {
       <DriveImportDialog
         open={driveOpen}
         onClose={() => setDriveOpen(false)}
-        onImport={handleImportDoc}
+        onImport={(file) => { void handleDriveImport(file) }}
       />
 
       {importFileOpen && (
@@ -750,9 +885,46 @@ export default function HomePage(): JSX.Element {
         />
       )}
 
+      {/* New folder — personal workspace vs. student class folder */}
+      {folderModalOpen && (
+        <FolderCreateModal
+          onClose={() => {
+            setFolderModalOpen(false)
+            setFolderModalError('')
+          }}
+          onSubmit={submitCreateFolder}
+          submitting={folderSubmitting}
+          error={folderModalError}
+        />
+      )}
+
+      {/* New document — blueprint picker (section 9) */}
+      {createModalOpen && (
+        <DocumentCreateModal
+          onClose={() => {
+            setCreateModalOpen(false)
+            setCreateModalError('')
+          }}
+          onSubmit={submitCreateDocument}
+          existingTitles={allDocuments.map((d) => d.title)}
+          userPresets={userPresets}
+          submitting={createSubmitting}
+          error={createModalError}
+        />
+      )}
+
       {/* Google-Drive-style import progress toast (bottom right) */}
       {importProgress && (
-        <ImportProgressToast progress={importProgress} onDone={() => setImportProgress(null)} />
+        <ImportProgressToast
+          progress={importProgress}
+          onDone={() => {
+            setImportProgress(null)
+            setDriveImportJobId(null)
+          }}
+          percent={driveImportJobId ? driveImport.progress : undefined}
+          phase={driveImportJobId ? driveImport.phase : undefined}
+          error={driveImportJobId ? driveImport.error : undefined}
+        />
       )}
 
       {/* Destructive-action confirmation */}

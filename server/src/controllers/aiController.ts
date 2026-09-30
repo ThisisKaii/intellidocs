@@ -160,6 +160,10 @@ function detectFormattingPreview(
     blockquote: 'Blockquote',
     unordered_list: 'Bullet List',
     ordered_list: 'Numbered List',
+    align_left: 'Align Left',
+    align_center: 'Align Center',
+    align_right: 'Align Right',
+    align_justify: 'Justify',
   }
 
   const primary = intent.formats[0]
@@ -232,6 +236,10 @@ function labelForFormat(preview: AIChatPreviewContext): string {
     blockquote: 'Blockquote',
     unordered_list: 'Bullet List',
     ordered_list: 'Numbered List',
+    align_left: 'Align Left',
+    align_center: 'Align Center',
+    align_right: 'Align Right',
+    align_justify: 'Justify',
     body_text: 'Text',
   }
   const fmt = preview.formats?.[0] ?? preview.format

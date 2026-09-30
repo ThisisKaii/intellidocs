@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
-import { updateOwnProfile, getUserStorageSummary } from '../models/userModel'
+import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus } from '../models/userModel'
 import { resolvePendingShares } from '../models/shareModel'
 import { AuthenticatedRequest } from '../types/express'
 
@@ -233,6 +233,30 @@ interface ApplyStudentBody {
   studentId: string
   college: string
   degreeProgram: string
+}
+
+/**
+ * Return the signed-in user's current role and verification status.
+ *
+ * Both are cached in the client from the login response, so an administrator
+ * approving an application would not surface in the UI until the next sign-in.
+ * The client calls this on focus and while an application is pending, so an
+ * approval is reflected within seconds instead of requiring a manual reload.
+ */
+export async function getMe(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: '401 Unauthorized: Session required' })
+      return
+    }
+
+    const roleStatus = await getOwnRoleStatus(userId)
+    res.status(200).json(roleStatus)
+  } catch (err) {
+    console.error('getMe: role lookup failed:', err instanceof Error ? err.message : err)
+    res.status(500).json({ error: 'Failed to load profile' })
+  }
 }
 
 /**

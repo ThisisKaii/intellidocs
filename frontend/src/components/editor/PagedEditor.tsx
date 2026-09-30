@@ -13,6 +13,7 @@ import type { GrammarIssue } from './GrammarPanel'
 import type { PageNumberFormat } from '@/services/api'
 import type { UnderlineStyle } from '@/lib/editorPreferences'
 import { SlashCommandMenu } from './SlashCommandMenu'
+import type { BehaviorEventPayload } from './behaviorListener'
 
 /** Vertical gap between stacked page sheets, in px. */
 const PAGE_GAP = 40
@@ -81,6 +82,8 @@ interface PagedEditorProps {
   footerContent: string
   headerNumberFormat: PageNumberFormat
   footerNumberFormat: PageNumberFormat
+  /** Forwarded to the floating menu so structural actions reach the behavior pipeline. */
+  onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
 }
 
 /**
@@ -109,6 +112,7 @@ export function PagedEditor({
   footerContent,
   headerNumberFormat,
   footerNumberFormat,
+  onFormatApplied,
 }: PagedEditorProps): JSX.Element {
   const propsRef = useRef({ onContentChange, onGrammarClick })
   propsRef.current = { onContentChange, onGrammarClick }
@@ -345,7 +349,7 @@ export function PagedEditor({
           }
           ${romanStyle}`}
       </style>
-      <TiptapCanvas editor={editor} />
+      <TiptapCanvas editor={editor} onFormatApplied={onFormatApplied} />
       <SlashCommandMenu editor={editor} />
       {loadProgress !== null && (
         <div

@@ -16,6 +16,7 @@ import notificationRoutes from './routes/notificationRoutes'
 import adminRoutes from './routes/adminRoutes'
 import formattingRoutes from './routes/formattingRoutes'
 import profileRoutes from './routes/profileRoutes'
+import healthRoutes from './routes/healthRoutes'
 import mcpRouter from './mcp/mcpServer'
 import { authMiddleware } from './middleware/authMiddleware'
 
@@ -32,14 +33,9 @@ app.use(cors({
 app.use(express.json({ limit: '100mb' }))
 app.use(express.urlencoded({ limit: '100mb', extended: true }))
 
-// Health check route
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'IntelliDocs API is running',
-    timestamp: new Date().toISOString()
-  })
-})
+// Health check routes: liveness is dependency-free, readiness verifies
+// Supabase/Redis/ML so the load balancer can drain a broken replica.
+app.use('/health', healthRoutes)
 
 // Root route
 app.get('/', (req, res) => {
@@ -79,7 +75,8 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT as number, '0.0.0.0', () => {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT}`)
-    console.log(`📊 Health check: http://0.0.0.0:${PORT}/health`)
+    console.log(`📊 Liveness:  http://0.0.0.0:${PORT}/health/live`)
+  console.log(`📊 Readiness: http://0.0.0.0:${PORT}/health/ready`)
   })
 }
 

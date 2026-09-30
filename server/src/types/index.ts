@@ -69,6 +69,30 @@ export interface Folder {
   parent_id: string | null
   created_at: string
   updated_at: string
+  /** 'personal' is the owner's private workspace; 'class' is shared with students. */
+  folder_type?: FolderType
+  /** Course code, only present on class folders (e.g. 'CS-201'). */
+  class_code?: string | null
+  /** Term the class folder was created for (e.g. '2026-T1'). */
+  academic_term?: string | null
+  /** Number of documents enrolled students have submitted into a class folder. */
+  submission_count?: number
+  /** Number of students enrolled in a class folder. */
+  enrolled_count?: number
+}
+
+/** A folder is either the owner's private workspace or a shared class folder. */
+export type FolderType = 'personal' | 'class'
+
+/** One enrolled student in a class folder. */
+export interface ClassEnrollment {
+  folder_id: string
+  student_id: string
+  enrolled_at: string
+  /** Email from Supabase Auth, for display in the roster. */
+  email?: string | null
+  /** Display name from Supabase Auth, for display in the roster. */
+  display_name?: string | null
 }
 
 export interface CreateDocumentRequest {
@@ -83,6 +107,8 @@ export interface CreateDocumentRequest {
   page_size?: PageSizeKey
   margins?: MarginValues
   orientation?: PageOrientation
+  /** Blueprint key to bind at creation, e.g. 'apa_7th' or a user preset key. */
+  formatting_preset?: string
 }
 
 export interface UpdateDocumentRequest {
@@ -134,6 +160,27 @@ export interface FormatPreset {
   is_system: boolean
 }
 
+/**
+ * A standard blueprint forked by one user. Standard presets are never edited
+ * in place — customising "APA 7th Edition" produces "APA 7th Edition (Custom
+ * v2)" here so every other document on the standard key stays untouched.
+ */
+export interface UserPreset {
+  preset_id: string
+  user_id: string
+  /** Unique per user, e.g. 'apa_7th__v2'. */
+  key: string
+  /** Key of the standard blueprint this was forked from. */
+  base_key: string
+  name: string
+  description: string
+  rules: FormatRule[]
+  /** 2 for the first fork of a base, 3 for the next, and so on. */
+  version: number
+  created_at: string
+  updated_at: string
+}
+
 /** Tier 2 custom binding — a user-defined hard formatting rule. */
 export interface FormatBinding {
   id: string
@@ -148,6 +195,17 @@ export interface CreateFormatBindingRequest {
   trigger_condition: TriggerCondition
   format_to_apply: string
   priority: number
+}
+
+/** Payload for forking a standard blueprint into a personal preset. */
+export interface CreateUserPresetRequest {
+  /** Key of the standard blueprint to fork, e.g. 'apa_7th'. */
+  baseKey: string
+  /** Defaults to "<Base name> (Custom vN)" when omitted. */
+  name?: string
+  description?: string
+  /** Overrides the base rules; defaults to the base blueprint's own rules. */
+  rules?: FormatRule[]
 }
 
 export interface UpdateFormatBindingRequest {
@@ -319,6 +377,18 @@ export interface FormatBehaviorPayload {
   underline?: boolean
   fontSize?: number | null
   textAlign?: string
+  tableRows?: number
+  tableCols?: number
+  tableAlignment?: 'left' | 'center' | 'right'
+  tableHasHeader?: boolean
+  imageWidth?: number
+  imageHeight?: number
+  imageAlignment?: 'left' | 'center' | 'right' | 'float'
+  imageHasCaption?: boolean
+  blockType?: string
+  blockIndent?: number
+  codeLanguage?: string
+  contextNode?: string
 }
 
 export interface BehaviorEvent {
@@ -406,4 +476,64 @@ export interface FormatSnapshot {
   show_footer: boolean
   header_number_format: PageNumberFormat
   footer_number_format: PageNumberFormat
+}
+
+/** Outcome of one Tier 1 deterministic compliance rule. */
+export type ComplianceStatus = 'pass' | 'warn' | 'fail'
+
+/** One Tier 1 compliance check as reported to the dashboard. */
+export interface ComplianceCheck {
+  id: string
+  name: string
+  category: string
+  status: ComplianceStatus
+  detail: string
+  suggestion: string
+  weight: number
+  required: boolean
+}
+
+/** RandomForest paragraph-style consistency detail from Tier 2. */
+export interface StyleConsistencyResult {
+  score: number
+  paragraphsAnalyzed: number
+  agreements: number
+  meanConfidence: number
+  mismatches: { text: string; observed: string; predicted: string }[]
+}
+
+/** LSTM document-flow consistency detail from Tier 2. */
+export interface FlowConsistencyResult {
+  score: number
+  transitions: number
+  expectedNext: string
+  observedNext: string
+  agrees: boolean
+}
+
+/** Hybrid compliance audit report combining both scoring tiers. */
+export interface ComplianceReport {
+  aggregateScore: number
+  ruleScore: number
+  /** Null when the Tier 2 models are not installed. */
+  mlScore: number | null
+  ruleWeight: number
+  mlWeight: number
+  ready: boolean
+  readinessThreshold: number
+  blockingIssues: string[]
+  summary: {
+    passed: number
+    warned: number
+    failed: number
+    paragraphs: number
+  }
+  checks: ComplianceCheck[]
+  ml: {
+    available: boolean
+    score: number | null
+    unavailableReason: string | null
+    style: StyleConsistencyResult | null
+    flow: FlowConsistencyResult | null
+  }
 }

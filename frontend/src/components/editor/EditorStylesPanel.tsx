@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
-import { Check, ChevronDown, GripVertical, Plus, Settings2, Trash2, Wand2, X } from 'lucide-react'
+import { Check, GraduationCap, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { STYLE_ITEMS, type StyleItem } from './styleCommands'
 import { ACADEMIC_PRESETS, type AcademicPreset } from './academicPresets'
 
@@ -93,10 +94,9 @@ const inputStyle: CSSProperties = {
 }
 
 /**
- * Editor-side "Styles" tab: a reference and management panel for document
- * styles and academic presets that applies directly to the selection / page.
- * Groups are independently collapsible, show the first five entries before a
- * "more" expander, and support localStorage-backed custom aliases.
+ * Editor-side Styles tab: one horizontal nav strip that holds the document
+ * styles and the academic presets side by side, plus a "Manage" control that
+ * opens a pop-up modal for creating and removing custom aliases.
  */
 export default function EditorStylesPanel({
   editor,
@@ -106,19 +106,11 @@ export default function EditorStylesPanel({
 }: EditorStylesPanelProps): JSX.Element {
   const [customStyles, setCustomStyles] = useState<CustomStyle[]>(loadCustomStyles)
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>(loadCustomPresets)
-  const [stylesMore, setStylesMore] = useState<boolean>(false)
-  const [presetsMore, setPresetsMore] = useState<boolean>(false)
   const [manageOpen, setManageOpen] = useState<boolean>(false)
 
-  const PREVIEW_COUNT = 5
-
+  // Custom entries lead the strip so the user's own styles/presets come first.
   const allStyles: StyleEntry[] = [...customStyles, ...STYLE_ITEMS]
-  const shownStyles = stylesMore ? allStyles : allStyles.slice(0, PREVIEW_COUNT)
-  const extraStyles = Math.max(allStyles.length - shownStyles.length, 0)
-
   const allPresets: PresetEntry[] = [...customPresets, ...ACADEMIC_PRESETS]
-  const shownPresets = presetsMore ? allPresets : allPresets.slice(0, PREVIEW_COUNT)
-  const extraPresets = Math.max(allPresets.length - shownPresets.length, 0)
 
   /** Persist a new custom style alias and refresh the list. */
   function addCustomStyle(format: string, label: string, hint: string): void {
@@ -151,142 +143,57 @@ export default function EditorStylesPanel({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem' }}>
-      <Section title="Academic Presets" count={allPresets.length}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          {shownPresets.map((preset) => {
-            const key = presetKeyOf(preset)
-            const isActive = activePreset === key
-            const isCustom = isCustomPreset(preset)
-            return (
-              <button
-                key={isCustom ? preset.id : preset.key}
-                type="button"
-                onClick={() => onApplyPreset(key)}
-                disabled={!editor}
-                draggable={!!editor}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('application/x-intellidocs-preset', key)
-                  e.dataTransfer.effectAllowed = 'copy'
-                }}
-                title={preset.description}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '0.5rem',
-                  padding: '0.5rem 0.625rem',
-                  borderRadius: '0.5rem',
-                  border: 'none',
-                  backgroundColor: isActive ? 'var(--accent-subtle)' : 'transparent',
-                  borderLeft: isActive ? '3px solid var(--accent-strong)' : '3px solid transparent',
-                  cursor: editor ? 'pointer' : 'not-allowed',
-                  opacity: editor ? 1 : 0.5,
-                  fontFamily: 'inherit',
-                  textAlign: 'left',
-                }}
-              >
-                <GripVertical style={{ width: '14px', height: '14px', color: 'var(--muted-foreground)', marginTop: '1px', flexShrink: 0 }} />
-                <Wand2 style={{ width: '13px', height: '13px', color: 'var(--primary)', marginTop: '1px', flexShrink: 0 }} />
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>
-                    {preset.name}
-                    {isActive && <Check style={{ width: '13px', height: '13px', color: 'var(--primary)' }} />}
-                    {isCustom && <CustomBadge label="Custom" />}
-                  </span>
-                  <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--muted-foreground)', lineHeight: 1.4 }}>
-                    {preset.description}
-                  </span>
-                </span>
-                {isCustom && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeCustomPreset(preset.id)
-                    }}
-                    aria-label={`Remove ${preset.name}`}
-                    style={{ color: 'var(--muted-foreground)', cursor: 'pointer', padding: '0.125rem' }}
-                  >
-                    <Trash2 style={{ width: '12px', height: '12px' }} />
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '2px 0 6px' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          overflowX: 'auto',
+          flexShrink: 0,
+          scrollbarWidth: 'none',
+        }}
+      >
+        <StripLabel>Styles</StripLabel>
+        {allStyles.map((style) => (
+          <StripButton
+            key={isCustomStyle(style) ? style.id : style.format}
+            label={style.label}
+            title={style.hint}
+            disabled={!editor}
+            drag={editor ? { type: 'application/x-intellidocs-style', value: style.format } : undefined}
+            onApply={() => onApplyStyle(style.format)}
+          />
+        ))}
 
-        <PanelFooter
-          extra={extraPresets}
-          labels={{ expand: `${extraPresets} more presets`, collapse: 'Show fewer presets' }}
-          more={presetsMore}
-          onToggleMore={() => setPresetsMore((v) => !v)}
-          onOpenManage={() => setManageOpen(true)}
+        <StripDivider />
+
+        <StripLabel>Presets</StripLabel>
+        {allPresets.map((preset) => {
+          const key = presetKeyOf(preset)
+          return (
+            <StripButton
+              key={isCustomPreset(preset) ? preset.id : preset.key}
+              label={preset.name}
+              title={preset.description}
+              icon={<GraduationCap style={{ width: '13px', height: '13px', opacity: 0.7 }} />}
+              active={activePreset === key}
+              disabled={!editor}
+              drag={editor ? { type: 'application/x-intellidocs-preset', value: key } : undefined}
+              onApply={() => onApplyPreset(key)}
+            />
+          )
+        })}
+
+        <StripDivider />
+
+        <StripButton
+          label="Manage"
+          title="Add or remove your own styles and presets"
+          icon={<Pencil style={{ width: '13px', height: '13px', opacity: 0.7 }} />}
+          onApply={() => setManageOpen(true)}
         />
-      </Section>
-
-      <Section title="Document Styles" count={allStyles.length}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
-          {shownStyles.map((style) => {
-            const isCustom = isCustomStyle(style)
-            return (
-              <button
-                key={isCustom ? style.id : style.format}
-                type="button"
-                onClick={() => onApplyStyle(style.format)}
-                disabled={!editor}
-                draggable={!!editor}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('application/x-intellidocs-style', style.format)
-                  e.dataTransfer.effectAllowed = 'copy'
-                }}
-                title={style.hint}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  gap: '0.125rem',
-                  padding: '0.5rem 0.625rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid transparent',
-                  backgroundColor: 'transparent',
-                  cursor: editor ? 'pointer' : 'not-allowed',
-                  opacity: editor ? 1 : 0.5,
-                  fontFamily: 'inherit',
-                  textAlign: 'left',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>
-                  <GripVertical style={{ width: '13px', height: '13px', color: 'var(--muted-foreground)', flexShrink: 0 }} />
-                  {style.label}
-                  {isCustom && <CustomBadge label="Custom" />}
-                </span>
-                <span style={{ fontSize: '0.65625rem', color: 'var(--muted-foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
-                  {style.hint}
-                </span>
-                {isCustom && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeCustomStyle(style.id)
-                    }}
-                    aria-label={`Remove ${style.label}`}
-                    style={{ color: 'var(--muted-foreground)', cursor: 'pointer', padding: '0.125rem' }}
-                  >
-                    <Trash2 style={{ width: '12px', height: '12px' }} />
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-
-        <PanelFooter
-          extra={extraStyles}
-          labels={{ expand: `${extraStyles} more styles`, collapse: 'Show fewer styles' }}
-          more={stylesMore}
-          onToggleMore={() => setStylesMore((v) => !v)}
-          onOpenManage={() => setManageOpen(true)}
-        />
-      </Section>
+      </div>
 
       <ManageStylesModal
         open={manageOpen}
@@ -302,113 +209,105 @@ export default function EditorStylesPanel({
   )
 }
 
-/** Non-collapsible panel section with a title and entry count. */
-function Section({
-  title,
-  count,
-  children,
-}: {
-  title: string
-  count: number
-  children: ReactNode
-}): JSX.Element {
-  return (
-    <section>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.375rem',
-          width: '100%',
-          padding: '0.375rem 0.5rem',
-        }}
-      >
-        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{title}</span>
-        <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>{count} available</span>
-      </div>
-      <div style={{ padding: '0.25rem' }}>{children}</div>
-    </section>
-  )
-}
-
-/** Row of expand/manage controls shown under each section body. */
-function PanelFooter({
-  extra,
-  labels,
-  more,
-  onToggleMore,
-  onOpenManage,
-}: {
-  extra: number
-  labels: { expand: string; collapse: string }
-  more: boolean
-  onToggleMore: () => void
-  onOpenManage: () => void
-}): JSX.Element {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.375rem', padding: '0 0.375rem' }}>
-      {extra > 0 && (
-        <button
-          type="button"
-          onClick={onToggleMore}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.25rem',
-            fontSize: '0.6875rem',
-            fontWeight: 600,
-            color: 'var(--primary)',
-            backgroundColor: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            padding: '0.125rem',
-          }}
-        >
-          <ChevronDown style={{ width: '12px', height: '12px', transform: more ? 'rotate(180deg)' : 'none' }} />
-          {more ? labels.collapse : labels.expand}
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={onOpenManage}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.25rem',
-          fontSize: '0.6875rem',
-          fontWeight: 600,
-          color: 'var(--muted-foreground)',
-          backgroundColor: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          padding: '0.125rem',
-        }}
-      >
-        <Settings2 style={{ width: '12px', height: '12px' }} /> Manage styles &amp; presets
-      </button>
-    </div>
-  )
-}
-
-/** Small rounded tag used to flag custom entries. */
-function CustomBadge({ label }: { label: string }): JSX.Element {
+/** Uppercase group label shown before a run of strip buttons. */
+function StripLabel({ children }: { children: ReactNode }): JSX.Element {
   return (
     <span
       style={{
-        fontSize: '0.5625rem',
+        fontSize: '11px',
         fontWeight: 700,
+        color: 'var(--muted-foreground)',
+        letterSpacing: '0.04em',
         textTransform: 'uppercase',
-        letterSpacing: '0.05em',
-        color: 'var(--primary)',
-        backgroundColor: 'color-mix(in srgb, var(--primary) 12%, transparent)',
-        borderRadius: '0.25rem',
-        padding: '0.0625rem 0.375rem',
+        padding: '0 4px',
+        whiteSpace: 'nowrap',
       }}
     >
-      {label}
+      {children}
     </span>
+  )
+}
+
+/** Thin vertical divider between toolbar groups. */
+function StripDivider(): JSX.Element {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: '1px',
+        height: '18px',
+        backgroundColor: 'var(--border)',
+        flexShrink: 0,
+        margin: '0 2px',
+      }}
+    />
+  )
+}
+
+interface StripButtonProps {
+  label: string
+  title: string
+  icon?: ReactNode
+  active?: boolean
+  disabled?: boolean
+  /** When set, the button can be dragged onto the page carrying this payload. */
+  drag?: { type: string; value: string }
+  onApply: () => void
+}
+
+/**
+ * One entry in the Styles nav strip. Applies on click, and can be dragged onto
+ * the page — the drag payload carries the format or preset key the page needs.
+ */
+function StripButton({
+  label,
+  title,
+  icon,
+  active = false,
+  disabled = false,
+  drag,
+  onApply,
+}: StripButtonProps): JSX.Element {
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      draggable={!!drag}
+      onDragStart={(e) => {
+        if (!drag) return
+        e.dataTransfer.setData(drag.type, drag.value)
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
+      onMouseDown={(e) => {
+        // Keep the editor selection alive when the strip button is pressed.
+        e.preventDefault()
+        onApply()
+      }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        height: '30px',
+        padding: '0 10px',
+        borderRadius: '6px',
+        border: 'none',
+        backgroundColor: active ? 'var(--accent-subtle)' : 'transparent',
+        boxShadow: active ? 'inset 0 -2px 0 0 var(--accent-strong)' : 'none',
+        color: 'var(--foreground)',
+        fontSize: '12px',
+        fontWeight: active ? 700 : 500,
+        cursor: disabled ? 'default' : 'pointer',
+        fontFamily: 'inherit',
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      {icon}
+      {label}
+      {active && <Check style={{ width: '13px', height: '13px', color: 'var(--primary)' }} />}
+    </button>
   )
 }
 
@@ -456,7 +355,7 @@ function ManageStylesModal({
     padding: '0.25rem',
   }
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -597,7 +496,8 @@ function ManageStylesModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

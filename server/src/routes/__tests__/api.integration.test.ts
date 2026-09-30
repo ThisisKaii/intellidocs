@@ -64,6 +64,11 @@ describe('API Integration Tests', () => {
         .send({ text: 'Sample text' })
       expect(response.status).toBe(401)
     })
+
+    it('GET /auth/me rejects unauthenticated request with 401', async () => {
+      const response = await request(app).get('/auth/me')
+      expect(response.status).toBe(401)
+    })
   })
 
   describe('404 catch-all route', () => {

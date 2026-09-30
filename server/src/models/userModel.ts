@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
-import { RoleName, StorageSummary } from '../types/index'
+import { RoleName, StorageSummary, VerificationStatus } from '../types/index'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -72,4 +72,34 @@ export async function getUserStorageSummary(userId: string): Promise<StorageSumm
   }
 
   return { usedBytes, quotaBytes: STORAGE_QUOTA_BYTES[role], role }
+}
+
+/** A user's current role and verification status, read fresh from the database. */
+export interface RoleStatus {
+  role: RoleName
+  verificationStatus: VerificationStatus
+}
+
+/**
+ * Read a user's role and verification status directly from the database.
+ *
+ * The client snapshots both values at login, so an administrator approving a
+ * professor or student application is invisible to the UI until the user signs
+ * in again. Reading them on demand lets the client converge immediately.
+ *
+ * A missing profile row falls back to the same defaults the login handler
+ * uses, so this never fails for a user who has just registered.
+ */
+export async function getOwnRoleStatus(userId: string): Promise<RoleStatus> {
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('verification_status, roles(role_name)')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  return {
+    role: ((profile?.roles as { role_name?: RoleName } | null)?.role_name) ?? 'student',
+    verificationStatus:
+      (profile?.verification_status as VerificationStatus | undefined) ?? 'approved',
+  }
 }

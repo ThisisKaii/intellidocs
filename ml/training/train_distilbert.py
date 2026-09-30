@@ -29,7 +29,10 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 MODEL_NAME = "distilbert-base-uncased"
-DEFAULT_DATASET = str(ROOT_DIR / "dataset" / "processed" / "formatting_examples_merged.csv")
+# The unified multi-corpus output of dataset/preprocess.py, so pre-training uses
+# WikiText-103, thesis structure and the synthetic rows rather than the older
+# WikiText-only merge.
+DEFAULT_DATASET = str(ROOT_DIR / "dataset" / "processed" / "formatting_examples.csv")
 DEFAULT_OUT = str(ROOT_DIR / "models" / "distilbert_int8.onnx")
 DEFAULT_LABELS_OUT = str(ROOT_DIR / "models" / "distilbert_labels.json")
 DEFAULT_CHECKPOINT_DIR = str(ROOT_DIR / "models" / "distilbert_checkpoints")
@@ -48,8 +51,13 @@ def find_latest_checkpoint(checkpoint_dir: str) -> str | None:
 
 def load_training_data(csv_path: str) -> pd.DataFrame:
     """Load the merged formatting-examples CSV, requiring text + label columns."""
+    # formatting_examples.csv is the unified multi-corpus output of
+    # dataset/preprocess.py and is preferred; the merged CSV stays as a
+    # fallback for the older single-corpus pipeline.
     candidate_paths = [
         csv_path,
+        "ml/dataset/processed/formatting_examples.csv",
+        "dataset/processed/formatting_examples.csv",
         "ml/dataset/processed/formatting_examples_merged.csv",
         "dataset/processed/formatting_examples_merged.csv",
     ]

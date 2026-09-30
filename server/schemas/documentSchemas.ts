@@ -24,6 +24,10 @@ export const createDocumentSchema = z.object({
     .trim()
     .min(1, 'Title is required')
     .max(200, 'Title must be 200 characters or fewer'),
+  // Blueprint seeding: the new-document modal sends the rendered skeleton and
+  // the preset key to bind, so the document opens already structured.
+  content: z.string().max(500000, 'Content must be 500000 characters or fewer').optional(),
+  formatting_preset: z.string().trim().max(100).optional(),
 })
 
 /** Validate document update requests from HTTP clients. */

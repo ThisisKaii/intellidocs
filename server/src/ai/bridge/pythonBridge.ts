@@ -1,4 +1,14 @@
 import axios from 'axios'
+import FormData from 'form-data'
+import { createReadStream } from 'fs'
+import {
+  pythonComplianceAuditResponseSchema,
+  type PythonComplianceAuditResponse,
+} from '../../../schemas/auditSchemas'
+import {
+  pythonHealthSchema,
+  type PythonHealthResponse,
+} from '../../../schemas/healthSchemas'
 import {
   pythonConversionResponseSchema,
   pythonGrammarCheckResponseSchema,
@@ -61,6 +71,40 @@ function mlError(action: string, mlApiUrl: string, error: unknown, hint: string)
   throw new Error(
     `ML service at ${mlApiUrl} failed (${action}): ${detail}. ${hint}`
   )
+}
+
+/**
+ * Probe the FastAPI service liveness. Never throws: a health check must report
+ * a down dependency rather than propagate, so the caller decides the verdict.
+ */
+export async function probeMlHealth(timeoutMs = 2000): Promise<{
+  reachable: boolean
+  payload: PythonHealthResponse | null
+  error: string | null
+  latencyMs: number
+}> {
+  const mlApiUrl = getMLApiUrl()
+  const startedAt = Date.now()
+
+  try {
+    const response = await axios.get<PythonHealthResponse>(`${mlApiUrl}/health`, {
+      timeout: timeoutMs,
+    })
+
+    return {
+      reachable: true,
+      payload: pythonHealthSchema.parse(response.data),
+      error: null,
+      latencyMs: Date.now() - startedAt,
+    }
+  } catch (error) {
+    return {
+      reachable: false,
+      payload: null,
+      error: error instanceof Error ? error.message : String(error),
+      latencyMs: Date.now() - startedAt,
+    }
+  }
 }
 
 /** Send a formatting prediction request to the FastAPI service. */
@@ -197,7 +241,7 @@ export async function requestDocumentConversion(
 ): Promise<PythonConversionResponse> {
   const mlApiUrl = getMLApiUrl()
 
-  const formData = new (require('form-data'))()
+  const formData = new FormData()
   formData.append('file', fileBuffer, filename)
 
   const response = await axios.post<PythonConversionResponse>(
@@ -209,6 +253,104 @@ export async function requestDocumentConversion(
   )
 
   return pythonConversionResponseSchema.parse(response.data)
+}
+
+/**
+ * Send a file that already lives on disk to the Python conversion service.
+ * Used for large documents: form-data streams the read stream straight out of
+ * the filesystem, so the bytes are never copied into a second in-memory buffer.
+ */
+export async function requestDocumentConversionFromPath(
+  filePath: string,
+  filename: string
+): Promise<PythonConversionResponse> {
+  const mlApiUrl = getMLApiUrl()
+
+  const formData = new FormData()
+  formData.append('file', createReadStream(filePath), filename)
+
+  const response = await axios.post<PythonConversionResponse>(
+    `${mlApiUrl}/convert/document`,
+    formData,
+    {
+      headers: formData.getHeaders(),
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    }
+  )
+
+  return pythonConversionResponseSchema.parse(response.data)
+}
+
+export interface PageMargins {
+  top: number
+  bottom: number
+  left: number
+  right: number
+}
+
+/** Page layout and header/footer state the layout rules audit against. */
+export interface CompliancePageSetup {
+  margins: PageMargins
+  showHeader: boolean
+  showFooter: boolean
+  headerNumberFormat: 'none' | 'number' | 'roman'
+  footerNumberFormat: 'none' | 'number' | 'roman'
+}
+
+/** The template rules a document is audited against. */
+export interface ComplianceRequirements {
+  mandatoryHeadings: string[]
+  referenceStyle: 'apa' | 'ieee'
+  requiredMarginInches: number
+  referencesRequired: boolean
+}
+
+/**
+ * Send a document to the Python compliance auditor.
+ *
+ * The response is validated with Zod because Tier 2 fields are nullable when
+ * the compliance models are not installed, and an unvalidated payload would
+ * silently type ml_score as a number.
+ */
+export async function requestComplianceAudit(
+  content: string,
+  pageSetup: CompliancePageSetup,
+  requirements: ComplianceRequirements
+): Promise<PythonComplianceAuditResponse> {
+  const mlApiUrl = getMLApiUrl()
+
+  try {
+    const response = await axios.post<PythonComplianceAuditResponse>(
+      `${mlApiUrl}/audit/compliance`,
+      {
+        content,
+        page_setup: {
+          margins: pageSetup.margins,
+          show_header: pageSetup.showHeader,
+          show_footer: pageSetup.showFooter,
+          header_number_format: pageSetup.headerNumberFormat,
+          footer_number_format: pageSetup.footerNumberFormat,
+        },
+        requirements: {
+          mandatory_headings: requirements.mandatoryHeadings,
+          reference_style: requirements.referenceStyle,
+          required_margin_inches: requirements.requiredMarginInches,
+          references_required: requirements.referencesRequired,
+        },
+      },
+      { timeout: 60000 }
+    )
+
+    return pythonComplianceAuditResponseSchema.parse(response.data)
+  } catch (error) {
+    mlError(
+      'compliance audit',
+      mlApiUrl,
+      error,
+      'Start the FastAPI service (ml/src/main.py) locally or fix ML_API_URL / PYTHON_API_URL.'
+    )
+  }
 }
 
 export interface FineTuneBridgeResponse {

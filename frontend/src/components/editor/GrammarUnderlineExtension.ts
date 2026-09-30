@@ -90,7 +90,7 @@ export const GrammarUnderlineExtension = Extension.create({
       new Plugin<GrammarPluginState>({
         key: grammarKey,
         state: {
-          init(_config, _state) {
+          init() {
             return { issues: [], decorations: DecorationSet.empty }
           },
           apply(tr, value, _oldState, newState) {

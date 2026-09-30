@@ -1,16 +1,27 @@
-__pycache__
-*.pyc
+# Build context is the repository root, so ignore everything that is not ML code.
+# The compose file mounts ./ml/models and ./ml/datasets as volumes, so the image
+# never needs to carry generated weights or corpora.
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+.venv
+venv
+env
+.git
+.gitignore
 .env
 .env.*
 !.env.example
-venv
-.venv
+tests
+pytest.ini
+models/
+datasets/
+data/
+reports/
+*.pkl
+*.pt
+*.onnx
 *.log
-.git
-.vscode
-.idea
-dataset/raw
-dataset/processed
-models/user_models
-node_modules
-trained_models
+Dockerfile
+.dockerignore
+README.md

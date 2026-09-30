@@ -9,8 +9,8 @@ import {
   type MarginValues,
 } from '@/components/editor/TiptapEditor'
 import { PagedEditor } from '@/components/editor/PagedEditor'
+import { LogoLockup } from '@/components/Logo'
 import {
-  type BehaviorEvent,
   type BehaviorEventPayload,
   createBehaviorEvent,
 } from '@/components/editor/behaviorListener'
@@ -22,6 +22,8 @@ import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import EditorSidePanel, { type SidePanelTab } from '@/components/editor/EditorSidePanel'
 import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
+import { hasDriftedFromPreset } from '@/components/editor/documentBlueprints'
+import PresetForkPrompt from '@/components/PresetForkPrompt'
 import { applyStyleCommand } from '@/components/editor/styleCommands'
 import FormattingPanel from '@/components/editor/FormattingPanel'
 import McpDebugPanel from '@/components/editor/McpDebugPanel'
@@ -35,7 +37,6 @@ import { useAutoFormatScanner, type ScannerSuggestion } from '@/hooks/useAutoFor
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { confidenceThreshold, highlightColorCss } from '@/lib/editorPreferences'
 import { readFormatSnapshot } from '@/lib/formatSnapshot'
-import SuggestionHighlightOverlay, { type HighlightBox } from '@/components/editor/SuggestionHighlightOverlay'
 import {
   cacheDocumentRead,
   evictCachedDocument,
@@ -139,12 +140,9 @@ export default function Document(): JSX.Element {
     headerNumberFormat: 'none' as PageNumberFormat,
     footerNumberFormat: 'none' as PageNumberFormat,
   })
-  const [_lastSavedTitle, setLastSavedTitle] = useState<string>('Untitled Document')
-  const [_lastSavedContent, setLastSavedContent] = useState<string>('')
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved')
   const [wordCount, setWordCount] = useState<number>(0)
   const [formatHistory, setFormatHistory] = useState<string[]>([])
-  const [_behaviorEvents, setBehaviorEvents] = useState<BehaviorEvent[]>([])
   const [behaviorSummary, setBehaviorSummary] = useState<BehaviorSummaryResponse | null>(null)
   const [behaviorSummaryLoading, setBehaviorSummaryLoading] = useState<boolean>(false)
 
@@ -170,9 +168,7 @@ export default function Document(): JSX.Element {
   const [activeGrammarRect, setActiveGrammarRect] = useState<DOMRect | null>(null)
   const [suggestionRange, setSuggestionRange] = useState<{ from: number; to: number } | null>(null)
   const [suggestionAnchor, setSuggestionAnchor] = useState<{ x: number; y: number } | null>(null)
-  const [suggestionBox, setSuggestionBox] = useState<HighlightBox | null>(null)
   const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number } | null>(null)
-  const [styleOutline, setStyleOutline] = useState<HighlightBox | null>(null)
   const editorCanvasRef = useRef<HTMLDivElement>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
@@ -388,8 +384,6 @@ export default function Document(): JSX.Element {
     }
     latestTitleRef.current = nextTitle
     latestContentRef.current = nextContent
-    setLastSavedTitle(nextTitle)
-    setLastSavedContent(nextContent)
     setSaveStatus('saved')
     updateWordCount(nextContent)
     setIsIsolated(doc.is_isolated ?? false)
@@ -674,34 +668,6 @@ export default function Document(): JSX.Element {
     setFormatPrompt({ format: next, confidence: formatPrompt.confidence })
   }
 
-  /** Union bounding rect (viewport space) of every DOM line covering the range. */
-  function getRangeUnionRect(editorInstance: Editor, from: number, to: number): DOMRect | null {
-    try {
-      const view = editorInstance.view
-      const { node: startNode, offset: startOffset } = view.domAtPos(from)
-      const { node: endNode, offset: endOffset } = view.domAtPos(to)
-      const range = document.createRange()
-      range.setStart(startNode, startOffset)
-      range.setEnd(endNode, endOffset)
-      const rects = Array.from(range.getClientRects())
-      if (rects.length === 0) return null
-      let left = Infinity
-      let top = Infinity
-      let right = -Infinity
-      let bottom = -Infinity
-      for (const rect of rects) {
-        left = Math.min(left, rect.left)
-        top = Math.min(top, rect.top)
-        right = Math.max(right, rect.right)
-        bottom = Math.max(bottom, rect.bottom)
-      }
-      if (right <= left || bottom <= top) return null
-      return new DOMRect(left, top, right - left, bottom - top)
-    } catch {
-      return null
-    }
-  }
-
   /** True when a block between `from` and `to` carries the applied-style tag. */
   const hasStyleOriginIn = useCallback((from: number, to: number): boolean => {
     if (!editor || editor.isDestroyed) return false
@@ -731,48 +697,27 @@ export default function Document(): JSX.Element {
     // Chip anchor (viewport space) — top-left of the range. Even with the
     // bounds check above, a coordinate query can race the editor's own state
     // during a transaction, so treat any leftover range error as "no anchor".
-    let start: { left: number; top: number } | null = null
-    let endpoint: { left: number; top: number } | null = null
+    let start: { left: number; top: number } | null
+    let endpoint: { left: number; top: number } | null
     try {
       start = view.coordsAtPos(from + 1)
       endpoint = view.coordsAtPos(to <= from + 1 ? from + 1 : to - 1)
     } catch {
       setSuggestionAnchor(null)
-      setSuggestionBox(null)
       return
     }
     if (!start || !endpoint) return
     if (start.left === 0 && start.top === 0) return
     setSuggestionAnchor({ x: Math.min(start.left, endpoint.left), y: start.top })
-
-    // Overlay box — union of every DOM line covering the range (wrapped lines
-    // included), converted to editor-container coords so the overlay moves
-    // together with the content while scrolling.
-    const rect = getRangeUnionRect(editor, from, to)
-    const container = editorCanvasRef.current
-    if (!rect || !container) {
-      setSuggestionBox(null)
-      return
-    }
-    const cRect = container.getBoundingClientRect()
-    const computed = window.getComputedStyle(container)
-    const padLeft = parseFloat(computed.paddingLeft) || 0
-    const padTop = parseFloat(computed.paddingTop) || 0
-    setSuggestionBox({
-      top: rect.top - cRect.top - padTop,
-      left: rect.left - cRect.left - padLeft,
-      width: rect.width,
-      height: rect.height,
-    })
   }, [editor, suggestionRange])
 
-  // Recompute the chip anchor + overlay highlight box when the range, editor,
-  // window, or editor transactions change (covers typing, scrolling, page
-  // layout shifts, and mark changes from the chip's "change to" cycling).
+  // Recompute the chip anchor when the range, editor, window, or editor
+  // transactions change (covers typing, scrolling, page layout shifts, and
+  // mark changes from the chip's "change to" cycling). The block outline
+  // itself needs no measuring — the decoration wraps the target block.
   useEffect(() => {
     if (!suggestionRange || !editor || editor.isDestroyed) {
       setSuggestionAnchor(null)
-      setSuggestionBox(null)
       return
     }
     const refresh = (): void => updateSuggestionAnchor()
@@ -787,54 +732,55 @@ export default function Document(): JSX.Element {
     }
   }, [suggestionRange, editor, updateSuggestionAnchor])
 
-  // Dashed outline around any selection that contains style/preset-originated
-  // formatting, so users can see which runs the style system produced.
+  // Drive the pulsing suggestion outline. It is emitted as a ProseMirror node
+  // decoration so the wrapper sits in the document DOM around the target
+  // block, which keeps it in sync with the content on every transaction and
+  // out of the z-index competition with the floating suggestion chip.
   useEffect(() => {
-    if (!editor || editor.isDestroyed || readOnly) {
-      setStyleOutline(null)
-      return
-    }
-    const container = editorCanvasRef.current
-    if (!container) {
-      setStyleOutline(null)
-      return
-    }
-    const refresh = (): void => {
-      if (!editor || editor.isDestroyed || !container) {
-        setStyleOutline(null)
-        return
+    if (!editor || editor.isDestroyed || !editor.commands.setSuggestionHighlight) return
+    const active = !readOnly && (scannerActive || pendingLearnedFormat) ? suggestionRange : null
+    editor.commands.setSuggestionHighlight(active ? { ...active } : null)
+  }, [editor, suggestionRange, scannerActive, pendingLearnedFormat, readOnly])
+
+  // Dashed outline around any selection that contains style/preset-originated
+  // formatting, so users can see which runs the style system produced. Like
+  // the suggestion outline this is a node decoration, so the wrapper tracks
+  // the selection and the content without measuring anything.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !editor.commands.setStyleOriginHighlight) return
+
+    // Setting the highlight dispatches a transaction, and every transaction
+    // re-enters this handler through the listener below. Without this guard a
+    // dispatch whose stored range never compares equal to the computed one
+    // would retrigger itself until the stack overflowed. The command already
+    // skips a no-op dispatch, so the nested call this suppresses would have
+    // recomputed the identical range from an unchanged document and selection.
+    let applying = false
+
+    const apply = (): void => {
+      if (editor.isDestroyed || applying) return
+      applying = true
+      try {
+        const { empty, from, to } = editor.state.selection
+        const active =
+          !readOnly && !empty && (formattingPreset != null || hasStyleOriginIn(from, to))
+            ? { from, to }
+            : null
+        editor.commands.setStyleOriginHighlight(active)
+      } finally {
+        applying = false
       }
-      const { empty, from, to } = editor.state.selection
-      if (empty || !(formattingPreset != null || hasStyleOriginIn(from, to))) {
-        setStyleOutline(null)
-        return
-      }
-      const rect = getRangeUnionRect(editor, from, to)
-      if (!rect) {
-        setStyleOutline(null)
-        return
-      }
-      const cRect = container.getBoundingClientRect()
-      const computed = window.getComputedStyle(container)
-      const padLeft = parseFloat(computed.paddingLeft) || 0
-      const padTop = parseFloat(computed.paddingTop) || 0
-      setStyleOutline({
-        top: rect.top - cRect.top - padTop,
-        left: rect.left - cRect.left - padLeft,
-        width: rect.width,
-        height: rect.height,
-      })
     }
-    refresh()
-    editor.on('selectionUpdate', refresh)
-    editor.on('transaction', refresh)
-    container.addEventListener('scroll', refresh, { passive: true })
-    window.addEventListener('resize', refresh)
+
+    // The outline tracks the selection, so it must be recomputed whenever the
+    // selection or the document changes — not only when the deps of this
+    // effect happen to change.
+    apply()
+    editor.on('selectionUpdate', apply)
+    editor.on('transaction', apply)
     return () => {
-      editor.off('selectionUpdate', refresh)
-      editor.off('transaction', refresh)
-      container.removeEventListener('scroll', refresh)
-      window.removeEventListener('resize', refresh)
+      editor.off('selectionUpdate', apply)
+      editor.off('transaction', apply)
     }
   }, [editor, formattingPreset, readOnly, hasStyleOriginIn])
 
@@ -1126,8 +1072,6 @@ export default function Document(): JSX.Element {
       }, shareToken)
       latestContentRef.current = nextContent
       setContent(nextContent)
-      setLastSavedTitle(nextTitle)
-      setLastSavedContent(nextContent)
       saveRetryCountRef.current = 0
       setSaveStatus('saved')
       if (id) void evictCachedDocument(id)
@@ -1227,12 +1171,14 @@ export default function Document(): JSX.Element {
   function handlePageSizeChange(value: PageSizeKey): void {
     latestPageSetupRef.current.pageSize = value
     setPageSize(value)
+    evaluatePresetDrift()
     scheduleSave()
   }
 
   function handleMarginsChange(value: MarginValues): void {
     latestPageSetupRef.current.margins = value
     setMargins(value)
+    evaluatePresetDrift()
     scheduleSave()
   }
 
@@ -1242,7 +1188,13 @@ export default function Document(): JSX.Element {
     scheduleSave()
   }
 
-  function handleFormat(formatType: string): void {
+  /**
+   * Record one formatting/structural action.
+   * Structured-object actions (tables, images, code blocks) arrive with their
+   * own payload and carry no useful text snapshot, so that payload is used
+   * as-is. Text-format actions still get the text + mark snapshot.
+   */
+  function handleFormat(formatType: string, payload?: BehaviorEventPayload): void {
     const nextContent = latestContentRef.current
     latestContentRef.current = nextContent
     setContent(nextContent)
@@ -1252,8 +1204,12 @@ export default function Document(): JSX.Element {
       return nextHistory
     })
     if (id) {
-      const event = createBehaviorEvent(formatType, id, undefined, captureFormatPayload(formatType))
-      setBehaviorEvents((prev) => [...prev, event])
+      const event = createBehaviorEvent(
+        formatType,
+        id,
+        undefined,
+        payload ?? captureFormatPayload(formatType)
+      )
       api.behavior.log(event).catch((err) => console.error('Behavior log failed', err))
     }
     setShowSuggestions(false)
@@ -1411,6 +1367,77 @@ export default function Document(): JSX.Element {
   /** Resolve the active preset (if the doc uses one of the academic presets). */
   const activeAcademicPreset = ACADEMIC_PRESETS.find((p) => p.key === formattingPreset)
 
+  /* ── Blueprint drift → "save as my own version" (section 9) ────────────────
+   *
+   * A document that keeps a standard preset but has its page setup hand-tuned
+   * is no longer that standard. Rather than silently leaving it mismatched, or
+   * editing the shared standard in place, offer to fork it into a new personal
+   * version — "APA 7th Edition (Custom v2)" — that only this user sees.
+   */
+
+  /** True once the user has dismissed the prompt for the current document. */
+  const forkPromptDismissed = useRef(false)
+  const [forkPromptOpen, setForkPromptOpen] = useState(false)
+  const [forkBusy, setForkBusy] = useState(false)
+  const [forkError, setForkError] = useState('')
+
+  // A freshly loaded document may already differ from its preset; re-arm the
+  // check whenever the bound preset key changes.
+  useEffect(() => {
+    forkPromptDismissed.current = false
+    setForkPromptOpen(false)
+    setForkError('')
+  }, [formattingPreset])
+
+  /**
+   * Compare the live page setup against the active standard blueprint and offer
+   * to fork when they differ. No-ops when no standard preset is bound, when the
+   * document is only viewing, or when the user already dismissed the prompt.
+   */
+  function evaluatePresetDrift(): void {
+    const preset = ACADEMIC_PRESETS.find((p) => p.key === formattingPreset)
+    if (!preset || readOnly || forkPromptDismissed.current) return
+
+    const setup = latestPageSetupRef.current
+    const drifted = hasDriftedFromPreset(preset, {
+      pageSize: setup.pageSize,
+      margins: setup.margins,
+    })
+
+    setForkPromptOpen(drifted)
+  }
+
+  /**
+   * Fork the active standard blueprint into a new personal version and rebind
+   * the document to it. The version number is assigned server-side, so repeated
+   * forks of one blueprint yield v2, v3, v4 rather than colliding.
+   */
+  async function handleForkPreset(): Promise<void> {
+    const baseKey = formattingPreset
+    if (!baseKey || !id) return
+
+    setForkBusy(true)
+    setForkError('')
+    try {
+      const fork = await api.formatting.createUserPreset({ baseKey })
+      setFormattingPreset(fork.key)
+      forkPromptDismissed.current = true
+      setForkPromptOpen(false)
+      scheduleSave()
+    } catch (err) {
+      setForkError(err instanceof Error ? err.message : 'Could not save your version')
+    } finally {
+      setForkBusy(false)
+    }
+  }
+
+  /** Dismiss the prompt and stay on the standard preset. */
+  function handleDismissForkPrompt(): void {
+    forkPromptDismissed.current = true
+    setForkPromptOpen(false)
+    setForkError('')
+  }
+
   /** One-click academic preset: page geometry + scoped typography + persisted preset key. */
   async function handleApplyAcademicPreset(key: string): Promise<void> {
     const preset = ACADEMIC_PRESETS.find((p) => p.key === key)
@@ -1432,7 +1459,7 @@ export default function Document(): JSX.Element {
 
   /** Grammar underline click — open the anchored fix popover. */
   const handleGrammarClick = useCallback(
-    (issue: GrammarIssue, rect: DOMRect, _pos: number): void => {
+    (issue: GrammarIssue, rect: DOMRect): void => {
       setActiveGrammarIssue(issue)
       setActiveGrammarRect(rect)
     },
@@ -1501,17 +1528,18 @@ export default function Document(): JSX.Element {
     setActionsMenu(null)
     if (first) {
       const rect = buildIssueRect(first)
-      if (rect) handleGrammarClick(first, rect, findIssuePos(first) ?? 0)
+      if (rect) handleGrammarClick(first, rect)
     }
   }
 
-  /** Clicking the highlighted text opens a chooser when BOTH formats + grammar are present. */
-  function handleOverlayOpen(): void {
+  /**
+   * Clicking the outlined text opens a chooser when BOTH formats + grammar are
+   * present. `rect` comes from the decoration wrapper itself, so the anchor is
+   * already in viewport space and matches what the menu expects.
+   */
+  function handleOverlayOpen(rect: DOMRect): void {
     if (issuesOnRange().length > 0) {
-      setActionsMenu({
-        x: suggestionBox?.left ?? suggestionAnchor?.x ?? 0,
-        y: suggestionBox?.top ?? suggestionAnchor?.y ?? 0,
-      })
+      setActionsMenu({ x: rect.left, y: rect.top })
     } else if (pendingLearnedFormat) {
       // Learned cross-document match clicked: promote the highlight to the chip.
       setFormatPrompt(pendingLearnedFormat)
@@ -1520,6 +1548,21 @@ export default function Document(): JSX.Element {
       openFormattingPopup()
     }
   }
+
+  // Outlined-block clicks are forwarded from every page editor by the
+  // paginated view, matching how grammar underlines are handled. A ref keeps
+  // the handler current without resubscribing on every render.
+  const overlayOpenRef = useRef(handleOverlayOpen)
+  overlayOpenRef.current = handleOverlayOpen
+
+  useEffect(() => {
+    if (!editor) return
+    const onOverlayClick = (payload: { rect: DOMRect }): void => overlayOpenRef.current(payload.rect)
+    editor.on('suggestion-overlay-click', onOverlayClick)
+    return () => {
+      editor.off('suggestion-overlay-click', onOverlayClick)
+    }
+  }, [editor])
 
   // Push grammar issues into the editor's wavy-underline decorations whenever they change.
   useEffect(() => {
@@ -1630,22 +1673,7 @@ export default function Document(): JSX.Element {
               <ArrowLeft style={{ width: '16px', height: '16px' }} />
             </Link>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '5px',
-                  backgroundColor: 'var(--primary)',
-                }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary-foreground)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '12px', height: '12px' }}>
-                  <path d="M12 2L2 22h20L12 2z" />
-                </svg>
-              </div>
-              <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--foreground)' }}>IntelliDocs</span>
+              <LogoLockup size={25} />
             </div>
           </div>
 
@@ -2037,33 +2065,11 @@ export default function Document(): JSX.Element {
               footerContent={footerContent}
               headerNumberFormat={headerNumberFormat}
               footerNumberFormat={footerNumberFormat}
+              onFormatApplied={handleFormat}
             />
 
-          {/* Overlay highlight drawn on the suggested document line, positioned
-              inside the scroll container so it moves with the content */}
-            {!readOnly && (scannerActive || pendingLearnedFormat) && suggestionRange && suggestionBox && (
-              <SuggestionHighlightOverlay
-                box={suggestionBox}
-                onOpen={handleOverlayOpen}
-              />
-            )}
-
-            {!readOnly && styleOutline && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: styleOutline.top,
-                  left: styleOutline.left,
-                  width: styleOutline.width,
-                  height: styleOutline.height,
-                  border: '1.5px dashed var(--accent-strong)',
-                  borderRadius: '4px',
-                  pointerEvents: 'none',
-                  opacity: 0.75,
-                }}
-              />
-            )}
           </div>
+
 
           {/* Academic word & page target progress widget (plan point 25) */}
           {!readOnly && (
@@ -2072,6 +2078,20 @@ export default function Document(): JSX.Element {
               targetWords={3000}
               wordsPerPage={pageSize === 'a4' ? 300 : 275}
             />
+          )}
+
+          {/* Page setup drifted from the standard blueprint — offer a fork */}
+          {forkPromptOpen && activeAcademicPreset && (
+            <div style={{ maxWidth: '32rem', margin: '0 auto', width: '100%' }}>
+              <PresetForkPrompt
+                baseName={activeAcademicPreset.name}
+                driftedOn="Your page setup"
+                onFork={handleForkPreset}
+                onDismiss={handleDismissForkPrompt}
+                busy={forkBusy}
+                error={forkError}
+              />
+            </div>
           )}
         </main>
 

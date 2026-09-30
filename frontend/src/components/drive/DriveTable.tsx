@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Eye,
   FileText,
+  GraduationCap,
   FolderIcon,
   Home,
   MoreVertical,
@@ -20,8 +21,10 @@ import {
   RotateCcw,
   Share2,
   Trash2,
+  Users,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { ClassRosterModal } from '@/components/drive/ClassRosterModal'
 import type { DocumentRecord, FolderRecord } from '@/services/api'
 
 /* ─── Shared types ────────────────────────────────────────────── */
@@ -67,6 +70,8 @@ interface DriveTableProps {
   onMoveToFolder: (docId: string, folderId: string) => void
   onDragStart: (e: React.DragEvent, id: string) => void
   onShare?: (id: string) => void
+  /** Re-fetch folders so class badges (student/submission counts) stay accurate. */
+  onFoldersChanged?: () => void
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
@@ -214,10 +219,12 @@ export function DriveTable({
   onMoveToFolder,
   onDragStart,
   onShare,
+  onFoldersChanged,
 }: DriveTableProps): JSX.Element {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
+  const [rosterFolder, setRosterFolder] = useState<FolderRecord | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const items: DriveItem[] = documents.map((d): DriveItem => ({
@@ -330,6 +337,11 @@ export function DriveTable({
               }
               const isEditing = editing?.id === f.folder_id
               const isSelected = selectedIds.has(f.folder_id)
+              const isClass = f.folder_type === 'class'
+              // Only the folder's owner manages the roster. An enrolled student
+              // sees the same card but must not get the management entry.
+              const canManageRoster = isClass && Boolean(user?.id) && f.user_id === user?.id
+              const FolderGlyph = isClass ? GraduationCap : FolderIcon
 
               return (
                 <div
@@ -355,11 +367,19 @@ export function DriveTable({
                   className={`group relative flex items-center justify-between px-4 py-3.5 rounded-xl cursor-default transition-all duration-150 ${
                     isSelected
                       ? 'bg-primary/20'
-                      : 'bg-secondary/70 hover:bg-[#badfe7]/25 dark:hover:bg-[#1e383b] border border-[#badfe7]/40 dark:border-[#234145]'
+                      : isClass
+                        ? 'bg-accent/15 hover:bg-accent/25 border border-accent/50 dark:border-[#2f5a5e]'
+                        : 'bg-secondary/70 hover:bg-[#badfe7]/25 dark:hover:bg-[#1e383b] border border-[#badfe7]/40 dark:border-[#234145]'
                   }`}
                 >
                   <div className="flex items-center gap-4 min-w-0 flex-1">
-                    <FolderIcon className="size-5 shrink-0 text-primary dark:text-[#6fb3b8]" fill="var(--selection)" strokeWidth={1.5} />
+                    <FolderGlyph
+                      className={`size-5 shrink-0 ${
+                        isClass ? 'text-accent-foreground dark:text-[#6fb3b8]' : 'text-primary dark:text-[#6fb3b8]'
+                      }`}
+                      {...(isClass ? {} : { fill: 'var(--selection)' })}
+                      strokeWidth={1.5}
+                    />
                     {isEditing ? (
                       <input
                         value={editing.title}
@@ -374,12 +394,24 @@ export function DriveTable({
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <span
-                        className="text-[0.9375rem] font-medium text-foreground truncate m-0"
-                        title={f.name}
-                      >
-                        {f.name}
-                      </span>
+                      <div className="flex flex-col min-w-0 gap-0.5">
+                        <span
+                          className="text-[0.9375rem] font-medium text-foreground truncate m-0"
+                          title={f.name}
+                        >
+                          {f.name}
+                        </span>
+                        {isClass && (
+                          <span className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
+                            <span className="font-semibold uppercase tracking-wide text-accent-foreground dark:text-[#6fb3b8]">
+                              {f.class_code || 'Class'}
+                            </span>
+                            {f.academic_term && <span>· {f.academic_term}</span>}
+                            <span>· {f.enrolled_count ?? 0} students</span>
+                            <span>· {f.submission_count ?? 0} submitted</span>
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
 
@@ -394,6 +426,17 @@ export function DriveTable({
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" style={{ minWidth: '160px' }}>
+                        {canManageRoster && (
+                          <>
+                            <DropdownMenuItem
+                              onSelect={() => setRosterFolder(f)}
+                              className="cursor-pointer gap-2 text-sm text-foreground"
+                            >
+                              <Users className="size-3.5" /> Manage roster
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
                         <DropdownMenuItem
                           onSelect={() => onStartEdit(item.id, item.title, item.kind)}
                           className="cursor-pointer gap-2 text-sm text-foreground"
@@ -588,6 +631,15 @@ export function DriveTable({
           onRestore={() => onRestore(ctxMenu.item.id)}
           onDelete={() => onDelete(ctxMenu.item.id, ctxMenu.item.kind)}
           onShare={onShare ? () => onShare(ctxMenu.item.id) : undefined}
+        />
+      )}
+
+      {/* ── Class roster ─────────────────────────────── */}
+      {rosterFolder && (
+        <ClassRosterModal
+          folder={rosterFolder}
+          onClose={() => setRosterFolder(null)}
+          onChanged={onFoldersChanged}
         />
       )}
     </div>

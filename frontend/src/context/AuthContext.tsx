@@ -1,7 +1,28 @@
-import { createContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import { api, type RoleStatusResponse } from '../services/api'
 import { clearDocumentCache } from '../hooks/useDocumentCache'
 import { clearDriveCache } from '../hooks/useDriveCache'
+
+/**
+ * How often a pending role application is re-checked with the server. Long
+ * enough to stay cheap, short enough that an approval lands while the applicant
+ * is still looking at the page.
+ */
+const PENDING_POLL_MS = 20_000
+
+/**
+ * Fetch the signed-in user's live role and verification status.
+ * Returns null on any failure: a role refresh must never sign the user out or
+ * block the UI, and the next focus or poll simply tries again.
+ */
+async function fetchRoleStatus(): Promise<RoleStatusResponse | null> {
+  try {
+    return await api.auth.me()
+  } catch {
+    return null
+  }
+}
 
 export interface UserAuthData {
   id: string
@@ -20,6 +41,12 @@ interface AuthContextType {
   logout: () => void
   /** Merges partial profile updates (e.g. display name) into the current user. */
   updateUser: (patch: Partial<UserAuthData>) => void
+  /**
+   * Re-reads role and verification status from the server and merges them into
+   * the current user. Call after submitting an application so the UI reflects
+   * the new status without waiting for the next sign-in.
+   */
+  refreshRole: () => Promise<void>
   /** Redirects to Google OAuth consent screen via Supabase. */
   loginWithGoogle: () => Promise<void>
 }
@@ -114,14 +141,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   /**
+   * Merge a freshly-read role status into the user, persisting it so a reload
+   * does not resurrect the stale cached copy. Returns the previous object when
+   * nothing changed, which keeps this from re-rendering on every poll.
+   */
+  const applyRoleStatus = useCallback((status: RoleStatusResponse): void => {
+    setUser((prev) => {
+      if (!prev) return prev
+      if (prev.role === status.role && prev.verificationStatus === status.verificationStatus) {
+        return prev
+      }
+      const next = {
+        ...prev,
+        role: status.role,
+        verificationStatus: status.verificationStatus,
+      }
+      localStorage.setItem('authUser', JSON.stringify(next))
+      return next
+    })
+  }, [])
+
+  const refreshRole = useCallback(async (): Promise<void> => {
+    const status = await fetchRoleStatus()
+    if (status) applyRoleStatus(status)
+  }, [applyRoleStatus])
+
+  /**
+   * Keep role and verification status current.
+   *
+   * An administrator's approval changes the database, not the role and status
+   * cached from the login response, so without this the UI would keep showing
+   * "pending" until the user signed in again. Two cheap triggers cover the
+   * real cases: the user returning to the tab to check on their application,
+   * and a background tab left open while an approval lands.
+   */
+  useEffect(() => {
+    if (!token) return
+
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') void refreshRole()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+
+    // Poll only while an application is unresolved, so an approved or rejected
+    // account makes no background requests at all.
+    const awaitingDecision = user?.role === 'professor' && user?.verificationStatus === 'pending'
+    const intervalId = awaitingDecision
+      ? window.setInterval(() => void refreshRole(), PENDING_POLL_MS)
+      : null
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      if (intervalId !== null) window.clearInterval(intervalId)
+    }
+  }, [token, refreshRole, user?.role, user?.verificationStatus])
+
+  /**
    * Initiates Google OAuth via Supabase.
    * The user is redirected to Google, then back to /auth/callback.
+   *
+   * `access_type=offline` with `prompt=consent` is required for Supabase to
+   * return a `provider_token`. Without it Google issues no refresh token, so the
+   * user's Google Drive can never be linked to their account and they would have
+   * to reconnect through the separate Drive consent flow every session.
    */
   const loginWithGoogle = async (): Promise<void> => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        scopes: 'openid email profile https://www.googleapis.com/auth/drive.readonly',
+        queryParams: {
+          access_type: 'offline',
+          // `prompt=consent` forces Google to re-issue a refresh token even for
+          // a returning user; `prompt=select_account` would not.
+          prompt: 'consent',
+          include_granted_scopes: 'true',
+        },
       },
     })
     if (error) throw new Error(error.message)
@@ -135,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     updateUser,
+    refreshRole,
     loginWithGoogle,
   }
 

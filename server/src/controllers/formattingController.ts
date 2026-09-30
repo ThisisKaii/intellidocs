@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import * as formattingModel from '../models/formattingModel'
 import {
   CreateFormatBindingRequest,
+  CreateUserPresetRequest,
   UpdateFormatBindingRequest,
 } from '../types/index'
 import { resolveFormattingTier } from '../skills/resolveFormattingTier'
@@ -36,6 +37,64 @@ export async function getPresets(req: Request, res: Response): Promise<void> {
   }
 }
 
+// ── Tier 1b — User-forked presets (blueprint V2 versioning) ───────────────────
+
+/** Return every blueprint fork owned by the current user. */
+export async function listUserPresets(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+
+    const presets = await formattingModel.getUserPresets(userId)
+    res.status(200).json({ presets })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to get custom presets'
+    res.status(500).json({ error: message })
+  }
+}
+
+/**
+ * Fork a standard blueprint into a personal preset. The version number is
+ * derived server-side so two forks of the same base never collide.
+ */
+export async function createUserPreset(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+
+    const body = req.body as CreateUserPresetRequest
+    const preset = await formattingModel.createUserPreset(userId, body.baseKey, {
+      name: body.name,
+      description: body.description,
+      rules: body.rules,
+    })
+    res.status(201).json(preset)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to save custom preset'
+    res.status(400).json({ error: message })
+  }
+}
+
+/** Delete one of the current user's blueprint forks. */
+export async function deleteUserPreset(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+
+    const presetId = req.params.id?.trim()
+    if (!presetId) {
+      res.status(400).json({ error: 'Preset ID is required' })
+      return
+    }
+
+    await formattingModel.deleteUserPreset(userId, presetId)
+    res.status(204).send()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to delete custom preset'
+    res.status(500).json({ error: message })
+  }
+}
+
 /** Assign a formatting preset to a document (Tier 1 selection). */
 export async function setDocumentPreset(req: Request, res: Response): Promise<void> {
   try {
@@ -50,7 +109,7 @@ export async function setDocumentPreset(req: Request, res: Response): Promise<vo
       return
     }
 
-    const presetExists = await formattingModel.getPresetByKey(preset)
+    const presetExists = await formattingModel.resolvePresetKey(userId, preset)
     if (!presetExists) {
       res.status(400).json({ error: `Unknown preset "${preset}"` })
       return
@@ -162,7 +221,7 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
     ])
 
     const presetRules = presetKey
-      ? (await formattingModel.getPresetByKey(presetKey))?.rules ?? []
+      ? (await formattingModel.resolvePresetKey(effectiveUserId, presetKey))?.rules ?? []
       : []
 
     const tierResult = resolveFormattingTier({ text, bindings, presetRules })

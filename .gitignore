@@ -43,6 +43,8 @@ ml/models/lstm/
 ml/models/*.pkl
 !ml/models/base_model.pkl
 !ml/models/grammar_model.pkl
+ml/models/compliance/
+ml/models/checkpoints/
 ml/models/distilbert_*.onnx
 ml/models/model.onnx
 ml/models/config.json

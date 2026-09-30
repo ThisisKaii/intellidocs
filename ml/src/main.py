@@ -25,6 +25,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
+from grammar.compliance_auditor import audit_document
 from grammar.grammar_checker import evaluate_text
 from grammar.spell_checker import check_spelling
 
@@ -628,6 +629,70 @@ async def spelling_check(request: TextCheckRequest) -> dict[str, Any]:
         raise HTTPException(
             status_code=500,
             detail=f"Spelling check failed: {error}",
+        ) from error
+
+
+class MarginsInput(BaseModel):
+    """Page margins in inches, as stored on the document."""
+
+    top: float = 1.0
+    bottom: float = 1.0
+    left: float = 1.0
+    right: float = 1.0
+
+
+class PageSetupInput(BaseModel):
+    """Page layout and header/footer state used by the layout compliance rules."""
+
+    margins: MarginsInput = MarginsInput()
+    page_size: Optional[str] = None
+    orientation: Optional[str] = None
+    show_header: bool = False
+    show_footer: bool = False
+    header_number_format: Optional[str] = None
+    footer_number_format: Optional[str] = None
+
+
+class ComplianceRequirements(BaseModel):
+    """The template rules a document is audited against."""
+
+    mandatory_headings: list[str] = []
+    reference_style: str = "apa"
+    required_margin_inches: float = 1.0
+    references_required: bool = True
+
+
+class ComplianceAuditRequest(BaseModel):
+    """A document plus the template it must satisfy."""
+
+    content: str
+    page_setup: PageSetupInput = PageSetupInput()
+    requirements: ComplianceRequirements = ComplianceRequirements()
+
+
+@app.post("/audit/compliance")
+async def audit_compliance(request: ComplianceAuditRequest) -> dict[str, Any]:
+    """
+    Run the hybrid compliance auditor over one document.
+
+    Tier 1 deterministic rules always run. Tier 2 style and flow models are
+    used when their artifacts are installed; otherwise the response reports
+    `ml.available` as false so the caller can show that style was not
+    measured rather than presenting a rules-only score as a full audit.
+    """
+    if not request.content.strip():
+        raise HTTPException(status_code=400, detail="Document content is required.")
+
+    try:
+        return audit_document(
+            request.content,
+            request.page_setup.model_dump(),
+            request.requirements.model_dump(),
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Compliance audit failed: {error}",
         ) from error
 
 

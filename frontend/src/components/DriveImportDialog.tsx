@@ -5,7 +5,15 @@ import { HardDrive, ExternalLink, Download, X, Loader2, Unplug, RefreshCw } from
 interface DriveImportDialogProps {
   open: boolean
   onClose: () => void
-  onImport: (title: string, html: string) => void
+  /** Hands the chosen file to the parent, which owns the import + progress UI. */
+  onImport: (file: DriveFile) => void
+}
+
+/** Format a Drive-reported byte count into a readable size for the file list. */
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '—'
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 /** Floating dialog to connect to Google Drive and import documents. */
@@ -17,7 +25,6 @@ export default function DriveImportDialog({
   const [connected, setConnected] = useState<boolean>(false)
   const [loading, setLoading] = useState<boolean>(true)
   const [files, setFiles] = useState<DriveFile[]>([])
-  const [importing, setImporting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   /** Check Google Drive connection status. */
@@ -57,12 +64,14 @@ export default function DriveImportDialog({
           window.removeEventListener('message', handleOAuthMessage)
         } else if (data.type === 'drive:error') {
           console.error('Google Drive connection error:', data.error)
+          setError(data.error || 'Google Drive was not connected. Please try again.')
           window.removeEventListener('message', handleOAuthMessage)
         }
       }
       window.addEventListener('message', handleOAuthMessage)
     } catch (error) {
       console.error('Failed to get auth URL', error)
+      setError(error instanceof Error ? error.message : 'Failed to start Google Drive connection.')
     }
   }
 
@@ -77,20 +86,15 @@ export default function DriveImportDialog({
     }
   }
 
-  /** Import a single file by exporting its HTML. */
-  async function handleImport(file: DriveFile): Promise<void> {
-    setImporting(file.id)
+  /**
+   * Hand the file to the parent and close straight away — downloading and
+   * converting a large document can take a while, so the dialog must not sit
+   * there blocking on it. The parent shows a progress toast instead.
+   */
+  function handleImport(file: DriveFile): void {
     setError(null)
-    try {
-      const res = await api.drive.exportFile(file.id)
-      onImport(res.title, res.html)
-      onClose()
-    } catch (error) {
-      console.error('Failed to import file', error)
-      setError(error instanceof Error ? error.message : `Failed to import "${file.name}".`)
-    } finally {
-      setImporting(null)
-    }
+    onImport(file)
+    onClose()
   }
 
   if (!open) return null
@@ -324,11 +328,21 @@ export default function DriveImportDialog({
                         >
                           {file.name}
                         </span>
+                        {file.size ? (
+                          <span
+                            style={{
+                              fontSize: '0.6875rem',
+                              color: 'var(--muted-foreground)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {formatFileSize(Number(file.size))}
+                          </span>
+                        ) : null}
                       </div>
                       <button
                         type="button"
-                        disabled={importing === file.id}
-                        onClick={() => { void handleImport(file) }}
+                        onClick={() => handleImport(file)}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -340,17 +354,12 @@ export default function DriveImportDialog({
                           color: 'var(--primary-foreground)',
                           fontSize: '0.75rem',
                           fontWeight: 500,
-                          cursor: importing === file.id ? 'not-allowed' : 'pointer',
-                          opacity: importing === file.id ? 0.5 : 1,
+                          cursor: 'pointer',
                           fontFamily: 'inherit',
                           flexShrink: 0,
                         }}
                       >
-                        {importing === file.id ? (
-                          <Loader2 style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
-                        ) : (
-                          <Download style={{ width: '12px', height: '12px' }} />
-                        )}
+                        <Download style={{ width: '12px', height: '12px' }} />
                         Import
                       </button>
                     </li>

@@ -28,6 +28,13 @@ def ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
     );
     """)
 
+    # The full event payload (table shape, image dimensions, alignment, block
+    # type) is kept as raw JSON so feature_extractor can derive media features
+    # from it. Added separately from the CREATE above because CREATE TABLE IF
+    # NOT EXISTS will not backfill the column on a database that already exists.
+    conn.execute("ALTER TABLE behavior_events ADD COLUMN IF NOT EXISTS payload TEXT")
+    conn.execute("ALTER TABLE behavior_events ADD COLUMN IF NOT EXISTS block_id TEXT")
+
 
 def collect_events(r: redis.Redis, key: str) -> List[Dict[str, Any]]:
     raw_items = r.lrange(key, 0, -1)
@@ -68,6 +75,8 @@ def run_once() -> int:
             action = str(event.get("action", ""))
             ts_raw = str(event.get("timestamp", ""))
             event_ts = parse_timestamp(ts_raw)
+            block_id = str(event.get("blockId", "")) or None
+            payload = event.get("payload")
 
             if not user_id or not document_id or not action:
                 continue
@@ -75,10 +84,20 @@ def run_once() -> int:
             conn.execute(
                 """
                 INSERT INTO behavior_events
-                  (user_id, document_id, action, event_ts, event_ts_raw, source_key)
-                VALUES (?, ?, ?, ?, ?, ?)
+                  (user_id, document_id, action, event_ts, event_ts_raw, source_key,
+                   payload, block_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                [user_id, document_id, action, event_ts, ts_raw, key],
+                [
+                    user_id,
+                    document_id,
+                    action,
+                    event_ts,
+                    ts_raw,
+                    key,
+                    json.dumps(payload) if payload is not None else None,
+                    block_id,
+                ],
             )
             total += 1
 

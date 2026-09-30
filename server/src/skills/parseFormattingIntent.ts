@@ -8,6 +8,10 @@ export type FormattingIntent =
   | 'blockquote'
   | 'unordered_list'
   | 'ordered_list'
+  | 'align_left'
+  | 'align_center'
+  | 'align_right'
+  | 'align_justify'
 
 export interface FormattingIntentResult {
   /** Primary (first) matched format — kept for backward compatibility. */
@@ -64,8 +68,55 @@ function detectFontSize(message: string): number | null {
   return size >= 6 && size <= 96 ? size : null
 }
 
-/** Phrases that mean the user wants formatting cleared / returned to normal. */
-const NORMALIZE_PHRASES = [
+/**
+ * Alignment requests are matched with regexes rather than plain phrases so
+ * words may sit between the verb and the direction ("align this to the left").
+ * No matcher accepts a bare "right", so "right now" stays a normal request.
+ */
+const ALIGNMENT_MATCHERS: ReadonlyArray<{
+  format: 'align_left' | 'align_center' | 'align_right' | 'align_justify'
+  patterns: readonly RegExp[]
+}> = [
+  {
+    format: 'align_left',
+    patterns: [/\balign\w*\b[^.?!]{0,24}\bleft\b/, /\bleft[\s-]?align\w*\b/, /\bflush\s+left\b/],
+  },
+  {
+    format: 'align_center',
+    patterns: [
+      /\balign\w*\b[^.?!]{0,24}\bcent(?:er|re)\w*\b/,
+      /\bcent(?:er|re)[\s-]?align\w*\b/,
+      /\bflush\s+cent(?:er|re)\b/,
+      /\bcent(?:er|re)(?:ed|ing|s)?\b/,
+    ],
+  },
+  {
+    format: 'align_right',
+    patterns: [/\balign\w*\b[^.?!]{0,24}\bright\b/, /\bright[\s-]?align\w*\b/, /\bflush\s+right\b/],
+  },
+  {
+    format: 'align_justify',
+    patterns: [/\balign\w*\b[^.?!]{0,24}\bjustif\w*\b/, /\bjustif\w+\b/],
+  },
+]
+
+/** Confidence reported when the message only asks for an alignment change. */
+const ALIGNMENT_CONFIDENCE = 0.93
+
+/** Detect a text-alignment request such as "align this to the left". */
+function detectAlignment(
+  message: string
+): { format: 'align_left' | 'align_center' | 'align_right' | 'align_justify'; phrase: string } | null {
+  for (const entry of ALIGNMENT_MATCHERS) {
+    for (const pattern of entry.patterns) {
+      const match = message.match(pattern)
+      if (match) return { format: entry.format, phrase: match[0].trim() }
+    }
+  }
+  return null
+}
+
+/** Phrases that mean the user wants formatting cleared / returned to normal. */const NORMALIZE_PHRASES = [
   'back to normal',
   'go back to normal',
   'back to default',
@@ -198,6 +249,15 @@ export function parseFormattingIntent(
       if (firstPhrase === null) firstPhrase = matchedPhrase
       if (firstConfidence === 0) firstConfidence = entry.confidence
     }
+  }
+
+  // Alignment is detected separately so a message can ask for both a mark and
+  // an alignment ("make this bold and center it").
+  const alignment = detectAlignment(normalized)
+  if (alignment && !formats.includes(alignment.format)) {
+    formats.push(alignment.format)
+    if (firstPhrase === null) firstPhrase = alignment.phrase
+    if (firstConfidence === 0) firstConfidence = ALIGNMENT_CONFIDENCE
   }
 
   const target = detectTarget(normalized)

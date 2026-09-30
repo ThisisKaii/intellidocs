@@ -2,6 +2,9 @@ import { Router } from 'express'
 import {
   getPresets,
   setDocumentPreset,
+  listUserPresets,
+  createUserPreset,
+  deleteUserPreset,
   listBindings,
   createBinding,
   updateBinding,
@@ -12,6 +15,7 @@ import { aiArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
 import {
   createFormatBindingSchema,
+  createUserPresetSchema,
   updateFormatBindingSchema,
   tierCheckSchema,
   setDocumentPresetSchema,
@@ -26,6 +30,11 @@ router.put(
   validateBody(setDocumentPresetSchema),
   setDocumentPreset
 )
+
+// Tier 1b — user-forked blueprints (V2 auto-versioning)
+router.get('/user-presets', listUserPresets)
+router.post('/user-presets', validateBody(createUserPresetSchema), createUserPreset)
+router.delete('/user-presets/:id', deleteUserPreset)
 
 // Tier 2 — custom bindings
 router.get('/bindings', listBindings)

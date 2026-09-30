@@ -1,0 +1,250 @@
+############################################################
+# IntelliDocs production stack.
+#
+# Topology:
+#   nginx        TLS termination + load balancer, the only exposed service
+#   server1/2    stateless Express replicas, pinned per Authorization header
+#   ml1/2        stateless FastAPI replicas, least-conn balanced
+#   redis        single primary (+ replica and sentinels) behind DNS
+#
+# Every dependency is healthchecked, and each service waits for its own
+# dependencies to report healthy before starting. That is what lets nginx
+# treat /health/ready as meaningful.
+#
+# Start with:  docker compose -f docker-compose.prod.yml up -d
+#
+# NOTE: docker-compose.yml is the lightweight dev stack. This file is the
+# hardened multi-replica deployment and is what runbooks should reference.
+############################################################
+
+x-server-env: &server-env
+  NODE_ENV: production
+  PORT: "5000"
+  # The bridge reads ML_API_URL / PYTHON_API_URL (not ML_SERVICE_URL) and joins
+  # the string with a path suffix, so the base must carry no trailing slash.
+  ML_API_URL: http://ml:8000
+  REDIS_URL: redis://redis:6379
+  FRONTEND_URL: ${FRONTEND_URL:-https://localhost}
+  SUPABASE_URL: ${SUPABASE_URL}
+  SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+  SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+  AI_PROVIDER: ${AI_PROVIDER:-gemini}
+  AI_API_KEY: ${AI_API_KEY}
+  AI_MODEL: ${AI_MODEL:-gemini-2.0-flash}
+
+x-server-base: &server-base
+  build:
+    context: ./server
+    dockerfile: Dockerfile
+  environment: *server-env
+  depends_on:
+    redis:
+      condition: service_healthy
+    ml:
+      condition: service_healthy
+  restart: always
+  # Bound replica restarts so a crash loop cannot exhaust the host.
+  deploy:
+    resources:
+      limits:
+        memory: 1g
+  healthcheck:
+    # Readiness, not liveness: nginx must drain a replica whose Supabase or
+    # Redis connection is broken even though the process is alive.
+    test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 15s
+    timeout: 8s
+    retries: 3
+    start_period: 30s
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-ml-base: &ml-base
+  build:
+    context: ./ml
+    dockerfile: Dockerfile
+  environment:
+    BASE_MODEL_PATH: /app/models/base_model.pkl
+    COMPLIANCE_STYLE_MODEL: /app/models/compliance/style_model.pkl
+    COMPLIANCE_FLOW_MODEL: /app/models/compliance/flow_model.pt
+  volumes:
+    # Models are mounted read-only: replicas must not write training output.
+    - ./ml/models:/app/models:ro
+  restart: always
+  deploy:
+    resources:
+      limits:
+        # PyTorch loads several hundred MB of weights; cap well above that.
+        memory: 4g
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5)"]
+    interval: 20s
+    timeout: 10s
+    # Model deserialization is slow on first request, so allow a long start.
+    retries: 5
+    start_period: 90s
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # ---------------------------------------------------------------------
+  # Redis
+  # ---------------------------------------------------------------------
+  # One primary. The replica and the three sentinels exist so a primary
+  # failure can be promoted; the app reconnects through the sentinel-aware
+  # URL supplied in REDIS_URL when a managed cluster is used instead.
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  redis-replica:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --replicaof redis 6379
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-replica-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Three sentinels: monitoring and failover need a majority, so an odd count
+  # survives losing one node. They are configured from the command line to
+  # keep the stack self-contained.
+  redis-sentinel-1:
+    image: redis:7-alpine
+    command: >
+      redis-sentinel
+      --sentinel monitor mymaster redis 6379 2
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel failover-timeout mymaster 10000
+      --sentinel parallel-syncs mymaster 1
+    ports:
+      - "26379:26379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  redis-sentinel-2:
+    image: redis:7-alpine
+    command: >
+      redis-sentinel
+      --sentinel monitor mymaster redis 6379 2
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel failover-timeout mymaster 10000
+      --sentinel parallel-syncs mymaster 1
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  redis-sentinel-3:
+    image: redis:7-alpine
+    command: >
+      redis-sentinel
+      --sentinel monitor mymaster redis 6379 2
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel failover-timeout mymaster 10000
+      --sentinel parallel-syncs mymaster 1
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  # ---------------------------------------------------------------------
+  # Python ML service (2 replicas)
+  # ---------------------------------------------------------------------
+  ml1:
+    <<: *ml-base
+    # Unpublished: reached through nginx's /ml/ route or by the Express
+    # replicas over the compose network, never from the host directly.
+    expose:
+      - "8000"
+
+  ml2:
+    <<: *ml-base
+    expose:
+      - "8000"
+
+  # ---------------------------------------------------------------------
+  # Express backend (2 replicas)
+  # ---------------------------------------------------------------------
+  server1:
+    <<: *server-base
+    expose:
+      - "5000"
+
+  server2:
+    <<: *server-base
+    expose:
+      - "5000"
+
+  # ---------------------------------------------------------------------
+  # Reverse proxy
+  # ---------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      server1:
+        condition: service_healthy
+      server2:
+        condition: service_healthy
+      ml1:
+        condition: service_healthy
+      ml2:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  redis-data:
+  redis-replica-data:

@@ -253,6 +253,9 @@ export async function createDocument(
       margins: req.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 },
       orientation: req.orientation ?? 'portrait',
       formatting_history: [],
+      ...(req.formatting_preset
+        ? { formatting_preset: req.formatting_preset }
+        : {}),
     })
     .select()
     .single()

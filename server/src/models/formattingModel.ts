@@ -6,6 +6,7 @@ import {
   FormatBinding,
   CreateFormatBindingRequest,
   UpdateFormatBindingRequest,
+  UserPreset,
 } from '../types/index'
 import { snapshotDocumentVersion } from './documentModel'
 
@@ -37,6 +38,99 @@ export async function getPresetByKey(key: string): Promise<FormatPreset | null> 
 
   if (error) return null
   return data
+}
+
+// ── Tier 1b — User-forked presets (blueprint V2 versioning) ───────────────────
+
+/** Return every blueprint fork owned by a user, newest fork last. */
+export async function getUserPresets(userId: string): Promise<UserPreset[]> {
+  const { data, error } = await supabase
+    .from('user_presets')
+    .select('*')
+    .eq('user_id', userId)
+    .order('version', { ascending: true })
+
+  if (error) throw new Error(`Failed to get user presets: ${error.message}`)
+  return (data || []) as UserPreset[]
+}
+
+/** Return one of the current user's preset forks by key, or null. */
+export async function getUserPresetByKey(
+  userId: string,
+  key: string
+): Promise<UserPreset | null> {
+  const { data, error } = await supabase
+    .from('user_presets')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('key', key)
+    .maybeSingle()
+
+  if (error) return null
+  return (data as UserPreset | null) ?? null
+}
+
+/**
+ * Resolve a preset key against the standard blueprints first, then the user's
+ * own forks. A document's `formatting_preset` may hold either kind of key.
+ */
+export async function resolvePresetKey(
+  userId: string,
+  key: string
+): Promise<FormatPreset | UserPreset | null> {
+  const standard = await getPresetByKey(key)
+  if (standard) return standard
+  return getUserPresetByKey(userId, key)
+}
+
+/**
+ * Fork a standard blueprint into a per-user preset, bumping the version number
+ * each time so repeated customisation yields "... (Custom v2)", "(Custom v3)".
+ */
+export async function createUserPreset(
+  userId: string,
+  baseKey: string,
+  overrides: Partial<Pick<UserPreset, 'name' | 'description' | 'rules'>>
+): Promise<UserPreset> {
+  const base = await getPresetByKey(baseKey)
+  if (!base) {
+    throw new Error(`Unknown base preset "${baseKey}"`)
+  }
+
+  const existing = await getUserPresets(userId)
+  const nextVersion =
+    existing.filter((preset) => preset.base_key === baseKey).reduce(
+      (highest, preset) => Math.max(highest, preset.version),
+      1
+    ) + 1
+
+  const { data, error } = await supabase
+    .from('user_presets')
+    .insert({
+      user_id: userId,
+      key: `${baseKey}__v${nextVersion}`,
+      base_key: baseKey,
+      name: overrides.name?.trim() || `${base.name} (Custom v${nextVersion})`,
+      description: overrides.description?.trim() || `Customised from ${base.name}`,
+      rules: overrides.rules ?? base.rules,
+      version: nextVersion,
+    })
+    .select()
+    .single()
+
+  if (error) throw new Error(`Failed to save custom preset: ${error.message}`)
+  return data as UserPreset
+}
+
+/** Delete one of the current user's preset forks. */
+export async function deleteUserPreset(userId: string, presetId: string): Promise<void> {
+  const { error } = await supabase
+    .from('user_presets')
+    .delete()
+    .eq('preset_id', presetId)
+    .eq('user_id', userId)
+
+  if (error) throw new Error(`Failed to delete custom preset: ${error.message}`)
 }
 
 // ── Tier 2 — Custom format bindings ──────────────────────────────────────────

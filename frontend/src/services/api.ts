@@ -4,6 +4,7 @@
 /// <reference types="vite/client" />
 
 import { supabase } from '../lib/supabase'
+import type { ComplianceReport } from '../components/ThesisChecklist'
 import {
   AdminApplicant,
   AdminDocumentRecord,
@@ -86,6 +87,30 @@ export interface FolderRecord {
   parent_id: string | null
   created_at: string
   updated_at: string
+  folder_type?: FolderType
+  class_code?: string | null
+  academic_term?: string | null
+  submission_count?: number
+  enrolled_count?: number
+}
+
+/** A folder is either the owner's private workspace or a shared class folder. */
+export type FolderType = 'personal' | 'class'
+
+/** Course details accepted when creating a class folder. */
+export interface CreateFolderOptions {
+  folderType: FolderType
+  classCode?: string
+  academicTerm?: string
+}
+
+/** One enrolled student in a class folder roster. */
+export interface ClassEnrollmentRecord {
+  folder_id: string
+  student_id: string
+  enrolled_at: string
+  email: string | null
+  display_name: string | null
 }
 
 export interface BehaviorEventPayload {
@@ -147,6 +172,12 @@ export interface StorageSummary {
   role: 'student' | 'professor' | 'admin'
 }
 
+/** The signed-in user's live role and verification status. */
+export interface RoleStatusResponse {
+  role: 'student' | 'professor' | 'admin'
+  verificationStatus: 'pending' | 'approved' | 'rejected'
+}
+
 interface RegisterResponse {
   user: User
   message: string
@@ -193,6 +224,32 @@ export interface FormatPreset {
   description: string
   rules: FormatRule[]
   is_system: boolean
+}
+
+/**
+ * A standard blueprint forked by the current user. Forking never edits the
+ * standard preset in place, so the second customisation of one blueprint
+ * produces a new "... (Custom v3)" rather than overwriting v2.
+ */
+export interface UserPreset {
+  preset_id: string
+  user_id: string
+  key: string
+  base_key: string
+  name: string
+  description: string
+  rules: FormatRule[]
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+/** Payload for forking a standard blueprint into a personal preset. */
+export interface CreateUserPresetRequest {
+  baseKey: string
+  name?: string
+  description?: string
+  rules?: FormatRule[]
 }
 
 export interface FormatBinding {
@@ -362,6 +419,31 @@ export interface DriveFile {
   mimeType?: string
   modifiedTime: string
   iconLink: string
+  /** Size in bytes as a string, absent for native Google Workspace files. */
+  size?: string
+}
+
+/** Lifecycle of a large-file Drive import. done and failed are terminal. */
+export type ImportJobState =
+  | 'queued'
+  | 'downloading'
+  | 'converting'
+  | 'done'
+  | 'failed'
+
+export interface ImportJob {
+  id: string
+  fileId: string
+  fileName: string
+  /** 0-100. The server clamps the download phase at 99. */
+  progress: number
+  state: ImportJobState
+  title: string
+  /** Converted document HTML; empty until the job reaches done. */
+  html: string
+  error: string
+  createdAt: number
+  updatedAt: number
 }
 
 export interface DocumentComment {
@@ -594,6 +676,14 @@ export const api = {
     storage: async (): Promise<StorageSummary> => {
       return fetchAPI<StorageSummary>('auth/storage')
     },
+    /**
+     * Return the signed-in user's current role and verification status, read
+     * fresh from the server so an administrator approval is picked up without
+     * requiring a new sign-in.
+     */
+    me: async (): Promise<RoleStatusResponse> => {
+      return fetchAPI<RoleStatusResponse>('auth/me')
+    },
   },
 
   documents: {
@@ -669,11 +759,14 @@ export const api = {
       const suffix = shareToken ? `?shareToken=${encodeURIComponent(shareToken)}` : ''
       return fetchAPI<DocumentRecord>(`documents/${id}${suffix}`)
     },
-    create: async (title: string): Promise<DocumentRecord> => {
+    create: async (
+      title: string,
+      options?: { content?: string; formatting_preset?: string }
+    ): Promise<DocumentRecord> => {
       return fetchAPI<DocumentRecord>('documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title, ...options }),
       })
     },
     update: async (id: string, data: UpdateDocumentRequest, shareToken?: string): Promise<DocumentRecord> => {
@@ -744,6 +837,23 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ preset }),
       })
+    },
+    /** List the current user's forked blueprint versions. */
+    listUserPresets: async (): Promise<UserPreset[]> => {
+      const response = await fetchAPI<{ presets: UserPreset[] }>('formatting/user-presets')
+      return response.presets
+    },
+    /** Fork a standard blueprint into a new personal version. */
+    createUserPreset: async (request: CreateUserPresetRequest): Promise<UserPreset> => {
+      return fetchAPI<UserPreset>('formatting/user-presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      })
+    },
+    /** Delete one of the current user's forked blueprint versions. */
+    deleteUserPreset: async (presetId: string): Promise<void> => {
+      await fetchAPI<null>(`formatting/user-presets/${presetId}`, { method: 'DELETE' })
     },
     /** List the current user's custom Tier 2 bindings. */
     listBindings: async (): Promise<FormatBinding[]> => {
@@ -894,11 +1004,16 @@ export const api = {
     list: async (): Promise<FolderRecord[]> => {
       return fetchAPI<FolderRecord[]>('folders')
     },
-    create: async (name: string): Promise<FolderRecord> => {
+    create: async (name: string, options?: CreateFolderOptions): Promise<FolderRecord> => {
       return fetchAPI<FolderRecord>('folders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          folderType: options?.folderType ?? 'personal',
+          classCode: options?.classCode,
+          academicTerm: options?.academicTerm,
+        }),
       })
     },
     rename: async (id: string, name: string): Promise<FolderRecord> => {
@@ -923,6 +1038,21 @@ export const api = {
         body: JSON.stringify({ documentId }),
       })
     },
+    roster: async (folderId: string): Promise<ClassEnrollmentRecord[]> => {
+      return fetchAPI<ClassEnrollmentRecord[]>(`folders/${folderId}/enrollments`)
+    },
+    enroll: async (folderId: string, email: string): Promise<ClassEnrollmentRecord> => {
+      return fetchAPI<ClassEnrollmentRecord>(`folders/${folderId}/enrollments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+    },
+    unenroll: async (folderId: string, studentId: string): Promise<null> => {
+      return fetchAPI<null>(`folders/${folderId}/enrollments/${studentId}`, {
+        method: 'DELETE',
+      })
+    },
   },
 
   drive: {
@@ -937,11 +1067,45 @@ export const api = {
         method: 'DELETE',
       })
     },
+    /**
+     * Link the Google provider token from a Google sign-in session to this
+     * account. The server scopes the token to the authenticated user, so a token
+     * can never be attached to another account.
+     */
+    linkProvider: async (
+      providerToken: string,
+      providerRefreshToken?: string
+    ): Promise<{ connected: boolean; linked: boolean; message: string }> => {
+      return fetchAPI<{ connected: boolean; linked: boolean; message: string }>(
+        'drive/link-provider',
+        {
+          method: 'POST',
+          body: JSON.stringify({ providerToken, providerRefreshToken }),
+        }
+      )
+    },
     listFiles: async (): Promise<{ files: DriveFile[] }> => {
       return fetchAPI<{ files: DriveFile[] }>('drive/files')
     },
-    exportFile: async (fileId: string): Promise<{ title: string; html: string }> => {
-      return fetchAPI<{ title: string; html: string }>(`drive/files/${fileId}/export`)
+    /**
+     * Import a Drive file. Small files resolve with the converted HTML; files
+     * over the server's 15MB threshold resolve with a jobId instead, which the
+     * caller must poll via getImport.
+     */
+    exportFile: async (
+      fileId: string
+    ): Promise<{ title: string; html: string } | { jobId: string; state: string; fileName: string; size: number }> => {
+      return fetchAPI<{ title: string; html: string } | { jobId: string; state: string; fileName: string; size: number }>(
+        `drive/files/${fileId}/export`
+      )
+    },
+    /** Poll an async large-file import. Terminal states are done and failed. */
+    getImport: async (jobId: string): Promise<ImportJob> => {
+      return fetchAPI<ImportJob>(`drive/imports/${jobId}`)
+    },
+    /** List recent import jobs so a reloaded page can re-attach to one. */
+    listImports: async (): Promise<{ jobs: ImportJob[] }> => {
+      return fetchAPI<{ jobs: ImportJob[] }>('drive/imports')
     },
   },
 
@@ -965,6 +1129,20 @@ export const api = {
     },
     getReview: async (documentId: string): Promise<DocumentReview | null> => {
       return fetchAPI<DocumentReview | null>(`professor/documents/${documentId}/review`)
+    },
+    /** Run the hybrid compliance audit for a document against a template. */
+    auditCompliance: async (payload: {
+      documentId: string
+      mandatoryHeadings: string[]
+      referenceStyle: 'apa' | 'ieee'
+      requiredMarginInches: number
+      referencesRequired: boolean
+    }): Promise<ComplianceReport> => {
+      return fetchAPI<ComplianceReport>('professor/audit/compliance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
     },
   },
 

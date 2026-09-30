@@ -7,6 +7,8 @@ import { createClient, type RedisClientType } from 'redis'
  * happens in this one file.
  */
 export interface RedisCompat {
+  /** Round-trip a PING. Used by the readiness probe; cheap and side-effect free. */
+  ping(): Promise<string>
   get(key: string): Promise<string | null>
   set(key: string, value: string, options?: { EX?: number }): Promise<unknown>
   del(key: string): Promise<unknown>
@@ -46,6 +48,7 @@ function buildUpstashClient(): RedisCompat {
   })
 
   return {
+    ping: async () => (await redis.ping()) ?? 'PONG',
     get: async (key) => toStringOrNull(await redis.get(key)),
     set: async (key, value, options) =>
       redis.set(key, value, options?.EX ? { ex: options.EX } : undefined),
@@ -82,6 +85,7 @@ async function buildNodeRedisClient(url: string): Promise<RedisCompat> {
   }
 
   return {
+    ping: async () => client.ping(),
     get: async (key) => client.get(key),
     set: async (key, value, options) =>
       client.set(key, value, options?.EX ? { EX: options.EX } : undefined),

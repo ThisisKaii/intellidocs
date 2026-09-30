@@ -35,6 +35,23 @@ interface AIChatbotProps {
   docked?: boolean
 }
 
+/** Text-align values for the align_* formats, keyed by format name. */
+const ALIGNMENTS: Record<string, 'left' | 'center' | 'right' | 'justify'> = {
+  align_left: 'left',
+  align_center: 'center',
+  align_right: 'right',
+  align_justify: 'justify',
+}
+
+/** Return the first text alignment requested in a format list, if any. */
+function alignmentOf(formats: string[]): 'left' | 'center' | 'right' | 'justify' | null {
+  for (const format of formats) {
+    const value = ALIGNMENTS[format]
+    if (value) return value
+  }
+  return null
+}
+
 /** Floating AI chatbot for natural language document help. */
 export default function AIChatbot({
   editor,
@@ -80,6 +97,10 @@ export default function AIChatbot({
       ordered_list: 'Numbered List',
       ul: 'Bullet List',
       ol: 'Numbered List',
+      align_left: 'Align Left',
+      align_center: 'Align Center',
+      align_right: 'Align Right',
+      align_justify: 'Justify',
     }
 
     return labels[format] ?? format
@@ -101,6 +122,10 @@ export default function AIChatbot({
     blockquote: (ed) => ed.chain().focus().toggleBlockquote().run(),
     unordered_list: (ed) => ed.chain().focus().toggleBulletList().run(),
     ordered_list: (ed) => ed.chain().focus().toggleOrderedList().run(),
+    align_left: (ed) => ed.chain().focus().setTextAlign('left').run(),
+    align_center: (ed) => ed.chain().focus().setTextAlign('center').run(),
+    align_right: (ed) => ed.chain().focus().setTextAlign('right').run(),
+    align_justify: (ed) => ed.chain().focus().setTextAlign('justify').run(),
   }
 
   /** Describe a preview as one readable string, e.g. "Bold + Italic + font size 20pt". */
@@ -185,6 +210,10 @@ export default function AIChatbot({
     }
     if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
     chain.run()
+    // Alignment is a block attribute rather than a mark, so it needs its own
+    // pass over the same range.
+    const align = alignmentOf(formats)
+    if (align) editor.chain().focus().selectAll().setTextAlign(align).run()
     // Collapse the selection so subsequent typing isn't auto-formatted.
     editor.commands.setTextSelection(editor.state.doc.content.size)
   }
@@ -244,6 +273,11 @@ export default function AIChatbot({
     }
     if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
     chain.run()
+    // Alignment is a block attribute, so apply it over the same section range.
+    const align = normalize ? null : alignmentOf(formats)
+    if (align) {
+      editor.chain().focus().setTextSelection({ from, to }).setTextAlign(align).run()
+    }
     // Restore the cursor to the top of the targeted section.
     editor.commands.setTextSelection(from)
     return true

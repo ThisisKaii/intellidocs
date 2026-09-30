@@ -235,6 +235,7 @@ function FacultyApplicationSection({
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
+  const { refreshRole } = useAuth()
 
   const isPending = role === 'professor' && verificationStatus === 'pending'
   const isApproved = role === 'professor' && verificationStatus === 'approved'
@@ -268,6 +269,9 @@ function FacultyApplicationSection({
         reason: reason.trim(),
       })
       setFeedback({ ok: true, text: res.message })
+      // Pick up the new pending status straight away so the form is replaced by
+      // the "awaiting review" state without waiting for a poll or a reload.
+      void refreshRole()
       setCollege('')
       setDepartment('')
       setInstitutionalEmail('')
@@ -415,6 +419,7 @@ function StudentApplicationSection({
   const [degreeProgram, setDegreeProgram] = useState('')
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
+  const { refreshRole } = useAuth()
 
   if (verificationStatus === 'approved') {
     return (
@@ -457,6 +462,7 @@ function StudentApplicationSection({
         degreeProgram: degreeProgram.trim(),
       })
       setFeedback({ ok: true, text: res.message })
+      void refreshRole()
       setStudentId('')
       setCollege('')
       setDegreeProgram('')

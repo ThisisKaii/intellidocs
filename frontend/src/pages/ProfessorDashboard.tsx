@@ -1,11 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type DocumentRecord } from '../services/api'
+import ThesisChecklist, { type ComplianceReport } from '../components/ThesisChecklist'
 import {
   FileText,
   ClipboardCheck,
-  CheckCircle2,
-  AlertTriangle,
   ArrowLeft,
   RefreshCw,
   Plus,
@@ -26,15 +25,6 @@ interface ThesisTemplate {
   lineSpacing: number
   mandatoryHeadings: string[]
   createdAt: string
-}
-
-interface ComplianceResult {
-  score: number
-  checks: {
-    name: string
-    status: 'pass' | 'warn' | 'fail'
-    detail: string
-  }[]
 }
 
 const DEFAULT_TEMPLATES: ThesisTemplate[] = [
@@ -90,7 +80,7 @@ export default function ProfessorDashboard(): JSX.Element {
   // Audit state
   const [selectedDocId, setSelectedDocId] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [auditResult, setAuditResult] = useState<ComplianceResult | null>(null)
+  const [auditResult, setAuditResult] = useState<ComplianceReport | null>(null)
   const [auditing, setAuditing] = useState(false)
 
   useEffect(() => {
@@ -153,55 +143,32 @@ export default function ProfessorDashboard(): JSX.Element {
       return
     }
 
+    const template = templates.find(t => t.id === selectedTemplateId)
+    if (!template) {
+      setMessage({ type: 'error', text: 'The selected template is no longer available' })
+      return
+    }
+
     setAuditing(true)
     setAuditResult(null)
     try {
-      const doc = documents.find(d => d.id === selectedDocId)
-      const template = templates.find(t => t.id === selectedTemplateId)
-      if (!doc || !template) return
-
-      const content = doc.content || ''
-      const checks: ComplianceResult['checks'] = []
-
-      // Check mandatory headings
-      for (const heading of template.mandatoryHeadings) {
-        const found = content.toLowerCase().includes(heading.toLowerCase())
-        checks.push({
-          name: `Section: ${heading}`,
-          status: found ? 'pass' : 'fail',
-          detail: found
-            ? `Found "${heading}" section in document`
-            : `Missing required section: "${heading}"`,
-        })
-      }
-
-      // Check approximate line spacing (based on content analysis)
-      const paragraphs = content.split(/\n\n+/).filter(p => p.trim())
-      const hasDoubleSpacing = paragraphs.length > 0
-      checks.push({
-        name: 'Line Spacing',
-        status: hasDoubleSpacing ? 'pass' : 'warn',
-        detail: hasDoubleSpacing
-          ? `Document has ${paragraphs.length} paragraphs (target: double spacing)`
-          : 'Unable to determine line spacing from content',
+      // The server loads the document and runs both scoring tiers, so only the
+      // template rules travel over the wire.
+      const report = await api.professor.auditCompliance({
+        documentId: selectedDocId,
+        mandatoryHeadings: template.mandatoryHeadings,
+        referenceStyle: 'apa',
+        requiredMarginInches: template.marginLeft ?? 1,
+        referencesRequired: true,
       })
 
-      // Word count check
-      const wordCount = content.split(/\s+/).filter(Boolean).length
-      checks.push({
-        name: 'Word Count',
-        status: wordCount > 1000 ? 'pass' : wordCount > 200 ? 'warn' : 'fail',
-        detail: `Document contains approximately ${wordCount} words`,
+      setAuditResult(report)
+      setMessage({ type: 'success', text: `Compliance audit complete. Score: ${Math.round(report.aggregateScore)}%` })
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Audit failed',
       })
-
-      // Calculate score
-      const passCount = checks.filter(c => c.status === 'pass').length
-      const score = Math.round((passCount / checks.length) * 100)
-
-      setAuditResult({ score, checks })
-      setMessage({ type: 'success', text: `Compliance audit complete. Score: ${score}%` })
-    } catch {
-      setMessage({ type: 'error', text: 'Audit failed' })
     } finally {
       setAuditing(false)
     }
@@ -449,42 +416,7 @@ export default function ProfessorDashboard(): JSX.Element {
               {auditing ? 'Auditing…' : 'Run Compliance Audit'}
             </button>
 
-            {auditResult && (
-              <div className="rounded-lg border border-border bg-background p-5">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className={`text-3xl font-bold ${auditResult.score >= 80 ? 'text-green-600' : auditResult.score >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {auditResult.score}%
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">Compliance Score</p>
-                    <p className="text-xs text-muted-foreground">
-                      {auditResult.score >= 80 ? 'Good — document is largely compliant' : auditResult.score >= 50 ? 'Needs improvement — several issues found' : 'Major issues — significant non-compliance'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  {auditResult.checks.map((check, i) => (
-                    <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                      {check.status === 'pass' && <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />}
-                      {check.status === 'warn' && <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0" />}
-                      {check.status === 'fail' && <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />}
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{check.name}</p>
-                        <p className="text-xs text-muted-foreground">{check.detail}</p>
-                      </div>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        check.status === 'pass' ? 'bg-green-500/10 text-green-700' :
-                        check.status === 'warn' ? 'bg-yellow-500/10 text-yellow-700' :
-                        'bg-red-500/10 text-red-700'
-                      }`}>
-                        {check.status.toUpperCase()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {auditResult && <ThesisChecklist report={auditResult} />}
           </div>
         )}
 

@@ -51,6 +51,31 @@ describe('parseFormattingIntent', () => {
     expect(result.matchedPhrase).toBe('quoted section')
   })
 
+  it('detects each text alignment request', () => {
+    const left = parseFormattingIntent('Align this to the left')
+    const center = parseFormattingIntent('Center this please')
+    const right = parseFormattingIntent('Align right')
+    const justify = parseFormattingIntent('Justify this paragraph')
+
+    expect(left.format).toBe('align_left')
+    expect(center.format).toBe('align_center')
+    expect(right.format).toBe('align_right')
+    expect(justify.format).toBe('align_justify')
+  })
+
+  it('does not treat unrelated uses of "right" as an alignment request', () => {
+    const result = parseFormattingIntent('Write the conclusion right now')
+
+    expect(result.format).toBeNull()
+  })
+
+  it('combines alignment with other requested formats', () => {
+    const result = parseFormattingIntent('Make this bold and align it center')
+
+    expect(result.formats).toContain('bold')
+    expect(result.formats).toContain('align_center')
+  })
+
   it('returns no intent for general writing help', () => {
     const result = parseFormattingIntent('Can you improve the clarity of this paragraph?')
 

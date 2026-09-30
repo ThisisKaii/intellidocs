@@ -1,8 +1,49 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { Eye, EyeOff } from 'lucide-react'
+import { LogoMark } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
+
+/**
+ * Shared styles for a password input with a reveal button on the right.
+ * The right padding keeps typed text clear of the button.
+ */
+const passwordFieldStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  boxSizing: 'border-box',
+  height: '38px',
+  borderRadius: '0.5rem',
+  border: 'none',
+  boxShadow: '0px 0px 0px 1px var(--border-shadow)',
+  backgroundColor: 'var(--background)',
+  color: 'var(--foreground)',
+  fontSize: '0.875rem',
+  padding: '0 2.5rem 0 0.75rem',
+  outline: 'none',
+  transition: 'box-shadow 150ms',
+}
+
+/** Styles for the show/hide password toggle, centred over the input. */
+const revealButtonStyle: React.CSSProperties = {
+  position: 'absolute',
+  right: '0.375rem',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '28px',
+  height: '28px',
+  padding: 0,
+  border: 'none',
+  borderRadius: '0.375rem',
+  background: 'transparent',
+  color: 'var(--text-muted)',
+  cursor: 'pointer',
+}
 
 function Register(): JSX.Element {
   const navigate = useNavigate()
@@ -10,8 +51,12 @@ function Register(): JSX.Element {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState('')
+const [confirmPassword, setConfirmPassword] = useState('')
+// Shared reveal toggle for both password fields.
+const [showPassword, setShowPassword] = useState(false)
+// Independent of showPassword: each field reveals on its own.
+const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -48,7 +93,7 @@ function Register(): JSX.Element {
         loginResponse.session.access_token,
         loginResponse.session.refresh_token
       )
-      setSuccess('Account created. Redirecting…')
+      setSuccess('Account created. Redirectingâ€¦')
       setTimeout(() => navigate('/dashboard'), 1500)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
@@ -98,8 +143,10 @@ function Register(): JSX.Element {
   }
 
   function onFocus(e: React.FocusEvent<HTMLInputElement>) {
+    // Matches the Login screen: a themed ring plus a soft halo. Uses --ring so
+    // the accent stays teal in both light and dark mode.
     e.currentTarget.style.boxShadow =
-      '0px 0px 0px 1px var(--border-shadow), 0 0 0 3px rgba(59,130,246,0.15)'
+      '0 0 0 1.5px var(--ring), 0 0 0 4px color-mix(in srgb, var(--ring) 12%, transparent)'
   }
   function onBlur(e: React.FocusEvent<HTMLInputElement>) {
     e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow)'
@@ -124,30 +171,15 @@ function Register(): JSX.Element {
       >
         {/* Logo + heading */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              backgroundColor: 'var(--primary)',
-              marginBottom: '1.25rem',
-            }}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--primary-foreground)"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ width: '18px', height: '18px' }}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                marginBottom: '1.25rem',
+              }}
             >
-              <path d="M12 2L2 22h20L12 2z" />
-            </svg>
-          </div>
+              <LogoMark size={40} title="IntelliDocs" />
+            </div>
           <h1
             style={{
               fontSize: '1.375rem',
@@ -170,8 +202,11 @@ function Register(): JSX.Element {
             backgroundColor: 'var(--card)',
             borderRadius: '0.75rem',
             padding: '1.75rem',
+            // Teal outline plus a soft glow. Expressed with --ring so the card
+            // keeps the same treatment in light and dark mode. Login uses an
+            // identical value - keep the two in sync.
             boxShadow:
-              'rgba(0,0,0,0.08) 0px 0px 0px 1px, rgba(0,0,0,0.04) 0px 2px 4px',
+              '0 0 0 1px color-mix(in srgb, var(--ring) 35%, transparent), 0 4px 24px color-mix(in srgb, var(--ring) 12%, transparent)',
           }}
         >
           {/* Google Sign-Up Button */}
@@ -206,7 +241,7 @@ function Register(): JSX.Element {
               <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
               <path fill="none" d="M0 0h48v48H0z"/>
             </svg>
-            {googleLoading ? 'Redirecting…' : 'Sign up with Google'}
+            {googleLoading ? 'Redirectingâ€¦' : 'Sign up with Google'}
           </button>
 
           {/* Divider */}
@@ -288,17 +323,33 @@ function Register(): JSX.Element {
               >
                 Password
               </label>
-              <input
-                id="reg-password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={handlePasswordChange}
-                required
-                style={inputStyle}
-                onFocus={onFocus}
-                onBlur={onBlur}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="reg-password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Create a password"
+                  value={password}
+                  onChange={handlePasswordChange}
+                  required
+                  style={passwordFieldStyle}
+                  onFocus={onFocus}
+                  onBlur={onBlur}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  style={revealButtonStyle}
+                >
+                  {showPassword ? (
+                    <EyeOff size={16} strokeWidth={1.75} />
+                  ) : (
+                    <Eye size={16} strokeWidth={1.75} />
+                  )}
+                </button>
+              </div>
               <p
                 style={{
                   fontSize: '0.75rem',
@@ -324,17 +375,36 @@ function Register(): JSX.Element {
               >
                 Confirm Password
               </label>
-              <input
-                id="reg-confirm-password"
-                type="password"
-                placeholder="••••••••"
-                value={confirmPassword}
-                onChange={handleConfirmPasswordChange}
-                required
-                style={inputStyle}
-                onFocus={onFocus}
-                onBlur={onBlur}
-              />
+              {/* Reveals independently of the password field above. */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="reg-confirm-password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChange={handleConfirmPasswordChange}
+                  required
+                  style={passwordFieldStyle}
+                  onFocus={onFocus}
+                  onBlur={onBlur}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  aria-label={
+                    showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'
+                  }
+                  aria-pressed={showConfirmPassword}
+                  title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  style={revealButtonStyle}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff size={16} strokeWidth={1.75} />
+                  ) : (
+                    <Eye size={16} strokeWidth={1.75} />
+                  )}
+                </button>
+              </div>
               {confirmPassword && password !== confirmPassword && (
                 <p
                   style={{
@@ -368,7 +438,7 @@ function Register(): JSX.Element {
                   fontFamily: 'inherit',
                 }}
               >
-                {loading ? 'Creating account…' : 'Create account'}
+                {loading ? 'Creating accountâ€¦' : 'Create account'}
               </button>
             </div>
           </form>
