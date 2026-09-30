@@ -22,7 +22,14 @@ x-server-env: &server-env
   PORT: "5000"
   # The bridge reads ML_API_URL / PYTHON_API_URL (not ML_SERVICE_URL) and joins
   # the string with a path suffix, so the base must carry no trailing slash.
-  ML_API_URL: http://ml:8000
+  # Address one ML replica directly on the compose network. The replicas are
+  # named ml1/ml2; there is no service called "ml" to resolve. Going through
+  # nginx (/ml/) is not an option here: nginx already waits on the Express
+  # replicas for readiness, so depending on it would be a startup cycle, and
+  # /ml/ sits behind the ai_zone rate limit that internal prediction traffic
+  # would exhaust. Trade-off: this pins to ml1 and leaves ml2 idle until ML
+  # load balancing is revisited.
+  ML_API_URL: http://ml1:8000
   REDIS_URL: redis://redis:6379
   FRONTEND_URL: ${FRONTEND_URL:-https://localhost}
   SUPABASE_URL: ${SUPABASE_URL}
@@ -40,7 +47,7 @@ x-server-base: &server-base
   depends_on:
     redis:
       condition: service_healthy
-    ml:
+    ml1:
       condition: service_healthy
   restart: always
   # Bound replica restarts so a crash loop cannot exhaust the host.
