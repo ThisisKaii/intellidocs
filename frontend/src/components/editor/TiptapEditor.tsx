@@ -25,6 +25,7 @@ import { HarperLinterExtension } from './HarperLinterExtension'
 import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { PageBreak } from './PageBreak'
+import { applyIeeeNumbering } from './ieeeNumberingCommand'
 import EditorStylesPanel from './EditorStylesPanel'
 import {
   Undo2,
@@ -50,6 +51,7 @@ import {
   AlignJustify,
   List,
   ListOrdered,
+  Hash,
   Indent,
   Outdent,
   Table as TableIcon,
@@ -1686,6 +1688,20 @@ export function TiptapToolbar({
           active={isActive('orderedList')}
           onClick={() => run('ordered_list', () => editor?.chain().focus().toggleOrderedList().run())}
         />
+        {activePreset === 'ieee' && (
+          <ToolButton
+            icon={Hash}
+            title="Renumber IEEE headings (I. II. A. 1))"
+            disabled={!editor || editor.isEmpty}
+            onClick={() =>
+              run('ieee_numbering', () => {
+                if (editor) {
+                  applyIeeeNumbering(editor)
+                }
+              })
+            }
+          />
+        )}
         <ToolButton
           icon={Outdent}
           title="Outdent"
