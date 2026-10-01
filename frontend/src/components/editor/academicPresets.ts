@@ -14,6 +14,8 @@ export interface HeadingStyle {
   fontSize: string
   /** CSS font-weight (700 = bold). */
   fontWeight: number
+  /** CSS font-style. IEEE uses italic for levels 2 and 3. */
+  fontStyle?: 'normal' | 'italic'
   /** CSS text-transform (e.g. 'uppercase' or 'none'). */
   textTransform: 'uppercase' | 'capitalize' | 'none'
   /** Extra note shown in the UI (e.g. "Ends with a period"). */
@@ -41,9 +43,11 @@ type PresetInput = Omit<AcademicPreset, 'css'>
 
 function headingRule(tag: 'h1' | 'h2' | 'h3', style: HeadingStyle): string {
   const textTransform = style.textTransform === 'none' ? 'none' : style.textTransform
+  const fontStyle = style.fontStyle ?? 'normal'
   return `${tag} {
     text-align: ${style.textAlign};
     font-weight: ${style.fontWeight};
+    font-style: ${fontStyle};
     font-size: ${style.fontSize};
     text-transform: ${textTransform};
     margin: 0.5em 0 0.4em;
@@ -104,7 +108,7 @@ const IEEE: PresetInput = {
   key: 'ieee',
   name: 'IEEE Conference',
   description:
-    "IEEE — 0.75\" margins, Times New Roman 10pt, single-ish spacing, Roman-numeral numbered headings.",
+    'IEEE — 0.75" margins, Times New Roman 10pt, centered uppercase Roman-numeral sections (I. II. III.), italic alphabetised subsections. Two-column body not yet applied.',
   pageSize: 'letter',
   orientation: 'portrait',
   margins: { top: 0.75, bottom: 0.75, left: 0.75, right: 0.75 },
@@ -114,8 +118,8 @@ const IEEE: PresetInput = {
   firstLineIndent: '0.25in',
   headings: {
     level1: { textAlign: 'center', fontSize: '10pt', fontWeight: 700, textTransform: 'uppercase' },
-    level2: { textAlign: 'left', fontSize: '10pt', fontWeight: 700, textTransform: 'none' },
-    level3: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, textTransform: 'none', note: 'Italicized' },
+    level2: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, alphabetised (A. Speech and Speech Disorders)' },
+    level3: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, run-in (1) Background:)' },
   },
 }
 
