@@ -26,6 +26,7 @@ import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { PageBreak } from './PageBreak'
 import { applyIeeeNumbering } from './ieeeNumberingCommand'
+import { convertToIeee } from './ieeeConvertCommand'
 import EditorStylesPanel from './EditorStylesPanel'
 import {
   Undo2,
@@ -52,6 +53,7 @@ import {
   List,
   ListOrdered,
   Hash,
+  LayoutTemplate,
   Indent,
   Outdent,
   Table as TableIcon,
@@ -1712,6 +1714,28 @@ export function TiptapToolbar({
                 }
               })
             }
+          />
+        )}
+        {activePreset === 'ieee' && (
+          <ToolButton
+            icon={LayoutTemplate}
+            title="Restructure into IEEE format"
+            disabled={!editor || editor.isEmpty}
+            onClick={() => {
+              if (!editor) {
+                return
+              }
+              const confirmed = window.confirm(
+                'Restructure this document into IEEE format?\n\n' +
+                  'Sections whose headings match an IEEE section keep their content. ' +
+                  'IEEE sections with no match are added blank for you to fill in.\n\n' +
+                  'Nothing is deleted: anything that matches no IEEE section is moved ' +
+                  'to the end under an "Unmapped Content" heading.'
+              )
+              if (confirmed) {
+                run('ieee_convert', () => convertToIeee(editor))
+              }
+            }}
           />
         )}
         <ToolButton

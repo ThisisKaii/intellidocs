@@ -205,7 +205,9 @@ export function buildBlueprintHtml(blueprint: DocumentBlueprint): string {
     const guide = ` data-guide="${escapeHtml(section.hint ?? section.placeholder)}" data-guide-text="${text}"`
 
     if (section.block === 'title') {
-      return `<h1${guide}>${text}</h1>`
+      // `data-doc-role` keeps the blueprint title matching the real Title command,
+      // so IEEE numbering leaves it unnumbered and it renders at title typography.
+      return `<h1 data-doc-role="title"${guide}>${text}</h1>`
     }
     if (section.block === 'heading') {
       return `<h${section.level ?? 2}${guide}>${text}</h${section.level ?? 2}>`
