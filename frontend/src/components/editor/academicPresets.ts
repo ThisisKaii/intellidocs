@@ -34,6 +34,12 @@ export interface AcademicPreset {
   lineHeight: number
   firstLineIndent: string
   headings: { level1: HeadingStyle; level2: HeadingStyle; level3: HeadingStyle }
+  /**
+   * Optional styling for a heading marked as the document title. Only needed
+   * where the title differs from a level 1 section, which is the case for
+   * IEEE: sections are uppercase, the title is title case at 24pt.
+   */
+  title?: HeadingStyle
   /** Scoped stylesheet applied while this preset is active. */
   css: string
 }
@@ -55,12 +61,35 @@ function headingRule(tag: 'h1' | 'h2' | 'h3', style: HeadingStyle): string {
   }`
 }
 
+/**
+ * Rule for a heading carrying the document-title role. Selectors here include
+ * the `data-doc-role` attribute, which outranks the bare `h1` rule regardless
+ * of source order, so a title can differ from a level 1 section.
+ *
+ * Every preset emits one, defaulting to its level 1 style. That keeps title
+ * alignment under preset control rather than relying on specificity between
+ * the base stylesheet and the preset block.
+ */
+function titleRule(style: HeadingStyle): string {
+  const textTransform = style.textTransform === 'none' ? 'none' : style.textTransform
+  const fontStyle = style.fontStyle ?? 'normal'
+  return `h1[data-doc-role='title'] {
+    text-align: ${style.textAlign};
+    font-weight: ${style.fontWeight};
+    font-style: ${fontStyle};
+    font-size: ${style.fontSize};
+    text-transform: ${textTransform};
+  }`
+}
+
 function buildCss(preset: Omit<AcademicPreset, 'css'>): string {
   const headingBlock = [
     headingRule('h1', preset.headings.level1),
     headingRule('h2', preset.headings.level2),
     headingRule('h3', preset.headings.level3),
   ].join('\n')
+
+  const titleBlock = titleRule(preset.title ?? preset.headings.level1)
 
   return `
 .intellidocs-page-editor .ProseMirror {
@@ -80,7 +109,8 @@ function buildCss(preset: Omit<AcademicPreset, 'css'>): string {
 .intellidocs-page-editor .ProseMirror li {
   ${'text-indent: 0;'}
 }
-${headingBlock}`
+${headingBlock}
+${titleBlock}`
 }
 
 /** APA 7th Edition academic paper style. */
@@ -120,6 +150,13 @@ const IEEE: PresetInput = {
     level1: { textAlign: 'center', fontSize: '10pt', fontWeight: 700, textTransform: 'uppercase' },
     level2: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, alphabetised (A. Speech and Speech Disorders)' },
     level3: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, run-in (1) Background:)' },
+  },
+  title: {
+    textAlign: 'center',
+    fontSize: '24pt',
+    fontWeight: 400,
+    textTransform: 'capitalize',
+    note: '24pt title case, regular weight',
   },
 }
 

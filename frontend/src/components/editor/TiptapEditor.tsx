@@ -515,6 +515,18 @@ const CustomHeading = Heading.extend({
         parseHTML: (el) => el.getAttribute('data-style-source'),
         renderHTML: (a) => (a.styleSource ? { 'data-style-source': a.styleSource } : {}),
       },
+      /**
+       * Marks a heading as the document title rather than a section heading.
+       * Both are level 1 in the editor, so this is what lets a preset style
+       * them differently: IEEE renders sections uppercase but the title in
+       * title case. Defaults to null, so documents saved before this existed
+       * keep their current appearance.
+       */
+      docRole: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-doc-role'),
+        renderHTML: (a) => (a.docRole ? { 'data-doc-role': a.docRole } : {}),
+      },
       ...guideAttributes,
     }
   },
@@ -2674,6 +2686,10 @@ const PROSE_STYLES = `
   }
   .ProseMirror p { margin-bottom: 0.25em; line-height: 1.5 !important; }
   .ProseMirror p:empty, .ProseMirror p > br:only-child { min-height: 0.6em; display: block; width: 100%; margin-bottom: 0 !important; }
+  /* Document title: a heading carrying the title role rather than acting as a
+     level 1 section. Size and weight are inherited from the h1 rule; only the
+     centring is added here. An active preset supplies its own title rule. */
+  .ProseMirror h1[data-doc-role='title'] { text-align: center; }
   .ProseMirror blockquote {
     border-left: 3px solid var(--foreground);
     margin: 0.75em 0;
