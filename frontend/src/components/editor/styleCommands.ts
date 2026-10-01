@@ -46,27 +46,28 @@ export function applyStyleCommand(
     case 'h1':
       chain
         .setHeading({ level: 1 })
-        .updateAttributes('', { styleSource: 'applied_style' })
+        .updateAttributes('', { styleSource: 'applied_style', docRole: null })
         .run()
       return
     case 'h2':
       chain
         .setHeading({ level: 2 })
-        .updateAttributes('', { styleSource: 'applied_style' })
+        .updateAttributes('', { styleSource: 'applied_style', docRole: null })
         .run()
       return
     case 'h3':
       chain
         .setHeading({ level: 3 })
-        .updateAttributes('', { styleSource: 'applied_style' })
+        .updateAttributes('', { styleSource: 'applied_style', docRole: null })
         .run()
       return
     case 'title':
+      // Sets the role only. Size, weight and alignment come from CSS so an
+      // active preset can restyle the title, which it cannot do against the
+      // inline font-size and text-align marks this used to apply.
       chain
         .setHeading({ level: 1 })
-        .setTextAlign('center')
-        .setFontSize('18pt')
-        .updateAttributes('', { styleSource: 'applied_style' })
+        .updateAttributes('', { styleSource: 'applied_style', docRole: 'title' })
         .run()
       return
     case 'blockquote':
