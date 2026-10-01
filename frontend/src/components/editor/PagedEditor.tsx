@@ -18,6 +18,9 @@ import type { BehaviorEventPayload } from './behaviorListener'
 /** Vertical gap between stacked page sheets, in px. */
 const PAGE_GAP = 40
 
+/** Horizontal gap between the two page sheets of a spread, in px. */
+const SPREAD_GAP = 24
+
 /** Convert inches to pixels at 96 dpi. */
 function inToPx(inches: number): number {
   return Math.round(inches * 96)
@@ -82,6 +85,13 @@ interface PagedEditorProps {
   footerContent: string
   headerNumberFormat: PageNumberFormat
   footerNumberFormat: PageNumberFormat
+  /**
+   * Show two pages side by side as one continuous spread, as readers see an
+   * open journal. Geometry and page breaks are untouched, so this is a view
+   * mode only: page content, page numbers, and the exported DOCX are identical
+   * to the stacked layout.
+   */
+  spreadPreview?: boolean
   /** Forwarded to the floating menu so structural actions reach the behavior pipeline. */
   onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
 }
@@ -112,6 +122,7 @@ export function PagedEditor({
   footerContent,
   headerNumberFormat,
   footerNumberFormat,
+  spreadPreview = false,
   onFormatApplied,
 }: PagedEditorProps): JSX.Element {
   const propsRef = useRef({ onContentChange, onGrammarClick })
@@ -310,12 +321,70 @@ export function PagedEditor({
          }`
       : ''
 
-  if (!editor) return <div className="intellidocs-page-editor" />
+  /*
+   * Spread layout.
+   *
+   * tiptap-pagination-plus gives each page an inline `float: left` and
+   * `clear: both`, plus a per-page `margin-top` computed to stack pages
+   * vertically. Overriding those three properties and switching the page
+   * container to a two-column grid is enough to pair pages 1|2, 3|4, ...
+   * The extension still owns page height, breaks, and content flow.
+   */
+  const spreadStyle = spreadPreview
+    ? `.intellidocs-page-editor--spread .rm-pages-wrapper {
+         display: grid;
+         grid-template-columns: repeat(2, var(--rm-page-width));
+         gap: ${SPREAD_GAP}px;
+         justify-content: center;
+       }
+       .intellidocs-page-editor--spread .rm-pages-wrapper > .rm-page-break {
+         width: var(--rm-page-width);
+         height: var(--rm-page-height);
+       }
+       .intellidocs-page-editor--spread .rm-pages-wrapper > .rm-page-break > .page {
+         float: none !important;
+         clear: none !important;
+         margin-top: 0 !important;
+       }
+       .intellidocs-page-editor--spread .rm-pages-wrapper > .rm-page-break::after {
+         counter-increment: spread-page;
+         content: "Page " counter(spread-page);
+         display: block;
+         margin-top: 0.375rem;
+         text-align: center;
+         font-size: 0.6875rem;
+         color: var(--muted-foreground);
+         font-variant-numeric: tabular-nums;
+       }`
+    : ''
+
+  const pageLabel = spreadPreview ? 'Page' : null
+
+  if (!editor) {
+    return (
+      <div
+        className={`intellidocs-page-editor${
+          spreadPreview ? ' intellidocs-page-editor--spread' : ''
+        }`}
+        style={
+          spreadPreview
+            ? { width: `${page.width * 2 + SPREAD_GAP}px`, margin: '0 auto' }
+            : { width: `${page.width}px`, margin: '0 auto' }
+        }
+      />
+    )
+  }
 
   return (
     <div
-      className="intellidocs-page-editor"
-      style={{ width: `${page.width}px`, margin: '0 auto' }}
+      className={`intellidocs-page-editor${
+        spreadPreview ? ' intellidocs-page-editor--spread' : ''
+      }`}
+      style={
+        spreadPreview
+          ? { width: `${page.width * 2 + SPREAD_GAP}px`, margin: '0 auto' }
+          : { width: `${page.width}px`, margin: '0 auto' }
+      }
     >
       <style>
         {`.ProseMirror.rm-with-pagination {
@@ -347,7 +416,9 @@ export function PagedEditor({
             font-size: 0.6875rem;
             color: var(--text-secondary);
           }
-          ${romanStyle}`}
+          ${romanStyle}
+          ${spreadStyle}
+          ${pageLabel === null ? '' : `.intellidocs-page-editor--spread .rm-pages-wrapper { counter-reset: spread-page; }`}`}
       </style>
       <TiptapCanvas editor={editor} onFormatApplied={onFormatApplied} />
       <SlashCommandMenu editor={editor} />
