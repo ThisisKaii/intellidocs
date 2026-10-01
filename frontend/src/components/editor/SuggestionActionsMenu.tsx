@@ -99,7 +99,7 @@ export default function SuggestionActionsMenu({
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
           >
-            <SpellCheck2 style={{ width: '14px', height: '14px', color: '#f59e0b', flexShrink: 0 }} />
+            <SpellCheck2 style={{ width: '14px', height: '14px', color: 'var(--warning)', flexShrink: 0 }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               Grammar &amp; spelling · {grammarCount}
             </span>

@@ -2638,9 +2638,9 @@ const PROSE_STYLES = `
     font-size: 11pt;
     line-height: 1.6;
     background: transparent;
-    color: #171717;
+    color: var(--text-primary);
     word-wrap: break-word;
-    caret-color: #171717;
+    caret-color: var(--text-primary);
   }
   .ProseMirror span[style*="color:#000000"],
   .ProseMirror span[style*="color: #000000"],
@@ -2792,7 +2792,7 @@ const PROSE_STYLES = `
     gap: 4px;
     padding: 5px 8px;
     background: var(--popover, #ffffff);
-    border: 1px solid var(--border, #e5e7eb);
+    border: 1px solid var(--border, var(--border-strong));
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     position: absolute;
@@ -2818,13 +2818,13 @@ const PROSE_STYLES = `
   .ProseMirror [data-resize-image-ui="position-controller"] img:hover,
   .ProseMirror [data-resize-image-ui="position-controller"] svg:hover {
     opacity: 1;
-    background: var(--secondary, #f3f4f6);
+    background: var(--secondary, var(--surface-sunken));
   }
   .ProseMirror [data-resize-image-ui="resize-handle"] {
     width: 10px;
     height: 10px;
-    background: var(--primary, #6366f1);
-    border: 2px solid #fff;
+    background: var(--primary, var(--accent-strong));
+    border: 2px solid var(--primary-foreground);
     border-radius: 50%;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
     opacity: 0.9;
@@ -2859,7 +2859,7 @@ const PROSE_STYLES = `
     text-decoration-skip-ink: none;
     text-decoration-thickness: 2px;
     text-underline-offset: 3px;
-    text-decoration-color: #7c3aed;
+    text-decoration-color: var(--grammar);
   }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-2px); }

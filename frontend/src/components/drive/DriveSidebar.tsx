@@ -228,7 +228,7 @@ function DriveSidebar({
                   <Icon
                     className={`size-4 shrink-0 ${
                       isClass
-                        ? 'text-accent-foreground dark:text-[#6fb3b8]'
+                        ? 'text-accent-foreground'
                         : active
                           ? 'text-primary'
                           : 'text-muted-foreground'
@@ -237,7 +237,7 @@ function DriveSidebar({
                   />
                   <span className="truncate">{folder.name}</span>
                   {isClass && (
-                    <span className="ml-auto shrink-0 text-[0.625rem] font-semibold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-accent/25 text-accent-foreground dark:bg-[#1e383b] dark:text-[#6fb3b8]">
+                    <span className="ml-auto shrink-0 text-[0.625rem] font-semibold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-accent/25 text-accent-foreground">
                       {folder.class_code || 'Class'}
                     </span>
                   )}

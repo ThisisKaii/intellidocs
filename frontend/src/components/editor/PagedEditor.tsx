@@ -325,27 +325,27 @@ export function PagedEditor({
           }
           .rm-with-pagination .ProseMirror,
           .rm-with-pagination .ProseMirror .ProseMirror-selectednode {
-            color: #171717;
-            caret-color: #171717;
+            color: var(--text-primary);
+            caret-color: var(--text-primary);
           }
           .rm-with-pagination .ProseMirror blockquote {
-            border-left-color: #3a3f3e;
-            color: #4a5555;
+            border-left-color: var(--accent-strong);
+            color: var(--text-secondary);
           }
           .rm-with-pagination p.is-editor-empty:first-child::before {
-            color: #8b8f8d;
+            color: var(--text-muted);
           }
           .rm-with-pagination .ProseMirror th {
-            color: #171717;
+            color: var(--text-primary);
           }
           .rm-with-pagination .ProseMirror pre,
           .rm-with-pagination .ProseMirror code {
-            background: #f0efea;
+            background: var(--surface-sunken);
           }
           .rm-with-pagination .rm-page-header,
           .rm-with-pagination .rm-page-footer {
             font-size: 0.6875rem;
-            color: #6b7878;
+            color: var(--text-secondary);
           }
           ${romanStyle}`}
       </style>
