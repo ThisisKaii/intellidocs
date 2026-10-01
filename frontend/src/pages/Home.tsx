@@ -765,7 +765,7 @@ export default function HomePage(): JSX.Element {
 
         {/* Pending Professor Notification Banner */}
         {user?.role === 'professor' && user?.verificationStatus === 'pending' && (
-          <div className="mx-4 mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-medium flex items-center justify-between">
+          <div className="mx-4 mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 text-xs font-medium flex items-center justify-between">
             <span>
               <strong>Professor Application Pending:</strong> Your request to register as a Professor is under review by an Administrator. Document review and grading features will be unlocked once approved.
             </span>

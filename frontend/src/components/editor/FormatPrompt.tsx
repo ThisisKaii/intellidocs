@@ -249,7 +249,7 @@ export default function FormatPrompt({
                   borderRadius: '6px',
                   border: 'none',
                   backgroundColor: 'var(--primary)',
-                  color: '#ffffff',
+                  color: 'var(--primary-foreground)',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                   transition: 'opacity 150ms',

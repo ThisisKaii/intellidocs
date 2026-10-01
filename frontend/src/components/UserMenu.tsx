@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, LogOut, Moon } from 'lucide-react'
+import { Settings, LogOut } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-import { useTheme } from '@/context/ThemeContext'
 
 /** Two-letter initials derived from the user's display name or email, or a fallback. */
 function userInitials(name: string): string {
@@ -15,13 +14,12 @@ function userInitials(name: string): string {
 }
 
 /**
- * Account dropdown (top right) with Settings navigation, a dark-mode switch,
- * and logout. Closes on outside click or item selection.
+ * Account dropdown (top right) with Settings navigation and logout.
+ * Closes on outside click or item selection.
  */
 export function UserMenu(): JSX.Element {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const { theme, setTheme } = useTheme()
   const [open, setOpen] = useState<boolean>(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -41,8 +39,6 @@ export function UserMenu(): JSX.Element {
     logout()
     navigate('/login')
   }
-
-  const isDark = theme === 'dark'
 
   return (
     <div ref={menuRef} className="relative">
@@ -74,29 +70,6 @@ export function UserMenu(): JSX.Element {
           >
             <Settings className="size-4 text-muted-foreground" strokeWidth={1.75} />
             Settings
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="flex items-center justify-between w-full px-4 py-3 border-t border-border bg-transparent cursor-pointer text-left transition-colors hover:bg-foreground/5"
-            style={{ fontFamily: 'inherit' }}
-          >
-            <span className="flex items-center gap-2.5 text-sm text-foreground">
-              <Moon className="size-4 text-muted-foreground" strokeWidth={1.75} />
-              Dark
-            </span>
-            <span
-              role="switch"
-              aria-checked={isDark}
-              aria-hidden="true"
-              className={`relative inline-flex w-9 h-5 rounded-full transition-colors ring-1 ring-inset ring-border ${isDark ? 'bg-primary' : 'bg-foreground/25'}`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-background shadow-sm transition-transform ${isDark ? 'translate-x-4' : 'translate-x-0'}`}
-              />
-            </span>
           </button>
 
           <button

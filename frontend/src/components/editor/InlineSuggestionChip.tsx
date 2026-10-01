@@ -62,7 +62,7 @@ export default function InlineSuggestionChip({
     padding: '0.25rem 0.5rem',
     borderRadius: '999px',
     backgroundColor: 'var(--card)',
-    boxShadow: '0 0 0 1.5px #6fb3b8, 0 8px 24px rgba(56,128,135,0.18)',
+    boxShadow: '0 0 0 1.5px var(--accent-mid), 0 8px 24px var(--border-shadow)',
     fontSize: '0.75rem',
     fontWeight: 600,
     color: 'var(--foreground)',
@@ -142,9 +142,9 @@ export default function InlineSuggestionChip({
       <button
         type="button"
         title="Apply (Enter)"
-        style={{ ...buttonStyle, color: '#388087' }}
+        style={{ ...buttonStyle, color: 'var(--primary)' }}
         onMouseDownCapture={onAccept}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(194,237,206,0.5)' }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'color-mix(in srgb, var(--highlight) 50%, transparent)' }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}
       >
         <Check style={{ width: 14, height: 14 }} strokeWidth={2.5} />

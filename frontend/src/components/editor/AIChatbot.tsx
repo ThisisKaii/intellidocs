@@ -686,8 +686,8 @@ export default function AIChatbot({
                           marginTop: '0.5rem',
                           padding: '0.5rem 0.625rem',
                           borderRadius: '0.5rem',
-                          backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                          border: '1px solid rgba(59, 130, 246, 0.16)',
+                          backgroundColor: 'var(--accent-subtle)',
+                          border: '1px solid color-mix(in srgb, var(--accent-strong) 16%, transparent)',
                           color: m.role === 'user' ? 'var(--primary-foreground)' : 'var(--foreground)',
                         }}
                       >
@@ -821,7 +821,7 @@ export default function AIChatbot({
                   fontFamily: 'inherit',
                   transition: 'box-shadow 150ms',
                 }}
-                onFocus={(e) => { (e.currentTarget as HTMLInputElement).style.boxShadow = '0 0 0 2px rgba(0, 112, 243, 0.4)' }}
+                onFocus={(e) => { (e.currentTarget as HTMLInputElement).style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent)' }}
                 onBlur={(e) => { (e.currentTarget as HTMLInputElement).style.boxShadow = 'none' }}
               />
               <button

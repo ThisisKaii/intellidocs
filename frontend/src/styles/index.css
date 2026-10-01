@@ -52,7 +52,7 @@
 
 @layer base {
   :root {
-    /* Teal-and-paper palette — light mode (user spec) */
+    /* Teal-and-paper palette — single unified theme (no dark mode) */
     --canvas: #f6f6f2;
     --page: #ffffff;
     --surface: #ffffff;
@@ -64,6 +64,7 @@
     --text-muted: #8b9899;
     --accent-strong: #388087;
     --accent-hover: #2c6a70;
+    --accent-mid: #6fb3b8;
     --accent-subtle: #e4f1f3;
     --selection: #badfe7;
     --highlight: #c2edce;
@@ -71,6 +72,8 @@
     --warning: #b5772b;
     --error: #c0453f;
     --info: #388087;
+    /* Grammar underline: deliberately distinct from --error spelling underline */
+    --grammar: #7c3aed;
 
     --background: var(--canvas);
     --foreground: var(--text-primary);
@@ -106,61 +109,6 @@
     --guide-h2h3: #badfe7;
     --guide-quote: #6fb3b8;
     --guide-generic: #badfe7;
-  }
-
-  .dark {
-    /* Teal-and-paper palette — dark mode (editor-color-palette.md) */
-    --canvas: #15191a;
-    --page: #ffffff;
-    --surface: #22282a;
-    --surface-sunken: #191e1f;
-    --border: #323a3b;
-    --border-strong: #475152;
-    --text-primary: #e4e9e8;
-    --text-secondary: #9daaaa;
-    --text-muted: #6b7878;
-    --accent-strong: #6fb3b8;
-    --accent-hover: #8ac6ca;
-    --accent-subtle: #1f3739;
-    --selection: #2e5b60;
-    --highlight: #3a5e48;
-    --success: #7fc79a;
-    --warning: #e0a85c;
-    --error: #e8817b;
-    --info: #6fb3b8;
-
-    --background: var(--canvas);
-    --foreground: var(--text-primary);
-    --card: var(--surface);
-    --card-foreground: var(--text-primary);
-    --popover: var(--surface);
-    --popover-foreground: var(--text-primary);
-    --primary: var(--accent-strong);
-    --primary-foreground: #15191a;
-    --secondary: var(--surface-sunken);
-    --secondary-foreground: var(--text-primary);
-    --muted: var(--surface-sunken);
-    --muted-foreground: var(--text-secondary);
-    --accent: var(--accent-subtle);
-    --accent-foreground: var(--text-primary);
-    --destructive: var(--error);
-    --destructive-foreground: #15191a;
-    --input: var(--border-strong);
-    --ring: var(--accent-strong);
-    --border-shadow: rgba(23, 40, 41, 0.6);
-    --border-shadow-light: rgba(255, 255, 255, 0.1);
-    --card-shadow-inner: rgba(255, 255, 255, 0.04);
-    /* Editor-specific: paper page stays white in dark mode; canvas keeps dark */
-    --page-bg: var(--page);
-    --canvas-bg: var(--canvas);
-    --hf-zone-bg: var(--page);
-    --page-shadow: rgba(0, 0, 0, 0.5) 0px 1px 3px, rgba(0, 0, 0, 0.35) 0px 4px 12px;
-    --guide-title: #2e5f50;
-    --guide-chapter: #2e5f50;
-    --guide-h1: #2e5a5c;
-    --guide-h2h3: #335d6e;
-    --guide-quote: #2e5a5c;
-    --guide-generic: #335d6e;
   }
 
   * {
@@ -573,8 +521,6 @@ div:hover > .card-menu-btn,
   border-radius: 0.25rem;
   padding: 0 0.125rem;
 }
-.dark .history-diff .diff-add { background-color: rgba(66, 160, 94, 0.30); color: #9be8b4; }
-.dark .history-diff .diff-del { background-color: rgba(248, 113, 113, 0.22); color: #fca5a5; }
 
 /* Slash command menu (plan point 24). */
 .slash-command-menu {

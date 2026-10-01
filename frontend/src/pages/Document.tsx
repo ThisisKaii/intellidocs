@@ -28,11 +28,10 @@ import { applyStyleCommand } from '@/components/editor/styleCommands'
 import FormattingPanel from '@/components/editor/FormattingPanel'
 import McpDebugPanel from '@/components/editor/McpDebugPanel'
 import WordProgress from '@/components/editor/WordProgress'
-import { useTheme } from '@/context/ThemeContext'
 import { useAuth } from '@/hooks/useAuth'
 import ShareModal from '@/components/ShareModal'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
-import { ArrowLeft, Moon, Sun, ShieldOff, Shield, PanelRight, PanelRightClose, Share2 } from 'lucide-react'
+import { ArrowLeft, ShieldOff, Shield, PanelRight, PanelRightClose, Share2 } from 'lucide-react'
 import { useAutoFormatScanner, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { confidenceThreshold, highlightColorCss } from '@/lib/editorPreferences'
@@ -176,9 +175,6 @@ export default function Document(): JSX.Element {
   const prefs = useEditorPreferences()
 
   const chatContent = buildAiDocumentContext(content)
-
-  const { theme, toggleTheme } = useTheme()
-  const isDark = theme === 'dark'
 
   // ── Agentic auto-format scanner ──────────────────────────────────────
   const {
@@ -1804,36 +1800,6 @@ export default function Document(): JSX.Element {
                 Share
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={toggleTheme}
-              title="Toggle theme"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '32px',
-                height: '32px',
-                borderRadius: '0.5rem',
-                border: 'none',
-                boxShadow: '0 0 0 1px var(--border-shadow)',
-                backgroundColor: 'transparent',
-                color: 'var(--muted-foreground)',
-                cursor: 'pointer',
-                transition: 'background-color 150ms, color 150ms',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)'
-                ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)'
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'
-              }}
-            >
-              {isDark ? <Sun style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <Moon style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
-            </button>
 
             <button
               type="button"

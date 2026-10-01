@@ -368,14 +368,14 @@ export function DriveTable({
                     isSelected
                       ? 'bg-primary/20'
                       : isClass
-                        ? 'bg-accent/15 hover:bg-accent/25 border border-accent/50 dark:border-[#2f5a5e]'
-                        : 'bg-secondary/70 hover:bg-[#badfe7]/25 dark:hover:bg-[#1e383b] border border-[#badfe7]/40 dark:border-[#234145]'
+                        ? 'bg-accent/15 hover:bg-accent/25 border border-accent/50'
+                        : 'bg-secondary/70 hover:bg-[#badfe7]/25 border border-[#badfe7]/40'
                   }`}
                 >
                   <div className="flex items-center gap-4 min-w-0 flex-1">
                     <FolderGlyph
                       className={`size-5 shrink-0 ${
-                        isClass ? 'text-accent-foreground dark:text-[#6fb3b8]' : 'text-primary dark:text-[#6fb3b8]'
+                        isClass ? 'text-accent-foreground' : 'text-primary'
                       }`}
                       {...(isClass ? {} : { fill: 'var(--selection)' })}
                       strokeWidth={1.5}
@@ -403,7 +403,7 @@ export function DriveTable({
                         </span>
                         {isClass && (
                           <span className="flex items-center gap-1.5 text-[0.6875rem] text-muted-foreground">
-                            <span className="font-semibold uppercase tracking-wide text-accent-foreground dark:text-[#6fb3b8]">
+                            <span className="font-semibold uppercase tracking-wide text-accent-foreground">
                               {f.class_code || 'Class'}
                             </span>
                             {f.academic_term && <span>· {f.academic_term}</span>}
