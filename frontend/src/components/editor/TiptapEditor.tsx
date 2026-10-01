@@ -29,6 +29,7 @@ import { applyIeeeNumbering } from './ieeeNumberingCommand'
 import { convertToIeee } from './ieeeConvertCommand'
 import EditorStylesPanel from './EditorStylesPanel'
 import {
+  BookOpen,
   Undo2,
   Redo2,
   Heading1,
@@ -940,6 +941,9 @@ interface ToolbarProps {
   onApplyStyle: (format: string) => void
   onApplyPreset: (key: string) => void
   activePreset: string | null
+  /** IEEE-only: show two pages side by side as a connected spread. */
+  spreadPreview?: boolean
+  onSpreadPreviewChange?: (value: boolean) => void
   onOpenPersonalization?: () => void
 }
 
@@ -973,6 +977,8 @@ export function TiptapToolbar({
   onApplyStyle,
   onApplyPreset,
   activePreset,
+  spreadPreview = false,
+  onSpreadPreviewChange,
   onOpenPersonalization,
 }: ToolbarProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'styles'>('home')
@@ -1736,6 +1742,18 @@ export function TiptapToolbar({
                 run('ieee_convert', () => convertToIeee(editor))
               }
             }}
+          />
+        )}
+        {activePreset === 'ieee' && onSpreadPreviewChange && (
+          <ToolButton
+            icon={BookOpen}
+            title={
+              spreadPreview
+                ? 'Single page view'
+                : 'Two page spread view (pages 1|2, 3|4)'
+            }
+            active={spreadPreview}
+            onClick={() => onSpreadPreviewChange(!spreadPreview)}
           />
         )}
         <ToolButton

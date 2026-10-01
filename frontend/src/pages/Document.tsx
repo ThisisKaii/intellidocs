@@ -171,6 +171,7 @@ export default function Document(): JSX.Element {
   const editorCanvasRef = useRef<HTMLDivElement>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
+  const [spreadPreview, setSpreadPreview] = useState<boolean>(false)
 
   const prefs = useEditorPreferences()
 
@@ -1931,6 +1932,8 @@ export default function Document(): JSX.Element {
             onApplyStyle={handleApplyRibbonStyle}
             onApplyPreset={(key) => { void handleApplyAcademicPreset(key) }}
             activePreset={formattingPreset}
+            spreadPreview={spreadPreview}
+            onSpreadPreviewChange={setSpreadPreview}
             onOpenPersonalization={() => setProfileModalOpen(true)}
           />
         </div>
@@ -2031,6 +2034,7 @@ export default function Document(): JSX.Element {
               footerContent={footerContent}
               headerNumberFormat={headerNumberFormat}
               footerNumberFormat={footerNumberFormat}
+              spreadPreview={spreadPreview}
               onFormatApplied={handleFormat}
             />
 
