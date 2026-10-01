@@ -137,6 +137,7 @@ const UNNUMBERED_HEADINGS: readonly string[] = [
   'acknowledgement',
   'acknowledgments',
   'acknowledgements',
+  'unmapped content',
 ]
 
 /**
@@ -164,6 +165,12 @@ export function isUnnumberedIeeeHeading(text: string): boolean {
 export interface IeeeHeadingText {
   level: IeeeHeadingLevel
   text: string
+  /**
+   * Heading that must never receive a number, such as the document title.
+   * It is also skipped when advancing the counter, so it cannot consume a
+   * numeral and push the first section to II.
+   */
+  unnumbered?: boolean
 }
 
 /**
@@ -180,7 +187,7 @@ export function applyIeeeNumberingToTexts(
   const prepared = headings.map((heading) => ({
     level: heading.level,
     text: stripIeeeNumber(heading.text),
-    numbered: !isUnnumberedIeeeHeading(heading.text),
+    numbered: !heading.unnumbered && !isUnnumberedIeeeHeading(heading.text),
   }))
 
   const numbers = computeIeeeNumbers(prepared)

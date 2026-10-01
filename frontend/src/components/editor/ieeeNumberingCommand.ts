@@ -29,12 +29,14 @@ function collectHeadings(doc: ProseMirrorNode): LocatedHeading[] {
       return true
     }
 
-    found.push({
-      level: level as IeeeHeadingLevel,
-      text: node.textContent,
-      from: pos + 1,
-      to: pos + 1 + node.content.size,
-    })
+     const docRole = node.attrs['docRole']
+     found.push({
+       level: level as IeeeHeadingLevel,
+       text: node.textContent,
+       unnumbered: docRole === 'title',
+       from: pos + 1,
+       to: pos + 1 + node.content.size,
+     })
     return false
   })
 
