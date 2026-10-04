@@ -51,7 +51,7 @@ export function splitIntoSections(
   doc.forEach((node) => {
     if (node.type.name === 'heading') {
       flush()
-      const titleRole = node.attrs['docRole'] === 'title'
+      const titleRole = node.attrs['docRole'] === 'title' || (sections.length === 0 && parts.length === 0)
       const block = serializeBlock(serializer, node)
 
       if (titleRole) {

@@ -330,33 +330,63 @@ export function PagedEditor({
    * container to a two-column grid is enough to pair pages 1|2, 3|4, ...
    * The extension still owns page height, breaks, and content flow.
    */
-  const spreadStyle = spreadPreview
-    ? `.intellidocs-page-editor--spread .rm-pages-wrapper {
-         display: grid;
-         grid-template-columns: repeat(2, var(--rm-page-width));
-         gap: ${SPREAD_GAP}px;
-         justify-content: center;
-       }
-       .intellidocs-page-editor--spread .rm-pages-wrapper > .rm-page-break {
-         width: var(--rm-page-width);
-         height: var(--rm-page-height);
-       }
-       .intellidocs-page-editor--spread .rm-pages-wrapper > .rm-page-break > .page {
-         float: none !important;
-         clear: none !important;
-         margin-top: 0 !important;
-       }
-       .intellidocs-page-editor--spread .rm-pages-wrapper > .rm-page-break::after {
-         counter-increment: spread-page;
-         content: "Page " counter(spread-page);
-         display: block;
-         margin-top: 0.375rem;
-         text-align: center;
-         font-size: 0.6875rem;
-         color: var(--muted-foreground);
-         font-variant-numeric: tabular-nums;
-       }`
-    : ''
+    const spreadStyle = `.rm-pages-wrapper {
+       display: grid;
+       grid-template-columns: repeat(var(--rm-page-columns, 1), var(--rm-page-width));
+       gap: ${SPREAD_GAP}px;
+       justify-content: center;
+       align-items: start;
+     }
+     .rm-pages-wrapper > .rm-page-break {
+       width: var(--rm-page-width);
+       height: var(--rm-page-height);
+       position: relative;
+     }
+     .rm-pages-wrapper > .rm-page-break > .page {
+       float: none !important;
+       clear: none !important;
+       margin-top: 0 !important;
+       width: var(--rm-page-width);
+       height: 0 !important;
+       min-height: 0 !important;
+       max-height: 0 !important;
+       overflow: visible;
+       position: relative;
+       pointer-events: none;
+       background: transparent;
+     }
+     .rm-pages-wrapper > .rm-page-break > .page::before {
+       content: '';
+       display: block;
+       position: absolute;
+       top: 0;
+       left: 0;
+       width: 100%;
+       height: var(--rm-page-height);
+       background: var(--page-bg);
+       box-shadow: var(--page-shadow);
+       border-radius: 4px;
+       z-index: 0;
+       pointer-events: none;
+     }
+     .rm-pages-wrapper > .rm-page-break > .page > * {
+       pointer-events: auto;
+       position: relative;
+       z-index: 1;
+     }
+     .intellidocs-page-editor--spread .rm-pages-wrapper {
+       --rm-page-columns: 2;
+     }
+     .intellidocs-page-editor--spread .rm-pages-wrapper > .rm-page-break::after {
+       counter-increment: spread-page;
+       content: "Page " counter(spread-page);
+       display: block;
+       margin-top: 0.375rem;
+       text-align: center;
+       font-size: 0.6875rem;
+       color: var(--muted-foreground);
+       font-variant-numeric: tabular-nums;
+     }`
 
   const pageLabel = spreadPreview ? 'Page' : null
 
