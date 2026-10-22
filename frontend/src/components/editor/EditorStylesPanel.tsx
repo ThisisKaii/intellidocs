@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
-import { Check, GraduationCap, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, Eye, EyeOff, GraduationCap, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { STYLE_ITEMS, type StyleItem } from './styleCommands'
 import { ACADEMIC_PRESETS, type AcademicPreset } from './academicPresets'
 
@@ -107,6 +107,12 @@ export default function EditorStylesPanel({
   const [customStyles, setCustomStyles] = useState<CustomStyle[]>(loadCustomStyles)
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>(loadCustomPresets)
   const [manageOpen, setManageOpen] = useState<boolean>(false)
+  const [showBlueprintGuides, setShowBlueprintGuides] = useState<boolean>(true)
+
+  // A document load swaps in a fresh editor; mirror its stored toggle state.
+  useEffect(() => {
+    if (editor) setShowBlueprintGuides(editor.storage.blueprintGuides.enabled)
+  }, [editor])
 
   // Custom entries lead the strip so the user's own styles/presets come first.
   const allStyles: StyleEntry[] = [...customStyles, ...STYLE_ITEMS]
@@ -140,6 +146,14 @@ export default function EditorStylesPanel({
     const next = customPresets.filter((p) => p.id !== id)
     localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(next))
     setCustomPresets(next)
+  }
+
+  /** Toggle the dashed blueprint guide boxes on or off. */
+  function toggleBlueprintGuides(): void {
+    if (!editor) return
+    const next = !showBlueprintGuides
+    setShowBlueprintGuides(next)
+    editor.commands.setBlueprintGuidesEnabled(next)
   }
 
   return (
@@ -192,6 +206,23 @@ export default function EditorStylesPanel({
           title="Add or remove your own styles and presets"
           icon={<Pencil style={{ width: '13px', height: '13px', opacity: 0.7 }} />}
           onApply={() => setManageOpen(true)}
+        />
+
+        <StripDivider />
+
+        <StripButton
+          label="Guides"
+          title={showBlueprintGuides ? 'Hide blueprint guide boxes' : 'Show blueprint guide boxes'}
+          icon={
+            showBlueprintGuides ? (
+              <Eye style={{ width: '13px', height: '13px', opacity: 0.7 }} />
+            ) : (
+              <EyeOff style={{ width: '13px', height: '13px', opacity: 0.7 }} />
+            )
+          }
+          active={showBlueprintGuides}
+          disabled={!editor}
+          onApply={toggleBlueprintGuides}
         />
       </div>
 
@@ -358,6 +389,7 @@ function ManageStylesModal({
   return createPortal(
     <div
       onClick={onClose}
+      className="animate-overlay"
       style={{
         position: 'fixed',
         inset: 0,
@@ -371,6 +403,7 @@ function ManageStylesModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        className="animate-modal"
         style={{
           width: '100%',
           maxWidth: '560px',

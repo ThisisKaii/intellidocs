@@ -5,6 +5,7 @@
 
 import { supabase } from '../lib/supabase'
 import type { ComplianceReport } from '../components/ThesisChecklist'
+import type { CouncilMatchVerdict } from '../components/editor/plagiarismTypes'
 import {
   AdminApplicant,
   AdminDocumentRecord,
@@ -42,6 +43,8 @@ export interface DocumentRecord {
   user_id: string
   title: string
   content: string
+  /** Short, sanitized content prefix for grid previews (migration 026). */
+  preview_snippet?: string
   header_content: string
   footer_content: string
   show_header: boolean
@@ -129,6 +132,12 @@ export interface BehaviorEvent {
   documentId: string
   blockId?: string
   payload?: BehaviorEventPayload
+  /** Characters affected by composition events (type/paste/backspace). */
+  char_count?: number
+  /** Document position where a composition event happened. */
+  position?: number
+  /** Document size at event time, for position normalisation. */
+  doc_size?: number
 }
 
 export interface BehaviorSummaryLatestEvent extends BehaviorEvent {
@@ -276,6 +285,14 @@ export interface TierCheckResponse {
   snippet?: string
 }
 
+/** Result of inferring a document's academic archetype from its opening text. */
+export interface InferredStructureResponse {
+  type: 'academic_thesis' | 'ieee_manuscript' | 'apa_manuscript' | 'unknown'
+  typeLabel: string
+  presetKey: string | null
+  matchedMarkers: string[]
+}
+
 export type ProfileScope = 'formatting' | 'grammar' | 'both'
 
 /** A portable .idocprofile format binding (no ownership/timestamps). */
@@ -373,6 +390,8 @@ export interface AIChatPreview {
   fontSize?: number | null
   /** Chapter/section reference like "chapter 1" the change should target without highlighting. */
   target?: string | null
+  /** Block category a bulk request targets: headings, paragraphs, or all. */
+  targetCategory?: 'headings' | 'paragraphs' | 'all' | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
 }
@@ -384,6 +403,7 @@ export interface AIChatPreviewMeta {
   scope?: 'selection' | 'all'
   fontSize?: number | null
   target?: string | null
+  targetCategory?: 'headings' | 'paragraphs' | 'all' | null
   normalize?: boolean
 }
 
@@ -464,6 +484,72 @@ export interface DocumentReview {
   status: 'pending' | 'under_review' | 'graded' | 'returned'
   notes: string | null
   reviewed_at: string
+}
+
+/** A student taking part in the class similarity comparison. */
+export interface ClassSimilarityStudent {
+  studentId: string
+  studentName: string
+  /** Document ids this student submitted to the folder. */
+  documentIds: string[]
+}
+
+/** Highest passage similarity found between two students' submissions. */
+export interface ClassSimilarityPair {
+  studentAId: string
+  studentBId: string
+  /** Percentage (0–100) of the strongest flagged passage between the pair. */
+  similarity: number
+}
+
+/** Everything the professor similarity matrix needs for one class folder. */
+export interface ClassSimilarityMatrix {
+  students: ClassSimilarityStudent[]
+  pairs: ClassSimilarityPair[]
+}
+
+/** A persisted plagiarism scan row. */
+export interface PlagiarismScanRecord {
+  scan_id: string
+  document_id: string
+  user_id: string
+  folder_id: string | null
+  overall_originality_score: number
+  peer_similarity_score: number
+  external_similarity_score: number
+  active_judges_count: number
+  quorum_reached: boolean
+  council_transcript: unknown
+  scan_status: string
+  created_at: string
+  updated_at: string
+}
+
+/** A persisted flagged-passage match row. */
+export interface PlagiarismMatchRecord {
+  match_id: string
+  scan_id: string
+  paragraph_index: number
+  char_start: number
+  char_end: number
+  matched_document_id: string | null
+  matched_student_id: string | null
+  similarity_score: number
+  match_type: string
+  match_severity: string
+  source_excerpt: string | null
+  target_excerpt: string | null
+  timeline_verdict: string | null
+  flagged_text: string
+  council_verdict: CouncilMatchVerdict | null
+  created_at: string
+}
+
+/** One scan plus its matches, as returned to the inspection modal. */
+export interface PlagiarismScanDetail {
+  scan: PlagiarismScanRecord
+  matches: PlagiarismMatchRecord[]
+  documentTitle: string
 }
 
 export interface NotificationRecord {
@@ -761,7 +847,7 @@ export const api = {
     },
     create: async (
       title: string,
-      options?: { content?: string; formatting_preset?: string }
+      options?: { content?: string; formatting_preset?: string; unique_title?: boolean }
     ): Promise<DocumentRecord> => {
       return fetchAPI<DocumentRecord>('documents', {
         method: 'POST',
@@ -808,6 +894,17 @@ export const api = {
         method: 'POST',
         body: formData,
       })
+    },
+    /** Upload an editor image to storage and return its public URL. */
+    uploadImage: async (file: File): Promise<string> => {
+      const formData = new FormData()
+      formData.append('image', file)
+      // Do NOT set Content-Type — browser sets the multipart boundary automatically
+      const response = await fetchAPI<{ url: string }>('documents/images', {
+        method: 'POST',
+        body: formData,
+      })
+      return response.url
     },
   },
 
@@ -896,6 +993,14 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, documentId }),
+      })
+    },
+    /** Infer the academic archetype of a document's opening text. */
+    inferStructure: async (text: string): Promise<InferredStructureResponse> => {
+      return fetchAPI<InferredStructureResponse>('formatting/infer-structure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
       })
     },
   },
@@ -1143,6 +1248,29 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
+    },
+    /** Class similarity matrix for one of the professor's class folders. */
+    folderSimilarity: async (folderId: string): Promise<ClassSimilarityMatrix> => {
+      return fetchAPI<ClassSimilarityMatrix>(`professor/folders/${folderId}/similarity`)
+    },
+  },
+
+  plagiarism: {
+    /** Run a council scan for one submission in a class folder. */
+    runScan: async (folderId: string, documentId: string): Promise<PlagiarismScanDetail> => {
+      return fetchAPI<PlagiarismScanDetail>('plagiarism/scans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId, folderId }),
+      })
+    },
+    /** Fetch one scan with its flagged matches. */
+    getScan: async (scanId: string): Promise<PlagiarismScanDetail> => {
+      return fetchAPI<PlagiarismScanDetail>(`plagiarism/scans/${scanId}`)
+    },
+    /** List the scans recorded for a class folder, newest first. */
+    listFolderScans: async (folderId: string): Promise<PlagiarismScanRecord[]> => {
+      return fetchAPI<PlagiarismScanRecord[]>(`plagiarism/folders/${folderId}/scans`)
     },
   },
 

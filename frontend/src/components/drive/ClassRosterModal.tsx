@@ -96,6 +96,7 @@ export function ClassRosterModal({
       role="dialog"
       aria-modal="true"
       aria-label="Class roster"
+      className="animate-overlay"
       onClick={(e) => {
         if (e.target === e.currentTarget && !busy) onClose()
       }}
@@ -111,6 +112,7 @@ export function ClassRosterModal({
       }}
     >
       <div
+        className="animate-modal"
         style={{
           width: '100%',
           maxWidth: '30rem',
@@ -136,7 +138,7 @@ export function ClassRosterModal({
           }}
         >
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700 }}>{folder.name}</h2>
+            <h2 className="font-display" style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700 }}>{folder.name}</h2>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>
               {folder.class_code || 'Class'}
               {folder.academic_term ? ` · ${folder.academic_term}` : ''} · {roster.length}{' '}

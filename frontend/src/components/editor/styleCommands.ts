@@ -22,6 +22,8 @@ export const STYLE_ITEMS: StyleItem[] = [
  * are provided the selection is moved there first (used by drag-and-drop).
  * Applied styles are tagged with `style_source: "applied_style"` so the
  * behavioral model can distinguish deliberate style choices (plan point 20).
+ * The caret is restored to the styled block afterwards so applying a style
+ * never kicks the cursor into the next paragraph.
  */
 export function applyStyleCommand(
   editor: Editor | null,
@@ -30,6 +32,12 @@ export function applyStyleCommand(
   to?: number
 ): void {
   if (!editor || editor.isDestroyed) return
+
+  // Remember where the user was before the command runs; block conversions
+  // (e.g. paragraph → heading) must never move the caret off the block.
+  const selection = editor.state.selection
+  const targetFrom = typeof from === 'number' ? from : selection.from
+  const targetTo = typeof to === 'number' ? to : selection.to
 
   const chain = editor.chain().focus()
   if (typeof from === 'number' && typeof to === 'number') {
@@ -42,25 +50,25 @@ export function applyStyleCommand(
         .setParagraph()
         .updateAttributes('', { styleSource: 'applied_style' })
         .run()
-      return
+      break
     case 'h1':
       chain
         .setHeading({ level: 1 })
         .updateAttributes('', { styleSource: 'applied_style', docRole: null })
         .run()
-      return
+      break
     case 'h2':
       chain
         .setHeading({ level: 2 })
         .updateAttributes('', { styleSource: 'applied_style', docRole: null })
         .run()
-      return
+      break
     case 'h3':
       chain
         .setHeading({ level: 3 })
         .updateAttributes('', { styleSource: 'applied_style', docRole: null })
         .run()
-      return
+      break
     case 'title':
       // Sets the role only. Size, weight and alignment come from CSS so an
       // active preset can restyle the title, which it cannot do against the
@@ -69,13 +77,13 @@ export function applyStyleCommand(
         .setHeading({ level: 1 })
         .updateAttributes('', { styleSource: 'applied_style', docRole: 'title' })
         .run()
-      return
+      break
     case 'blockquote':
       chain
         .toggleBlockquote()
         .updateAttributes('', { styleSource: 'applied_style' })
         .run()
-      return
+      break
     case 'caption':
       chain
         .setParagraph()
@@ -84,8 +92,16 @@ export function applyStyleCommand(
         .toggleItalic()
         .updateAttributes('', { styleSource: 'applied_style' })
         .run()
-      return
+      break
     default:
       return
   }
+
+  // Restore the caret inside the block the user just styled.
+  const docSize = editor.state.doc.content.size
+  editor
+    .chain()
+    .setTextSelection({ from: Math.min(targetFrom, docSize), to: Math.min(targetTo, docSize) })
+    .focus()
+    .run()
 }

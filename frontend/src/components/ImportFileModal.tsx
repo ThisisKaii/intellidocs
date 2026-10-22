@@ -9,6 +9,8 @@ interface ImportFileModalProps {
   onImported?: () => void
   /** Streams batch import progress so a bottom-right toast can render. */
   onProgress?: (progress: ImportProgress | null) => void
+  /** Reports a failed import after the modal has already closed. */
+  onError?: (message: string) => void
 }
 
 export interface ImportProgress {
@@ -62,8 +64,9 @@ function filterFiles(files: FileList | File[]): File[] {
  * Import progress is streamed via onProgress so a bottom-right toast can show
  * a Google-Drive-style indicator while the batch processes.
  */
-export default function ImportFileModal({ onClose, onImported, onProgress }: ImportFileModalProps): JSX.Element {
+export default function ImportFileModal({ onClose, onImported, onProgress, onError }: ImportFileModalProps): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
+  const handedOffRef = useRef(false)
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
@@ -120,6 +123,12 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
 
     const total = selectedFiles.length
     onProgress?.({ done: 0, total, currentName: selectedFiles[0].name })
+
+    // Progress is handed to the bottom-right toast the moment the batch
+    // starts, so the center dialog dismisses immediately — it has no job left.
+    handedOffRef.current = true
+    onClose()
+
     let done = 0
 
     try {
@@ -127,33 +136,23 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
         onProgress?.({ done, total, currentName: file.name })
         await api.documents.import(file)
         done += 1
-        setImportedCount(done)
         onProgress?.({ done, total, currentName: file.name })
       }
-      setSuccess(true)
       onImported?.()
       onProgress?.({ done: total, total, currentName: '' })
-      // Keep the completed toast on screen until the user dismisses it (point 13).
-      setTimeout(() => {
-        onClose()
-      }, 1200)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed. Please try again.')
+      // The dialog is already gone; surface the failure via the toast reset
+      // and the page-level error banner instead.
       onProgress?.(null)
-    } finally {
-      setUploading(false)
+      onError?.(err instanceof Error ? err.message : 'Import failed. Please try again.')
     }
   }
 
-  // Clear the global toast when the modal is closed mid-flight,
-  // but keep the completed success toast visible (point 13).
-  const successRef = useRef(false)
-  useEffect(() => {
-    successRef.current = success
-  }, [success])
+  // Clear the global toast when the modal is closed before an import starts,
+  // but never when the batch was intentionally handed off to the toast.
   useEffect(() => {
     return () => {
-      if (!successRef.current) onProgress?.(null)
+      if (!handedOffRef.current) onProgress?.(null)
     }
   }, [onProgress])
 
@@ -164,6 +163,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
         role="dialog"
         aria-modal="true"
         aria-label="Import file dialog"
+        className="animate-overlay"
         onClick={(e) => { if (e.target === e.currentTarget && !uploading) onClose() }}
         style={{
           position: 'fixed',
@@ -178,6 +178,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
       >
         {/* Modal panel */}
         <div
+          className="animate-modal"
           style={{
             backgroundColor: 'var(--card)',
             borderRadius: '1rem',
@@ -191,7 +192,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
             <div>
-              <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, margin: '0 0 0.125rem', color: 'var(--foreground)' }}>
+              <h2 className="font-display" style={{ fontSize: '1.0625rem', fontWeight: 700, margin: '0 0 0.125rem', color: 'var(--foreground)' }}>
                 Import Document
               </h2>
               <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>
@@ -392,18 +393,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
               type="button"
               onClick={onClose}
               disabled={uploading}
-              style={{
-                height: '36px',
-                padding: '0 1.125rem',
-                borderRadius: '0.5rem',
-                border: '1px solid var(--border)',
-                backgroundColor: 'transparent',
-                color: 'var(--foreground)',
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                cursor: uploading ? 'not-allowed' : 'pointer',
-                fontFamily: 'inherit',
-              }}
+              className="btn-ghost h-9 px-4"
             >
               Cancel
             </button>
@@ -411,22 +401,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress }: Imp
               type="button"
               onClick={() => { void handleImport() }}
               disabled={selectedFiles.length === 0 || uploading || success}
-              style={{
-                height: '36px',
-                padding: '0 1.25rem',
-                borderRadius: '0.5rem',
-                border: 'none',
-                backgroundColor: 'var(--primary)',
-                color: 'var(--primary-foreground)',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                cursor: (selectedFiles.length === 0 || uploading || success) ? 'not-allowed' : 'pointer',
-                opacity: (selectedFiles.length === 0 || uploading || success) ? 0.6 : 1,
-                fontFamily: 'inherit',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}
+              className="btn-primary h-9 px-4"
             >
               {uploading ? (
                 <>
@@ -487,6 +462,7 @@ export function ImportProgressToast({
     <div
       role="status"
       aria-live="polite"
+      className="animate-slide-up"
       style={{
         position: 'fixed',
         bottom: '1.5rem',

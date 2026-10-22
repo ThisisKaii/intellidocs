@@ -13,8 +13,6 @@ export interface OutlineRange {
 interface DecorationRanges {
   /** Pulsing outline marking where a formatting suggestion will land. */
   suggestion: OutlineRange | null
-  /** Outline marking runs produced by the style/preset formatting system. */
-  styleOrigin: OutlineRange | null
 }
 
 interface SuggestionPluginState {
@@ -27,8 +25,6 @@ declare module '@tiptap/core' {
     suggestionDecorations: {
       /** Set, or clear with null, the pulsing suggestion outline range. */
       setSuggestionHighlight: (range: OutlineRange | null) => ReturnType
-      /** Set, or clear with null, the style-origin outline range. */
-      setStyleOriginHighlight: (range: OutlineRange | null) => ReturnType
     }
   }
 
@@ -40,9 +36,6 @@ declare module '@tiptap/core' {
 
 /** Wrapper class for the pulsing suggestion outline. */
 const SUGGESTION_CLASS = 'agentic-highlight-overlay'
-
-/** Wrapper class for the style/preset-origin outline. */
-const STYLE_ORIGIN_CLASS = 'style-origin-outline'
 
 const suggestionKey = new PluginKey<SuggestionPluginState>('suggestionDecorations')
 
@@ -97,7 +90,6 @@ function buildDecorations(state: EditorState, ranges: DecorationRanges): Decorat
   }
 
   addOutline(ranges.suggestion, SUGGESTION_CLASS)
-  addOutline(ranges.styleOrigin, STYLE_ORIGIN_CLASS)
 
   return DecorationSet.create(doc, decorations)
 }
@@ -109,11 +101,12 @@ function mapRange(range: OutlineRange | null, tr: Transaction): OutlineRange | n
 }
 
 /**
- * Draws the suggestion and style-origin outlines as ProseMirror node
- * decorations, which wrap the target block directly in the document DOM. That
- * keeps each outline inside the content flow, so it needs no measured
- * coordinates, no scroll/resize listeners, and cannot render behind the
- * floating suggestion chips, which live in a far higher z-index layer.
+ * Draws the pending-suggestion outline as a ProseMirror node decoration,
+ * which wraps the target block directly in the document DOM. That keeps the
+ * outline inside the content flow, so it needs no measured coordinates, no
+ * scroll/resize listeners, and cannot render behind the floating suggestion
+ * chips, which live in a far higher z-index layer. Selection of ordinary
+ * user text never draws outlines.
  */
 export const SuggestionDecorationsExtension = Extension.create({
   name: 'suggestionDecorations',
@@ -132,16 +125,6 @@ export const SuggestionDecorationsExtension = Extension.create({
           if (dispatch) dispatch(tr)
           return true
         },
-      setStyleOriginHighlight:
-        (range: OutlineRange | null) =>
-        ({ state, tr, dispatch }) => {
-          const next = normalise(range, state.doc)
-          const current = suggestionKey.getState(state)?.ranges.styleOrigin ?? null
-          if (sameRange(current, next)) return true
-          tr.setMeta(suggestionKey, { styleOrigin: next })
-          if (dispatch) dispatch(tr)
-          return true
-        },
     }
   },
 
@@ -155,7 +138,7 @@ export const SuggestionDecorationsExtension = Extension.create({
         state: {
           init() {
             return {
-              ranges: { suggestion: null, styleOrigin: null },
+              ranges: { suggestion: null },
               decorations: DecorationSet.empty,
             }
           },
@@ -164,15 +147,11 @@ export const SuggestionDecorationsExtension = Extension.create({
             if (meta) {
               const ranges: DecorationRanges = {
                 suggestion: 'suggestion' in meta ? (meta.suggestion ?? null) : value.ranges.suggestion,
-                styleOrigin: 'styleOrigin' in meta ? (meta.styleOrigin ?? null) : value.ranges.styleOrigin,
               }
               return { ranges, decorations: buildDecorations(newState, ranges) }
             }
-            if (tr.docChanged && (value.ranges.suggestion || value.ranges.styleOrigin)) {
-              const ranges: DecorationRanges = {
-                suggestion: mapRange(value.ranges.suggestion, tr),
-                styleOrigin: mapRange(value.ranges.styleOrigin, tr),
-              }
+            if (tr.docChanged && value.ranges.suggestion) {
+              const ranges: DecorationRanges = { suggestion: mapRange(value.ranges.suggestion, tr) }
               return { ranges, decorations: buildDecorations(newState, ranges) }
             }
             return value

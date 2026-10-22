@@ -131,6 +131,7 @@ export default function SuggestionPanel({ suggestions, onApply, onDismiss }: Sug
                 e.preventDefault()
                 onApply(s)
               }}
+              className="transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xs active:translate-y-0"
               style={{
                 width: '100%',
                 display: 'flex',
@@ -142,7 +143,6 @@ export default function SuggestionPanel({ suggestions, onApply, onDismiss }: Sug
                 border: 'none',
                 cursor: 'pointer',
                 textAlign: 'left',
-                transition: 'background-color 150ms',
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent' }}

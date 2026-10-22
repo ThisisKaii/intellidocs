@@ -6,6 +6,7 @@ import { convertToIeee } from '@/components/editor/ieeeConvertCommand'
 import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
 import type { PageSizeKey } from '@/components/editor/TiptapEditor'
 import type { GrammarIssue } from '@/services/api'
+import { createDefaultHeaderFooterConfig } from '@/components/editor/HeaderFooterPlugin'
 
 /** Fixture text long enough to force pagination onto a second page. */
 const FIXTURE = `
@@ -105,12 +106,7 @@ export default function DevEditorHarness() {
           pageSize={IEEE_PAGE_SIZE}
           margins={IEEE_MARGINS}
           orientation="portrait"
-          showHeader={false}
-          showFooter={false}
-          headerContent=""
-          footerContent=""
-          headerNumberFormat="none"
-          footerNumberFormat="none"
+          headerFooterConfig={createDefaultHeaderFooterConfig()}
           spreadPreview={spreadPreview}
         />
       </div>

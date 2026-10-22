@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import {
   Bot,
   ChevronRight,
@@ -91,30 +91,28 @@ export default function EditorSidePanel({
         flexDirection: 'column',
       }}
     >
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 380 }}
-          >
+      <motion.div
+        initial={false}
+        animate={{ opacity: open ? 1 : 0 }}
+        transition={{ duration: 0.15 }}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 380 }}
+      >
             {/* Header */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '0.625rem 0.75rem',
+                minHeight: '48px',
+                padding: '0 1rem',
                 borderBottom: '1px solid var(--border)',
-                backgroundColor: 'var(--secondary)',
+                backgroundColor: 'var(--card)',
               }}
             >
               <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--foreground)' }}>
-                Editor Assistant
+                Editor assistant
               </span>
-              <div style={{ display: 'flex', gap: '0.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span
                   style={{
                     fontSize: '0.625rem',
@@ -122,7 +120,6 @@ export default function EditorSidePanel({
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.25rem',
-                    padding: '0 0.375rem',
                   }}
                 >
                   <kbd style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem' }}>Ctrl+\\</kbd>
@@ -131,18 +128,8 @@ export default function EditorSidePanel({
                   type="button"
                   onClick={onToggle}
                   title="Collapse panel"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '22px',
-                    height: '22px',
-                    borderRadius: '0.375rem',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    color: 'var(--muted-foreground)',
-                    cursor: 'pointer',
-                  }}
+                  aria-label="Collapse panel"
+                  className="panel-icon-btn"
                 >
                   <ChevronRight style={{ width: '16px', height: '16px' }} />
                 </button>
@@ -162,7 +149,7 @@ export default function EditorSidePanel({
               <TabButton
                 active={activeTab === 'assistant'}
                 icon={<Bot style={{ width: '14px', height: '14px' }} />}
-                label="AI Assistant"
+                label="AI assistant"
                 onClick={() => onTabChange('assistant')}
               />
               {!readOnly && (
@@ -185,7 +172,14 @@ export default function EditorSidePanel({
 
             {/* Tab content */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-              {activeTab === 'assistant' ? (
+              {/* Kept mounted at all times (hidden via display) so the
+                  conversation survives tab switches and panel collapse. */}
+              <div
+                style={{
+                  display: activeTab === 'assistant' ? 'block' : 'none',
+                  height: '100%',
+                }}
+              >
                 <AIChatbot
                   editor={editor}
                   documentId={documentId}
@@ -194,36 +188,32 @@ export default function EditorSidePanel({
                   onFocusEditor={onFocusEditor}
                   docked
                 />
-              ) : activeTab === 'history' ? (
-                !readOnly && (
-                  <HistoryPanel
-                    documentId={documentId}
-                    currentContent={documentContent}
-                    onRestored={(version) => onVersionRestored?.(version)}
-                  />
-                )
-              ) : (
-                !readOnly && (
-                  <SuggestionQueue
-                    scannerSuggestions={scannerSuggestions}
-                    activeScannerKey={activeScannerKey}
-                    mlSuggestions={mlSuggestions}
-                    grammarIssues={grammarIssues}
-                    onJumpTo={onJumpTo}
-                    onAcceptScanner={onAcceptScanner}
-                    onRejectScanner={onRejectScanner}
-                    onApplyMl={onApplyMl}
-                    onDismissMl={onDismissMl}
-                    onApplyGrammar={onApplyGrammar}
-                    onDismissGrammar={onDismissGrammar}
-                    extraSections={extraSections}
-                  />
-                )
+              </div>
+              {activeTab === 'history' && !readOnly && (
+                <HistoryPanel
+                  documentId={documentId}
+                  currentContent={documentContent}
+                  onRestored={(version) => onVersionRestored?.(version)}
+                />
+              )}
+              {activeTab === 'suggestions' && !readOnly && (
+                <SuggestionQueue
+                  scannerSuggestions={scannerSuggestions}
+                  activeScannerKey={activeScannerKey}
+                  mlSuggestions={mlSuggestions}
+                  grammarIssues={grammarIssues}
+                  onJumpTo={onJumpTo}
+                  onAcceptScanner={onAcceptScanner}
+                  onRejectScanner={onRejectScanner}
+                  onApplyMl={onApplyMl}
+                  onDismissMl={onDismissMl}
+                  onApplyGrammar={onApplyGrammar}
+                  onDismissGrammar={onDismissGrammar}
+                  extraSections={extraSections}
+                />
               )}
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
     </motion.aside>
   )
 }
@@ -311,8 +301,13 @@ function SuggestionQueue({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.375rem' }}>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-                  {FORMAT_LABELS[s.format] ?? s.format}
+                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)', display: 'flex', alignItems: 'center', gap: '0.375rem', minWidth: 0 }}>
+                  <span
+                    title={s.label ?? undefined}
+                    style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {s.label ?? (FORMAT_LABELS[s.format] ?? s.format)}
+                  </span>
                   {isActive ? (
                     <span
                       style={{

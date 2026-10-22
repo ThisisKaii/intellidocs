@@ -22,6 +22,12 @@ export interface BlueprintSection {
   placeholder: string
   /** Short standard-reference hint, e.g. '24pt Bold Center'. */
   hint?: string
+  /**
+   * Optional group id binding related sections (e.g. the author block:
+   * name, supervisor, department, date) so formatting one element can offer
+   * to format the rest of the group to match.
+   */
+  group?: string
 }
 
 export interface DocumentBlueprint {
@@ -50,8 +56,8 @@ const APA_7TH: DocumentBlueprint = {
   presetKey: 'apa_7th',
   sections: [
     { block: 'title', placeholder: 'Your Paper Title', hint: 'Title: 12pt Bold, Centered' },
-    { block: 'paragraph', placeholder: 'Author Name', hint: 'Author names and affiliations' },
-    { block: 'paragraph', placeholder: 'University and Course' },
+    { block: 'paragraph', placeholder: 'Author Name', hint: 'Author names and affiliations', group: 'author_block' },
+    { block: 'paragraph', placeholder: 'University and Course', group: 'author_block' },
     {
       block: 'heading',
       level: 1,
@@ -89,9 +95,9 @@ const IEEE: DocumentBlueprint = {
   presetKey: 'ieee',
   sections: [
     { block: 'title', placeholder: 'Paper Title', hint: 'Title: 24pt Roman, Centered' },
-    { block: 'paragraph', placeholder: 'Author Name' },
-    { block: 'paragraph', placeholder: 'Affiliation, City, Country' },
-    { block: 'paragraph', placeholder: 'email@affiliation.edu' },
+    { block: 'paragraph', placeholder: 'Author Name', group: 'author_block' },
+    { block: 'paragraph', placeholder: 'Affiliation, City, Country', group: 'author_block' },
+    { block: 'paragraph', placeholder: 'email@affiliation.edu', group: 'author_block' },
     { block: 'paragraph', placeholder: 'Abstract—A concise summary of the paper, no citations here.', hint: 'Bold italic run-in: Abstract—' },
     { block: 'paragraph', placeholder: 'Index Terms—keyword one, keyword two, keyword three.', hint: 'Bold italic run-in: Index Terms—' },
     { block: 'heading', level: 1, placeholder: 'I. Introduction', hint: 'Level 1: Roman numeral, centered, uppercase' },
@@ -125,10 +131,10 @@ const UCLM_CAPSTONE: DocumentBlueprint = {
   presetKey: 'uclm_capstone',
   sections: [
     { block: 'title', placeholder: 'Thesis Title', hint: 'Title: 24pt Bold, Centered' },
-    { block: 'paragraph', placeholder: 'Your Name' },
-    { block: 'paragraph', placeholder: 'Supervisor: Dr. Supervisor Name' },
-    { block: 'paragraph', placeholder: 'Department and University' },
-    { block: 'paragraph', placeholder: 'Month Year' },
+    { block: 'paragraph', placeholder: 'Your Name', group: 'author_block' },
+    { block: 'paragraph', placeholder: 'Supervisor: Dr. Supervisor Name', group: 'author_block' },
+    { block: 'paragraph', placeholder: 'Department and University', group: 'author_block' },
+    { block: 'paragraph', placeholder: 'Month Year', group: 'author_block' },
     { block: 'heading', level: 1, placeholder: 'Acknowledgments' },
     { block: 'paragraph', placeholder: 'Thank your adviser, panel, and supporters.' },
     { block: 'heading', level: 1, placeholder: 'Abstract' },
@@ -202,7 +208,8 @@ export function buildBlueprintHtml(blueprint: DocumentBlueprint): string {
 
   const blocks = blueprint.sections.map((section) => {
     const text = escapeHtml(section.placeholder)
-    const guide = ` data-guide="${escapeHtml(section.hint ?? section.placeholder)}" data-guide-text="${text}"`
+    const group = section.group ? ` data-guide-group="${escapeHtml(section.group)}"` : ''
+    const guide = ` data-guide="${escapeHtml(section.hint ?? section.placeholder)}" data-guide-text="${text}"${group}`
 
     if (section.block === 'title') {
       // `data-doc-role` keeps the blueprint title matching the real Title command,

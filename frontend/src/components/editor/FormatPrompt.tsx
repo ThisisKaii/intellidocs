@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { Brain, Check, X, MapPin, ArrowRight } from 'lucide-react'
+import { Brain, Check, X, MapPin, ArrowRight, Users } from 'lucide-react'
 import { FORMAT_LABELS } from './SuggestionPanel'
 
 export interface FormatSuggestion {
@@ -13,6 +13,10 @@ export interface FormatSuggestion {
   fontSize?: number | null
   textAlign?: string
   suggestionSource?: 'learned' | 'ml'
+  /** Format group ID — shared by similar text patterns (e.g., researcher names). */
+  formatGroup?: string
+  /** Other nodes in the same format group. */
+  groupMembers?: Array<{ from: number; to: number; preview: string }>
 }
 
 interface FormatPromptProps {
@@ -174,6 +178,27 @@ export default function FormatPrompt({
           }}>
             {suggestion.confidence}%
           </span>
+
+          {/* Format group indicator */}
+          {suggestion.formatGroup && suggestion.groupMembers && suggestion.groupMembers.length > 0 && (
+            <span style={{
+              fontSize: '0.625rem',
+              fontWeight: 600,
+              color: 'var(--accent-strong)',
+              backgroundColor: 'color-mix(in srgb, var(--accent-strong) 10%, transparent)',
+              padding: '0.125rem 0.5rem',
+              borderRadius: '9999px',
+              whiteSpace: 'nowrap',
+              fontFamily: 'var(--font-mono)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+            }}>
+              <Users style={{ width: '10px', height: '10px' }} />
+              +{suggestion.groupMembers.length} similar
+            </span>
+          )}
+
           </div>
 
           {/* Diff preview — before/after */}

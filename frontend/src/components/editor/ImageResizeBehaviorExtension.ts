@@ -58,7 +58,7 @@ function alignmentOf(node: ProseMirrorNode): ImageAlignment {
 function imagePositions(doc: ProseMirrorNode): Map<number, ProseMirrorNode> {
   const images = new Map<number, ProseMirrorNode>()
   doc.descendants((node, pos) => {
-    if (node.type.name === 'image') images.set(pos, node)
+    if (node.type.name === 'imageResize') images.set(pos, node)
   })
   return images
 }

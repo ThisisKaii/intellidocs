@@ -12,6 +12,7 @@ interface ChatMessage {
   preview_formats?: string[] | null
   preview_scope?: 'selection' | 'all' | null
   preview_target?: string | null
+  preview_target_category?: 'headings' | 'paragraphs' | 'all' | null
   preview_normalize?: boolean | null
   preview_font_size?: number | null
   preview_reason?: string | null
@@ -164,6 +165,8 @@ export default function AIChatbot({
           .join(' ')
         return `— ${capitalized}`
       }
+      if (msg.preview_target_category === 'headings') return '— all headings'
+      if (msg.preview_target_category === 'paragraphs') return '— all paragraphs'
       return '— entire document'
     }
     return ''
@@ -219,9 +222,66 @@ export default function AIChatbot({
   }
 
   /**
-   * Locate a heading whose text matches a chapter/section reference (e.g.
-   * "chapter 1") and apply formats to everything up to the next heading of the
-   * same or higher level — no manual highlighting required.
+   * Apply formats to every heading (or paragraph) block in the document.
+   * Used for category-scoped bulk requests like "make all headings bold and
+   * centered" so the rest of the document is left untouched.
+   */
+  function applyFormatsToBlocks(
+    category: 'headings' | 'paragraphs',
+    formats: string[],
+    fontSize?: number,
+    normalize = false
+  ): void {
+    if (!editor || editor.isDestroyed) return
+    const doc = editor.state.doc
+    const ranges: Array<{ from: number; to: number }> = []
+
+    doc.descendants((node, pos) => {
+      const matches =
+        category === 'headings'
+          ? node.type.name === 'heading'
+          : node.type.name === 'paragraph'
+      if (matches) {
+        const from = pos + 1
+        const to = pos + node.nodeSize - 1
+        if (to > from) ranges.push({ from, to })
+      }
+      return true
+    })
+
+    // Apply bottom-up so earlier ranges stay valid while later blocks change.
+    for (let i = ranges.length - 1; i >= 0; i--) {
+      const { from, to } = ranges[i]
+      let chain = editor.chain().focus().setTextSelection({ from, to })
+      if (normalize) {
+        chain = chain.unsetAllMarks()
+      } else {
+        for (const format of formats) {
+          if (format === 'bold') chain = chain.setMark('bold')
+          else if (format === 'italic') chain = chain.setMark('italic')
+          else if (format === 'underline') chain = chain.setMark('underline')
+          else if (format === 'heading1' || format === 'h1') chain = chain.setHeading({ level: 1 })
+          else if (format === 'heading2' || format === 'h2') chain = chain.setHeading({ level: 2 })
+          else if (format === 'heading3' || format === 'h3') chain = chain.setHeading({ level: 3 })
+        }
+      }
+      if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
+      // Alignment is a block attribute; set it after any node-type change so
+      // converting a paragraph to a heading does not reset it.
+      const align = normalize ? null : alignmentOf(formats)
+      if (align) chain = chain.setTextAlign(align)
+      chain.run()
+    }
+
+    // Collapse the selection so subsequent typing isn't auto-formatted.
+    editor.commands.setTextSelection(editor.state.doc.content.size)
+  }
+
+  /**
+   * Locate a block whose text matches a quoted phrase or a chapter/section
+   * reference and format it without manual highlighting. Chapter/section
+   * targets extend through the following subsections; explicit phrases are
+   * reformatted surgically so only the matching block changes.
    */
   function applyFormatsToTarget(target: string, formats: string[], fontSize?: number, normalize = false): boolean {
     if (!editor || editor.isDestroyed) return false
@@ -230,32 +290,41 @@ export default function AIChatbot({
     let from: number | null = null
     let to: number | null = null
 
+    // Search every text block: imported documents often style structural
+    // sections such as APPROVAL SHEET as paragraphs, not headings.
     doc.descendants((node, pos) => {
       if (from !== null) return false
-      if (node.type.name !== 'heading') return true
+      if (node.type.name !== 'heading' && node.type.name !== 'paragraph') return true
       const text = (node.textContent ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
       if (!text.includes(targetKey)) return true
 
-      const headStart = pos + 1
-      const headLevel = Number(node.attrs?.level ?? 1)
-      let sectionEnd = doc.content.size
-      let stop = false
-      doc.descendants((nd, np) => {
-        if (stop) return false
-        if (np <= pos) return true
-        if (nd.type.name === 'heading') {
-          const ndLevel = Number(nd.attrs?.level ?? 1)
-          if (ndLevel <= headLevel) {
-            sectionEnd = np
-            stop = true
-            return false
+      const isSectionTarget =
+        targetKey.startsWith('chapter ') || targetKey.startsWith('section ')
+      if (isSectionTarget) {
+        const headStart = pos + 1
+        const headLevel = Number(node.attrs?.level ?? 1)
+        let sectionEnd = doc.content.size
+        let stop = false
+        doc.descendants((nd, np) => {
+          if (stop) return false
+          if (np <= pos) return true
+          if (nd.type.name === 'heading') {
+            const ndLevel = Number(nd.attrs?.level ?? 1)
+            if (ndLevel <= headLevel) {
+              sectionEnd = np
+              stop = true
+              return false
+            }
           }
-        }
-        return true
-      })
-
-      from = headStart
-      to = sectionEnd
+          return true
+        })
+        from = headStart
+        to = sectionEnd
+      } else {
+        // Surgical target: reformat only the matching block's text.
+        from = pos + 1
+        to = Math.max(pos + 1, pos + node.nodeSize - 1)
+      }
       return false
     })
 
@@ -263,7 +332,16 @@ export default function AIChatbot({
 
     let chain = editor.chain().focus().setTextSelection({ from, to })
     if (normalize) {
-      chain = chain.unsetAllMarks()
+      // A targeted "remove bold" must clear only the named mark; a general
+      // clear with no named mark removes every mark in the block.
+      const requestedMarks = formats.filter(
+        (format) => format === 'bold' || format === 'italic' || format === 'underline'
+      )
+      if (requestedMarks.length > 0) {
+        for (const mark of requestedMarks) chain = chain.unsetMark(mark)
+      } else {
+        chain = chain.unsetAllMarks()
+      }
     } else {
       for (const format of formats) {
         if (format === 'bold') chain = chain.setMark('bold')
@@ -273,13 +351,17 @@ export default function AIChatbot({
     }
     if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
     chain.run()
-    // Alignment is a block attribute, so apply it over the same section range.
+
+    // Alignment is a block attribute, so apply it over the same range.
     const align = normalize ? null : alignmentOf(formats)
     if (align) {
       editor.chain().focus().setTextSelection({ from, to }).setTextAlign(align).run()
     }
-    // Restore the cursor to the top of the targeted section.
+
+    // Put the caret at the start of the target and scroll it into view so the
+    // change is visible without the user hunting for the block.
     editor.commands.setTextSelection(from)
+    editor.commands.scrollIntoView()
     return true
   }
 
@@ -312,6 +394,7 @@ export default function AIChatbot({
     const scope = msg.preview_scope ?? 'selection'
     const fontSize = msg.preview_font_size ? msg.preview_font_size : undefined
     const target = msg.preview_target ?? null
+    const targetCategory = msg.preview_target_category ?? null
     const normalize = msg.preview_normalize ?? false
 
     const applied: string[] = []
@@ -320,10 +403,19 @@ export default function AIChatbot({
     if (fontSize) applied.push(`size ${fontSize}pt`)
     if (applied.length === 0) applied.push(formatPreviewLabel(msg.preview_format ?? ''))
 
+    const scopeNote =
+      scope === 'all' && targetCategory === 'headings'
+        ? ' (all headings)'
+        : scope === 'all' && targetCategory === 'paragraphs'
+          ? ' (all paragraphs)'
+          : ''
+
     let targetWarning = ''
     if (target && scope === 'all') {
       const ok = applyFormatsToTarget(target, formats, fontSize, normalize)
       if (!ok) targetWarning = ` (could not find "${target}" in the document)`
+    } else if (scope === 'all' && targetCategory && targetCategory !== 'all') {
+      applyFormatsToBlocks(targetCategory, formats, fontSize, normalize)
     } else if (normalize) {
       applyNormalize(scope, fontSize)
     } else if (scope === 'all') {
@@ -376,7 +468,7 @@ export default function AIChatbot({
           ? {
               ...message,
               preview_status: 'applied',
-              command_applied: `${applied.length > 0 ? applied.join(' + ') : formatPreviewLabel(msg.preview_format ?? '')}${targetWarning}`,
+              command_applied: `${applied.length > 0 ? applied.join(' + ') : formatPreviewLabel(msg.preview_format ?? '')}${scopeNote}${targetWarning}`,
             }
           : message
       )
@@ -515,11 +607,19 @@ export default function AIChatbot({
 
     try {
       const history: ChatHistoryEntry[] = messages
-        .filter((message) => !message.command_applied)
-        .map((message) => ({
-          role: message.role,
-          content: message.content,
-        }))
+        .map((message) =>
+          message.command_applied
+            ? {
+                role: 'assistant' as const,
+                // Keep a compact record of what was applied so follow-ups like
+                // "format the rest" know what already happened in this chat.
+                content: `[Formatting applied: ${message.command_applied}]`,
+              }
+            : {
+                role: message.role,
+                content: message.content,
+              }
+        )
         .slice(-6)
 
       const response = await api.ai.chat(
@@ -561,6 +661,7 @@ export default function AIChatbot({
             : null,
         preview_scope: response.preview?.scope ?? null,
         preview_target: response.preview?.target ?? null,
+        preview_target_category: response.preview?.targetCategory ?? null,
         preview_normalize: response.preview?.normalize ?? false,
         preview_font_size: response.preview?.fontSize ?? null,
         preview_reason: previewFormat ? previewReason : null,
@@ -579,6 +680,7 @@ export default function AIChatbot({
             scope: response.preview?.scope ?? 'selection',
             fontSize: response.preview?.fontSize ?? null,
             target: response.preview?.target ?? null,
+            targetCategory: response.preview?.targetCategory ?? null,
             normalize: response.preview?.normalize ?? false,
           }
         : lastPreviewRef.current
@@ -819,15 +921,22 @@ export default function AIChatbot({
                   border: '1px solid var(--border)',
                   color: 'var(--foreground)',
                   fontFamily: 'inherit',
-                  transition: 'box-shadow 150ms',
+                  transition: 'border-color 150ms, box-shadow 150ms',
                 }}
-                onFocus={(e) => { (e.currentTarget as HTMLInputElement).style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent)' }}
-                onBlur={(e) => { (e.currentTarget as HTMLInputElement).style.boxShadow = 'none' }}
+                onFocus={(e) => {
+                  (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--ring)';
+                  (e.currentTarget as HTMLInputElement).style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--ring) 15%, transparent)';
+                }}
+                onBlur={(e) => {
+                  (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--border)';
+                  (e.currentTarget as HTMLInputElement).style.boxShadow = 'none';
+                }}
               />
               <button
                 type="button"
                 onClick={send}
                 disabled={!input.trim() || loading}
+                aria-label="Send message"
                 style={{
                   padding: '0.5rem',
                   backgroundColor: 'var(--primary)',
@@ -836,10 +945,20 @@ export default function AIChatbot({
                   border: 'none',
                   cursor: !input.trim() || loading ? 'not-allowed' : 'pointer',
                   opacity: !input.trim() || loading ? 0.5 : 1,
-                  transition: 'opacity 150ms',
+                  transition: 'opacity 150ms, transform 120ms, box-shadow 150ms',
                 }}
-                onMouseEnter={(e) => { if (input.trim() && !loading) (e.currentTarget as HTMLButtonElement).style.opacity = '0.9' }}
-                onMouseLeave={(e) => { if (input.trim() && !loading) (e.currentTarget as HTMLButtonElement).style.opacity = '1' }}
+                onMouseEnter={(e) => {
+                  if (input.trim() && !loading) {
+                    (e.currentTarget as HTMLButtonElement).style.opacity = '0.9';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (input.trim() && !loading) {
+                    (e.currentTarget as HTMLButtonElement).style.opacity = '1';
+                    (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+                  }
+                }}
               >
                 <Send style={{ width: '14px', height: '14px' }} />
               </button>

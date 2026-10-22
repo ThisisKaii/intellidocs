@@ -68,7 +68,7 @@ function capitalize(word: string): string {
 }
 
 const NAV_ITEMS: SidebarItem[] = [
-  { id: 'drive', label: 'My Documents', icon: FileText, selectionType: 'all' },
+  { id: 'drive', label: 'My documents', icon: FileText, selectionType: 'all' },
   { id: 'recent', label: 'Recent', icon: Clock3, selectionType: 'recent' },
   { id: 'shared', label: 'Shared with me', icon: Share2, selectionType: 'shared' },
   { id: 'trash', label: 'Trash', icon: Trash, selectionType: 'trash' },
@@ -116,7 +116,7 @@ function DriveSidebar({
           <span className="text-[1.2rem] font-bold tracking-tight text-foreground leading-tight">
             IntelliDocs
           </span>
-          <span className="text-[0.625rem] font-semibold tracking-wider uppercase text-primary">
+          <span className="text-[0.75rem] font-semibold tracking-wider uppercase text-primary">
             Academic Suite
           </span>
         </div>
@@ -133,19 +133,19 @@ function DriveSidebar({
               <div className="flex items-center justify-center size-6 rounded-lg bg-primary-foreground/20 text-primary-foreground">
                 <Plus className="size-4 stroke-[2.5]" />
               </div>
-              <span>New Document</span>
+              <span>New document</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" style={{ minWidth: '180px' }}>
             <DropdownMenuItem onClick={() => { onClose(); onCreate() }} className="gap-2 py-2 cursor-pointer">
-              <FileText className="size-4" /> New Document
+              <FileText className="size-4" /> New document
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => { onClose(); onCreateFolder() }} className="gap-2 py-2 cursor-pointer">
-              <FolderIcon className="size-4 text-primary" /> New Folder
+              <FolderIcon className="size-4 text-primary" /> New folder
             </DropdownMenuItem>
             {onImportFromFile && (
               <DropdownMenuItem onClick={() => { onClose(); onImportFromFile() }} className="gap-2 py-2 cursor-pointer">
-                <Upload className="size-4 text-primary" /> Import from File
+                <Upload className="size-4 text-primary" /> Import from file
               </DropdownMenuItem>
             )}
             {onImportFromDrive && (
@@ -171,7 +171,7 @@ function DriveSidebar({
                 onSelectView({ type: item.selectionType })
                 onClose()
               }}
-              className={`flex items-center gap-3 w-full px-4 h-10 rounded-full text-[0.875rem] border-none cursor-pointer text-left transition-colors ${
+              className={`flex items-center gap-3 w-full px-4 h-10 rounded-full text-[0.875rem] border-none cursor-pointer text-left transition-all duration-150 ease-out hover:translate-x-1 ${
                 active
                   ? 'font-semibold text-foreground bg-accent shadow-xs'
                   : 'font-medium text-muted-foreground hover:bg-primary/10 hover:text-foreground'
@@ -182,7 +182,7 @@ function DriveSidebar({
               <span className="truncate">{item.label}</span>
               {typeof count === 'number' && count > 0 && (
                 <span
-                  className={`ml-auto text-[0.6875rem] font-medium rounded-full px-2 py-0.5 ${
+                  className={`ml-auto text-xs font-medium tabular-nums rounded-full px-2 py-0.5 ${
                     active ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
                   }`}
                 >
@@ -197,7 +197,7 @@ function DriveSidebar({
       {/* ── Quick-access folders ───────────────────── */}
       {folders && folders.length > 0 && (
         <div className="mt-6">
-          <div className="px-4 pb-2 text-[0.6875rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          <div className="px-4 pb-2 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             Folders
           </div>
           <nav className="flex flex-col px-3 gap-0.5">
@@ -237,7 +237,7 @@ function DriveSidebar({
                   />
                   <span className="truncate">{folder.name}</span>
                   {isClass && (
-                    <span className="ml-auto shrink-0 text-[0.625rem] font-semibold uppercase tracking-wide rounded-full px-1.5 py-0.5 bg-accent/25 text-accent-foreground">
+                    <span className="ml-auto shrink-0 text-[0.6875rem] font-semibold uppercase tracking-wide tabular-nums rounded-full px-1.5 py-0.5 bg-accent/25 text-accent-foreground">
                       {folder.class_code || 'Class'}
                     </span>
                   )}
@@ -254,7 +254,7 @@ function DriveSidebar({
           <span className="text-primary font-bold flex items-center gap-1.5">
             <HardDrive className="size-3.5" /> Storage
           </span>
-          <span className="text-xs text-foreground font-semibold">
+          <span className="text-xs text-foreground font-semibold tabular-nums">
             {storage ? `${formatBytes(storage.usedBytes)} / ${formatBytes(storage.quotaBytes)}` : '— / —'}
           </span>
         </div>
@@ -264,7 +264,7 @@ function DriveSidebar({
             style={{ width: storage ? `${Math.min(100, Math.round((storage.usedBytes / storage.quotaBytes) * 100))}%` : '0%' }}
           />
         </div>
-        <div className="flex items-center justify-between mt-2 text-[0.6875rem]">
+        <div className="flex items-center justify-between mt-2 text-xs">
           <span className="font-semibold text-primary">{storage ? `${capitalize(storage.role)} Tier` : 'Student Tier'}</span>
           <span className="text-muted-foreground">UCLM Capstone</span>
         </div>

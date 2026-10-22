@@ -13,6 +13,7 @@ import ProfessorDashboard from './pages/ProfessorDashboard'
 import AuthCallback from './pages/AuthCallback'
 import DriveCallback from './pages/DriveCallback'
 import Privacy from './pages/Privacy'
+import DevEditorHarness from './pages/DevEditorHarness'
 import './App.css'
 
 function App() {
@@ -25,6 +26,9 @@ function App() {
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/drive-callback" element={<DriveCallback />} />
           <Route path="/privacy" element={<Privacy />} />
+          {import.meta.env.DEV && (
+            <Route path="/dev/editor-harness" element={<DevEditorHarness />} />
+          )}
           <Route path="/" element={<Landing />} />
 
           <Route

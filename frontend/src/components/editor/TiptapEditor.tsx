@@ -11,10 +11,12 @@ import ImageResize from 'tiptap-extension-resize-image'
 import Paragraph from '@tiptap/extension-paragraph'
 import Heading from '@tiptap/extension-heading'
 import Blockquote from '@tiptap/extension-blockquote'
-import { Table } from '@tiptap/extension-table'
-import TableRow from '@tiptap/extension-table-row'
-import TableCell from '@tiptap/extension-table-cell'
-import TableHeader from '@tiptap/extension-table-header'
+// Pagination-aware tables: rows render as CSS-grid blocks (and rows joined by a
+// rowspan as small row groups) so tiptap-pagination-plus can break a table
+// between rows. Stock <table> layout inside the paginator loops forever.
+import { TablePlus, TableRowPlus, TableCellPlus, TableHeaderPlus } from 'tiptap-table-plus'
+import type { NodeView as ProseMirrorNodeView } from '@tiptap/pm/view'
+import type { NodeViewRendererProps } from '@tiptap/core'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import Highlight from '@tiptap/extension-highlight'
@@ -25,6 +27,18 @@ import { HarperLinterExtension } from './HarperLinterExtension'
 import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { PageBreak } from './PageBreak'
+import { TabStop } from './TabStop'
+import {
+  HeaderFooterExtension,
+  type PageSizeKey,
+  type PageOrientation,
+  type MarginValues,
+  type PageNumberFormat,
+  type HeaderFooterPlacement,
+  PAGE_SIZES,
+  inToPx,
+} from './HeaderFooterPlugin'
+import { AcademicObjectsExtension } from './AcademicObjects'
 import { applyIeeeNumbering } from './ieeeNumberingCommand'
 import { convertToIeee } from './ieeeConvertCommand'
 import EditorStylesPanel from './EditorStylesPanel'
@@ -71,8 +85,15 @@ import {
   GraduationCap,
   UserCog,
   BadgeInfo,
+  Maximize2,
+  Columns,
+  Minimize2,
+  Merge,
+  Scissors as SplitSquare,
+  Palette as PaletteIcon,
+  Type,
 } from 'lucide-react'
-import { api, type PageNumberFormat } from '@/services/api'
+import { api } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { IndentExtension } from './IndentExtension'
 import { exportThesisWord, exportThesisPdf } from '@/lib/thesisExport'
@@ -83,9 +104,13 @@ import {
   type BehaviorEventPayload,
   type ImageAlignment,
   type TableAlignment,
+  type AcademicTableStyle,
+  type ImageWrapMode,
 } from './behaviorListener'
 import { ImageResizeBehaviorExtension } from './ImageResizeBehaviorExtension'
+import ImageOptionsToolbar, { type ImageWrapStyle } from './ImageOptionsToolbar'
 import { NodeSelection } from '@tiptap/pm/state'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 /** Download document content as a standalone clean HTML file. */
 function downloadHTML(html: string, title: string): void {
@@ -165,26 +190,18 @@ function printDocument(): void {
   window.print()
 }
 
-// ─── Public types (kept for Document.tsx page layout) ───────────────────────
-
-export type PageSizeKey = 'short' | 'long' | 'a4' | 'letter' | 'legal'
-
-export type PageOrientation = 'portrait' | 'landscape'
-
-export interface MarginValues {
-  top: number
-  bottom: number
-  left: number
-  right: number
-}
-
-export const PAGE_SIZES: Record<PageSizeKey, { label: string; width: number; height: number }> = {
-  short:  { label: 'Short (8.5×11")',  width: 816,  height: 1056 },
-  long:   { label: 'Long (8.5×13")',   width: 816,  height: 1248 },
-  a4:     { label: 'A4 (8.27×11.69")', width: 794,  height: 1123 },
-  letter: { label: 'Letter (8.5×11")', width: 816,  height: 1056 },
-  legal:  { label: 'Legal (8.5×14")',  width: 816,  height: 1344 },
-}
+// Re-export types from HeaderFooterPlugin (single source of truth)
+export type {
+  PageSizeKey,
+  PageOrientation,
+  MarginValues,
+  PageNumberFormat,
+  HeaderFooterPlacement,
+  HeaderFooterZoneConfig,
+  HeaderFooterConfig,
+  HeaderFooterState,
+} from './HeaderFooterPlugin'
+export { createDefaultHeaderFooterConfig, PAGE_SIZES } from './HeaderFooterPlugin'
 
 // ─── Vercel-style design tokens (per DESIGN.md) ─────────────────────────────
 
@@ -199,7 +216,8 @@ const GROUP_STYLE: CSSProperties = {
   alignItems: 'center',
   gap: '2px',
   padding: '2px',
-  borderRadius: '8px',
+  // Concentric with the 8px ToolButtons inside (8px inner + 2px padding).
+  borderRadius: '10px',
   ...SHADOW_BORDER,
 }
 
@@ -210,9 +228,10 @@ const POPOVER_STYLE: CSSProperties = {
   zIndex: 60,
   backgroundColor: 'var(--popover)',
   color: 'var(--popover-foreground)',
-  borderRadius: '8px',
+  // Concentric with the 6px-padded MenuItems inside (6px inner + 6px padding).
+  borderRadius: '12px',
   ...SHADOW_CARD,
-  animation: 'fadeIn 150ms ease',
+  animation: 'popoverIn 140ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
 }
 
 const FOCUS_RING: CSSProperties = { outline: '2px solid var(--ring)', outlineOffset: '1px' }
@@ -228,6 +247,9 @@ const ALLOWED_STYLE_PROPS = new Set([
   'border-color', 'border-width', 'border-style',
   'vertical-align', 'line-height', 'text-decoration',
   'white-space', 'word-wrap', 'overflow-wrap',
+  // First-line indent: imported Word paragraphs carry it (and an explicit 0 so
+  // an applied preset's 0.5in indent cannot override the document's own).
+  'text-indent',
 ])
 
 /** Extract only whitelisted CSS properties from an inline style string. */
@@ -245,9 +267,112 @@ function filterStyle(raw: string | null): string | null {
   return kept.length > 0 ? kept.join('; ') : null
 }
 
+/** Read a margin-*-pt value from an inline style string; 0 when absent. */
+function parseMarginPt(style: string | null, prop: 'margin-top' | 'margin-bottom'): number {
+  if (!style) return 0
+  const match = style.match(new RegExp(`${prop}\\s*:\\s*([\\d.]+)pt`, 'i'))
+  return match ? Number(match[1]) : 0
+}
+
+/**
+ * Merge paragraph spacing (Space Before/After, in pt) into an existing inline
+ * style string, replacing any previous margin-top/margin-bottom declarations
+ * while preserving every other whitelisted property.
+ */
+function mergeSpacingStyle(current: string | null, beforePt: number, afterPt: number): string {
+  const kept: string[] = []
+  if (current) {
+    for (const decl of current.split(';')) {
+      const trimmed = decl.trim()
+      if (!trimmed) continue
+      const prop = trimmed.slice(0, trimmed.indexOf(':')).trim().toLowerCase()
+      if (prop === 'margin-top' || prop === 'margin-bottom') continue
+      kept.push(trimmed)
+    }
+  }
+  kept.push(`margin-top: ${beforePt}pt`, `margin-bottom: ${afterPt}pt`)
+  return kept.join('; ')
+}
+
+/** Width in px of the printable text column for a page size + margins. */
+function printableWidthPx(size: PageSizeKey, margins: MarginValues): number {
+  return PAGE_SIZES[size].width - inToPx(margins.left + margins.right)
+}
+
+/**
+ * Rewrite explicit px image widths in imported HTML so no image is wider than
+ * the printable page area. Runs on the raw HTML string before TipTap parses
+ * it; images that already fit are left untouched.
+ */
+function clampImageWidthsInHtml(html: string, maxWidthPx: number): string {
+  const parsed = new DOMParser().parseFromString(html, 'text/html')
+  parsed.querySelectorAll('img').forEach((img) => {
+    const attrWidth = Number(img.getAttribute('width')) || 0
+    const styleWidth = Number((img.style.width || '').replace('px', '')) || 0
+    if (Math.max(attrWidth, styleWidth) <= maxWidthPx) return
+    const clamped = Math.round(maxWidthPx)
+    img.setAttribute('width', String(clamped))
+    img.style.width = `${clamped}px`
+    img.style.height = 'auto'
+  })
+  return parsed.body.innerHTML
+}
+
 // ─── Custom node extensions preserving imported styles and cell backgrounds ─
 
-export const CustomTableCell = TableCell.extend({
+/**
+ * Apply a table cell's imported style/background/colour to its DOM element.
+ * The table-plus cell node views build their own <td>/<th> and never render
+ * our extra attributes, so without this every imported cell would lose its
+ * background, padding and alignment. `applied` remembers what was set so an
+ * attribute change removes the old declarations.
+ */
+function syncCellAttributes(dom: HTMLElement, attrs: Record<string, unknown>, applied: Set<string>): void {
+  const declarations: Array<[string, string]> = []
+  const style = typeof attrs.style === 'string' ? attrs.style : ''
+  for (const declaration of style.split(';')) {
+    const colon = declaration.indexOf(':')
+    if (colon < 1) continue
+    declarations.push([declaration.slice(0, colon).trim().toLowerCase(), declaration.slice(colon + 1).trim()])
+  }
+  if (typeof attrs.backgroundColor === 'string' && attrs.backgroundColor) {
+    declarations.push(['background-color', attrs.backgroundColor])
+  }
+  if (typeof attrs.color === 'string' && attrs.color) declarations.push(['color', attrs.color])
+  applied.forEach((property) => dom.style.removeProperty(property))
+  applied.clear()
+  for (const [property, value] of declarations) {
+    dom.style.setProperty(property, value)
+    applied.add(property)
+  }
+}
+
+/** Wrap a table-plus cell node view so it also renders our extra cell attributes. */
+function withCellAttributes(
+  parentView: ((props: NodeViewRendererProps) => ProseMirrorNodeView) | undefined,
+): ((props: NodeViewRendererProps) => ProseMirrorNodeView) | null {
+  if (!parentView) return null
+  return (props) => {
+    const view = parentView(props)
+    const dom = view.dom as HTMLElement
+    const applied = new Set<string>()
+    syncCellAttributes(dom, props.node.attrs, applied)
+    const originalUpdate = view.update
+    return {
+      ...view,
+      update: (...args: Parameters<NonNullable<ProseMirrorNodeView['update']>>) => {
+        const accepted = originalUpdate ? originalUpdate.apply(view, args) : true
+        if (accepted) syncCellAttributes(dom, args[0].attrs, applied)
+        return accepted
+      },
+    }
+  }
+}
+
+export const CustomTableCell = TableCellPlus.extend({
+  addNodeView() {
+    return withCellAttributes(this.parent?.() ?? undefined)
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -270,7 +395,10 @@ export const CustomTableCell = TableCell.extend({
   },
 })
 
-export const CustomTableHeader = TableHeader.extend({
+export const CustomTableHeader = TableHeaderPlus.extend({
+  addNodeView() {
+    return withCellAttributes(this.parent?.() ?? undefined)
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -300,6 +428,8 @@ export const CustomTableHeader = TableHeader.extend({
  * one. `guide` is the standard-reference hint drawn inside the dashed box;
  * `guideText` is the original placeholder text, which BlueprintGuideExtension
  * compares against to detect that the student has written over the placeholder.
+ * `guideGroup` binds related sections (e.g. the author block) so formatting
+ * one element can offer to format the rest of the group to match.
  */
 const guideAttributes = {
   guide: {
@@ -314,9 +444,63 @@ const guideAttributes = {
     renderHTML: (a: { guideText: string | null }) =>
       a.guideText ? { 'data-guide-text': a.guideText } : {},
   },
+  guideGroup: {
+    default: null,
+    parseHTML: (el: HTMLElement) => el.getAttribute('data-guide-group'),
+    renderHTML: (a: { guideGroup: string | null }) =>
+      a.guideGroup ? { 'data-guide-group': a.guideGroup } : {},
+  },
+}
+
+/**
+ * Paragraph spacing (Space Before / Space After, in pt) as an inline-style
+ * margin override. Word-parity controls live in the Page Setup popover.
+ */
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    paragraphSpacing: {
+      setParagraphSpacing: (beforePt: number, afterPt: number) => ReturnType
+    }
+  }
 }
 
 const CustomParagraph = Paragraph.extend({
+  addCommands() {
+    return {
+      ...this.parent?.(),
+      /**
+       * Apply Space Before/After to every paragraph in the selection (or the
+       * paragraph under the cursor when collapsed) by merging pt margins into
+       * the `style` attribute.
+       */
+      setParagraphSpacing:
+        (beforePt: number, afterPt: number) =>
+        ({ state, tr, dispatch }) => {
+          let changed = false
+          const { from, to, empty, $from } = state.selection
+          if (empty) {
+            if ($from.parent.type.name !== 'paragraph') return false
+            const pos = $from.before($from.depth)
+            tr.setNodeMarkup(pos, undefined, {
+              ...$from.parent.attrs,
+              style: mergeSpacingStyle($from.parent.attrs.style as string | null, beforePt, afterPt),
+            })
+            changed = true
+          } else {
+            state.doc.nodesBetween(from, to, (node, pos) => {
+              if (node.type.name !== 'paragraph') return
+              tr.setNodeMarkup(pos, undefined, {
+                ...node.attrs,
+                style: mergeSpacingStyle(node.attrs.style as string | null, beforePt, afterPt),
+              })
+              changed = true
+            })
+          }
+          if (changed && dispatch) dispatch(tr)
+          return changed
+        },
+    }
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -356,6 +540,71 @@ function imageContainerStyle(alignment: ImageAlignment, width?: number | null): 
   }
 }
 
+/**
+ * Build the wrapper style for an image text-wrap mode (floating toolbar).
+ * Mirrors `imageContainerStyle` so both commands write the same shape of
+ * string into the single `containerStyle` attribute.
+ *
+ * Only properties the resize library's sanitizer whitelists belong here
+ * (sizing, display, float, margins, cursor). The watermark / overlay /
+ * clear modes carry their extra CSS via `data-wrap-mode` rules instead —
+ * the sanitizer strips clear/position/z-index/opacity from this string.
+ */
+function imageWrapStyle(mode: ImageWrapStyle, width?: number | null): string {
+  const sizing = width ? `width: ${width}px; height: auto; cursor: pointer;` : 'cursor: pointer;'
+  switch (mode) {
+    case 'inline':
+      return `${sizing} display: inline-block !important; vertical-align: baseline !important; margin: 0.25rem 0.5rem !important;`
+    case 'wrap-left':
+      return `${sizing} float: left !important; clear: left !important; margin: 0.5rem 1.5rem 0.75rem 0 !important; max-width: 55%;`
+    case 'wrap-right':
+      return `${sizing} float: right !important; clear: right !important; margin: 0.5rem 0 0.75rem 1.5rem !important; max-width: 55%;`
+    case 'wrap-both':
+      return `${sizing} display: block !important; float: none !important; clear: none !important; margin: 0.75rem auto !important;`
+    case 'behind-text':
+      return `${sizing} position: relative !important; z-index: 0 !important; opacity: 0.82 !important; float: none !important; margin: 1rem auto !important;`
+    case 'in-front':
+      return `${sizing} position: relative !important; z-index: 30 !important; float: none !important; box-shadow: 0 4px 14px rgba(0,0,0,0.16) !important; margin: 1rem auto !important;`
+    case 'break':
+    default:
+      return `${sizing} display: block !important; float: none !important; clear: both !important; margin: 1.5rem auto !important;`
+  }
+}
+
+/** Read the explicit pixel width from an image wrapper style, when present. */
+function readStyleWidth(style: string | null | undefined): number | null {
+  if (!style) return null
+  const match = /(?:^|;)\s*width:\s*([\d.]+)px/i.exec(style)
+  return match ? Number(match[1]) : null
+}
+
+/** Rewrite a wrapper style with a new explicit width; null clears the sizing. */
+function withImageWidth(style: string, width: number | null): string {
+  const parts = style
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .filter((part) => {
+      const prop = part.split(':')[0]?.trim().toLowerCase()
+      return prop !== 'width' && prop !== 'height'
+    })
+  if (width !== null) {
+    parts.push(`width: ${width}px`, 'height: auto')
+  }
+  if (!parts.some((part) => part.toLowerCase().startsWith('cursor'))) {
+    parts.push('cursor: pointer')
+  }
+  return `${parts.join('; ')};`
+}
+
+/** The image node under the current selection, or null when none is selected. */
+function selectedImageNode(state: EditorState): ProseMirrorNode | null {
+  const { selection } = state
+  return selection instanceof NodeSelection && selection.node.type.name === 'imageResize'
+    ? selection.node
+    : null
+}
+
 const CenteredImageResize = ImageResize.extend({
   addAttributes() {
     return {
@@ -377,6 +626,15 @@ const CenteredImageResize = ImageResize.extend({
         default: null,
         parseHTML: (element) => (element.dataset.caption === 'true' ? true : null),
         renderHTML: (attributes) => (attributes.caption ? { 'data-caption': 'true' } : {}),
+      },
+      // Text-wrap mode tag. The resize library's style sanitizer strips
+      // clear/position/z-index/opacity from containerStyle, so those modes
+      // are applied through CSS rules keyed on this attribute instead.
+      wrapMode: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-wrap-mode'),
+        renderHTML: (attributes) =>
+          attributes.wrapMode ? { 'data-wrap-mode': attributes.wrapMode } : {},
       },
       containerStyle: {
         default: null,
@@ -412,6 +670,10 @@ declare module '@tiptap/core' {
     imageAlignment: {
       setImageAlignment: (alignment: ImageAlignment) => ReturnType
     }
+    imageOptions: {
+      setImageWrapStyle: (mode: ImageWrapStyle) => ReturnType
+      setImageWidth: (width: number | null) => ReturnType
+    }
     imageCaption: {
       addImageCaption: () => ReturnType
     }
@@ -421,13 +683,48 @@ declare module '@tiptap/core' {
 const AlignedImageResize = CenteredImageResize.extend({
   addCommands() {
     return {
+      // Keep the stock image commands (setImage, toggleImage, …) supplied by
+      // the resize package extending @tiptap/extension-image.
+      ...this.parent?.(),
       setImageAlignment:
         (alignment: ImageAlignment) =>
         ({ commands }) =>
-          commands.updateAttributes('image', {
+          commands.updateAttributes('imageResize', {
             alignment,
             containerStyle: imageContainerStyle(alignment),
           }),
+      /**
+       * Apply a text-wrap mode to the selected image by rewriting its wrapper
+       * style. An explicit width survives the change so size presets and wrap
+       * modes compose instead of resetting each other.
+       */
+      setImageWrapStyle:
+        (mode: ImageWrapStyle) =>
+        ({ state, commands }) => {
+          const node = selectedImageNode(state)
+          if (!node) return false
+          const width = readStyleWidth(node.attrs.containerStyle as string | null)
+          return commands.updateAttributes('imageResize', {
+            alignment: mode === 'wrap-left' || mode === 'wrap-right' ? 'float' : 'center',
+            containerStyle: imageWrapStyle(mode, width),
+            // Drives the CSS rules for modes the style sanitizer would strip.
+            wrapMode: mode,
+          })
+        },
+      /** Resize the selected image to an explicit pixel width (null = natural size). */
+      setImageWidth:
+        (width: number | null) =>
+        ({ state, commands }) => {
+          const node = selectedImageNode(state)
+          if (!node) return false
+          const current =
+            typeof node.attrs.containerStyle === 'string' && node.attrs.containerStyle.length > 0
+              ? node.attrs.containerStyle
+              : imageContainerStyle('center', null)
+          return commands.updateAttributes('imageResize', {
+            containerStyle: withImageWidth(current, width),
+          })
+        },
       /**
        * Insert a caption paragraph directly below the selected image and mark
        * the image as captioned. The paragraph is tagged `style_source:
@@ -467,7 +764,7 @@ const AlignedImageResize = CenteredImageResize.extend({
  * The stock TipTap table extension has no alignment command, so the attribute
  * is declared here and a `setTableAlignment` command is added below.
  */
-const AlignedTable = Table.extend({
+const AlignedTable = TablePlus.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -494,6 +791,30 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     tableAlignment: {
       setTableAlignment: (alignment: TableAlignment) => ReturnType
+      equalizeTableColumns: () => ReturnType
+    }
+    academicTable: {
+      setTableStylePreset: (preset: string) => ReturnType
+      toggleHeaderRow: () => ReturnType
+      toggleHeaderColumn: () => ReturnType
+      autoFitToPage: () => ReturnType
+      autoFitToContents: () => ReturnType
+      mergeCells: () => ReturnType
+      splitCell: () => ReturnType
+      addRowBefore: () => ReturnType
+      addRowAfter: () => ReturnType
+      addColumnBefore: () => ReturnType
+      addColumnAfter: () => ReturnType
+      deleteRow: () => ReturnType
+      deleteColumn: () => ReturnType
+      deleteTable: () => ReturnType
+      nextTableNumber: () => ReturnType
+      setTableCaption: (caption: string) => ReturnType
+    }
+    academicImage: {
+      setImageWrapMode: (wrapMode: string) => ReturnType
+      nextFigureNumber: () => ReturnType
+      setImageDimensions: (width: number | null, height: number | null) => ReturnType
     }
   }
 }
@@ -501,10 +822,83 @@ declare module '@tiptap/core' {
 const TableAlignmentExtension = AlignedTable.extend({
   addCommands() {
     return {
+      // Keep the stock table commands (insertTable, addRowBefore, deleteRow,
+      // header toggles, …): overriding addCommands drops them otherwise.
+      ...this.parent?.(),
       setTableAlignment:
         (alignment: TableAlignment) =>
         ({ commands }) =>
           commands.updateAttributes('table', { alignment }),
+      /**
+       * Give every column in the current table the same width, keeping the
+       * measured total width so the table does not jump on the page.
+       * Widths are measured from the rendered cells: after a manual column
+       * resize prosemirror-tables only stores `colwidth` on the dragged
+       * column, so the authoritative layout lives in the DOM. Falls back to
+       * explicit `colwidth` attributes when the DOM is unavailable.
+       */
+      equalizeTableColumns:
+        () =>
+        ({ state, tr, dispatch, view }) => {
+          const { $from } = state.selection
+          let tableDepth = -1
+          for (let depth = $from.depth; depth > 0; depth -= 1) {
+            if ($from.node(depth).type.name === 'table') {
+              tableDepth = depth
+              break
+            }
+          }
+          if (tableDepth < 0) return false
+          const table = $from.node(tableDepth)
+          const tablePos = $from.before(tableDepth)
+
+          const dom = view.nodeDOM(tablePos)
+          const firstRow = dom instanceof HTMLElement ? dom.querySelector('tr') : null
+          let widths: number[] = []
+          if (firstRow) {
+            Array.from(firstRow.children).forEach((cell) => {
+              const el = cell as HTMLElement
+              const span = Math.max(1, Number(el.getAttribute('colspan')) || 1)
+              const per = el.getBoundingClientRect().width / span
+              for (let i = 0; i < span; i += 1) widths.push(per)
+            })
+          }
+          if (widths.length === 0) {
+            table.forEach((row) => {
+              if (widths.length > 0) return
+              const cols: number[] = []
+              let complete = true
+              row.forEach((cell) => {
+                const cw = cell.attrs.colwidth as number[] | null
+                if (cw && cw.length > 0) cols.push(cw.reduce((sum, w) => sum + w, 0))
+                else complete = false
+              })
+              if (complete && cols.length > 0) widths = cols
+            })
+          }
+          if (widths.length === 0) return false
+
+          const total = widths.reduce((sum, w) => sum + w, 0)
+          const base = Math.floor(total / widths.length)
+          const remainder = total - base * widths.length
+          const equal = widths.map((_, index) => Math.round(base + (index < remainder ? 1 : 0)))
+
+          table.forEach((row, rowOffset) => {
+            let column = 0
+            row.forEach((cell, cellOffset) => {
+              const span = cell.attrs.colspan as number
+              const slice = equal.slice(column, column + span)
+              column += span
+              if (slice.length === 0) return
+              tr.setNodeMarkup(tablePos + 1 + rowOffset + 1 + cellOffset, undefined, {
+                ...cell.attrs,
+                colwidth: slice,
+              })
+            })
+          })
+          if (dispatch) dispatch(tr)
+          return true
+        },
     }
   },
 })
@@ -583,6 +977,10 @@ const CustomBlockquote = Blockquote.extend({
   },
   addCommands() {
     return {
+      // Keep the parent blockquote commands (setBlockquote, toggleBlockquote,
+      // unsetBlockquote): StarterKit disables its own blockquote, so dropping
+      // them here removes Quote entirely.
+      ...this.parent?.(),
       /**
        * Turn the current block into a callout of the given variant. Wraps in a
        * blockquote first when the selection is not already in one.
@@ -622,6 +1020,9 @@ export const editorExtensions = [
   CustomHeading,
   CustomBlockquote,
   PageBreak,
+  TabStop,
+  HeaderFooterExtension,
+  AcademicObjectsExtension,
   TextStyle,
   Color,
   FontFamily,
@@ -629,8 +1030,10 @@ export const editorExtensions = [
   IndentExtension,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   AlignedImageResize.configure({ inline: false, allowBase64: true }),
-  TableAlignmentExtension.configure({ resizable: true }),
-  TableRow,
+  // table-plus draws its own column handles; prosemirror-tables' resizing
+  // plugin would fight them, so stock resizing stays off.
+  TableAlignmentExtension.configure({ resizable: false }),
+  TableRowPlus,
   CustomTableCell,
   CustomTableHeader,
   Subscript,
@@ -672,6 +1075,13 @@ export function useTiptapEditor(onUpdate: (html: string) => void): Editor | null
 
 const BUBBLE_MENU_OPTIONS = { placement: 'top' } as const
 const FLOATING_MENU_OPTIONS = { placement: 'bottom-start' } as const
+const IMAGE_MENU_OPTIONS = { placement: 'bottom' } as const
+
+/** Show the floating image toolbar only while an image is selected in an editable doc. */
+function imageMenuShouldShow(props: { editor: Editor }): boolean {
+  const { editor } = props
+  return editor.isEditable && editor.isActive('imageResize')
+}
 
 /** Show the bubble menu only when a non-empty text range is selected. */
 function bubbleMenuShouldShow(props: {
@@ -727,12 +1137,12 @@ function ToolButton({
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: '28px',
-        height: '28px',
-        borderRadius: '6px',
-        border: 'none',
-        backgroundColor: active ? 'var(--primary)' : 'transparent',
-        color: active ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+        width: '32px',
+        height: '32px',
+        borderRadius: '8px',
+        border: active ? '1px solid color-mix(in srgb, var(--primary) 30%, transparent)' : '1px solid transparent',
+        backgroundColor: active ? 'color-mix(in srgb, var(--primary) 15%, transparent)' : 'transparent',
+        color: active ? 'var(--primary)' : 'var(--muted-foreground)',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.35 : 1,
         transition: 'background-color 150ms, color 150ms',
@@ -782,10 +1192,13 @@ function Popover({
   children,
   width = 220,
   rightAligned = false,
+  maxHeight,
 }: {
   children: ReactNode
   width?: number
   rightAligned?: boolean
+  /** When set, the popover scrolls internally instead of growing past the viewport. */
+  maxHeight?: number
 }): JSX.Element {
   return (
     <div
@@ -794,6 +1207,7 @@ function Popover({
         width,
         padding: '6px',
         ...(rightAligned ? { right: 0, left: 'auto' } : {}),
+        ...(maxHeight ? { maxHeight, overflowY: 'auto' } : {}),
       }}
     >
       {children}
@@ -937,6 +1351,19 @@ interface ToolbarProps {
   footerNumberFormat: PageNumberFormat
   onHeaderNumberFormatChange: (value: PageNumberFormat) => void
   onFooterNumberFormatChange: (value: PageNumberFormat) => void
+  /** Horizontal placement of the header line (left, center, right, split). */
+  headerPlacement: HeaderFooterPlacement
+  footerPlacement: HeaderFooterPlacement
+  onHeaderPlacementChange: (value: HeaderFooterPlacement) => void
+  onFooterPlacementChange: (value: HeaderFooterPlacement) => void
+  /** Distance from the page edge to the header/footer, in inches. */
+  headerMarginIn: number
+  footerMarginIn: number
+  onHeaderMarginChange: (value: number) => void
+  onFooterMarginChange: (value: number) => void
+  /** Omit headers/footers on the title page. */
+  differentFirstPage: boolean
+  onDifferentFirstPageChange: (value: boolean) => void
   documentTitle?: string
   onApplyStyle: (format: string) => void
   onApplyPreset: (key: string) => void
@@ -944,6 +1371,16 @@ interface ToolbarProps {
   /** IEEE-only: show two pages side by side as a connected spread. */
   spreadPreview?: boolean
   onSpreadPreviewChange?: (value: boolean) => void
+  /** Visual canvas zoom (1 = 100%). Layout and pagination are unaffected. */
+  zoomLevel?: number
+  onZoomLevelChange?: (level: number) => void
+  /** Show non-printing alignment gridlines over each page's text area. */
+  showGridlines?: boolean
+  onShowGridlinesChange?: (show: boolean) => void
+  /** Page Setup field to open and focus when the request changes. */
+  pageSetupFocusRequest?: 'header' | 'footer' | null
+  /** Called after a focus request has been handled so the host can clear it. */
+  onPageSetupFocusHandled?: () => void
   onOpenPersonalization?: () => void
 }
 
@@ -973,12 +1410,28 @@ export function TiptapToolbar({
   footerNumberFormat,
   onHeaderNumberFormatChange,
   onFooterNumberFormatChange,
+  headerPlacement,
+  footerPlacement,
+  onHeaderPlacementChange,
+  onFooterPlacementChange,
+  headerMarginIn,
+  footerMarginIn,
+  onHeaderMarginChange,
+  onFooterMarginChange,
+  differentFirstPage,
+  onDifferentFirstPageChange,
   documentTitle = 'Untitled Document',
   onApplyStyle,
   onApplyPreset,
   activePreset,
   spreadPreview = false,
   onSpreadPreviewChange,
+  zoomLevel = 1,
+  onZoomLevelChange,
+  showGridlines = false,
+  onShowGridlinesChange,
+  pageSetupFocusRequest = null,
+  onPageSetupFocusHandled,
   onOpenPersonalization,
 }: ToolbarProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'styles'>('home')
@@ -990,10 +1443,15 @@ export function TiptapToolbar({
   const [openImageMenu, setOpenImageMenu] = useState(false)
   const [openCalloutMenu, setOpenCalloutMenu] = useState(false)
   const [openPageSetup, setOpenPageSetup] = useState(false)
+  const [spaceBefore, setSpaceBefore] = useState(0)
+  const [spaceAfter, setSpaceAfter] = useState(0)
   const [openExport, setOpenExport] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
+  const headerInputRef = useRef<HTMLInputElement>(null)
+  const footerInputRef = useRef<HTMLInputElement>(null)
 
   // Re-render on every TipTap transaction so active/disabled states stay fresh.
   useEditorState({
@@ -1040,6 +1498,22 @@ export function TiptapToolbar({
     setOpenPageSetup(false)
     setOpenExport(false)
   }
+
+  // Canvas double-click requests (Bug 3): open Page Setup and focus the
+  // header or footer text field the user double-clicked on the page.
+  useEffect(() => {
+    if (!pageSetupFocusRequest) return
+    closeAllMenus()
+    setOpenPageSetup(true)
+    const timer = setTimeout(() => {
+      const input = pageSetupFocusRequest === 'header' ? headerInputRef.current : footerInputRef.current
+      input?.focus()
+      input?.select()
+      onPageSetupFocusHandled?.()
+    }, 60)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageSetupFocusRequest, onPageSetupFocusHandled])
 
   /**
    * Run a TipTap command and report the action for behavior tracking.
@@ -1143,6 +1617,35 @@ export function TiptapToolbar({
     probe.src = url
   }
 
+  /**
+   * Insert a picked image file: upload it to storage and insert the returned
+   * URL; if the upload fails (offline, storage error), fall back to embedding
+   * the file as a data URL so the image is never lost.
+   */
+  async function handleImageFileSelected(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    try {
+      const url = await api.documents.uploadImage(file)
+      insertImageFromUrl(url)
+      return
+    } catch {
+      /* fall through to the local data-URL fallback */
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+        reader.onerror = () => reject(new Error('Image read failed'))
+        reader.readAsDataURL(file)
+      })
+      if (dataUrl) insertImageFromUrl(dataUrl)
+    } catch {
+      window.alert('Could not read or upload this image. Please try another file.')
+    }
+  }
+
   /** Blockquote context for a structural indent, when applicable. */
   function blockquoteContextPayload(): BehaviorEventPayload | undefined {
     if (!editor || editor.isDestroyed || !editor.isActive('blockquote')) return undefined
@@ -1193,8 +1696,12 @@ export function TiptapToolbar({
     try {
       const importedDoc = await api.documents.import(file)
       if (importedDoc?.content && editor) {
-        editor.commands.setContent(importedDoc.content, { emitUpdate: true })
-        onImportComplete?.(importedDoc.content, importedDoc.title, {
+        const content = clampImageWidthsInHtml(
+          importedDoc.content,
+          printableWidthPx(importedDoc.page_size, importedDoc.margins)
+        )
+        editor.commands.setContent(content, { emitUpdate: true })
+        onImportComplete?.(content, importedDoc.title, {
           pageSize: importedDoc.page_size,
           margins: importedDoc.margins,
           orientation: importedDoc.orientation,
@@ -1209,7 +1716,10 @@ export function TiptapToolbar({
         const result = event.target?.result as string
         if (result && editor) {
           if (file.name.endsWith('.html') || file.name.endsWith('.htm')) {
-            editor.commands.setContent(result, { emitUpdate: true })
+            editor.commands.setContent(
+              clampImageWidthsInHtml(result, printableWidthPx(pageSize, margins)),
+              { emitUpdate: true }
+            )
           } else {
             editor.commands.setContent(
               `<p>${result.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br/>')}</p>`,
@@ -1254,18 +1764,8 @@ export function TiptapToolbar({
         onChange={(e) => void handleFileSelected(e)}
       />
 
-      {/* Word-style tab strip: Home | Insert | Styles */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '2px',
-          flexBasis: '100%',
-          padding: '2px 4px 0',
-          borderBottom: '1px solid var(--border)',
-          marginBottom: '2px',
-        }}
-      >
+      {/* Modern ribbon tab strip: Home | Insert | Styles */}
+      <div className="flex items-center gap-1.5 w-full pb-2 mb-2 border-b border-border/60">
         {(['home', 'insert', 'styles'] as const).map((tabName) => (
           <button
             key={tabName}
@@ -1276,19 +1776,11 @@ export function TiptapToolbar({
               setActiveTab(tabName)
             }}
             title={tabName === 'home' ? 'Text editing and formatting' : tabName === 'insert' ? 'Insert content into the document' : 'Styles and academic presets'}
-            style={{
-              padding: '4px 12px 6px',
-              border: 'none',
-              background: 'none',
-              borderRadius: '6px 6px 0 0',
-              color: activeTab === tabName ? 'var(--primary)' : 'var(--muted-foreground)',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              textTransform: 'capitalize',
-              boxShadow: activeTab === tabName ? 'inset 0 -2px 0 0 var(--primary)' : 'none',
-            }}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer border-none transition-all capitalize ${
+              activeTab === tabName
+                ? 'bg-primary/10 text-primary shadow-xs'
+                : 'bg-transparent text-muted-foreground hover:bg-secondary/70 hover:text-foreground'
+            }`}
           >
             {tabName}
           </button>
@@ -1451,7 +1943,7 @@ export function TiptapToolbar({
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '22px',
+              width: '24px',
               height: '24px',
               borderRadius: '4px',
               border: 'none',
@@ -1521,7 +2013,7 @@ export function TiptapToolbar({
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '22px',
+              width: '24px',
               height: '24px',
               borderRadius: '4px',
               border: 'none',
@@ -1806,7 +2298,7 @@ export function TiptapToolbar({
             }}
           />
           {openTableMenu && (
-            <Popover width={180}>
+            <Popover width={240} maxHeight={420}>
               <MenuItem
                 onClick={() => {
                   closeAllMenus()
@@ -1829,52 +2321,246 @@ export function TiptapToolbar({
               </MenuItem>
               {editor?.isActive('table') && (
                 <>
+                  <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                  {/* Style Presets */}
+                  <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                    Style Presets
+                  </div>
+                  {(['apa-three-line', 'ieee-grid', 'shaded-header', 'borderless', 'minimal'] as AcademicTableStyle[]).map((preset) => (
+                    <MenuItem
+                      key={preset}
+                      active={tableContext?.tableStylePreset === preset}
+                      onClick={() => {
+                        closeAllMenus()
+                        run('table_style_preset', () => editor?.chain().focus().setTableStylePreset(preset).run(), tableContextPayload)
+                      }}
+                    >
+                      {preset.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </MenuItem>
+                  ))}
+                  <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                  {/* Rows & Columns */}
+                  <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                    Rows & Columns
+                  </div>
                   <MenuItem
                     onClick={() => {
                       closeAllMenus()
-                      run('table_row_add', () => editor.chain().focus().addRowAfter().run(), tableShapePayload)
+                      run('table_row_add_before', () => editor?.chain().focus().addRowBefore().run(), tableShapePayload)
                     }}
                   >
-                    Add Row Below
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Plus style={{ width: '14px', height: '14px' }} />
+                      Add Row Above
+                    </span>
                   </MenuItem>
                   <MenuItem
                     onClick={() => {
                       closeAllMenus()
-                      run('table_col_add', () => editor.chain().focus().addColumnAfter().run(), tableShapePayload)
+                      run('table_row_add_after', () => editor?.chain().focus().addRowAfter().run(), tableShapePayload)
                     }}
                   >
-                    Add Column Right
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Plus style={{ width: '14px', height: '14px' }} />
+                      Add Row Below
+                    </span>
                   </MenuItem>
                   <MenuItem
                     onClick={() => {
                       closeAllMenus()
-                      run('table_header_toggle', () => editor.chain().focus().toggleHeaderRow().run(), tableContextPayload)
+                      run('table_col_add_before', () => editor?.chain().focus().addColumnBefore().run(), tableShapePayload)
                     }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Plus style={{ width: '14px', height: '14px' }} />
+                      Add Column Left
+                    </span>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_col_add_after', () => editor?.chain().focus().addColumnAfter().run(), tableShapePayload)
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Plus style={{ width: '14px', height: '14px' }} />
+                      Add Column Right
+                    </span>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_row_delete', () => editor?.chain().focus().deleteRow().run(), tableShapePayload)
+                    }}
+                  >
+                    Delete Row
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_col_delete', () => editor?.chain().focus().deleteColumn().run(), tableShapePayload)
+                    }}
+                  >
+                    Delete Column
+                  </MenuItem>
+                  <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                  {/* Cell Operations */}
+                  <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                    Cell Operations
+                  </div>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_merge_cells', () => editor?.chain().focus().mergeCells().run(), tableShapePayload)
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Merge style={{ width: '14px', height: '14px' }} />
+                      Merge Cells
+                    </span>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_split_cell', () => editor?.chain().focus().splitCell().run(), tableShapePayload)
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <SplitSquare style={{ width: '14px', height: '14px' }} />
+                      Split Cell
+                    </span>
+                  </MenuItem>
+                  <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                  {/* Headers */}
+                  <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                    Headers
+                  </div>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_header_row_toggle', () => editor?.chain().focus().toggleHeaderRow().run(), tableContextPayload)
+                    }}
+                    active={tableContext?.tableHasHeaderRow}
                   >
                     Toggle Header Row
                   </MenuItem>
                   <MenuItem
                     onClick={() => {
                       closeAllMenus()
-                      const next: TableAlignment =
-                        tableContext?.tableAlignment === 'left' ? 'center' : 'left'
-                      run('table_alignment_change', () => editor.chain().focus().setTableAlignment(next).run(), tableContextPayload)
+                      run('table_header_col_toggle', () => editor?.chain().focus().toggleHeaderColumn().run(), tableContextPayload)
+                    }}
+                    active={tableContext?.tableHasHeaderColumn}
+                  >
+                    Toggle Header Column
+                  </MenuItem>
+                  <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                  {/* Auto-fit */}
+                  <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                    Auto-fit
+                  </div>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_autofit_page', () => editor?.chain().focus().autoFitToPage().run(), tableShapePayload)
                     }}
                   >
-                    {tableContext?.tableAlignment === 'left' ? 'Align Left' : 'Align Center'}
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Maximize2 style={{ width: '14px', height: '14px' }} />
+                      Fit to Page Width
+                    </span>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_autofit_contents', () => editor?.chain().focus().autoFitToContents().run(), tableShapePayload)
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Minimize2 style={{ width: '14px', height: '14px' }} />
+                      Auto-fit to Contents
+                    </span>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_equalize_columns', () => editor?.chain().focus().equalizeTableColumns().run(), tableShapePayload)
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Columns style={{ width: '14px', height: '14px' }} />
+                      Equalize Columns
+                    </span>
+                  </MenuItem>
+                  <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                  {/* Cell Styling */}
+                  <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                    Cell Styling
+                  </div>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      // Open color picker for cell background
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <PaletteIcon style={{ width: '14px', height: '14px' }} />
+                      Cell Background Color
+                    </span>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Type style={{ width: '14px', height: '14px' }} />
+                      Cell Text Alignment
+                    </span>
+                  </MenuItem>
+                  <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                  {/* Table Properties */}
+                  <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                    Table Properties
+                  </div>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      const next: TableAlignment =
+                        tableContext?.tableAlignment === 'left' ? 'center' : 'left'
+                      run('table_alignment_change', () => editor?.chain().focus().setTableAlignment(next).run(), tableContextPayload)
+                    }}
+                  >
+                    {tableContext?.tableAlignment === 'left' ? 'Align Center' : 'Align Left'}
                   </MenuItem>
                   {tableContext?.tableAlignment === 'left' && (
                     <MenuItem
                       onClick={() => {
                         closeAllMenus()
-                        run('table_alignment_change', () => editor.chain().focus().setTableAlignment('right').run(), tableContextPayload)
+                        run('table_alignment_change', () => editor?.chain().focus().setTableAlignment('right').run(), tableContextPayload)
                       }}
                     >
                       Align Right
                     </MenuItem>
                   )}
                   <MenuItem
-                    onClick={() => { closeAllMenus(); editor.chain().focus().deleteTable().run() }}
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_auto_number', () => editor?.chain().focus().nextTableNumber().run(), tableContextPayload)
+                    }}
+                  >
+                    Auto-number Table
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeAllMenus()
+                      run('table_caption_add', () => editor?.chain().focus().setTableCaption('Table caption').run(), tableContextPayload)
+                    }}
+                  >
+                    Add Caption
+                  </MenuItem>
+                  <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                  <MenuItem
+                    onClick={() => { closeAllMenus(); editor?.chain().focus().deleteTable().run() }}
                     style={{ color: 'var(--destructive)' }}
                   >
                     Delete Table
@@ -1929,16 +2615,20 @@ export function TiptapToolbar({
 
         <ToolButton
           icon={ImageIcon}
-          title="Insert Image URL"
-          onClick={() => {
-            const url = window.prompt('Enter Image URL:')
-            if (url) {
-              insertImageFromUrl(url)
-            }
+          title="Insert Image"
+          onClick={() => imageInputRef.current?.click()}
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            void handleImageFileSelected(e)
           }}
         />
 
-        {/* Image alignment only makes sense with an image selected. */}
+{/* Image alignment only makes sense with an image selected. */}
         {imageContext && (
           <div style={{ position: 'relative' }}>
             <ToolButton
@@ -1947,14 +2637,17 @@ export function TiptapToolbar({
               onClick={() => setOpenImageMenu((v) => !v)}
             />
             {openImageMenu && (
-              <Popover width={190}>
+              <Popover width={220}>
+                <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  Alignment
+                </div>
                 {(['left', 'center', 'right', 'float'] as ImageAlignment[]).map((value) => (
                   <MenuItem
                     key={value}
                     onClick={() => {
                       closeAllMenus()
-    setOpenImageMenu(false)
-    setOpenCalloutMenu(false)
+                      setOpenImageMenu(false)
+                      setOpenCalloutMenu(false)
                       run('image_alignment', () => editor?.chain().focus().setImageAlignment(value).run(), imageContextPayload)
                     }}
                     style={
@@ -1966,6 +2659,38 @@ export function TiptapToolbar({
                     <span style={{ textTransform: 'capitalize' }}>{value}</span>
                   </MenuItem>
                 ))}
+                <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  Text Wrapping
+                </div>
+                {(['inline', 'square', 'tight', 'top-bottom', 'behind', 'in-front'] as ImageWrapMode[]).map((value) => (
+                  <MenuItem
+                    key={value}
+                    onClick={() => {
+                      closeAllMenus()
+                      run('image_wrap_mode', () => editor?.chain().focus().setImageWrapMode(value).run(), imageContextPayload)
+                    }}
+                    style={
+                      imageContext.imageWrapMode === value
+                        ? { fontWeight: 600, color: 'var(--primary)' }
+                        : undefined
+                    }
+                  >
+                    <span style={{ textTransform: 'capitalize' }}>{value.replace('-', ' ')}</span>
+                  </MenuItem>
+                ))}
+                <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
+                <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  Figure Properties
+                </div>
+                <MenuItem
+                  onClick={() => {
+                    closeAllMenus()
+                    run('figure_auto_number', () => editor?.chain().focus().nextFigureNumber().run(), imageContextPayload)
+                  }}
+                >
+                  Auto-number Figure
+                </MenuItem>
                 {!imageContext.imageHasCaption && (
                   <MenuItem
                     onClick={() => {
@@ -1977,6 +2702,19 @@ export function TiptapToolbar({
                     Add Caption
                   </MenuItem>
                 )}
+                <MenuItem
+                  onClick={() => {
+                    closeAllMenus()
+                    const width = prompt('Enter width (px):')
+                    const height = prompt('Enter height (px):')
+                    if (width && height) {
+                      const clamped = Math.min(parseInt(width), printableWidthPx(pageSize, margins))
+                      run('image_dimensions', () => editor?.chain().focus().setImageDimensions(clamped, parseInt(height)).run(), imageContextPayload)
+                    }
+                  }}
+                >
+                  Set Dimensions
+                </MenuItem>
               </Popover>
             )}
           </div>
@@ -2021,7 +2759,7 @@ export function TiptapToolbar({
 
       {/* Styles tab — document styles and academic presets in one nav strip */}
       {activeTab === 'styles' && (
-        <div style={{ flexBasis: '100%' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
           <EditorStylesPanel
             editor={editor}
             onApplyStyle={onApplyStyle}
@@ -2041,6 +2779,11 @@ export function TiptapToolbar({
             e.preventDefault()
             const next = !openPageSetup
             closeAllMenus()
+            if (next && editor) {
+              const style = editor.getAttributes('paragraph').style as string | null
+              setSpaceBefore(parseMarginPt(style, 'margin-top'))
+              setSpaceAfter(parseMarginPt(style, 'margin-bottom'))
+            }
             setOpenPageSetup(next)
           }}
           style={{
@@ -2061,12 +2804,12 @@ export function TiptapToolbar({
           }}
         >
           <SlidersHorizontal style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-          <span>Page Setup</span>
+          <span>Page setup</span>
           <ChevronDown style={{ width: '12px', height: '12px', opacity: 0.5 }} />
         </button>
 
         {openPageSetup && (
-          <Popover width={300} rightAligned>
+          <Popover width={300} rightAligned maxHeight={440}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
                 <label
@@ -2219,6 +2962,143 @@ export function TiptapToolbar({
                 </div>
               </div>
 
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: 'var(--muted-foreground)',
+                    marginBottom: '6px',
+                  }}
+                >
+                  Paragraph Spacing (PT)
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                  {[
+                    { label: 'Before', value: spaceBefore, setValue: setSpaceBefore },
+                    { label: 'After', value: spaceAfter, setValue: setSpaceAfter },
+                  ].map((row) => (
+                    <div
+                      key={row.label}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}
+                    >
+                      <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>{row.label}:</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={72}
+                        step={2}
+                        value={row.value}
+                        onChange={(e) => {
+                          const parsed = Math.min(72, Math.max(0, Number(e.target.value) || 0))
+                          const before = row.label === 'Before' ? parsed : spaceBefore
+                          const after = row.label === 'After' ? parsed : spaceAfter
+                          row.setValue(parsed)
+                          // No `.focus()` here: the command applies to the stored
+                          // selection, and focusing would blur the number input.
+                          editor?.chain().setParagraphSpacing(before, after).run()
+                        }}
+                        style={{
+                          width: '48px',
+                          height: '24px',
+                          textAlign: 'center',
+                          borderRadius: '6px',
+                          border: 'none',
+                          ...SHADOW_BORDER,
+                          backgroundColor: 'var(--background)',
+                          color: 'var(--foreground)',
+                          fontSize: '12px',
+                          outline: 'none',
+                          fontFamily: 'inherit',
+                        }}
+                        onFocus={(e) => Object.assign(e.currentTarget.style, FOCUS_RING)}
+                        onBlur={(e) => (e.currentTarget.style.outline = 'none')}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: 'var(--muted-foreground)',
+                    marginBottom: '6px',
+                  }}
+                >
+                  View
+                </label>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: '10px',
+                  }}
+                >
+                  <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>Gridlines</span>
+                  <button
+                    type="button"
+                    onClick={() => onShowGridlinesChange?.(!showGridlines)}
+                    style={{
+                      height: '24px',
+                      padding: '0 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      ...SHADOW_BORDER,
+                      backgroundColor: showGridlines ? 'var(--primary)' : 'transparent',
+                      color: showGridlines ? 'var(--primary-foreground)' : 'var(--foreground)',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {showGridlines ? 'On' : 'Off'}
+                  </button>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginTop: '10px',
+                  }}
+                >
+                  <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>Zoom</span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {[0.5, 0.75, 1].map((level) => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => onZoomLevelChange?.(level)}
+                        style={{
+                          height: '24px',
+                          padding: '0 10px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          ...SHADOW_BORDER,
+                          backgroundColor: zoomLevel === level ? 'var(--primary)' : 'transparent',
+                          color: zoomLevel === level ? 'var(--primary-foreground)' : 'var(--foreground)',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        {`${Math.round(level * 100)}%`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {/* Header section */}
                 <div>
@@ -2247,6 +3127,7 @@ export function TiptapToolbar({
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <input
                       type="text"
+                      ref={headerInputRef}
                       value={headerContent}
                       onChange={(e) => onHeaderChange(e.target.value)}
                       disabled={!showHeader}
@@ -2277,6 +3158,11 @@ export function TiptapToolbar({
                       disabled={!showHeader}
                     />
                   </div>
+                  <PlacementSelect
+                    value={headerPlacement}
+                    onChange={onHeaderPlacementChange}
+                    disabled={!showHeader}
+                  />
                 </div>
                 {/* Footer section */}
                 <div>
@@ -2305,6 +3191,7 @@ export function TiptapToolbar({
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <input
                       type="text"
+                      ref={footerInputRef}
                       value={footerContent}
                       onChange={(e) => onFooterChange(e.target.value)}
                       disabled={!showFooter}
@@ -2335,7 +3222,97 @@ export function TiptapToolbar({
                       disabled={!showFooter}
                     />
                   </div>
+                  <PlacementSelect
+                    value={footerPlacement}
+                    onChange={onFooterPlacementChange}
+                    disabled={!showFooter}
+                  />
                 </div>
+
+                {/* Distance from the page edge + title-page differentiation */}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <div
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}
+                  >
+                    <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>Header at:</span>
+                    <input
+                      type="number"
+                      min={0.25}
+                      max={2}
+                      step={0.25}
+                      value={headerMarginIn}
+                      title="Distance from the page's top edge to the header, in inches"
+                      onChange={(e) =>
+                        onHeaderMarginChange(Math.min(2, Math.max(0.25, parseFloat(e.target.value) || 0.5)))
+                      }
+                      style={{
+                        width: '48px',
+                        height: '24px',
+                        textAlign: 'center',
+                        borderRadius: '6px',
+                        border: 'none',
+                        ...SHADOW_BORDER,
+                        backgroundColor: 'var(--background)',
+                        color: 'var(--foreground)',
+                        fontSize: '12px',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                      onFocus={(e) => Object.assign(e.currentTarget.style, FOCUS_RING)}
+                      onBlur={(e) => (e.currentTarget.style.outline = 'none')}
+                    />
+                  </div>
+                  <div
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}
+                  >
+                    <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>Footer at:</span>
+                    <input
+                      type="number"
+                      min={0.25}
+                      max={2}
+                      step={0.25}
+                      value={footerMarginIn}
+                      title="Distance from the page's bottom edge to the footer, in inches"
+                      onChange={(e) =>
+                        onFooterMarginChange(Math.min(2, Math.max(0.25, parseFloat(e.target.value) || 0.5)))
+                      }
+                      style={{
+                        width: '48px',
+                        height: '24px',
+                        textAlign: 'center',
+                        borderRadius: '6px',
+                        border: 'none',
+                        ...SHADOW_BORDER,
+                        backgroundColor: 'var(--background)',
+                        color: 'var(--foreground)',
+                        fontSize: '12px',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                      }}
+                      onFocus={(e) => Object.assign(e.currentTarget.style, FOCUS_RING)}
+                      onBlur={(e) => (e.currentTarget.style.outline = 'none')}
+                    />
+                  </div>
+                </div>
+
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12px',
+                    color: 'var(--muted-foreground)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={differentFirstPage}
+                    onChange={(e) => onDifferentFirstPageChange(e.target.checked)}
+                    style={{ width: '12px', height: '12px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                  />
+                  Different first page (no header/footer on the title page)
+                </label>
               </div>
             </div>
           </Popover>
@@ -2519,6 +3496,52 @@ function NumberFormatSelect({ value, onChange, disabled }: NumberFormatSelectPro
   )
 }
 
+// ─── Header/footer placement selector ───────────────────────────────────────
+
+interface PlacementSelectProps {
+  value: HeaderFooterPlacement
+  onChange: (value: HeaderFooterPlacement) => void
+  disabled?: boolean
+}
+
+/** Segmented control for header/footer placement: Left / Center / Right / Split. */
+function PlacementSelect({ value, onChange, disabled = false }: PlacementSelectProps): JSX.Element {
+  const options: HeaderFooterPlacement[] = ['left', 'center', 'right', 'split']
+  return (
+    <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onChange(option)}
+          disabled={disabled}
+          title={
+            option === 'split'
+              ? 'Text left, page number right'
+              : `Place all content ${option === 'center' ? 'in the center' : `to the ${option}`}`
+          }
+          style={{
+            flex: 1,
+            height: '24px',
+            borderRadius: '6px',
+            border: 'none',
+            ...SHADOW_BORDER,
+            backgroundColor: value === option ? 'var(--primary)' : 'transparent',
+            color: value === option ? 'var(--primary-foreground)' : 'var(--foreground)',
+            fontSize: '11px',
+            textTransform: 'capitalize',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            fontFamily: 'inherit',
+            opacity: disabled ? 0.45 : 1,
+          }}
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Bubble + Floating menus ────────────────────────────────────────────────
 
 /** Selection toolbar shown above highlighted text (TipTap BubbleMenu). */
@@ -2606,6 +3629,22 @@ function TiptapBubbleMenu({ editor }: { editor: Editor | null }): JSX.Element | 
   )
 }
 
+/** Floating image options toolbar anchored below the selected image. */
+function TiptapImageToolbar({ editor }: { editor: Editor | null }): JSX.Element | null {
+  useEditorState({
+    editor,
+    selector: ({ transactionNumber }) => transactionNumber,
+  })
+
+  if (!editor) return null
+
+  return (
+    <BubbleMenu editor={editor} options={IMAGE_MENU_OPTIONS} shouldShow={imageMenuShouldShow}>
+      <ImageOptionsToolbar editor={editor} />
+    </BubbleMenu>
+  )
+}
+
 /** Quick-insert toolbar shown at the start of an empty paragraph. */
 function TiptapFloatingMenu({
   editor,
@@ -2620,7 +3659,6 @@ function TiptapFloatingMenu({
   })
 
   if (!editor) return null
-
   const MENU_STYLE: CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -2726,8 +3764,12 @@ const PROSE_STYLES = `
   .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6 {
     font-size: 12.5pt; font-weight: 700; margin: 0.65em 0 0.25em;
   }
-  .ProseMirror p { margin-bottom: 0.25em; line-height: 1.5 !important; }
-  .ProseMirror p:empty, .ProseMirror p > br:only-child { min-height: 0.6em; display: block; width: 100%; margin-bottom: 0 !important; }
+  /* Editor default spacing for typed text. Deliberately NOT !important: an
+     imported paragraph carries its own resolved line-height/margins inline
+     (Word style chain + docDefaults) and inline styles must win, or every
+     import is flattened to this 1.5 spacing. */
+  .ProseMirror p { margin-bottom: 0.25em; line-height: 1.5; }
+  .ProseMirror p:empty, .ProseMirror p > br:only-child { min-height: 0.6em; display: block; width: 100%; margin-bottom: 0; }
   /* Document title: a heading carrying the title role rather than acting as a
      level 1 section. Size and weight are inherited from the h1 rule; only the
      centring is added here. An active preset supplies its own title rule. */
@@ -2820,6 +3862,22 @@ const PROSE_STYLES = `
     margin: 0 !important;
     line-height: 1.35 !important;
   }
+  /* Anchor the prosemirror-tables resize handle to the cell it resizes. */
+  .ProseMirror td, .ProseMirror th { position: relative; }
+  .ProseMirror .column-resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: -2px;
+    width: 4px;
+    background-color: var(--primary);
+    opacity: 0.8;
+    pointer-events: none;
+    z-index: 12;
+  }
+  /* Horizontal scroll wrapper prosemirror-tables injects around wide tables. */
+  .ProseMirror .tableWrapper { overflow-x: auto; }
+  .ProseMirror.resize-cursor { cursor: col-resize; }
   .ProseMirror th[style*="background-color:#000"] p,
   .ProseMirror th[style*="background-color: #000"] p,
   .ProseMirror th[style*="background-color:#1"] p,
@@ -2860,39 +3918,22 @@ const PROSE_STYLES = `
   /* Suppress the ProseMirror selection outline on images — the library handles its own */
   .ProseMirror [data-resize-image-ui] { outline: none !important; }
   .ProseMirror-selectednode:has([data-resize-image-ui]) { outline: none !important; }
-  .ProseMirror [data-resize-image-ui="position-controller"] {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 8px;
-    background: var(--popover, #ffffff);
-    border: 1px solid var(--border, var(--border-strong));
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    position: absolute;
-    top: -44px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 20;
-    animation: fadeIn 150ms ease-out;
-    cursor: default;
-  }
-  .ProseMirror [data-resize-image-ui="position-controller"] img,
-  .ProseMirror [data-resize-image-ui="position-controller"] svg {
-    width: 20px;
-    height: 20px;
-    padding: 3px;
-    border-radius: 4px;
-    cursor: pointer;
-    opacity: 0.55;
-    transition: opacity 120ms, background 120ms;
-    background: transparent;
-    border: none;
-  }
-  .ProseMirror [data-resize-image-ui="position-controller"] img:hover,
-  .ProseMirror [data-resize-image-ui="position-controller"] svg:hover {
-    opacity: 1;
-    background: var(--secondary, var(--surface-sunken));
+  /* The library's three-icon margin controller is superseded by the floating
+     Image Options toolbar — hide it so the two do not stack. */
+  .ProseMirror [data-resize-image-ui="position-controller"] { display: none !important; }
+  /* Text-wrap modes the library's style sanitizer cannot express (it strips
+     clear / position / z-index / opacity from containerStyle): the mode is
+     tagged on the img node (the node view writes the attribute lowercased)
+     and these rules style the image wrapper. */
+  .ProseMirror div:has(> img[wrapmode='break']),
+  .ProseMirror div:has(> img[data-wrap-mode='break']) { clear: both; }
+  .ProseMirror div:has(> img[wrapmode='behind-text']),
+  .ProseMirror div:has(> img[data-wrap-mode='behind-text']) { opacity: 0.82; }
+  .ProseMirror div:has(> img[wrapmode='in-front']),
+  .ProseMirror div:has(> img[data-wrap-mode='in-front']) {
+    position: relative;
+    z-index: 30;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
   }
   .ProseMirror [data-resize-image-ui="resize-handle"] {
     width: 10px;
@@ -2935,10 +3976,6 @@ const PROSE_STYLES = `
     text-underline-offset: 3px;
     text-decoration-color: var(--grammar);
   }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-2px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
 `
 
 // ─── Canvas component ───────────────────────────────────────────────────────
@@ -2957,6 +3994,7 @@ export function TiptapCanvas({ editor, onFormatApplied }: TiptapCanvasProps): JS
     <>
       <style>{PROSE_STYLES}</style>
       <TiptapBubbleMenu editor={editor} />
+      <TiptapImageToolbar editor={editor} />
       <TiptapFloatingMenu editor={editor} onFormatApplied={onFormatApplied} />
       {editor && <EditorContent editor={editor} />}
     </>

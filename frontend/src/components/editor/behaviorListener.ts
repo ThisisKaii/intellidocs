@@ -62,10 +62,32 @@ export interface TableShape {
   tableCols: number
 }
 
+/** Academic table style presets. */
+export type AcademicTableStyle =
+  | 'apa-three-line'
+  | 'ieee-grid'
+  | 'shaded-header'
+  | 'borderless'
+  | 'minimal'
+
+/** Text-wrapping modes for academic images. */
+export type ImageWrapMode =
+  | 'inline'
+  | 'square'
+  | 'tight'
+  | 'behind'
+  | 'in-front'
+  | 'top-bottom'
+  | 'none'
+
 /** Table context captured when a table action fires. */
 export interface TableContext extends TableShape {
   tableHasHeader: boolean
   tableAlignment: TableAlignment
+  tableStylePreset?: AcademicTableStyle
+  tableHasHeaderRow?: boolean
+  tableHasHeaderColumn?: boolean
+  tableNumber?: string | number | null
 }
 
 /** Image context captured when an image action fires. */
@@ -74,6 +96,8 @@ export interface ImageContext {
   imageHeight?: number
   imageAlignment: ImageAlignment
   imageHasCaption: boolean
+  imageWrapMode?: ImageWrapMode
+  figureNumber?: string | number | null
 }
 
 /**
@@ -122,6 +146,10 @@ export function snapshotTableContext(editor: Editor): TableContext | undefined {
     tableCols: firstRow ? firstRow.childCount : 0,
     tableHasHeader: firstRow?.type.name === 'tableHeader',
     tableAlignment: alignment,
+    tableStylePreset: node.attrs.stylePreset as AcademicTableStyle | undefined,
+    tableHasHeaderRow: node.attrs.hasHeaderRow,
+    tableHasHeaderColumn: node.attrs.hasHeaderColumn,
+    tableNumber: node.attrs.tableNumber,
   }
 }
 
@@ -189,5 +217,7 @@ export function snapshotImageContext(editor: Editor): ImageContext | undefined {
     imageHeight: height,
     imageAlignment: alignment,
     imageHasCaption: Boolean(node.attrs.caption),
+    imageWrapMode: node.attrs.wrapMode as ImageWrapMode | undefined,
+    figureNumber: node.attrs.figureNumber,
   }
 }

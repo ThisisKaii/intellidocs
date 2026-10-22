@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useCallback, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { api, type BehaviorSummaryResponse, type DocumentRecord, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
 import {
   TiptapToolbar,
@@ -7,6 +8,8 @@ import {
   type PageSizeKey,
   type PageOrientation,
   type MarginValues,
+  type HeaderFooterConfig,
+  type HeaderFooterPlacement,
 } from '@/components/editor/TiptapEditor'
 import { PagedEditor } from '@/components/editor/PagedEditor'
 import { LogoLockup } from '@/components/Logo'
@@ -28,11 +31,20 @@ import { applyStyleCommand } from '@/components/editor/styleCommands'
 import FormattingPanel from '@/components/editor/FormattingPanel'
 import McpDebugPanel from '@/components/editor/McpDebugPanel'
 import WordProgress from '@/components/editor/WordProgress'
+import DocumentZoomWidget, { clampZoom, ZOOM_STEP } from '@/components/editor/DocumentZoomWidget'
+import { PAGE_SIZES } from '@/components/editor/HeaderFooterPlugin'
 import { useAuth } from '@/hooks/useAuth'
 import ShareModal from '@/components/ShareModal'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
-import { ArrowLeft, ShieldOff, Shield, PanelRight, PanelRightClose, Share2 } from 'lucide-react'
-import { useAutoFormatScanner, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
+import { ArrowLeft, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose } from 'lucide-react'
+import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
+import DocumentTypePrompt from '@/components/editor/DocumentTypePrompt'
+import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
+import type { TOCEntry } from '@/components/editor/TableOfContents'
+import { OutlineNavigator } from '@/components/editor/OutlineNavigator'
+import { CitationAssistant } from '@/components/editor/CitationAssistant'
+import { OfflineIndicator } from '@/components/editor/OfflineIndicator'
+import { useOfflineSync } from '@/hooks/useOfflineBuffer'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { confidenceThreshold, highlightColorCss } from '@/lib/editorPreferences'
 import { readFormatSnapshot } from '@/lib/formatSnapshot'
@@ -47,9 +59,10 @@ import { type RealtimeChannel } from '@supabase/supabase-js'
 const AUTOSAVE_DELAY = 3000
 const MAX_SAVE_RETRIES = 3
 
+// Darkened 700-level hues so the white 10px initials meet WCAG AA (4.5:1).
 const AVATAR_COLORS = [
-  '#ff5b4f', '#3b82f6', '#10b981', '#f59e0b',
-  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+  '#b91c1c', '#1d4ed8', '#047857', '#b45309',
+  '#6d28d9', '#be185d', '#0e7490', '#4d7c0f',
 ]
 
 /** Deterministic avatar color for a collaborator. */
@@ -91,6 +104,18 @@ const AUTO_FORMAT_DELAY = 1200
 const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.22
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
 
+/** Char delta in one editor update treated as a bulk insertion (paste). */
+const COMPOSITION_PASTE_MIN_CHARS = 50
+
+/** Char delta in one editor update treated as a bulk deletion. */
+const COMPOSITION_DELETE_MIN_CHARS = 20
+
+/** How long typed characters accumulate before one 'type' event is logged. */
+const COMPOSITION_TYPING_FLUSH_MS = 15_000
+
+/** Ignore composition deltas right after a document load (hydration window). */
+const COMPOSITION_LOAD_SUPPRESS_MS = 5_000
+
 export default function Document(): JSX.Element {
   const { id } = useParams()
   const { user } = useAuth()
@@ -111,6 +136,14 @@ export default function Document(): JSX.Element {
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef<boolean>(false)
+  /**
+   * True only once the server copy of this document has been applied. The
+   * "latest" refs below start as 'Untitled Document' / '' and the empty editor
+   * emits an update on mount, so a save before the load finishes would write
+   * those defaults over the real document (it did, whenever the fetch took
+   * longer than AUTOSAVE_DELAY). Nothing is saved while this is false.
+   */
+  const documentLoadedRef = useRef<boolean>(false)
   const latestTitleRef = useRef<string>('Untitled Document')
   const latestContentRef = useRef<string>('')
   const latestFormatHistoryRef = useRef<string[]>([])
@@ -122,6 +155,10 @@ export default function Document(): JSX.Element {
   // The resulting content change must not re-trigger auto-formatting (especially
   // the auto-apply tier) — fixing a typo should never reformat the paragraph.
   const suppressAutoFormatRef = useRef<boolean>(false)
+  // Composition telemetry for timeline forensics: plain-text length bookkeeping
+  // (never text content), pending typed characters, and a load-suppress window.
+  const compositionRef = useRef({ lastTextLength: 0, pendingTypedChars: 0, suppressUntil: 0 })
+  const compositionFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
@@ -133,6 +170,11 @@ export default function Document(): JSX.Element {
   const [showFooter, setShowFooter] = useState<boolean>(false)
   const [headerNumberFormat, setHeaderNumberFormat] = useState<PageNumberFormat>('none')
   const [footerNumberFormat, setFooterNumberFormat] = useState<PageNumberFormat>('none')
+  const [headerPlacement, setHeaderPlacement] = useState<HeaderFooterPlacement>('split')
+  const [footerPlacement, setFooterPlacement] = useState<HeaderFooterPlacement>('split')
+  const [headerMarginIn, setHeaderMarginIn] = useState<number>(0.5)
+  const [footerMarginIn, setFooterMarginIn] = useState<number>(0.5)
+  const [differentFirstPage, setDifferentFirstPage] = useState<boolean>(false)
   const latestHeaderSettingsRef = useRef({
     showHeader: false,
     showFooter: false,
@@ -167,15 +209,86 @@ export default function Document(): JSX.Element {
   const [activeGrammarRect, setActiveGrammarRect] = useState<DOMRect | null>(null)
   const [suggestionRange, setSuggestionRange] = useState<{ from: number; to: number } | null>(null)
   const [suggestionAnchor, setSuggestionAnchor] = useState<{ x: number; y: number } | null>(null)
+  /** Spotlight rect (canvas-relative px) shown briefly after an outline jump. */
+  const [flashCoords, setFlashCoords] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [flashKey, setFlashKey] = useState<number>(0)
+  const flashTimerRef = useRef<number | null>(null)
   const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number } | null>(null)
   const editorCanvasRef = useRef<HTMLDivElement>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
   const [spreadPreview, setSpreadPreview] = useState<boolean>(false)
-
+  /** Visual canvas zoom (1 = 100%). Layout and pagination are unaffected. */
+  const [zoomLevel, setZoomLevel] = useState<number>(1)
+  /** Latest zoom value for listeners bound with empty dependency lists. */
+  const zoomLevelRef = useRef<number>(1)
+  zoomLevelRef.current = zoomLevel
+  /** Master switch for in-canvas suggestion overlays and chips. */
+  const [showFormatOverlays, setShowFormatOverlays] = useState<boolean>(true)
+  /** Non-printing alignment gridlines over each page's text area. */
+  const [showGridlines, setShowGridlines] = useState<boolean>(false)
+const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
+  const [references, setReferences] = useState<Array<{
+    id: string
+    type: 'journal' | 'book' | 'conference' | 'website' | 'thesis' | 'report' | 'other'
+    authors: string[]
+    title: string
+    year: number
+    venue?: string
+    volume?: string
+    issue?: string
+    pages?: string
+    doi?: string
+    url?: string
+    publisher?: string
+    edition?: string
+    isbn?: string
+    institution?: string
+    reportNumber?: string
+    customFields?: Record<string, string>
+  }>>([])
+ 
+  const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(true)
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState<boolean>(false)
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
+ 
   const prefs = useEditorPreferences()
+ 
+  /** Memoized header/footer config to prevent re-render loops in PagedEditor */
+  const headerFooterConfig = useMemo<HeaderFooterConfig>(() => ({
+    header: {
+      default: { id: 'header-default', label: 'Header', content: headerContent, numberFormat: headerNumberFormat, startAt: 1, enabled: showHeader },
+      firstPage: { id: 'header-first', label: 'First Page Header', content: '', numberFormat: 'none', startAt: 1, enabled: false },
+      evenPages: { id: 'header-even', label: 'Even Page Header', content: '', numberFormat: 'none', startAt: 1, enabled: false },
+      oddPages: { id: 'header-odd', label: 'Odd Page Header', content: '', numberFormat: 'none', startAt: 1, enabled: false },
+      placement: headerPlacement,
+    },
+    footer: {
+      default: { id: 'footer-default', label: 'Footer', content: footerContent, numberFormat: footerNumberFormat, startAt: 1, enabled: showFooter },
+      firstPage: { id: 'footer-first', label: 'First Page Footer', content: '', numberFormat: 'none', startAt: 1, enabled: false },
+      evenPages: { id: 'footer-even', label: 'Even Page Footer', content: '', numberFormat: 'none', startAt: 1, enabled: false },
+      oddPages: { id: 'footer-odd', label: 'Odd Page Footer', content: '', numberFormat: 'none', startAt: 1, enabled: false },
+      placement: footerPlacement,
+    },
+    differentFirstPage,
+    differentOddEven: false,
+    headerMargin: headerMarginIn,
+    footerMargin: footerMarginIn,
+    sections: [
+      { name: 'Prelims', startPage: 0, numberFormat: 'roman', startAt: 1 },
+      { name: 'Main', startPage: 1, numberFormat: 'number', startAt: 1 },
+    ],
+  }), [headerContent, footerContent, headerNumberFormat, footerNumberFormat, showHeader, showFooter, headerPlacement, footerPlacement, differentFirstPage, headerMarginIn, footerMarginIn])
 
   const chatContent = buildAiDocumentContext(content)
+
+  // ── Progressive hydration state (large documents) ────────────────────
+  /** True while PagedEditor is still streaming page chunks into the doc. */
+  const [isHydrating, setIsHydrating] = useState(false)
+
+  // ── Canvas header/footer direct manipulation (Bug 3) ─────────────────
+  /** Set when a canvas double-click asks Page Setup to focus a field. */
+  const [pageSetupFocusRequest, setPageSetupFocusRequest] = useState<'header' | 'footer' | null>(null)
 
   // ── Agentic auto-format scanner ──────────────────────────────────────
   const {
@@ -185,21 +298,128 @@ export default function Document(): JSX.Element {
     rejectSuggestion: rejectScannerSuggestion,
   } = useAutoFormatScanner({
     editor,
-    enabled: !!editor && !readOnly,
+    enabled: !!editor && !readOnly && !isHydrating,
     minConfidence: confidenceThreshold(prefs),
+    presetKey: formattingPreset,
   })
+
+  // ── Document structure inference ─────────────────────────────────────
+  // An unformatted document with no preset bound gets one offer to adopt the
+  // standard format that matches its inferred archetype. Checked once per
+  // document per session.
+  const structureInferenceForRef = useRef<string | null>(null)
+  const [structurePrompt, setStructurePrompt] = useState<{ typeLabel: string; presetKey: string } | null>(null)
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !id || readOnly) return
+    if (formattingPreset) return
+    if (structureInferenceForRef.current === id) return
+
+    const text = editor.getText().slice(0, 3000).trim()
+    if (text.length < 150) return
+
+    // No headings check here: imported DOCX/PDF docs carry dirty <h2> tags
+    // that used to suppress this prompt permanently. The marker scan below is
+    // specific enough on its own, and bound presets still skip the offer.
+    structureInferenceForRef.current = id
+    api.formatting
+      .inferStructure(text)
+      .then((result) => {
+        if (result.type === 'unknown' || !result.presetKey) return
+        setStructurePrompt({ typeLabel: result.typeLabel, presetKey: result.presetKey })
+      })
+      .catch((error) => console.error('Structure inference failed', error))
+  }, [editor, id, formattingPreset, content, readOnly])
 
   /** Ctrl+\ keyboard shortcut toggles the docked side panel. */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
-      if ((event.ctrlKey || event.metaKey) && event.key === '\\') {
+      const mod = event.ctrlKey || event.metaKey
+      // Ctrl+Shift+\ toggles the left outline panel
+      if (mod && event.shiftKey && event.key === '\\') {
+        event.preventDefault()
+        setLeftPanelOpen((open) => !open)
+        return
+      }
+      // Ctrl+\ toggles the right docked side panel
+      if (mod && !event.shiftKey && event.key === '\\') {
         event.preventDefault()
         setRightPanelOpen((open) => !open)
+        return
+      }
+      // Word-style canvas zoom shortcuts (Ctrl+= / Ctrl+- / Ctrl+0).
+      // These drive the in-editor zoom only — never the browser zoom.
+      if (mod && (event.key === '=' || event.key === '+')) {
+        event.preventDefault()
+        applyZoom(zoomLevelRef.current + ZOOM_STEP)
+        return
+      }
+      if (mod && event.key === '-') {
+        event.preventDefault()
+        applyZoom(zoomLevelRef.current - ZOOM_STEP)
+        return
+      }
+      if (mod && event.key === '0') {
+        event.preventDefault()
+        applyZoom(1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  /** Ctrl+MouseWheel zooms only the document canvas, like Word. */
+  useEffect(() => {
+    const container = editorCanvasRef.current
+    if (!container) return
+    function onWheel(event: WheelEvent): void {
+      if (!event.ctrlKey) return
+      event.preventDefault()
+      const delta = event.deltaY > 0 ? -0.05 : 0.05
+      applyZoom(zoomLevelRef.current + delta)
+    }
+    container.addEventListener('wheel', onWheel, { passive: false })
+    return () => container.removeEventListener('wheel', onWheel)
+    // applyZoom reads live values through refs, so an empty dep list is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /**
+   * Change the canvas zoom while keeping the visible content centered.
+   * Scaling the viewport-center point by the zoom ratio stops the reader from
+   * being thrown to an unrelated part of the document.
+   */
+  function applyZoom(nextZoom: number): void {
+    const clamped = clampZoom(nextZoom)
+    const container = editorCanvasRef.current
+    const current = zoomLevelRef.current
+    if (!container || current <= 0 || clamped === current) {
+      setZoomLevel(clamped)
+      return
+    }
+    const contentCenterY = container.scrollTop + container.clientHeight / 2
+    const ratio = clamped / current
+    const newScrollTop = Math.max(0, contentCenterY * ratio - container.clientHeight / 2)
+    setZoomLevel(clamped)
+    requestAnimationFrame(() => {
+      const el = editorCanvasRef.current
+      if (el) el.scrollTop = newScrollTop
+    })
+  }
+
+  /** Fit Width: zoom so the page spans roughly 90% of the visible canvas. */
+  function handleFitWidth(): void {
+    const container = editorCanvasRef.current
+    if (!container) return
+    const preset = PAGE_SIZES[pageSize]
+    const pageWidthPx = orientation === 'landscape' ? preset.height : preset.width
+    // The canvas container has 1rem of horizontal padding on each side.
+    const available = container.clientWidth - 32
+    applyZoom((available * 0.9) / pageWidthPx)
+  }
+
+  // Initialize offline sync for this document
+  useOfflineSync(id)
 
   /** Keep the editor locked when this page is opened in read-only mode. */
   useEffect(() => {
@@ -233,35 +453,102 @@ export default function Document(): JSX.Element {
     if (editorContainer) {
       const containerRect = editorContainer.getBoundingClientRect()
       const scrollTop = editorContainer.scrollTop
-      const targetY = coords.top - containerRect.top + scrollTop - 200
+      const targetY = coords.top - containerRect.top + scrollTop - 80
       editorContainer.scrollTo({ top: targetY, behavior: 'smooth' })
     }
   }, [editor])
 
+  /** Smooth-scroll the canvas so the given editor position sits near the top. */
+  function scrollCanvasToPos(pos: number): void {
+    if (!editor || editor.isDestroyed) return
+    const container = editorCanvasRef.current
+    if (!container) return
+    requestAnimationFrame(() => {
+      if (!editor || editor.isDestroyed) return
+      const coords = editor.view.coordsAtPos(pos)
+      const containerRect = container.getBoundingClientRect()
+      const targetScrollTop =
+        container.scrollTop + (coords.top - containerRect.top) / zoomLevel - 80
+      container.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' })
+    })
+  }
+
+  /**
+   * Outline entry click: one-tap jump to the heading plus a spotlight flash.
+   * The flash is a React-rendered overlay keyed to the heading's rect captured
+   * *before* the selection transaction — ProseMirror re-renders the heading
+   * DOM on that transaction, which used to wipe a DOM-attached CSS class and
+   * caused the old two-click behaviour.
+   */
+  function handleOutlineHeadingClick(entry: TOCEntry): void {
+    if (!editor || editor.isDestroyed) return
+    const pos = findHeadingPosition(editor, entry.text, entry.level)
+    if (pos == null) return
+
+    const container = editorCanvasRef.current
+    const node = editor.view.nodeDOM(pos)
+    const target = node instanceof HTMLElement ? node : node?.parentElement ?? null
+    if (target && container) {
+      const rect = target.getBoundingClientRect()
+      const containerRect = container.getBoundingClientRect()
+      setFlashCoords({
+        top: (rect.top - containerRect.top) / zoomLevel + container.scrollTop,
+        left: (rect.left - containerRect.left) / zoomLevel,
+        width: rect.width / zoomLevel,
+        height: rect.height / zoomLevel,
+      })
+      setFlashKey(Date.now())
+      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current)
+      flashTimerRef.current = window.setTimeout(() => setFlashCoords(null), 1700)
+    }
+
+    editor.chain().focus().setTextSelection(pos + 1).run()
+    scrollCanvasToPos(pos + 1)
+  }
+
+  // Drop any pending flash timer when the page unmounts.
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current)
+    }
+  }, [])
+
   // Sync the scanner's active suggestion into the document overlay highlight.
   // The overlay is always drawn for the active suggestion; the action popup
   // only opens when the user clicks the highlighted text.
+  // A chip (group / inconsistency prompt) owns the range while it is open —
+  // a scanner rescan must not steal the range out from under its Accept All.
   useEffect(() => {
+    if (formatPrompt) return
     if (!scannerActive) {
       setSuggestionRange(null)
       return
     }
     setSuggestionRange({ from: scannerActive.from, to: scannerActive.to })
-  }, [scannerActive])
+  }, [scannerActive, formatPrompt])
 
   useEffect(() => {
     if (!id) return
     const docId = id
+    // Opening (or switching to) a document: nothing may be saved until the
+    // server copy below has been applied, and a response for a document we
+    // already navigated away from must never be applied to the new one.
+    documentLoadedRef.current = false
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    let cancelled = false
     async function loadDocument(): Promise<void> {
       try {
         // Paint from the IndexedDB cache first so the editor is instant on reload.
         const cached = await getCachedDocumentRead(docId)
+        if (cancelled) return
         if (cached && latestContentRef.current === '') {
           applyLoadedDocument(cached)
         }
 
         const doc = await api.documents.get(docId, shareToken)
+        if (cancelled) return
         applyLoadedDocument(doc)
+        documentLoadedRef.current = true
         // Share-link visitors who are not the owner get a read-only session —
         // unless the link grants edit permission and is not expired.
         const linkExpired = Boolean(
@@ -273,9 +560,15 @@ export default function Document(): JSX.Element {
         void cacheDocumentRead(doc)
       } catch (error) {
         console.error(error)
+        // The document never loaded, so saving is disabled; say so instead of
+        // letting edits to an empty editor look saved.
+        if (!cancelled) setSaveStatus('error')
       }
     }
     loadDocument()
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
   /* ── Supabase Realtime: live doc sync + collaborator presence ───────── */
@@ -382,7 +675,7 @@ export default function Document(): JSX.Element {
     latestTitleRef.current = nextTitle
     latestContentRef.current = nextContent
     setSaveStatus('saved')
-    updateWordCount(nextContent)
+    resetCompositionBaseline(updateWordCount(nextContent))
     setIsIsolated(doc.is_isolated ?? false)
     setFormattingPreset(doc.formatting_preset ?? null)
     setDocOwnerId(doc.user_id ?? null)
@@ -419,9 +712,11 @@ export default function Document(): JSX.Element {
     latestFormatHistoryRef.current = formatHistory
   }, [formatHistory])
 
-  function updateWordCount(html: string): void {
-    const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  /** Update the word count and return the plain-text length in characters. */
+  function updateWordCount(html: string): number {
+    const text = getPlainText(html)
     setWordCount(text ? text.split(' ').filter((w) => w.length > 0).length : 0)
+    return text.length
   }
 
   function getPlainText(html: string): string {
@@ -484,6 +779,7 @@ export default function Document(): JSX.Element {
       case 'heading1': case 'h1': return editor.isActive('heading', { level: 1 })
       case 'heading2': case 'h2': return editor.isActive('heading', { level: 2 })
       case 'heading3': case 'h3': return editor.isActive('heading', { level: 3 })
+      case 'title': return editor.isActive('heading', { level: 1 }) && editor.getAttributes('heading').docRole === 'title'
       case 'unordered_list': case 'ul': return editor.isActive('bulletList')
       case 'ordered_list': case 'ol': return editor.isActive('orderedList')
       case 'blockquote': return editor.isActive('blockquote')
@@ -579,19 +875,21 @@ export default function Document(): JSX.Element {
     }
   }
 
-  /** Reproduce a learned suggestion's full format (marks + size + alignment) on the selection. */
+  /** Reproduce a learned suggestion's full format (marks + size + alignment) on the selection or an explicit range. */
   function applyLearnedFormat(
-    s: Pick<Suggestion, 'format' | 'bold' | 'italic' | 'underline' | 'fontSize' | 'textAlign'>
+    s: Pick<Suggestion, 'format' | 'bold' | 'italic' | 'underline' | 'fontSize' | 'textAlign'>,
+    range?: { from: number; to: number }
   ): { from: number; to: number } | null {
     if (!editor || editor.isDestroyed || !editor.isEditable) return null
 
     // A caret (no selection) expands to the whole block so marks, size, and
     // alignment apply without requiring the user to highlight text first —
-    // matching the chatbot's block-level apply behavior.
+    // matching the chatbot's block-level apply behavior. An explicit range
+    // (group apply) is used verbatim.
     const { from: selFrom, to: selTo } = editor.state.selection
-    let from = selFrom
-    let to = selTo
-    if (from === to) {
+    let from = range?.from ?? selFrom
+    let to = range?.to ?? selTo
+    if (!range && from === to) {
       const $pos = editor.state.doc.resolve(from)
       from = $pos.before()
       to = $pos.after()
@@ -632,9 +930,31 @@ export default function Document(): JSX.Element {
       case 'heading1': case 'h1': editor.chain().focus().setHeading({ level: 1 }).run(); break
       case 'heading2': case 'h2': editor.chain().focus().setHeading({ level: 2 }).run(); break
       case 'heading3': case 'h3': editor.chain().focus().setHeading({ level: 3 }).run(); break
+      case 'title': applyStyleCommand(editor, 'title'); break
       case 'unordered_list': case 'ul': if (!editor.isActive('bulletList')) editor.chain().focus().toggleBulletList().run(); break
       case 'ordered_list': case 'ol': if (!editor.isActive('orderedList')) editor.chain().focus().toggleOrderedList().run(); break
       case 'blockquote':    editor.chain().focus().setBlockquote().run(); break
+      default: break
+    }
+  }
+
+  /** Apply one prompt format directly over an explicit document range. */
+  function applyFormatToRange(format: string, from: number, to: number): void {
+    if (!editor || !editor.isEditable) return
+    if (format === 'title') {
+      applyStyleCommand(editor, 'title', from, to)
+      return
+    }
+    const chain = editor.chain().focus().setTextSelection({ from, to })
+    switch (format) {
+      case 'bold':          chain.setBold().run(); break
+      case 'italic':        chain.setItalic().run(); break
+      case 'underline':     chain.setUnderline().run(); break
+      case 'strikethrough': chain.setStrike().run(); break
+      case 'heading1': case 'h1': chain.setHeading({ level: 1 }).run(); break
+      case 'heading2': case 'h2': chain.setHeading({ level: 2 }).run(); break
+      case 'heading3': case 'h3': chain.setHeading({ level: 3 }).run(); break
+      case 'blockquote':    chain.setBlockquote().run(); break
       default: break
     }
   }
@@ -664,20 +984,6 @@ export default function Document(): JSX.Element {
     const next = list[(idx + direction + list.length) % list.length]
     setFormatPrompt({ format: next, confidence: formatPrompt.confidence })
   }
-
-  /** True when a block between `from` and `to` carries the applied-style tag. */
-  const hasStyleOriginIn = useCallback((from: number, to: number): boolean => {
-    if (!editor || editor.isDestroyed) return false
-    let found = false
-    editor.state.doc.nodesBetween(from, to, (node) => {
-      if (!found && node.attrs.styleSource === 'applied_style') {
-        found = true
-        return false
-      }
-      return undefined
-    })
-    return found
-  }, [editor])
 
   const updateSuggestionAnchor = useCallback((): void => {
     if (!editor || editor.isDestroyed || !suggestionRange) return
@@ -735,51 +1041,21 @@ export default function Document(): JSX.Element {
   // out of the z-index competition with the floating suggestion chip.
   useEffect(() => {
     if (!editor || editor.isDestroyed || !editor.commands.setSuggestionHighlight) return
-    const active = !readOnly && (scannerActive || pendingLearnedFormat) ? suggestionRange : null
+    const active =
+      showFormatOverlays && !readOnly && (scannerActive || pendingLearnedFormat)
+        ? suggestionRange
+        : null
     editor.commands.setSuggestionHighlight(active ? { ...active } : null)
-  }, [editor, suggestionRange, scannerActive, pendingLearnedFormat, readOnly])
+  }, [editor, suggestionRange, scannerActive, pendingLearnedFormat, readOnly, showFormatOverlays])
 
-  // Dashed outline around any selection that contains style/preset-originated
-  // formatting, so users can see which runs the style system produced. Like
-  // the suggestion outline this is a node decoration, so the wrapper tracks
-  // the selection and the content without measuring anything.
+  // Turning the overlay master switch off clears any live suggestion state so
+  // no chip, outline, or pending highlight lingers.
   useEffect(() => {
-    if (!editor || editor.isDestroyed || !editor.commands.setStyleOriginHighlight) return
-
-    // Setting the highlight dispatches a transaction, and every transaction
-    // re-enters this handler through the listener below. Without this guard a
-    // dispatch whose stored range never compares equal to the computed one
-    // would retrigger itself until the stack overflowed. The command already
-    // skips a no-op dispatch, so the nested call this suppresses would have
-    // recomputed the identical range from an unchanged document and selection.
-    let applying = false
-
-    const apply = (): void => {
-      if (editor.isDestroyed || applying) return
-      applying = true
-      try {
-        const { empty, from, to } = editor.state.selection
-        const active =
-          !readOnly && !empty && (formattingPreset != null || hasStyleOriginIn(from, to))
-            ? { from, to }
-            : null
-        editor.commands.setStyleOriginHighlight(active)
-      } finally {
-        applying = false
-      }
-    }
-
-    // The outline tracks the selection, so it must be recomputed whenever the
-    // selection or the document changes — not only when the deps of this
-    // effect happen to change.
-    apply()
-    editor.on('selectionUpdate', apply)
-    editor.on('transaction', apply)
-    return () => {
-      editor.off('selectionUpdate', apply)
-      editor.off('transaction', apply)
-    }
-  }, [editor, formattingPreset, readOnly, hasStyleOriginIn])
+    if (showFormatOverlays) return
+    setFormatPrompt(null)
+    setSuggestionRange(null)
+    setPendingLearnedFormat(null)
+  }, [showFormatOverlays])
 
   // Keyboard: Enter accepts, Esc rejects, Alt+ArrowUp/Down cycles "change to".
   useEffect(() => {
@@ -856,8 +1132,9 @@ export default function Document(): JSX.Element {
     }
 
     if (activeText.length < 3) {
-      setSuggestions([])
-      setShowSuggestions(false)
+      // DO NOT clear whole-document scanner suggestions when the caret moves over regular text!
+      // Scanner suggestions belong to the document, not just the active caret!
+      setPendingLearnedFormat(null)
       return
     }
 
@@ -1025,7 +1302,7 @@ export default function Document(): JSX.Element {
   }
 
   function scheduleSave(): void {
-    if (readOnly) return
+    if (readOnly || !documentLoadedRef.current) return
     pendingSaveRef.current = true
     saveRetryCountRef.current = 0
     setSaveStatus('unsaved')
@@ -1036,7 +1313,8 @@ export default function Document(): JSX.Element {
   }
 
   async function saveDocument(): Promise<void> {
-    if (!id) return
+    // Never write before the server copy was applied (see documentLoadedRef).
+    if (!id || !documentLoadedRef.current) return
 
     if (savingRef.current) {
       pendingSaveRef.current = true
@@ -1114,13 +1392,90 @@ export default function Document(): JSX.Element {
     }
   }
 
- function handleContentChange(newContent: string): void {
-  latestContentRef.current = newContent
-  setContent(newContent)
-  updateWordCount(newContent)
-  scheduleSave()
-  scheduleAutoFormatPrediction(newContent)
- }
+  function handleContentChange(newContent: string): void {
+    // The empty editor emits an update on mount; before the document has
+    // loaded that is not an edit and must not touch the latest-content cache.
+    if (!documentLoadedRef.current) return
+    // Skip echoes: layout transactions can re-emit identical HTML, and
+    // re-setting the same content would re-render this page (and with it
+    // PagedEditor) on every transaction, restarting the update cycle.
+    if (newContent === latestContentRef.current) return
+    latestContentRef.current = newContent
+    setContent(newContent)
+    const textLength = updateWordCount(newContent)
+    trackComposition(textLength)
+    scheduleSave()
+    scheduleAutoFormatPrediction(newContent)
+  }
+
+  /** Compose one behavior event for the timeline forensics engine. */
+  function logCompositionEvent(action: 'type' | 'paste' | 'backspace', charCount: number): void {
+    if (!id || charCount <= 0) return
+    // The live cursor sits at the end of the edit, so its ProseMirror position
+    // (and the document size) attribute this event to the right region.
+    const selectionPos = editor && !editor.isDestroyed ? editor.state.selection.from : 0
+    const docSize = editor && !editor.isDestroyed ? editor.state.doc.content.size : 0
+    api.behavior
+      .log({
+        action,
+        timestamp: new Date().toISOString(),
+        documentId: id,
+        char_count: charCount,
+        position: selectionPos,
+        doc_size: docSize,
+      })
+      .catch((error) => console.error('Composition telemetry log failed', error))
+  }
+
+  /** Log accumulated typing as one event (character volumes only, never text). */
+  function flushTypedChars(): void {
+    const state = compositionRef.current
+    if (state.pendingTypedChars <= 0) return
+    logCompositionEvent('type', state.pendingTypedChars)
+    state.pendingTypedChars = 0
+  }
+
+  /**
+   * Lightweight composition telemetry for timeline forensics: bulk insertions
+   * become 'paste' events, accumulated typing becomes 'type' events, and bulk
+   * deletions become 'backspace' events. Only character volumes are stored.
+   */
+  function trackComposition(nextTextLength: number): void {
+    const state = compositionRef.current
+    const delta = nextTextLength - state.lastTextLength
+    state.lastTextLength = nextTextLength
+
+    // Ignore the initial load and progressive hydration window.
+    if (Date.now() < state.suppressUntil) return
+
+    if (delta >= COMPOSITION_PASTE_MIN_CHARS) {
+      flushTypedChars()
+      logCompositionEvent('paste', delta)
+      return
+    }
+
+    if (delta >= 1) {
+      state.pendingTypedChars += delta
+      if (!compositionFlushTimer.current) {
+        compositionFlushTimer.current = setTimeout(() => {
+          compositionFlushTimer.current = null
+          flushTypedChars()
+        }, COMPOSITION_TYPING_FLUSH_MS)
+      }
+      return
+    }
+
+    if (delta <= -COMPOSITION_DELETE_MIN_CHARS) {
+      logCompositionEvent('backspace', -delta)
+    }
+  }
+
+  /** Reset the composition baseline after a document load. */
+  function resetCompositionBaseline(textLength: number): void {
+    compositionRef.current.lastTextLength = textLength
+    compositionRef.current.pendingTypedChars = 0
+    compositionRef.current.suppressUntil = Date.now() + COMPOSITION_LOAD_SUPPRESS_MS
+  }
 
   function handleTitleChange(event: ChangeEvent<HTMLInputElement>): void {
     const nextTitle = event.target.value
@@ -1153,6 +1508,19 @@ export default function Document(): JSX.Element {
     scheduleSave()
   }
 
+  /** Canvas double-click on a page header/footer: enable it, then focus Page Setup. */
+  const handleHeaderFooterActivate = useCallback((target: 'header' | 'footer'): void => {
+    if (target === 'header') handleShowHeaderChange(true)
+    else handleShowFooterChange(true)
+    setPageSetupFocusRequest(target)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Clears the Page Setup focus request once the toolbar has consumed it. */
+  const handlePageSetupFocusHandled = useCallback((): void => {
+    setPageSetupFocusRequest(null)
+  }, [])
+
   function handleHeaderNumberFormatChange(value: PageNumberFormat): void {
     latestHeaderSettingsRef.current.headerNumberFormat = value
     setHeaderNumberFormat(value)
@@ -1162,6 +1530,31 @@ export default function Document(): JSX.Element {
   function handleFooterNumberFormatChange(value: PageNumberFormat): void {
     latestHeaderSettingsRef.current.footerNumberFormat = value
     setFooterNumberFormat(value)
+    scheduleSave()
+  }
+
+  function handleHeaderPlacementChange(value: HeaderFooterPlacement): void {
+    setHeaderPlacement(value)
+    scheduleSave()
+  }
+
+  function handleFooterPlacementChange(value: HeaderFooterPlacement): void {
+    setFooterPlacement(value)
+    scheduleSave()
+  }
+
+  function handleHeaderMarginChange(value: number): void {
+    setHeaderMarginIn(value)
+    scheduleSave()
+  }
+
+  function handleFooterMarginChange(value: number): void {
+    setFooterMarginIn(value)
+    scheduleSave()
+  }
+
+  function handleDifferentFirstPageChange(value: boolean): void {
+    setDifferentFirstPage(value)
     scheduleSave()
   }
 
@@ -1209,30 +1602,27 @@ export default function Document(): JSX.Element {
       )
       api.behavior.log(event).catch((err) => console.error('Behavior log failed', err))
     }
-    setShowSuggestions(false)
-    setSuggestions([])
+    // Keep suggestions alive so the drawer doesn't blink shut
     scheduleSave()
     updateWordCount(nextContent)
+    // Trigger sibling propagation for ANY formatting action (bold, font size, alignment, heading)
+    maybeSuggestSiblingPropagation(formatType)
   }
 
-  function handlePromptAccept(format: string | FormatSuggestion): void {
-    if (editor && !editor.isEditable) return
-    const applied = typeof format === 'string' ? format : format.format
-    const confidence =
-      typeof format === 'string' ? formatPrompt?.confidence : format.confidence
+  /**
+   * Apply a format over an explicit range without moving the user's caret.
+   * The range apply temporarily shifts the selection; the original selection
+   * is restored afterwards so focus and cursor position stay untouched.
+   */
+  function applyFormatToRangePreservingSelection(format: string, from: number, to: number): void {
+    if (!editor || editor.isDestroyed) return
+    const previous = editor.state.selection
+    applyFormatToRange(format, from, to)
+    editor.chain().setTextSelection({ from: previous.from, to: previous.to }).run()
+  }
 
-    if (typeof format === 'object' && format.suggestionSource === 'learned') {
-      // Keep the applied block highlighted after accept so the user sees
-      // exactly which text received the learned format.
-      const appliedRange = applyLearnedFormat(format)
-      if (appliedRange) {
-        setSuggestionRange(appliedRange)
-      }
-    } else {
-      applyPromptFormat(applied)
-    }
-    handleFormat(applied)
-
+  /** Shared accept tail: feedback logging, scanner dismissal, chip cleanup. */
+  function finishPromptAccept(applied: string, confidence: number | undefined): void {
     // Dismiss the active scanner suggestion
     if (scannerActive) {
       acceptScannerSuggestion(scannerActive.key)
@@ -1264,6 +1654,78 @@ export default function Document(): JSX.Element {
     setPendingLearnedFormat(null)
     setSuggestions([])
     setShowSuggestions(false)
+  }
+
+  function handlePromptAccept(format: string | FormatSuggestion): void {
+    if (editor && !editor.isEditable) return
+    const applied = typeof format === 'string' ? format : format.format
+    const confidence =
+      typeof format === 'string' ? formatPrompt?.confidence : format.confidence
+
+    if (typeof format === 'object' && format.suggestionSource === 'learned') {
+      // Keep the applied block highlighted after accept so the user sees
+      // exactly which text received the learned format.
+      const appliedRange = applyLearnedFormat(format)
+      if (appliedRange) {
+        setSuggestionRange(appliedRange)
+      }
+    } else if (typeof format === 'object' && format.formatGroup && suggestionRange) {
+      // Group chips apply over their range instead of the caret — the user's
+      // cursor stays exactly where they left it (focus-preservation rule).
+      applyFormatToRangePreservingSelection(applied, suggestionRange.from, suggestionRange.to)
+    } else {
+      applyPromptFormat(applied)
+    }
+    handleFormat(applied)
+    finishPromptAccept(applied, confidence)
+  }
+
+  /**
+   * Accept the current suggestion for every block in its format group.
+   * Members apply bottom-up by range, then the highlighted first member; the
+   * user's caret is restored afterwards so bulk formatting never steals focus.
+   */
+  function handlePromptAcceptAll(): void {
+    if (!editor || !editor.isEditable) return
+    const prompt = formatPrompt
+    if (!prompt) return
+    const format = prompt.format
+    const confidence = prompt.confidence
+    const members = prompt.groupMembers ?? []
+    if (members.length === 0) return
+    const isLearned = prompt.suggestionSource === 'learned'
+
+    const previous = editor.state.selection
+    const ordered = [...members].sort((a, b) => b.from - a.from)
+    for (const member of ordered) {
+      if (isLearned) {
+        // Inconsistency groups must reproduce the captured modal styling on
+        // every deviating block, not just its plain node type.
+        applyLearnedFormat(prompt, { from: member.from, to: member.to })
+      } else {
+        applyFormatToRange(format, member.from, member.to)
+      }
+    }
+    if (suggestionRange) {
+      if (isLearned) applyLearnedFormat(prompt, suggestionRange)
+      else applyFormatToRange(format, suggestionRange.from, suggestionRange.to)
+    }
+    // Focus-safe: restore the caret the user had before the bulk apply.
+    editor.chain().setTextSelection({ from: previous.from, to: previous.to }).run()
+
+    handleFormat(format)
+
+    if (id) {
+      api.behavior
+        .log({
+          action: `auto_preview_accepted_all:${format}:${members.length + 1}`,
+          timestamp: new Date().toISOString(),
+          documentId: id,
+        })
+        .catch((error) => console.error('Auto-format group acceptance log failed', error))
+    }
+
+    finishPromptAccept(format, confidence)
   }
 
   function rejectAutoSuggestion(format: string): void {
@@ -1359,6 +1821,113 @@ export default function Document(): JSX.Element {
     if (!editor || !editor.isEditable) return
     applyStyleCommand(editor, format)
     handleFormat(format)
+    maybeSuggestSiblingPropagation(format)
+  }
+
+  /** Ribbon formats a sibling-propagation prompt is allowed to co-apply. */
+  const GROUP_PROMPT_FORMATS = new Set(['h1', 'h2', 'h3', 'title', 'blockquote'])
+
+  /** Human names for blueprint groups used in the group-format prompt label. */
+  const BLUEPRINT_GROUP_LABELS: Record<string, string> = {
+    author_block: 'Author Block',
+  }
+
+  /** Canonical ribbon format per propagatable structural role. */
+  const ROLE_CANONICAL_FORMAT: Record<string, string> = {
+    title: 'title',
+    byline: 'byline',
+    heading_1: 'h1',
+    heading_2: 'h2',
+    heading_3: 'h3',
+  }
+
+  /** Display names used in the propagation chip copy. */
+  const ROLE_PROPAGATION_LABELS: Record<string, string> = {
+    title: 'Title',
+    byline: 'Author / Byline',
+    heading_1: 'Heading 1',
+    heading_2: 'Heading 2',
+    heading_3: 'Heading 3',
+  }
+
+  /** True when the node already carries the given ribbon format. */
+  function isNodeStyledAs(node: ProseMirrorNode, format: string): boolean {
+    if (format === 'title') return node.attrs.docRole === 'title'
+    if (format === 'blockquote') return node.type.name === 'blockquote'
+    return node.type.name === 'heading' && node.attrs.level === Number(format.slice(1))
+  }
+
+  /**
+   * After the user formats one block, offer to format its siblings the same
+   * way: blueprint guide groups first, then structural clusters (same-role
+   * headings in any document — imported sabotage files have no guide attrs).
+   *
+   * STRICT focus rule: the user's caret/selection is never moved. The chip
+   * targets the first sibling by range only; accepting applies by range too.
+   */
+  function maybeSuggestSiblingPropagation(format: string): void {
+    if (!editor || editor.isDestroyed || readOnly) return
+    if (!GROUP_PROMPT_FORMATS.has(format)) return
+
+    const { doc, selection } = editor.state
+    const $from = selection.$from
+    const blockStart = $from.depth >= 1 ? $from.before($from.depth) : selection.from
+    const activeBlock = doc.nodeAt(blockStart)
+    if (!activeBlock) return
+
+    // Blueprint guide groups (documents created from a preset blueprint).
+    const guideGroup = activeBlock.attrs.guideGroup
+    if (typeof guideGroup === 'string' && guideGroup.length > 0) {
+      const groupMembers: Array<{ from: number; to: number; preview: string }> = []
+      doc.descendants((node, pos) => {
+        if (node.attrs.guideGroup !== guideGroup) return true
+        if (pos === blockStart || isNodeStyledAs(node, format)) return true
+        groupMembers.push({
+          from: pos,
+          to: pos + node.nodeSize,
+          preview: node.textContent.trim().slice(0, 60),
+        })
+        return true
+      })
+      if (groupMembers.length === 0) return
+      const first = groupMembers[0]
+      setSuggestionRange({ from: first.from, to: first.to })
+      setFormatPrompt({
+        format,
+        confidence: 88,
+        label: `Format the remaining ${BLUEPRINT_GROUP_LABELS[guideGroup] ?? 'group'} elements to match?`,
+        formatGroup: `blueprint-${guideGroup}`,
+        groupMembers: groupMembers.slice(1),
+      })
+      return
+    }
+
+    // Structural clusters: same-role siblings in any document.
+    const role = classifyStructuralRole(activeBlock.textContent.trim())
+    if (ROLE_CANONICAL_FORMAT[role] !== format) return
+
+    const members: Array<{ from: number; to: number; preview: string }> = []
+    doc.descendants((node, pos) => {
+      if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return true
+      if (pos === blockStart) return true
+      const text = node.textContent.trim()
+      if (!text || text.length > 150) return true
+      if (classifyStructuralRole(text) !== role) return true
+      if (isNodeStyledAs(node, format)) return true
+      members.push({ from: pos, to: pos + node.nodeSize, preview: text.slice(0, 60) })
+      return true
+    })
+    if (members.length === 0) return
+
+    const first = members[0]
+    setSuggestionRange({ from: first.from, to: first.to })
+    setFormatPrompt({
+      format,
+      confidence: 88,
+      label: `Apply this formatting to all other ${ROLE_PROPAGATION_LABELS[role]}s? (${members.length} remaining)`,
+      formatGroup: `cluster-${role}`,
+      groupMembers: members.slice(1),
+    })
   }
 
   /** Resolve the active preset (if the doc uses one of the academic presets). */
@@ -1454,6 +2023,13 @@ export default function Document(): JSX.Element {
     scheduleSave()
   }
 
+  /** Adopt the inferred standard preset and dismiss the structure prompt. */
+  function handleApplyDetectedPreset(): void {
+    if (!structurePrompt) return
+    void handleApplyAcademicPreset(structurePrompt.presetKey)
+    setStructurePrompt(null)
+  }
+
   /** Grammar underline click — open the anchored fix popover. */
   const handleGrammarClick = useCallback(
     (issue: GrammarIssue, rect: DOMRect): void => {
@@ -1514,6 +2090,11 @@ export default function Document(): JSX.Element {
       setFormatPrompt({
         format: scannerActive.format,
         confidence: scannerActive.confidence,
+        formatGroup: scannerActive.formatGroup,
+        groupMembers: scannerActive.groupMembers,
+        label: scannerActive.label,
+        suggestionSource: scannerActive.suggestionSource,
+        ...(scannerActive.captures ?? {}),
       })
     }
   }
@@ -1622,90 +2203,54 @@ export default function Document(): JSX.Element {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'hidden', backgroundColor: 'var(--background)' }}>
 
       {/* ── Header ─────────────────────────────────────────── */}
-      <header
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 40,
-          backgroundColor: 'var(--background)',
-          borderBottom: '1px solid var(--border)',
-          flexShrink: 0,
-        }}
-      >
+      <header className="sticky top-0 z-40 bg-card/80 backdrop-blur-md border-b border-border/80 flex-shrink-0 transition-all">
         {/* Main nav row */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            height: '56px',
-            padding: '0 1.5rem',
-            gap: '1rem',
-          }}
-        >
-          {/* Left: back + brand */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+        <div className="flex items-center justify-between h-14 px-4 sm:px-6 gap-3">
+          {/* Left: back + brand + outline */}
+          <div className="flex items-center gap-2.5 shrink-0">
             <Link
               to="/dashboard"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '32px',
-                height: '32px',
-                borderRadius: '0.5rem',
-                color: 'var(--muted-foreground)',
-                backgroundColor: 'transparent',
-                textDecoration: 'none',
-                transition: 'background-color 150ms, color 150ms',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'var(--secondary)'
-                ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--foreground)'
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'transparent'
-                ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--muted-foreground)'
-              }}
+              aria-label="Back to dashboard"
+              className="flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
             >
-              <ArrowLeft style={{ width: '16px', height: '16px' }} />
+              <ArrowLeft className="size-4" />
             </Link>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <LogoLockup size={25} />
-            </div>
+            <LogoLockup size={24} />
+
+            {/* Left panel (Outline) toggle button */}
+            <button
+              type="button"
+              onClick={() => setLeftPanelOpen((open) => !open)}
+              title={leftPanelOpen ? 'Hide outline (Ctrl+Shift+\\)' : 'Show outline (Ctrl+Shift+\\)'}
+              aria-label={leftPanelOpen ? 'Hide outline' : 'Show outline'}
+              aria-pressed={leftPanelOpen}
+              className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors ${
+                leftPanelOpen
+                  ? 'bg-secondary text-foreground border-border'
+                  : 'bg-transparent text-muted-foreground border-transparent hover:bg-secondary/60 hover:text-foreground'
+              }`}
+            >
+              {leftPanelOpen ? <PanelLeftClose className="size-3.5" /> : <PanelLeft className="size-3.5" />}
+              <span className="hidden sm:inline">Outline</span>
+            </button>
           </div>
 
           {/* Center: inline document title */}
-          <div style={{ flex: 1, maxWidth: '480px', margin: '0 auto' }}>
+          <div className="flex-1 max-w-md mx-auto">
             <input
               value={title}
               onChange={handleTitleChange}
               readOnly={readOnly}
               placeholder="Untitled Document"
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                backgroundColor: 'transparent',
-                border: 'none',
-                outline: 'none',
-                fontSize: '0.9375rem',
-                fontWeight: 500,
-                color: 'var(--foreground)',
-                textAlign: 'center',
-                fontFamily: 'inherit',
-                padding: '0.25rem 0.5rem',
-                borderRadius: '0.375rem',
-                transition: 'background-color 150ms',
-              }}
-              onFocus={(e) => { e.currentTarget.style.backgroundColor = 'var(--secondary)' }}
-              onBlur={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+              className="w-full text-center text-sm font-semibold text-foreground bg-transparent hover:bg-secondary/40 focus:bg-background border border-transparent focus:border-border rounded-lg px-3 py-1 transition-all outline-none tracking-tight"
             />
           </div>
 
           {/* Right: save status + actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
-            {/* Live collaborator avatars (Supabase Realtime presence) */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Live collaborator avatars */}
             {remotePresence.size > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div className="flex items-center -space-x-1.5 mr-1">
                 {Array.from(remotePresence.values())
                   .sort((a, b) => (a.user_id === user?.id ? -1 : b.user_id === user?.id ? 1 : 0))
                   .slice(0, 4)
@@ -1718,125 +2263,49 @@ export default function Document(): JSX.Element {
                         key={entry.user_id}
                         type="button"
                         title={label}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '26px',
-                          height: '26px',
-                          borderRadius: '999px',
-                          border: '2px solid var(--card)',
-                          backgroundColor: entry.color,
-                          color: '#ffffff',
-                          fontSize: '0.625rem',
-                          fontWeight: 700,
-                          cursor: 'default',
-                          fontFamily: 'inherit',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
-                        }}
+                        className="size-6 rounded-full border-2 border-card text-white text-[10px] font-bold flex items-center justify-center shadow-xs cursor-default"
+                        style={{ backgroundColor: entry.color }}
                       >
                         {avatarInitials(entry.display_name)}
                       </button>
                     )
                   })}
                 {remotePresence.size > 4 && (
-                  <span style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--muted-foreground)' }}>
+                  <span className="text-[11px] font-bold text-muted-foreground pl-1">
                     +{remotePresence.size - 4}
                   </span>
                 )}
               </div>
             )}
 
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.375rem',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                padding: '0.2rem 0.625rem',
-                borderRadius: '999px',
-                backgroundColor: saveStatus === 'saving' ? 'color-mix(in srgb, var(--info) 20%, transparent)' : saveStatus === 'error' ? 'color-mix(in srgb, var(--error) 15%, transparent)' : 'color-mix(in srgb, var(--success) 20%, transparent)',
-                color: saveStatus === 'saving' ? 'var(--info)' : saveStatus === 'error' ? 'var(--error)' : 'var(--success)',
-                transition: 'all 200ms ease',
-              }}
+            {/* Save status pill */}
+            <div
+              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all ${
+                saveStatus === 'saving'
+                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                  : saveStatus === 'error'
+                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+              }`}
             >
               <span
-                style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '999px',
-                  backgroundColor: saveStatus === 'saving' ? 'var(--info)' : saveStatus === 'error' ? 'var(--error)' : 'var(--success)',
-                }}
+                className={`size-1.5 rounded-full ${
+                  saveStatus === 'saving'
+                    ? 'bg-blue-500 animate-pulse'
+                    : saveStatus === 'error'
+                      ? 'bg-rose-500'
+                      : 'bg-emerald-500'
+                }`}
               />
-              {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
-            </span>
+              <span className="text-[11px]">
+                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
+              </span>
+            </div>
 
-            {!readOnly && docOwnerId && user?.id === docOwnerId && (
-              <button
-                type="button"
-                onClick={() => setShareOpen(true)}
-                title="Share this document"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.375rem',
-                  height: '32px',
-                  padding: '0 0.85rem',
-                  borderRadius: '0.5rem',
-                  border: 'none',
-                  backgroundColor: 'var(--primary)',
-                  color: '#ffffff',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  boxShadow: '0 1px 3px color-mix(in srgb, var(--primary) 30%, transparent)',
-                  transition: 'background-color 150ms',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--accent-hover)' }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--primary)' }}
-              >
-                <Share2 style={{ width: '14px', height: '14px' }} />
-                Share
-              </button>
-            )}
+            {/* Offline sync status */}
+            <OfflineIndicator />
 
-            <button
-              type="button"
-              onClick={() => setRightPanelOpen((open) => !open)}
-              title="Toggle assistant panel (Ctrl+\)"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '32px',
-                height: '32px',
-                borderRadius: '0.5rem',
-                border: 'none',
-                boxShadow: '0 0 0 1px var(--border-shadow)',
-                backgroundColor: rightPanelOpen ? 'var(--secondary)' : 'transparent',
-                color: rightPanelOpen ? 'var(--foreground)' : 'var(--muted-foreground)',
-                cursor: 'pointer',
-                transition: 'background-color 150ms, color 150ms',
-              }}
-              onMouseEnter={(e) => {
-                if (!rightPanelOpen) {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)'
-                  ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!rightPanelOpen) {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
-                  ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'
-                }
-              }}
-            >
-              {rightPanelOpen ? <PanelRightClose style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <PanelRight style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
-            </button>
-
-            {!readOnly && (
+            {/* Isolation Toggle */}
             <button
               type="button"
               onClick={() => {
@@ -1849,94 +2318,113 @@ export default function Document(): JSX.Element {
                 })
               }}
               title={isIsolated ? 'Document is isolated — behavioral data is NOT being collected. Click to resume learning.' : 'Document is NOT isolated — behavioral data is being collected. Click to isolate.'}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '32px',
-                height: '32px',
-                borderRadius: '0.5rem',
-                border: 'none',
-                boxShadow: '0 0 0 1px var(--border-shadow)',
-                backgroundColor: isIsolated ? 'hsl(0, 60%, 95%)' : 'transparent',
-                color: isIsolated ? 'hsl(0, 70%, 50%)' : 'var(--muted-foreground)',
-                cursor: 'pointer',
-                transition: 'background-color 150ms, color 150ms',
-              }}
-              onMouseEnter={(e) => {
-                if (!isIsolated) {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--secondary)'
-                  ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--foreground)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isIsolated) {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'
-                  ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--muted-foreground)'
-                }
-              }}
+              className={`inline-flex items-center justify-center size-8 rounded-lg border transition-colors ${
+                isIsolated
+                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                  : 'bg-transparent text-muted-foreground border-transparent hover:bg-secondary hover:text-foreground'
+              }`}
             >
-              {isIsolated ? <ShieldOff style={{ width: '14px', height: '14px' }} strokeWidth={1.5} /> : <Shield style={{ width: '14px', height: '14px' }} strokeWidth={1.5} />}
+              {isIsolated ? <ShieldOff className="size-4" strokeWidth={1.75} /> : <Shield className="size-4" strokeWidth={1.75} />}
             </button>
+
+            {/* Share action */}
+            {!readOnly && docOwnerId && user?.id === docOwnerId && (
+              <button
+                type="button"
+                onClick={() => setShareOpen(true)}
+                title="Share this document"
+                className="btn-primary h-8 px-3 text-xs gap-1.5 shadow-sm"
+              >
+                <Share2 className="size-3.5" />
+                <span>Share</span>
+              </button>
             )}
+
+            {/* Assistant toggle */}
+            <button
+              type="button"
+              onClick={() => setRightPanelOpen((open) => !open)}
+              title="Toggle assistant panel (Ctrl+\\)"
+              className={`flex items-center justify-center size-8 rounded-lg border transition-colors ${
+                rightPanelOpen
+                  ? 'bg-secondary text-foreground border-border'
+                  : 'bg-transparent text-muted-foreground border-transparent hover:bg-secondary hover:text-foreground'
+              }`}
+            >
+              {rightPanelOpen ? <PanelRightClose className="size-4" strokeWidth={1.75} /> : <PanelRight className="size-4" strokeWidth={1.75} />}
+            </button>
           </div>
         </div>
 
         {/* Toolbar row — overflow visible with z-index so popovers float above canvas */}
         {!readOnly && (
           <div style={{ borderTop: '1px solid var(--border)', position: 'relative', zIndex: 100 }}>
-          <TiptapToolbar
-            editor={editor ?? null}
-            documentTitle={title}
-            onFormatApplied={handleFormat}
-            pageSize={pageSize}
-            onPageSizeChange={handlePageSizeChange}
-            margins={margins}
-            onMarginsChange={handleMarginsChange}
-            orientation={orientation}
-            onOrientationChange={handleOrientationChange}
-            onImportComplete={(importedHtml, importedTitle, layout) => {
-              if (importedTitle) setTitle(importedTitle)
-              if (layout) {
-                latestPageSetupRef.current = {
-                  pageSize: layout.pageSize ?? latestPageSetupRef.current.pageSize,
-                  margins: layout.margins ?? latestPageSetupRef.current.margins,
-                  orientation: layout.orientation ?? latestPageSetupRef.current.orientation,
+            <TiptapToolbar
+              editor={editor ?? null}
+              documentTitle={title}
+              onFormatApplied={handleFormat}
+              pageSize={pageSize}
+              onPageSizeChange={handlePageSizeChange}
+              margins={margins}
+              onMarginsChange={handleMarginsChange}
+              orientation={orientation}
+              onOrientationChange={handleOrientationChange}
+              onImportComplete={(importedHtml, importedTitle, layout) => {
+                if (importedTitle) setTitle(importedTitle)
+                if (layout) {
+                  latestPageSetupRef.current = {
+                    pageSize: layout.pageSize ?? latestPageSetupRef.current.pageSize,
+                    margins: layout.margins ?? latestPageSetupRef.current.margins,
+                    orientation: layout.orientation ?? latestPageSetupRef.current.orientation,
+                  }
+                  setPageSize(latestPageSetupRef.current.pageSize)
+                  setMargins(latestPageSetupRef.current.margins)
+                  setOrientation(latestPageSetupRef.current.orientation)
+                  if (layout.headerContent !== undefined) {
+                    latestHeaderRef.current = layout.headerContent
+                    setHeaderContent(layout.headerContent)
+                  }
+                  if (layout.footerContent !== undefined) {
+                    latestFooterRef.current = layout.footerContent
+                    setFooterContent(layout.footerContent)
+                  }
                 }
-                setPageSize(latestPageSetupRef.current.pageSize)
-                setMargins(latestPageSetupRef.current.margins)
-                setOrientation(latestPageSetupRef.current.orientation)
-                if (layout.headerContent !== undefined) {
-                  latestHeaderRef.current = layout.headerContent
-                  setHeaderContent(layout.headerContent)
-                }
-                if (layout.footerContent !== undefined) {
-                  latestFooterRef.current = layout.footerContent
-                  setFooterContent(layout.footerContent)
-                }
-              }
-              handleContentChange(importedHtml)
-            }}
-            headerContent={headerContent}
-            footerContent={footerContent}
-            onHeaderChange={handleHeaderChange}
-            onFooterChange={handleFooterChange}
-            showHeader={showHeader}
-            showFooter={showFooter}
-            onShowHeaderChange={handleShowHeaderChange}
-            onShowFooterChange={handleShowFooterChange}
-            headerNumberFormat={headerNumberFormat}
-            footerNumberFormat={footerNumberFormat}
-            onHeaderNumberFormatChange={handleHeaderNumberFormatChange}
-            onFooterNumberFormatChange={handleFooterNumberFormatChange}
-            onApplyStyle={handleApplyRibbonStyle}
-            onApplyPreset={(key) => { void handleApplyAcademicPreset(key) }}
-            activePreset={formattingPreset}
-            spreadPreview={spreadPreview}
-            onSpreadPreviewChange={setSpreadPreview}
-            onOpenPersonalization={() => setProfileModalOpen(true)}
-          />
-        </div>
+                handleContentChange(importedHtml)
+              }}
+              headerContent={headerContent}
+              footerContent={footerContent}
+              onHeaderChange={handleHeaderChange}
+              onFooterChange={handleFooterChange}
+              showHeader={showHeader}
+              showFooter={showFooter}
+              onShowHeaderChange={handleShowHeaderChange}
+              onShowFooterChange={handleShowFooterChange}
+              headerNumberFormat={headerNumberFormat}
+              footerNumberFormat={footerNumberFormat}
+              onHeaderNumberFormatChange={handleHeaderNumberFormatChange}
+              onFooterNumberFormatChange={handleFooterNumberFormatChange}
+              headerPlacement={headerPlacement}
+              footerPlacement={footerPlacement}
+              onHeaderPlacementChange={handleHeaderPlacementChange}
+              onFooterPlacementChange={handleFooterPlacementChange}
+              headerMarginIn={headerMarginIn}
+              footerMarginIn={footerMarginIn}
+              onHeaderMarginChange={handleHeaderMarginChange}
+              onFooterMarginChange={handleFooterMarginChange}
+              differentFirstPage={differentFirstPage}
+              onDifferentFirstPageChange={handleDifferentFirstPageChange}
+              onApplyStyle={handleApplyRibbonStyle}
+              onApplyPreset={(key) => { void handleApplyAcademicPreset(key) }}
+              activePreset={formattingPreset}
+              spreadPreview={spreadPreview}
+              onSpreadPreviewChange={setSpreadPreview}
+              showGridlines={showGridlines}
+              onShowGridlinesChange={setShowGridlines}
+              pageSetupFocusRequest={pageSetupFocusRequest}
+              onPageSetupFocusHandled={handlePageSetupFocusHandled}
+              onOpenPersonalization={() => setProfileModalOpen(true)}
+            />
+          </div>
         )}
       </header>
 
@@ -1988,7 +2476,36 @@ export default function Document(): JSX.Element {
       )}
 
       {/* ── Body ──────────────────────────────────────────── */}
-      <div className="workspace-grid">
+      <div className={`workspace-grid ${leftPanelOpen ? 'has-left-panel' : ''}`}>
+
+        {/* Left panel — Outline Navigator */}
+        <aside
+          className={`left-panel transition-all duration-200 ease-in-out ${leftPanelCollapsed ? 'collapsed' : ''}`}
+          style={{
+            zIndex: 30,
+            width: leftPanelOpen ? undefined : 0,
+            minWidth: leftPanelOpen ? undefined : 0,
+            maxWidth: leftPanelOpen ? undefined : 0,
+            opacity: leftPanelOpen ? 1 : 0,
+            transform: leftPanelOpen ? 'translateX(0)' : 'translateX(-1rem)',
+            borderRight: leftPanelOpen ? undefined : 'none',
+            pointerEvents: leftPanelOpen ? 'auto' : 'none',
+            transition:
+              'width 200ms ease-in-out, min-width 200ms ease-in-out, max-width 200ms ease-in-out, opacity 200ms ease-in-out, transform 200ms ease-in-out',
+          }}
+        >
+          <OutlineNavigator
+            content={content}
+            editor={editor}
+            activeHeadingId={activeHeadingId}
+            onActiveHeadingChange={setActiveHeadingId}
+            onHeadingClick={handleOutlineHeadingClick}
+            collapsed={leftPanelCollapsed}
+            onCollapseChange={setLeftPanelCollapsed}
+            onClose={() => setLeftPanelOpen(false)}
+            maxDepth={3}
+          />
+        </aside>
 
         {/* Editor area — clean TipTap paper sheet */}
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -2017,6 +2534,54 @@ export default function Document(): JSX.Element {
               }
             }}
           >
+            {/* Outline-jump spotlight: React-managed, so ProseMirror view
+                updates can never remove the flash mid-animation. */}
+            {flashCoords && (
+              <div
+                key={flashKey}
+                aria-hidden="true"
+                className="heading-flash-overlay"
+                style={{
+                  position: 'absolute',
+                  top: `${flashCoords.top}px`,
+                  left: `${flashCoords.left}px`,
+                  width: `${flashCoords.width}px`,
+                  height: `${flashCoords.height}px`,
+                }}
+              />
+            )}
+            {/* Quick-open Outline Tab when outline is hidden */}
+            {!leftPanelOpen && (
+              <button
+                type="button"
+                onClick={() => setLeftPanelOpen(true)}
+                title="Show outline (Ctrl+Shift+\\)"
+                aria-label="Show outline"
+                style={{
+                  position: 'sticky',
+                  top: '0.25rem',
+                  left: '0.25rem',
+                  float: 'left',
+                  zIndex: 20,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  padding: '0.375rem 0.625rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'var(--card)',
+                  color: 'var(--foreground)',
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  transition: 'background-color 150ms, box-shadow 150ms',
+                }}
+              >
+                <PanelLeft style={{ width: '14px', height: '14px', color: 'var(--primary)' }} />
+                <span>Outline</span>
+              </button>
+            )}
             {activeAcademicPreset && <style>{activeAcademicPreset.css}</style>}
             <PagedEditor
               content={content}
@@ -2028,14 +2593,20 @@ export default function Document(): JSX.Element {
               pageSize={pageSize}
               margins={margins}
               orientation={orientation}
-              showHeader={showHeader}
-              showFooter={showFooter}
-              headerContent={headerContent}
-              footerContent={footerContent}
-              headerNumberFormat={headerNumberFormat}
-              footerNumberFormat={footerNumberFormat}
+              headerFooterConfig={headerFooterConfig}
               spreadPreview={spreadPreview}
+              zoomLevel={zoomLevel}
+              showGridlines={showGridlines}
+              onHydrationChange={setIsHydrating}
+              onHeaderFooterActivate={handleHeaderFooterActivate}
               onFormatApplied={handleFormat}
+            />
+
+            {/* Word-style canvas zoom control, pinned bottom-right of the canvas */}
+            <DocumentZoomWidget
+              zoomLevel={zoomLevel}
+              onZoomChange={applyZoom}
+              onFitWidth={handleFitWidth}
             />
 
           </div>
@@ -2060,6 +2631,21 @@ export default function Document(): JSX.Element {
                 onDismiss={handleDismissForkPrompt}
                 busy={forkBusy}
                 error={forkError}
+              />
+            </div>
+          )}
+
+          {/* Inferred document archetype — offer the matching standard format */}
+          {structurePrompt && !formattingPreset && !readOnly && (
+            <div style={{ maxWidth: '32rem', margin: '0 auto', width: '100%' }}>
+              <DocumentTypePrompt
+                typeLabel={structurePrompt.typeLabel}
+                presetName={
+                  ACADEMIC_PRESETS.find((p) => p.key === structurePrompt.presetKey)?.name ??
+                  structurePrompt.presetKey
+                }
+                onApply={handleApplyDetectedPreset}
+                onDismiss={() => setStructurePrompt(null)}
               />
             </div>
           )}
@@ -2145,6 +2731,8 @@ export default function Document(): JSX.Element {
                 documentId={id}
                 activePreset={formattingPreset}
                 onPresetChange={setFormattingPreset}
+                showOverlays={showFormatOverlays}
+                onShowOverlaysChange={setShowFormatOverlays}
               />
 
               {/* Session stats */}
@@ -2242,6 +2830,19 @@ export default function Document(): JSX.Element {
               </div>
 
               <McpDebugPanel documentId={id} documentContent={chatContent} />
+
+              <CitationAssistant
+                editor={editor}
+                citationStyle={citationStyle}
+                onStyleChange={setCitationStyle}
+                references={references}
+                onReferencesChange={setReferences}
+                onInsertCitation={(citationText: string) => {
+                  if (editor) {
+                    editor.chain().focus().insertContent(citationText).run()
+                  }
+                }}
+              />
             </>
           }
         />
@@ -2272,7 +2873,7 @@ export default function Document(): JSX.Element {
       )}
 
       {/* Inline suggestion chip — anchored above the highlighted block */}
-      {!readOnly && formatPrompt && suggestionRange && suggestionAnchor && (
+      {!readOnly && showFormatOverlays && formatPrompt && suggestionRange && suggestionAnchor && (
         <InlineSuggestionChip
           anchor={suggestionAnchor}
           label={formatPrompt.label ?? formatSuggestionLabel(formatPrompt.format)}
@@ -2281,6 +2882,13 @@ export default function Document(): JSX.Element {
           queueTotal={queueTotal}
           nextLabel={cycleNextLabel}
           prevLabel={cyclePrevLabel}
+          similarCount={formatPrompt.groupMembers?.length ?? 0}
+          groupMembers={formatPrompt.groupMembers}
+          onAcceptAll={
+            formatPrompt.groupMembers && formatPrompt.groupMembers.length > 0
+              ? handlePromptAcceptAll
+              : undefined
+          }
           onChangeTo={cycleSuggestionFormat}
           onJump={handleChipJump}
           onAccept={() => handlePromptAccept(formatPrompt)}

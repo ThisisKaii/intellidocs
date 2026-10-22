@@ -15,13 +15,16 @@ function userInitials(name: string): string {
 
 /**
  * Account dropdown (top right) with Settings navigation and logout.
- * Closes on outside click or item selection.
+ * Closes on outside click or item selection. Dropdown uses animate-popover
+ * so it enters with a smooth scale + slide instead of an instant pop-in.
  */
 export function UserMenu(): JSX.Element {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const [open, setOpen] = useState<boolean>(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  /** Tracks the current animation key so re-opening replays the animation. */
+  const [animKey, setAnimKey] = useState(0)
 
   useEffect(() => {
     if (!open) return
@@ -34,6 +37,13 @@ export function UserMenu(): JSX.Element {
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [open])
 
+  function handleOpen(): void {
+    setOpen((prev) => {
+      if (!prev) setAnimKey((k) => k + 1) // bump key so CSS animation replays
+      return !prev
+    })
+  }
+
   function handleLogout(): void {
     setOpen(false)
     logout()
@@ -43,7 +53,7 @@ export function UserMenu(): JSX.Element {
   return (
     <div ref={menuRef} className="relative">
       <button
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={handleOpen}
         title="Account"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -56,8 +66,9 @@ export function UserMenu(): JSX.Element {
 
       {open && (
         <div
+          key={animKey}
           role="menu"
-          className="absolute right-0 top-12 z-50 w-56 rounded-xl bg-card border border-border shadow-lg overflow-hidden"
+          className="animate-popover absolute right-0 top-12 z-50 w-56 rounded-xl bg-card border border-border shadow-lg overflow-hidden"
         >
           <button
             role="menuitem"

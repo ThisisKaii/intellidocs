@@ -1,7 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type DocumentRecord } from '../services/api'
+import { PageHeader } from '@/components/PageHeader'
+import { EmptyState } from '@/components/EmptyState'
+import {
+  api,
+  type DocumentRecord,
+  type FolderRecord,
+  type PlagiarismScanDetail,
+} from '../services/api'
 import ThesisChecklist, { type ComplianceReport } from '../components/ThesisChecklist'
+import { SimilarityMatrix } from '../components/editor/SimilarityMatrix'
+import { CouncilInspectionModal } from '../components/editor/CouncilInspectionModal'
 import {
   FileText,
   ClipboardCheck,
@@ -11,6 +20,7 @@ import {
   Search,
   Eye,
   GraduationCap,
+  Users,
 } from 'lucide-react'
 
 interface ThesisTemplate {
@@ -25,6 +35,13 @@ interface ThesisTemplate {
   lineSpacing: number
   mandatoryHeadings: string[]
   createdAt: string
+}
+
+/** Alert tones for the dashboard message banner. */
+const MESSAGE_STYLES: Record<'success' | 'error' | 'info', string> = {
+  success: 'bg-green-500/10 border border-green-500/30 text-green-700',
+  error: 'bg-red-500/10 border border-red-500/30 text-red-700',
+  info: 'bg-blue-500/10 border border-blue-500/30 text-blue-700',
 }
 
 const DEFAULT_TEMPLATES: ThesisTemplate[] = [
@@ -57,11 +74,11 @@ const DEFAULT_TEMPLATES: ThesisTemplate[] = [
 ]
 
 export default function ProfessorDashboard(): JSX.Element {
-  const [activeTab, setActiveTab] = useState<'templates' | 'audit' | 'reviews' | 'folders'>('templates')
+  const [activeTab, setActiveTab] = useState<'templates' | 'audit' | 'reviews' | 'folders' | 'similarity'>('templates')
   const [templates, setTemplates] = useState<ThesisTemplate[]>([])
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
 
   // Template builder state
   const [showTemplateForm, setShowTemplateForm] = useState(false)
@@ -83,6 +100,20 @@ export default function ProfessorDashboard(): JSX.Element {
   const [auditResult, setAuditResult] = useState<ComplianceReport | null>(null)
   const [auditing, setAuditing] = useState(false)
 
+  // Folders state for Similarity Matrix
+  const [folders, setFolders] = useState<FolderRecord[]>([])
+
+  // Similarity Matrix state
+  const [selectedClassFolderId, setSelectedClassFolderId] = useState('')
+  const [similarityRefreshKey, setSimilarityRefreshKey] = useState(0)
+  const [scanning, setScanning] = useState(false)
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number; title: string } | null>(null)
+  const [inspectionDetail, setInspectionDetail] = useState<PlagiarismScanDetail | null>(null)
+  const [inspectionOpen, setInspectionOpen] = useState(false)
+
+  /** Class folders are the only ones that carry student submissions. */
+  const classFolders = folders.filter((folder) => folder.folder_type === 'class')
+
   useEffect(() => {
     loadData()
   }, [])
@@ -90,15 +121,75 @@ export default function ProfessorDashboard(): JSX.Element {
   async function loadData() {
     setLoading(true)
     try {
-      const [docs] = await Promise.all([
+      const [docs, foldersData] = await Promise.all([
         api.documents.list().catch(() => []),
+        api.folders.list().catch(() => []),
       ])
       setDocuments(docs)
+      setFolders(foldersData)
       setTemplates(DEFAULT_TEMPLATES)
+      // Preselect the first class folder so the Similarity tab has data to
+      // render without an extra click.
+      setSelectedClassFolderId((current) => {
+        if (current && foldersData.some((folder) => folder.folder_id === current)) return current
+        return foldersData.find((folder) => folder.folder_type === 'class')?.folder_id ?? ''
+      })
     } catch {
       setMessage({ type: 'error', text: 'Failed to load professor workspace data' })
     } finally {
       setLoading(false)
+    }
+  }
+
+  /** Run council scans for every submission in the selected class folder. */
+  async function handleScanSubmissions(): Promise<void> {
+    if (!selectedClassFolderId || scanning) return
+    setScanning(true)
+    setMessage(null)
+    try {
+      const documents = await api.folders.documents(selectedClassFolderId)
+      if (documents.length === 0) {
+        setMessage({ type: 'info', text: 'This folder has no submissions to scan yet.' })
+        return
+      }
+      for (let index = 0; index < documents.length; index += 1) {
+        const doc = documents[index]
+        setScanProgress({ done: index, total: documents.length, title: doc.title || 'Untitled' })
+        await api.plagiarism.runScan(selectedClassFolderId, doc.id)
+      }
+      setScanProgress(null)
+      setSimilarityRefreshKey((key) => key + 1)
+      setMessage({
+        type: 'success',
+        text: `Scanned ${documents.length} submission${documents.length === 1 ? '' : 's'}. The similarity matrix is refreshed.`,
+      })
+    } catch (error) {
+      setScanProgress(null)
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Scan failed' })
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  /** Open the council inspection for the clicked student's latest scan. */
+  async function handleStudentSelect(studentId: string): Promise<void> {
+    if (!selectedClassFolderId) return
+    try {
+      setMessage(null)
+      const scans = await api.plagiarism.listFolderScans(selectedClassFolderId)
+      const scan = scans.find((entry) => entry.user_id === studentId)
+      if (!scan) {
+        setMessage({
+          type: 'info',
+          text: 'No scan recorded for this student yet — run "Scan submissions" first.',
+        })
+        return
+      }
+      const detail = await api.plagiarism.getScan(scan.scan_id)
+      setInspectionDetail(detail)
+      setInspectionOpen(true)
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Failed to load the scan' })
     }
   }
 
@@ -181,47 +272,40 @@ export default function ProfessorDashboard(): JSX.Element {
         <div className="flex items-center gap-3">
           <Link
             to="/dashboard"
+            aria-label="Back to dashboard"
             className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground no-underline hover:text-foreground"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div className="flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-primary" />
-            <span className="font-bold text-sm">Professor Workspace</span>
+            <span className="font-bold text-sm">Professor workspace</span>
           </div>
         </div>
         <Link to="/dashboard" className="text-sm font-medium text-muted-foreground no-underline hover:text-foreground">
-          Exit to Dashboard
+          Exit to dashboard
         </Link>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight mb-1">Professor Dashboard</h1>
-            <p className="text-sm text-muted-foreground">
-              Manage thesis templates, run compliance audits, and review student documents.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => { void loadData() }}
-            disabled={loading}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-background text-sm font-medium hover:bg-secondary disabled:opacity-50"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
-          </button>
-        </div>
+        <PageHeader
+          title="Professor dashboard"
+          description="Manage thesis templates, run compliance audits, and review student documents."
+          actions={
+            <button
+              type="button"
+              onClick={() => { void loadData() }}
+              disabled={loading}
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-md border border-border bg-background text-sm font-medium hover:bg-secondary disabled:opacity-50"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh
+            </button>
+          }
+        />
 
         {message && (
-          <div
-            className={`rounded-lg p-3 mb-5 text-sm font-medium ${
-              message.type === 'success'
-                ? 'bg-green-500/10 border border-green-500/30 text-green-700'
-                : 'bg-red-500/10 border border-red-500/30 text-red-700'
-            }`}
-          >
+          <div className={`rounded-lg p-3 mb-5 text-sm font-medium ${MESSAGE_STYLES[message.type]}`}>
             {message.text}
           </div>
         )}
@@ -229,10 +313,11 @@ export default function ProfessorDashboard(): JSX.Element {
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border mb-6">
           {([
-            ['templates', 'Template Rubrics', FileText],
-            ['audit', 'Compliance Audit', ClipboardCheck],
-            ['reviews', 'Document Reviews', Eye],
-            ['folders', 'Classroom Folders', GraduationCap],
+            ['templates', 'Template rubrics', FileText],
+            ['audit', 'Compliance audit', ClipboardCheck],
+            ['reviews', 'Document reviews', Eye],
+            ['folders', 'Classroom folders', GraduationCap],
+            ['similarity', 'Similarity matrix', Users],
           ] as const).map(([key, label, Icon]) => (
             <button
               key={key}
@@ -254,14 +339,14 @@ export default function ProfessorDashboard(): JSX.Element {
         {activeTab === 'templates' && (
           <div className="rounded-xl bg-card border border-border p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Formatting Rubric Templates</h2>
+              <h2 className="text-lg font-semibold">Formatting rubric templates</h2>
               <button
                 type="button"
                 onClick={() => setShowTemplateForm(!showTemplateForm)}
                 className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
               >
                 <Plus className="w-3.5 h-3.5" />
-                New Template
+                New template
               </button>
             </div>
 
@@ -269,7 +354,7 @@ export default function ProfessorDashboard(): JSX.Element {
               <form onSubmit={(e) => { void handleCreateTemplate(e) }} className="rounded-lg border border-border bg-secondary/50 p-4 mb-5">
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Template Name</label>
+                    <label className="text-xs font-medium text-muted-foreground">Template name</label>
                     <input
                       type="text"
                       value={newTemplate.name}
@@ -279,7 +364,7 @@ export default function ProfessorDashboard(): JSX.Element {
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Font Family</label>
+                    <label className="text-xs font-medium text-muted-foreground">Font family</label>
                     <input
                       type="text"
                       value={newTemplate.fontFamily}
@@ -339,7 +424,7 @@ export default function ProfessorDashboard(): JSX.Element {
                 </div>
                 <div className="flex gap-2">
                   <button type="submit" className="h-8 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
-                    Create Template
+                    Create template
                   </button>
                   <button type="button" onClick={() => setShowTemplateForm(false)} className="h-8 px-4 rounded-md border border-border text-sm font-medium hover:bg-secondary">
                     Cancel
@@ -348,6 +433,19 @@ export default function ProfessorDashboard(): JSX.Element {
               </form>
             )}
 
+            {templates.length === 0 && !showTemplateForm ? (
+              <EmptyState
+                icon={FileText}
+                title="Create your first rubric template"
+                body="A template describes the format your class must follow: fonts, margins, spacing and required sections. Audits compare student papers against it."
+                action={
+                  <button type="button" onClick={() => setShowTemplateForm(true)} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                    <Plus className="w-3.5 h-3.5" />
+                    New template
+                  </button>
+                }
+              />
+            ) : null}
             <div className="flex flex-col gap-3">
               {templates.map((t) => (
                 <div key={t.id} className="flex items-center justify-between p-4 rounded-lg border border-border bg-background">
@@ -372,7 +470,7 @@ export default function ProfessorDashboard(): JSX.Element {
         {/* Tab 2: Compliance Audit */}
         {activeTab === 'audit' && (
           <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-4">Thesis Compliance Auditor</h2>
+            <h2 className="text-lg font-semibold mb-4">Thesis compliance auditor</h2>
 
             <div className="grid grid-cols-2 gap-4 mb-5">
               <div className="flex flex-col gap-2">
@@ -413,7 +511,7 @@ export default function ProfessorDashboard(): JSX.Element {
               className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 mb-5"
             >
               <ClipboardCheck className="w-4 h-4" />
-              {auditing ? 'Auditing…' : 'Run Compliance Audit'}
+              {auditing ? 'Auditing…' : 'Run compliance audit'}
             </button>
 
             {auditResult && <ThesisChecklist report={auditResult} />}
@@ -423,14 +521,14 @@ export default function ProfessorDashboard(): JSX.Element {
         {/* Tab 3: Document Reviews */}
         {activeTab === 'reviews' && (
           <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-2">Document Reviews & Annotations</h2>
+            <h2 className="text-lg font-semibold mb-2">Document reviews and annotations</h2>
             <p className="text-sm text-muted-foreground mb-5">
               Open any student document in the editor to add inline comments, annotations, and grade submissions. Comments appear in the document review sidebar.
             </p>
 
             <div className="flex flex-col gap-3">
               {documents.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No documents available for review.</p>
+                <EmptyState icon={Eye} title="Nothing to review yet" body="Student documents shared with you or submitted to your class folders will show up here." />
               ) : (
                 documents.map(doc => (
                   <div key={doc.id} className="flex items-center justify-between p-4 rounded-lg border border-border bg-background">
@@ -445,7 +543,7 @@ export default function ProfessorDashboard(): JSX.Element {
                       className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border text-sm font-medium hover:bg-secondary no-underline text-foreground"
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      Open & Review
+                      Open and review
                     </Link>
                   </div>
                 ))
@@ -454,10 +552,10 @@ export default function ProfessorDashboard(): JSX.Element {
           </div>
         )}
 
-        {/* Tab 4: Classroom Submission Folders */}
+        {/* Tab 4: Classroom submission folders */}
         {activeTab === 'folders' && (
           <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-2">Classroom Submission Folders</h2>
+            <h2 className="text-lg font-semibold mb-2">Classroom submission folders</h2>
             <p className="text-sm text-muted-foreground mb-5">
               Organize student submissions by class or assignment. Students can submit drafts directly to your class folders.
             </p>
@@ -470,12 +568,76 @@ export default function ProfessorDashboard(): JSX.Element {
                 to="/dashboard"
                 className="inline-flex items-center gap-1.5 mt-3 text-sm font-medium text-primary no-underline hover:underline"
               >
-                Go to Document Dashboard →
+                Go to your document dashboard →
               </Link>
             </div>
           </div>
         )}
+
+        {/* Tab 5: Similarity Matrix */}
+        {activeTab === 'similarity' && (
+          <div className="rounded-xl bg-card border border-border p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Class similarity matrix</h2>
+              <div className="flex items-center gap-3">
+                <select
+                  value={selectedClassFolderId}
+                  onChange={(e) => setSelectedClassFolderId(e.target.value)}
+                  className="h-8 px-3 rounded-md border border-border bg-background text-sm outline-none focus:border-primary appearance-none"
+                >
+                  <option value="">Select a class folder</option>
+                  {classFolders.map(folder => (
+                    <option key={folder.folder_id} value={folder.folder_id}>
+                      {folder.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => { void handleScanSubmissions() }}
+                  disabled={scanning || !selectedClassFolderId || classFolders.length === 0}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-default"
+                >
+                  <ClipboardCheck className="w-3.5 h-3.5" />
+                  {scanning ? 'Scanning…' : 'Scan submissions'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSimilarityRefreshKey((key) => key + 1)}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border bg-background text-sm font-medium hover:bg-secondary"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Refresh
+                </button>
+              </div>
+            </div>
+            {classFolders.length === 0 && (
+              <p className="text-sm text-muted-foreground mb-4">
+                You don't have any class folders yet. Create one from the main document dashboard to start comparing submissions.
+              </p>
+            )}
+            {scanning && scanProgress && (
+              <p className="text-xs text-muted-foreground mb-3">
+                Scanning {scanProgress.done + 1}/{scanProgress.total}: {scanProgress.title}
+              </p>
+            )}
+            <SimilarityMatrix
+              key={`${selectedClassFolderId}:${similarityRefreshKey}`}
+              classFolderId={selectedClassFolderId}
+              onStudentSelect={handleStudentSelect}
+            />
+          </div>
+        )}
       </main>
+
+      <CouncilInspectionModal
+        isOpen={inspectionOpen}
+        onClose={() => {
+          setInspectionOpen(false)
+          setInspectionDetail(null)
+        }}
+        detail={inspectionDetail}
+      />
     </div>
   )
 }

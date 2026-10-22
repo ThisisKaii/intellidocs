@@ -283,11 +283,11 @@ export default function AdminDashboard(): JSX.Element {
                 <Shield style={{ width: '18px', height: '18px' }} />
               </div>
               <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, letterSpacing: '-0.02em' }}>
-                Administrator Dashboard
+                Administrator dashboard
               </h1>
             </div>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', margin: 0 }}>
-              Verify Students &amp; Faculty, manage users, monitor platform telemetry, moderate documents, and export research data.
+              Verify students and faculty, manage users, monitor platform telemetry, moderate documents, and export research data.
             </p>
           </div>
 
@@ -312,7 +312,7 @@ export default function AdminDashboard(): JSX.Element {
             }}
           >
             <RefreshCw style={{ width: '14px', height: '14px' }} />
-            Refresh Data
+            Refresh data
           </button>
         </div>
 
@@ -320,17 +320,17 @@ export default function AdminDashboard(): JSX.Element {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
           <div style={{ padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid var(--border)', backgroundColor: 'var(--card)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Pending Verifications</span>
+              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Pending verifications</span>
               <Clock style={{ width: '16px', height: '16px', color: 'var(--warning)' }} />
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: pendingCount > 0 ? 'var(--warning)' : 'var(--foreground)' }}>
+            <div style={{ fontSize: '1.75rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: pendingCount > 0 ? 'var(--warning)' : 'var(--foreground)' }}>
               {pendingCount}
             </div>
           </div>
 
           <div style={{ padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid var(--border)', backgroundColor: 'var(--card)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Total Registered Users</span>
+              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Total registered users</span>
               <Users style={{ width: '16px', height: '16px' }} />
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{reports?.totalUsers ?? users.length}</div>
@@ -338,7 +338,7 @@ export default function AdminDashboard(): JSX.Element {
 
           <div style={{ padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid var(--border)', backgroundColor: 'var(--card)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Active Documents</span>
+              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Active documents</span>
               <FileText style={{ width: '16px', height: '16px' }} />
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{reports?.activeDocuments ?? documents.length}</div>
@@ -346,7 +346,7 @@ export default function AdminDashboard(): JSX.Element {
 
           <div style={{ padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid var(--border)', backgroundColor: 'var(--card)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Suggestion Acceptance</span>
+              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Suggestion acceptance</span>
               <BarChart3 style={{ width: '16px', height: '16px' }} />
             </div>
             <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{reports?.feedback.acceptanceRate ?? '—'}</div>
@@ -373,7 +373,7 @@ export default function AdminDashboard(): JSX.Element {
             }}
           >
             <UserCheck style={{ width: '16px', height: '16px' }} />
-            Verification Queue ({pendingCount})
+            Verification queue ({pendingCount})
           </button>
 
           <button
@@ -394,7 +394,7 @@ export default function AdminDashboard(): JSX.Element {
             }}
           >
             <Users style={{ width: '16px', height: '16px' }} />
-            User Management ({users.length})
+            User management ({users.length})
           </button>
 
           <button
@@ -415,7 +415,7 @@ export default function AdminDashboard(): JSX.Element {
             }}
           >
             <BarChart3 style={{ width: '16px', height: '16px' }} />
-            System Reports
+            System reports
           </button>
 
           <button
@@ -457,7 +457,7 @@ export default function AdminDashboard(): JSX.Element {
             }}
           >
             <BookOpen style={{ width: '16px', height: '16px' }} />
-            Research Data
+            Research data
           </button>
         </div>
 
@@ -465,7 +465,7 @@ export default function AdminDashboard(): JSX.Element {
         {activeTab === 'verification' && (
           <div style={{ backgroundColor: 'var(--card)', borderRadius: '0.75rem', border: '1px solid var(--border)', padding: '1.5rem' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: '0 0 0.25rem' }}>
-              Dual-Role Verification Queue
+              Verification queue
             </h2>
             <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1.25rem' }}>
               Review submitted identity credentials for Student quotas and Faculty permissions.
@@ -660,7 +660,7 @@ export default function AdminDashboard(): JSX.Element {
         {activeTab === 'users' && (
           <div style={{ backgroundColor: 'var(--card)', borderRadius: '0.75rem', border: '1px solid var(--border)', padding: '1.5rem' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: '0 0 0.25rem' }}>
-              System Registered Users
+              Registered users
             </h2>
             <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1rem' }}>
               Search by name, email, role, or verification status. Admins may override roles directly.
@@ -757,7 +757,7 @@ export default function AdminDashboard(): JSX.Element {
           <div style={{ backgroundColor: 'var(--card)', borderRadius: '0.75rem', border: '1px solid var(--border)', padding: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0 }}>
-                Aggregated System Analytics
+                System analytics
               </h2>
               <button
                 type="button"
@@ -918,7 +918,7 @@ export default function AdminDashboard(): JSX.Element {
         {activeTab === 'moderation' && (
           <div style={{ backgroundColor: 'var(--card)', borderRadius: '0.75rem', border: '1px solid var(--border)', padding: '1.5rem' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: '0 0 0.25rem' }}>
-              System Document Moderation
+              Document moderation
             </h2>
             <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1rem' }}>
               Global search across all users with author email, revision count, and last-updated audit info.
@@ -1042,7 +1042,7 @@ export default function AdminDashboard(): JSX.Element {
         {activeTab === 'research' && (
           <div style={{ backgroundColor: 'var(--card)', borderRadius: '0.75rem', border: '1px solid var(--border)', padding: '1.5rem' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: '0 0 0.5rem' }}>
-              Capstone Research Data &amp; Empirical Exporter
+              Research data export
             </h2>
             <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1.5rem' }}>
               Export structured datasets for Chapter 4 empirical analysis: prediction accuracy, time savings, interface channel acceptance, and per-user learning curves.

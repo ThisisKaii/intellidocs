@@ -26,6 +26,8 @@ import {
   type EditorPreferences,
 } from '@/lib/editorPreferences'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
+import { motion } from 'framer-motion'
+import { PageHeader } from '@/components/PageHeader'
 
 const ROLE_LABELS: Record<string, string> = {
   student: 'Student',
@@ -55,24 +57,24 @@ export default function SettingsPage(): JSX.Element {
   const isProfessor = role === 'professor'
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+    <motion.div className="min-h-screen bg-background text-foreground" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <Link
           to="/dashboard"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground no-underline transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-4" strokeWidth={1.75} />
-          Back to Documents
+          Back to documents
         </Link>
 
-        <h1 className="text-2xl font-semibold mt-4 mb-6">Settings</h1>
+        <div className="mt-4"><PageHeader title="Settings" description="Manage your profile, security and editor preferences." /></div>
 
         <div className="flex flex-col gap-6">
           {/* 1. Display Name / Profile */}
           <ManageProfileSection userDisplayName={user?.displayName ?? ''} onSaved={updateUser} />
 
           {/* 2. Account Information */}
-          <section className="rounded-2xl bg-card border border-border p-6">
+          <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
             <h2 className="text-base font-medium mb-4 flex items-center gap-2">
               <UserCog className="size-4 text-muted-foreground" strokeWidth={1.75} />
               Account Info
@@ -107,23 +109,23 @@ export default function SettingsPage(): JSX.Element {
             </div>
           </section>
 
-          {/* 3. Faculty Application (visible to students and pending professors) */}
+          {/* 3. Faculty application (visible to students and pending professors) */}
           <FacultyApplicationSection
             role={role}
             verificationStatus={user?.verificationStatus}
           />
 
-          {/* 3b. Student Status Application (visible to regular users) */}
+          {/* 3b. Student status Application (visible to regular users) */}
           {role !== 'student' && role !== 'professor' && role !== 'admin' && (
             <StudentApplicationSection
               verificationStatus={user?.verificationStatus}
             />
           )}
 
-          {/* 4. Change Password */}
+          {/* 4. Change password */}
           <ChangePasswordSection />
 
-          {/* 5. Connected Accounts (Google) */}
+          {/* 5. Connected accounts (Google) */}
           <ConnectedAccountsSection />
 
           {/* 6. Editor & AI personalization */}
@@ -137,7 +139,7 @@ export default function SettingsPage(): JSX.Element {
           Account authentication and multi-factor security are managed securely via Supabase Auth.
         </p>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -175,10 +177,10 @@ function ManageProfileSection({
   }
 
   return (
-    <section className="rounded-2xl bg-card border border-border p-6">
+    <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
       <h2 className="text-base font-medium mb-4 flex items-center gap-2">
         <UserCog className="size-4 text-muted-foreground" strokeWidth={1.75} />
-        Manage Profile
+        Profile
       </h2>
 
       <form onSubmit={handleSave} className="flex flex-col gap-4">
@@ -193,7 +195,7 @@ function ManageProfileSection({
             onChange={(e) => setDisplayName(e.target.value)}
             maxLength={100}
             placeholder="Your name"
-            className="max-w-sm rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            className="settings-input max-w-sm w-full"
           />
         </div>
 
@@ -211,7 +213,7 @@ function ManageProfileSection({
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex w-fit items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          className="btn-primary"
         >
           {saving ? 'Saving…' : 'Save changes'}
         </button>
@@ -243,10 +245,10 @@ function FacultyApplicationSection({
 
   if (isApproved) {
     return (
-      <section className="rounded-2xl bg-card border border-border p-6">
+      <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
         <h2 className="text-base font-medium mb-2 flex items-center gap-2">
           <GraduationCap className="size-4 text-green-600" strokeWidth={1.75} />
-          Faculty Status
+          Faculty status
         </h2>
         <p className="text-sm text-green-600 flex items-center gap-1.5">
           <Check className="size-4" strokeWidth={2} />
@@ -289,10 +291,10 @@ function FacultyApplicationSection({
 
   if (isPending) {
     return (
-      <section className="rounded-2xl bg-card border border-border p-6">
+      <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
         <h2 className="text-base font-medium mb-2 flex items-center gap-2">
           <GraduationCap className="size-4 text-yellow-600" strokeWidth={1.75} />
-          Faculty Application
+          Faculty application
         </h2>
         <p className="text-sm text-yellow-600 flex items-center gap-1.5">
           <AlertTriangle className="size-4" strokeWidth={2} />
@@ -303,10 +305,10 @@ function FacultyApplicationSection({
   }
 
   return (
-    <section className="rounded-2xl bg-card border border-border p-6">
+    <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
       <h2 className="text-base font-medium mb-2 flex items-center gap-2">
         <GraduationCap className="size-4 text-muted-foreground" strokeWidth={1.75} />
-        Apply for Faculty Access
+        Apply for faculty access
       </h2>
       <p className="text-xs text-muted-foreground mb-4">
         Submit your credentials to apply for a Professor account. Administrator approval is required to unlock educator features such as document review, grading, and compliance auditing.
@@ -331,7 +333,7 @@ function FacultyApplicationSection({
               onChange={(e) => setCollege(e.target.value)}
               placeholder="e.g. College of Computer Studies"
               required
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              className="settings-input w-full"
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -343,7 +345,7 @@ function FacultyApplicationSection({
               onChange={(e) => setDepartment(e.target.value)}
               placeholder="e.g. Computer Science"
               required
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              className="settings-input w-full"
             />
           </div>
         </div>
@@ -358,7 +360,7 @@ function FacultyApplicationSection({
               onChange={(e) => setInstitutionalEmail(e.target.value)}
               placeholder="professor@university.edu"
               required
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              className="settings-input w-full"
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -370,7 +372,7 @@ function FacultyApplicationSection({
               onChange={(e) => setFacultyId(e.target.value)}
               placeholder="e.g. FAC-2026-001"
               required
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              className="settings-input w-full"
             />
           </div>
         </div>
@@ -384,7 +386,7 @@ function FacultyApplicationSection({
             placeholder="Briefly describe your role and why you need faculty access..."
             required
             rows={3}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary resize-none"
+            className="settings-input w-full resize-none"
           />
         </div>
 
@@ -399,7 +401,7 @@ function FacultyApplicationSection({
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex w-fit items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          className="btn-primary"
         >
           {saving ? 'Submitting…' : 'Submit Application'}
         </button>
@@ -423,10 +425,10 @@ function StudentApplicationSection({
 
   if (verificationStatus === 'approved') {
     return (
-      <section className="rounded-2xl bg-card border border-border p-6">
+      <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
         <h2 className="text-base font-medium mb-2 flex items-center gap-2">
           <GraduationCap className="size-4 text-green-600" strokeWidth={1.75} />
-          Student Status
+          Student status
         </h2>
         <p className="text-sm text-green-600 flex items-center gap-1.5">
           <Check className="size-4" strokeWidth={2} />
@@ -438,10 +440,10 @@ function StudentApplicationSection({
 
   if (verificationStatus === 'pending') {
     return (
-      <section className="rounded-2xl bg-card border border-border p-6">
+      <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
         <h2 className="text-base font-medium mb-2 flex items-center gap-2">
           <GraduationCap className="size-4 text-yellow-600" strokeWidth={1.75} />
-          Student Application
+          Student application
         </h2>
         <p className="text-sm text-yellow-600 flex items-center gap-1.5">
           <AlertTriangle className="size-4" strokeWidth={2} />
@@ -477,10 +479,10 @@ function StudentApplicationSection({
   }
 
   return (
-    <section className="rounded-2xl bg-card border border-border p-6">
+    <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
       <h2 className="text-base font-medium mb-2 flex items-center gap-2">
         <GraduationCap className="size-4 text-muted-foreground" strokeWidth={1.75} />
-        Apply for Student Status
+        Apply for Student status
       </h2>
       <p className="text-xs text-muted-foreground mb-4">
         Verify yourself as a student to unlock the UCLM Capstone Thesis presets, word-target checklist, and a larger storage quota.
@@ -505,7 +507,7 @@ function StudentApplicationSection({
               onChange={(e) => setStudentId(e.target.value)}
               placeholder="e.g. UCLM-2026-1234"
               required
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              className="settings-input w-full"
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -517,7 +519,7 @@ function StudentApplicationSection({
               onChange={(e) => setDegreeProgram(e.target.value)}
               placeholder="e.g. Bachelor of Science in Computer Science"
               required
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+              className="settings-input w-full"
             />
           </div>
         </div>
@@ -531,7 +533,7 @@ function StudentApplicationSection({
             onChange={(e) => setCollege(e.target.value)}
             placeholder="e.g. College of Computer Studies"
             required
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            className="settings-input w-full"
           />
         </div>
 
@@ -546,7 +548,7 @@ function StudentApplicationSection({
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex w-fit items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          className="btn-primary"
         >
           {saving ? 'Submitting…' : 'Submit Application'}
         </button>
@@ -595,10 +597,10 @@ function ChangePasswordSection(): JSX.Element {
   }
 
   return (
-    <section className="rounded-2xl bg-card border border-border p-6">
+    <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
       <h2 className="text-base font-medium mb-4 flex items-center gap-2">
         <Lock className="size-4 text-muted-foreground" strokeWidth={1.75} />
-        Change Password
+        Change password
       </h2>
 
       <form onSubmit={handlePasswordChange} className="flex flex-col gap-4">
@@ -612,7 +614,7 @@ function ChangePasswordSection(): JSX.Element {
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="Min 8 characters"
-            className="max-w-sm rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            className="settings-input max-w-sm w-full"
           />
         </div>
 
@@ -626,7 +628,7 @@ function ChangePasswordSection(): JSX.Element {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm new password"
-            className="max-w-sm rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            className="settings-input max-w-sm w-full"
           />
         </div>
 
@@ -644,7 +646,7 @@ function ChangePasswordSection(): JSX.Element {
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex w-fit items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          className="btn-primary"
         >
           {saving ? 'Updating…' : 'Update Password'}
         </button>
@@ -695,10 +697,10 @@ function ConnectedAccountsSection(): JSX.Element {
   }
 
   return (
-    <section className="rounded-2xl bg-card border border-border p-6">
+    <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
       <h2 className="text-base font-medium mb-4 flex items-center gap-2">
         <Link2 className="size-4 text-muted-foreground" strokeWidth={1.75} />
-        Connected Accounts
+        Connected accounts
       </h2>
 
       <div className="flex items-center justify-between py-2 border-b border-border">
@@ -883,7 +885,7 @@ function TwoFactorAuthSection(): JSX.Element {
   const isEnabled = factors.length > 0
 
   return (
-    <section className="rounded-2xl bg-card border border-border p-6">
+    <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-base font-medium flex items-center gap-2">
           <ShieldCheck className="size-4 text-muted-foreground" strokeWidth={1.75} />
@@ -959,12 +961,12 @@ function TwoFactorAuthSection(): JSX.Element {
                 value={verifyCode}
                 onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="123456"
-                className="w-32 tracking-widest text-center rounded-md border border-border bg-background px-3 py-2 text-sm font-mono outline-none focus:border-primary"
+                className="settings-input w-32 tracking-widest text-center font-mono"
               />
               <button
                 type="submit"
                 disabled={actionLoading || verifyCode.length !== 6}
-                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                className="btn-primary text-xs h-8 px-3"
               >
                 {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Verify & Activate'}
               </button>
@@ -983,7 +985,7 @@ function TwoFactorAuthSection(): JSX.Element {
           type="button"
           disabled={actionLoading}
           onClick={() => { void startEnrollment() }}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          className="btn-primary text-xs h-8 px-3 gap-1.5"
         >
           {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
           Enable Authenticator App
@@ -1018,7 +1020,7 @@ function EditorPersonalizationSection(): JSX.Element {
   }
 
   return (
-    <section className="rounded-2xl bg-card border border-border p-6">
+    <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
       <h2 className="text-base font-medium mb-4 flex items-center gap-2">
         <Sparkles className="size-4 text-muted-foreground" strokeWidth={1.75} />
         Editor &amp; AI

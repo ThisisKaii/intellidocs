@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff } from 'lucide-react'
 import { LogoMark } from '../components/Logo'
+import { AuthShell } from '../components/AuthShell'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 
@@ -51,12 +52,12 @@ function Register(): JSX.Element {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-const [confirmPassword, setConfirmPassword] = useState('')
-// Shared reveal toggle for both password fields.
-const [showPassword, setShowPassword] = useState(false)
-// Independent of showPassword: each field reveals on its own.
-const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-const [error, setError] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  // Shared reveal toggle for both password fields.
+  const [showPassword, setShowPassword] = useState(false)
+  // Independent of showPassword: each field reveals on its own.
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -93,7 +94,7 @@ const [error, setError] = useState('')
         loginResponse.session.access_token,
         loginResponse.session.refresh_token
       )
-      setSuccess('Account created. Redirectingâ€¦')
+      setSuccess('Account created. Redirecting…')
       setTimeout(() => navigate('/dashboard'), 1500)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')
@@ -143,77 +144,90 @@ const [error, setError] = useState('')
   }
 
   function onFocus(e: React.FocusEvent<HTMLInputElement>) {
-    // Matches the Login screen: a themed ring plus a soft halo. Uses --ring so
-    // the accent stays teal in both light and dark mode.
     e.currentTarget.style.boxShadow =
       '0 0 0 1.5px var(--ring), 0 0 0 4px color-mix(in srgb, var(--ring) 12%, transparent)'
   }
+
   function onBlur(e: React.FocusEvent<HTMLInputElement>) {
     e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow)'
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        minHeight: '100vh',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--background)',
-        padding: '1.5rem',
-      }}
-    >
+    <AuthShell>
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
         style={{ width: '100%', maxWidth: '360px' }}
       >
         {/* Logo + heading */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'center',
-                marginBottom: '1.25rem',
-              }}
-            >
-              <LogoMark size={40} title="IntelliDocs" />
-            </div>
-          <h1
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05 }}
+          style={{ textAlign: 'center', marginBottom: '2rem' }}
+        >
+          <div
+            className="lg:hidden"
             style={{
-              fontSize: '1.375rem',
-              fontWeight: 600,
-              letterSpacing: '-0.025em',
-              color: 'var(--foreground)',
+              display: 'flex',
+              justifyContent: 'center',
+              marginBottom: '1.25rem',
+            }}
+          >
+            <LogoMark size={52} title="IntelliDocs" />
+          </div>
+          <span
+            className="font-tech"
+            style={{
+              display: 'block',
+              fontSize: '0.6875rem',
+              fontWeight: 700,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              color: 'var(--muted-foreground)',
+              marginBottom: '0.5rem',
+            }}
+          >
+            Academic Workspace
+          </span>
+          <h1
+            className="font-display"
+            style={{
+              fontSize: '1.625rem',
+              fontWeight: 800,
+              letterSpacing: '-0.02em',
+              color: 'var(--text-primary)',
               margin: '0 0 0.375rem',
             }}
           >
-            IntelliDocs
-          </h1>
-          <p style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', margin: 0 }}>
             Create your account
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', margin: 0 }}>
+            Free for students and professors
           </p>
-        </div>
+        </motion.div>
 
         {/* Card */}
-        <div
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.38, delay: 0.1 }}
           style={{
             backgroundColor: 'var(--card)',
             borderRadius: '0.75rem',
             padding: '1.75rem',
-            // Teal outline plus a soft glow. Expressed with --ring so the card
-            // keeps the same treatment in light and dark mode. Login uses an
-            // identical value - keep the two in sync.
-            boxShadow:
-              '0 0 0 1px color-mix(in srgb, var(--ring) 35%, transparent), 0 4px 24px color-mix(in srgb, var(--ring) 12%, transparent)',
+            border: '1px solid var(--border)',
+            boxShadow: 'rgba(58, 52, 47, 0.06) 0px 4px 16px',
           }}
         >
           {/* Google Sign-Up Button */}
-          <button
+          <motion.button
             type="button"
             onClick={handleGoogleSignUp}
             disabled={googleLoading || loading}
+            whileHover={!(googleLoading || loading) ? { y: -1, boxShadow: '0 4px 12px rgba(0,0,0,0.10)' } : {}}
+            whileTap={!(googleLoading || loading) ? { y: 0 } : {}}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -228,8 +242,8 @@ const [error, setError] = useState('')
               color: 'var(--foreground)',
               fontSize: '0.875rem',
               fontWeight: 500,
-              cursor: (googleLoading || loading) ? 'not-allowed' : 'pointer',
-              opacity: (googleLoading || loading) ? 0.65 : 1,
+              cursor: googleLoading || loading ? 'not-allowed' : 'pointer',
+              opacity: googleLoading || loading ? 0.65 : 1,
               transition: 'opacity 150ms',
               fontFamily: 'inherit',
             }}
@@ -241,18 +255,24 @@ const [error, setError] = useState('')
               <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
               <path fill="none" d="M0 0h48v48H0z"/>
             </svg>
-            {googleLoading ? 'Redirectingâ€¦' : 'Sign up with Google'}
-          </button>
+            {googleLoading ? 'Redirecting…' : 'Sign up with Google'}
+          </motion.button>
 
           {/* Divider */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '0.5rem 0' }}>
             <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border)' }} />
-            <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>or register with email</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>
+              or register with email
+            </span>
             <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border)' }} />
           </div>
 
           {error && (
-            <div
+            <motion.div
+              key={error}
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.22 }}
               style={{
                 backgroundColor: 'rgba(255,91,79,0.08)',
                 border: '1px solid rgba(255,91,79,0.25)',
@@ -264,11 +284,15 @@ const [error, setError] = useState('')
               <p style={{ fontSize: '0.8125rem', color: 'var(--destructive)', margin: 0 }}>
                 {error}
               </p>
-            </div>
+            </motion.div>
           )}
 
           {success && (
-            <div
+            <motion.div
+              key={success}
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.22 }}
               style={{
                 backgroundColor: 'color-mix(in srgb, var(--success) 8%, transparent)',
                 border: '1px solid color-mix(in srgb, var(--success) 25%, transparent)',
@@ -278,12 +302,17 @@ const [error, setError] = useState('')
               }}
             >
               <p style={{ fontSize: '0.8125rem', color: 'var(--success)', margin: 0 }}>{success}</p>
-            </div>
+            </motion.div>
           )}
 
           <form onSubmit={handleSubmit} noValidate>
             {/* Email */}
-            <div style={{ marginBottom: '1rem' }}>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.13 }}
+              style={{ marginBottom: '1rem' }}
+            >
               <label
                 htmlFor="reg-email"
                 style={{
@@ -307,10 +336,15 @@ const [error, setError] = useState('')
                 onFocus={onFocus}
                 onBlur={onBlur}
               />
-            </div>
+            </motion.div>
 
             {/* Password */}
-            <div style={{ marginBottom: '0.5rem' }}>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.18 }}
+              style={{ marginBottom: '0.5rem' }}
+            >
               <label
                 htmlFor="reg-password"
                 style={{
@@ -359,10 +393,15 @@ const [error, setError] = useState('')
               >
                 Must be at least 6 characters
               </p>
-            </div>
+            </motion.div>
 
             {/* Confirm Password */}
-            <div style={{ marginBottom: '0.5rem' }}>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.23 }}
+              style={{ marginBottom: '0.5rem' }}
+            >
               <label
                 htmlFor="reg-confirm-password"
                 style={{
@@ -375,7 +414,6 @@ const [error, setError] = useState('')
               >
                 Confirm Password
               </label>
-              {/* Reveals independently of the password field above. */}
               <div style={{ position: 'relative' }}>
                 <input
                   id="reg-confirm-password"
@@ -416,35 +454,47 @@ const [error, setError] = useState('')
                   Passwords do not match
                 </p>
               )}
-            </div>
+            </motion.div>
 
-            <div style={{ marginTop: '1.25rem' }}>
-              <button
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.28 }}
+              style={{ marginTop: '1.25rem' }}
+            >
+              <motion.button
                 type="submit"
                 disabled={loading}
+                whileHover={!loading ? { y: -1, boxShadow: '0 4px 14px rgba(19,81,170,0.4)' } : {}}
+                whileTap={!loading ? { y: 0 } : {}}
                 style={{
                   display: 'block',
                   width: '100%',
-                  height: '38px',
-                  borderRadius: '0.5rem',
+                  height: '42px',
+                  borderRadius: '0.625rem',
                   border: 'none',
                   backgroundColor: 'var(--primary)',
                   color: 'var(--primary-foreground)',
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
+                  fontSize: '0.9375rem',
+                  fontWeight: 700,
                   cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.65 : 1,
-                  transition: 'opacity 150ms',
+                  letterSpacing: '0.01em',
+                  boxShadow: '0 2px 8px rgba(19,81,170,0.3)',
+                  opacity: loading ? 0.7 : 1,
+                  transition: 'opacity 150ms, box-shadow 150ms',
                   fontFamily: 'inherit',
                 }}
               >
-                {loading ? 'Creating accountâ€¦' : 'Create account'}
-              </button>
-            </div>
+                {loading ? 'Creating account…' : 'Create account'}
+              </motion.button>
+            </motion.div>
           </form>
-        </div>
+        </motion.div>
 
-        <p
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.35 }}
           style={{
             textAlign: 'center',
             marginTop: '1.25rem',
@@ -455,13 +505,13 @@ const [error, setError] = useState('')
           Already have an account?{' '}
           <Link
             to="/login"
-            style={{ color: 'var(--foreground)', fontWeight: 500, textDecoration: 'none' }}
+            style={{ color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}
           >
             Sign in
           </Link>
-        </p>
+        </motion.p>
       </motion.div>
-    </div>
+    </AuthShell>
   )
 }
 

@@ -9,6 +9,12 @@ const __dirname = dirname(__filename)
 
 export default defineConfig({
   plugins: [tailwindcss(), react()],
+  // harper.js loads its WASM binary via `new URL(..., import.meta.url)`. The
+  // dependency pre-bundler does not rewrite that reference, so keep the
+  // package out of optimizeDeps and let Vite's asset pipeline serve it.
+  optimizeDeps: {
+    exclude: ['harper.js'],
+  },
   resolve: {
     alias: {
       '@': `${__dirname}/src`,

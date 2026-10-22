@@ -106,7 +106,8 @@ function buildCss(preset: Omit<AcademicPreset, 'css'>): string {
 .intellidocs-page-editor .ProseMirror h2,
 .intellidocs-page-editor .ProseMirror h3,
 .intellidocs-page-editor .ProseMirror blockquote,
-.intellidocs-page-editor .ProseMirror li {
+.intellidocs-page-editor .ProseMirror li,
+.intellidocs-page-editor .ProseMirror li p {
   ${'text-indent: 0;'}
 }
 ${headingBlock}

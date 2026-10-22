@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useEditor, type Editor } from '@tiptap/react'
 import { PaginationPlus } from 'tiptap-pagination-plus'
 import {
@@ -8,12 +8,14 @@ import {
   type PageSizeKey,
   type PageOrientation,
   type MarginValues,
+  type PageNumberFormat,
+  type HeaderFooterConfig,
+  type HeaderFooterPlacement,
 } from './TiptapEditor'
-import type { GrammarIssue } from './GrammarPanel'
-import type { PageNumberFormat } from '@/services/api'
 import type { UnderlineStyle } from '@/lib/editorPreferences'
 import { SlashCommandMenu } from './SlashCommandMenu'
 import type { BehaviorEventPayload } from './behaviorListener'
+import type { GrammarIssue } from './GrammarPanel'
 
 /** Vertical gap between stacked page sheets, in px. */
 const PAGE_GAP = 40
@@ -35,32 +37,94 @@ function pageNumberToken(format: PageNumberFormat): string {
   return format === 'none' ? '' : '{page}'
 }
 
-/** Number of pages to render instantly before progressive hydration begins. */
-const INITIAL_PAGE_COUNT = 3
-
-/** Maximum content length (chars) below which progressive loading is skipped. */
-const PROGRESSIVE_THRESHOLD = 8000
+/**
+ * Lay out one header/footer zone's text and page number across the library's
+ * two slots (left / right). 'split' keeps the classic Word look — text on the
+ * left, page number on the right — while the other placements put both pieces
+ * on one side; 'center' wraps its content in a full-width centered container.
+ */
+function composeZone(
+  text: string,
+  numberToken: string,
+  placement: HeaderFooterPlacement
+): { left: string; right: string } {
+  const combined = [text, numberToken].filter((piece) => piece.length > 0).join('&nbsp;&nbsp;&nbsp;')
+  switch (placement) {
+    case 'left':
+      return { left: combined, right: '' }
+    case 'center':
+      // The library renders this slot as a shrink-to-fit inline-block at the
+      // left margin. A full-width wrapper lets the text center against the page.
+      return {
+        left: `<div style="width:100%; text-align:center; display:flex; justify-content:center; align-items:center;">${combined}</div>`,
+        right: '',
+      }
+    case 'right':
+      return { left: '', right: combined }
+    case 'split':
+    default:
+      return { left: text, right: numberToken }
+  }
+}
 
 /**
- * Split document HTML into page chunks at `<hr class="page-break">` boundaries.
- * Returns an array of HTML strings, one per page. If no page breaks are found,
- * returns the entire content as a single chunk.
+ * Strip redundant markup that imported documents carry (zero-width spaces,
+ * attribute-less `<span>`/`<font>` wrappers, spans left empty after unwrap).
+ * Runs before ProseMirror parses the HTML so the node tree stays lean.
  */
-function splitIntoPageChunks(html: string): string[] {
-  const PAGE_BREAK_RE = /<hr\s+class="page-break"[^>]*\/?>/gi
-  if (!PAGE_BREAK_RE.test(html)) return [html]
-
-  const parts: string[] = []
-  let lastIdx = 0
-  PAGE_BREAK_RE.lastIndex = 0
-
-  let match: RegExpExecArray | null
-  while ((match = PAGE_BREAK_RE.exec(html)) !== null) {
-    parts.push(html.slice(lastIdx, match.index + match[0].length))
-    lastIdx = match.index + match[0].length
+function sanitizeLoadedHtml(html: string): string {
+  if (
+    !html.includes('<span') &&
+    !html.includes('<font') &&
+    !html.includes('\u200B') &&
+    !html.includes('<br')
+  ) {
+    return html
   }
-  if (lastIdx < html.length) parts.push(html.slice(lastIdx))
-  return parts.length > 0 ? parts : [html]
+
+  const doc = new DOMParser().parseFromString(`<div id="sanitize-root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('sanitize-root')
+  if (!root) return html
+
+  // Collect first, then mutate: unwrapping during the walk disturbs it.
+  const elements: Element[] = []
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
+  let node: Node | null = walker.currentNode
+  while (node) {
+    if (node.nodeType === Node.TEXT_NODE && node.textContent?.includes('\u200B')) {
+      node.textContent = node.textContent.replace(/\u200B/g, '')
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      elements.push(node as Element)
+    }
+    node = walker.nextNode()
+  }
+
+  for (const el of elements) {
+    if ((el.tagName === 'SPAN' && el.attributes.length === 0) || el.tagName === 'FONT') {
+      el.replaceWith(...Array.from(el.childNodes))
+    }
+  }
+  // Drop wrappers left empty by the unwrap pass.
+  // (A tab node is an intentionally empty <span data-tab>; keep it.)
+  for (const el of Array.from(root.querySelectorAll('span:empty:not([data-tab]), font:empty'))) {
+    el.remove()
+  }
+
+  // Word renders each empty paragraph as ONE line, but a lone <br> survives
+  // the editor's strict parsing as a hard-break node and renders TWO line
+  // boxes — double-height blank lines in imported documents. Strip the break
+  // so the paragraph loads empty (single line, matching Word).
+  for (const paragraph of Array.from(root.querySelectorAll('p'))) {
+    const children = Array.from(paragraph.childNodes).filter(
+      (child) => !(child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()),
+    )
+    const only = children.length === 1 ? children[0] : null
+    if (only && only.nodeType === Node.ELEMENT_NODE && (only as Element).tagName === 'BR') {
+      only.remove()
+    }
+  }
+
+  return root.innerHTML
 }
 
 interface PagedEditorProps {
@@ -79,12 +143,8 @@ interface PagedEditorProps {
   pageSize: PageSizeKey
   margins: MarginValues
   orientation: PageOrientation
-  showHeader: boolean
-  showFooter: boolean
-  headerContent: string
-  footerContent: string
-  headerNumberFormat: PageNumberFormat
-  footerNumberFormat: PageNumberFormat
+  /** Header/footer configuration (replaces individual header/footer props). */
+  headerFooterConfig: HeaderFooterConfig
   /**
    * Show two pages side by side as one continuous spread, as readers see an
    * open journal. Geometry and page breaks are untouched, so this is a view
@@ -92,6 +152,14 @@ interface PagedEditorProps {
    * to the stacked layout.
    */
   spreadPreview?: boolean
+  /** Visual zoom for the whole canvas (1 = 100%). Layout is unaffected. */
+  zoomLevel?: number
+  /** Non-printing alignment gridlines over the text area of each page. */
+  showGridlines?: boolean
+  /** Notifies the page when progressive hydration starts or finishes. */
+  onHydrationChange?: (loading: boolean) => void
+  /** Fired when the user double-clicks a rendered page header or footer. */
+  onHeaderFooterActivate?: (target: 'header' | 'footer') => void
   /** Forwarded to the floating menu so structural actions reach the behavior pipeline. */
   onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
 }
@@ -116,20 +184,20 @@ export function PagedEditor({
   pageSize,
   margins,
   orientation,
-  showHeader,
-  showFooter,
-  headerContent,
-  footerContent,
-  headerNumberFormat,
-  footerNumberFormat,
+  headerFooterConfig,
   spreadPreview = false,
+  zoomLevel = 1,
+  showGridlines = false,
+  onHydrationChange,
+  onHeaderFooterActivate,
   onFormatApplied,
 }: PagedEditorProps): JSX.Element {
   const propsRef = useRef({ onContentChange, onGrammarClick })
   propsRef.current = { onContentChange, onGrammarClick }
   const lastEmittedRef = useRef<string | null>(null)
-  const progressiveLoadedRef = useRef<boolean>(false)
-  const cancelledRef = useRef<boolean>(false)
+  // Pagination is paused around a document load so the single ProseMirror
+  // parse triggers exactly one page relayout instead of intermediate passes.
+  const paginationPausedRef = useRef<boolean>(false)
   const [loadProgress, setLoadProgress] = useState<number | null>(null)
 
   const preset = PAGE_SIZES[pageSize]
@@ -141,6 +209,18 @@ export function PagedEditor({
   const bottomPx = inToPx(margins.bottom)
   const leftPx = inToPx(margins.left)
   const rightPx = inToPx(margins.right)
+
+  // Header/footer slot strings for the pagination library (left / right per zone).
+  const headerSlots = composeZone(
+    headerFooterConfig.header.default.content,
+    pageNumberToken(headerFooterConfig.header.default.numberFormat),
+    headerFooterConfig.header.placement
+  )
+  const footerSlots = composeZone(
+    headerFooterConfig.footer.default.content,
+    pageNumberToken(headerFooterConfig.footer.default.numberFormat),
+    headerFooterConfig.footer.placement
+  )
 
   const editor = useEditor({
     extensions: [
@@ -154,15 +234,17 @@ export function PagedEditor({
         marginLeft: leftPx,
         marginRight: rightPx,
         pageGap: PAGE_GAP,
+        // PaginationPlus starts content at marginTop + contentMarginTop +
+        // headerHeight, so a non-zero value here doubles the top margin.
         contentMarginTop: 0,
         contentMarginBottom: 0,
         pageBreakBackground: 'var(--canvas-bg)',
         pageGapBorderColor: 'transparent',
         pageGapBorderSize: 0,
-        headerLeft: showHeader ? headerContent : '',
-        headerRight: showHeader ? pageNumberToken(headerNumberFormat) : '',
-        footerLeft: showFooter ? footerContent : '',
-        footerRight: showFooter ? pageNumberToken(footerNumberFormat) : '',
+        headerLeft: headerSlots.left,
+        headerRight: headerSlots.right,
+        footerLeft: footerSlots.left,
+        footerRight: footerSlots.right,
       }),
     ],
     content: '',
@@ -183,9 +265,36 @@ export function PagedEditor({
     onActiveEditorChange(editor)
   }, [editor, onActiveEditorChange])
 
+  // Report progressive-hydration state so heavy document scanners can pause
+  // while chunks are still streaming in.
+  useEffect(() => {
+    onHydrationChange?.(loadProgress !== null)
+  }, [loadProgress, onHydrationChange])
+
+  // Word-style direct manipulation: double-clicking a rendered page header or
+  // footer asks the host page to open Page Setup focused on that field.
+  // Delegated on the editor root because the pagination library renders the
+  // header/footer elements itself (pages are added dynamically).
+  useEffect(() => {
+    if (!editor || !onHeaderFooterActivate) return
+    const dom = editor.view.dom
+    const onDblClick = (event: MouseEvent): void => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      if (target.closest('.rm-page-header')) onHeaderFooterActivate('header')
+      else if (target.closest('.rm-page-footer')) onHeaderFooterActivate('footer')
+    }
+    dom.addEventListener('dblclick', onDblClick)
+    return () => dom.removeEventListener('dblclick', onDblClick)
+  }, [editor, onHeaderFooterActivate])
+
   // Push externally-driven content (initial load, restore) into the editor.
-  // For large documents, content is progressively hydrated in page chunks
-  // to avoid freezing the browser main thread.
+  // One transactional parse of the whole document: the editor previously
+  // streamed large imports in page chunks, but ProseMirror strips a trailing
+  // <hr> from every parsed fragment, so chunk boundaries silently deleted
+  // page breaks (and adjacent content) from the saved document on each
+  // load/save cycle. A single parse has no fragment boundaries to lose nodes
+  // at; pagination is paused around it so exactly one page relayout runs.
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     if (content === lastEmittedRef.current) return
@@ -196,86 +305,111 @@ export function PagedEditor({
 
     lastEmittedRef.current = content
 
-    // Small documents: load all at once (no progressive loading needed)
-    if (content.length < PROGRESSIVE_THRESHOLD) {
-      progressiveLoadedRef.current = false
-      setLoadProgress(null)
-      editor.commands.setContent(content, { emitUpdate: false })
-      return
+    // Strip import-only wrapper markup before ProseMirror builds its nodes.
+    const cleanContent = sanitizeLoadedHtml(content)
+
+    if (!paginationPausedRef.current) {
+      paginationPausedRef.current = true
+      editor.commands.disablePagination()
     }
-
-    // Large documents: split into page chunks and progressively hydrate
-    const chunks = splitIntoPageChunks(content)
-    if (chunks.length <= INITIAL_PAGE_COUNT) {
-      editor.commands.setContent(content, { emitUpdate: false })
-      return
+    editor.commands.setContent(cleanContent, { emitUpdate: false })
+    if (paginationPausedRef.current) {
+      paginationPausedRef.current = false
+      editor.commands.enablePagination()
     }
-
-    cancelledRef.current = false
-    progressiveLoadedRef.current = false
-    setLoadProgress(0)
-
-    // Phase 1: Render initial pages immediately
-    const initialHtml = chunks.slice(0, INITIAL_PAGE_COUNT).join('')
-    editor.commands.setContent(initialHtml, { emitUpdate: false })
-
-    // Phase 2: Append remaining chunks in idle frames
-    let nextChunkIdx = INITIAL_PAGE_COUNT
-    let rafId: number
-
-    function appendNextChunk(): void {
-      if (cancelledRef.current || nextChunkIdx >= chunks.length) {
-        if (!cancelledRef.current) {
-          progressiveLoadedRef.current = true
-          setLoadProgress(null)
-          // Emit final HTML so autosave captures the full document
-          const finalHtml = editor.getHTML()
-          lastEmittedRef.current = finalHtml
-          propsRef.current.onContentChange(finalHtml)
-        }
-        return
-      }
-
-      const chunk = chunks[nextChunkIdx]
-      if (chunk) {
-        editor.commands.insertContent(chunk)
-      }
-      nextChunkIdx += 1
-      setLoadProgress(Math.round((nextChunkIdx / chunks.length) * 100))
-
-      // Yield to the browser for painting, then continue
-      rafId = requestAnimationFrame(() => {
-        // Use a short setTimeout to yield to the browser event loop
-        // so the UI stays responsive during hydration
-        setTimeout(appendNextChunk, 8)
-      })
-    }
-
-    rafId = requestAnimationFrame(() => setTimeout(appendNextChunk, 8))
-
-    return () => {
-      cancelledRef.current = true
-      cancelAnimationFrame(rafId)
-    }
+    setLoadProgress(null)
   }, [editor, content])
+
+  // Layout values last dispatched to the pagination extension. The guard below
+  // keeps identical values (including object-identity changes with equal
+  // values) from re-running the chain and restarting the update cycle.
+  const lastAppliedLayoutRef = useRef<{
+    editor: Editor
+    width: number
+    height: number
+    top: number
+    bottom: number
+    left: number
+    right: number
+    contentMarginTop: number
+    contentMarginBottom: number
+    headerLeft: string
+    headerRight: string
+    footerLeft: string
+    footerRight: string
+    differentFirstPage: boolean
+  } | null>(null)
 
   // Apply layout changes (page size, margins, orientation, header/footer)
   // through the extension's update commands.
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
+
+    const currentLayout = {
+      editor,
+      width: page.width,
+      height: page.height,
+      top: topPx,
+      bottom: bottomPx,
+      left: leftPx,
+      right: rightPx,
+      contentMarginTop: 0,
+      contentMarginBottom: 0,
+      headerLeft: headerSlots.left,
+      headerRight: headerSlots.right,
+      footerLeft: footerSlots.left,
+      footerRight: footerSlots.right,
+      differentFirstPage: headerFooterConfig.differentFirstPage,
+    }
+
+    const previousLayout = lastAppliedLayoutRef.current
+    if (
+      previousLayout &&
+      previousLayout.editor === currentLayout.editor &&
+      previousLayout.width === currentLayout.width &&
+      previousLayout.height === currentLayout.height &&
+      previousLayout.top === currentLayout.top &&
+      previousLayout.bottom === currentLayout.bottom &&
+      previousLayout.left === currentLayout.left &&
+      previousLayout.right === currentLayout.right &&
+      previousLayout.contentMarginTop === currentLayout.contentMarginTop &&
+      previousLayout.contentMarginBottom === currentLayout.contentMarginBottom &&
+      previousLayout.headerLeft === currentLayout.headerLeft &&
+      previousLayout.headerRight === currentLayout.headerRight &&
+      previousLayout.footerLeft === currentLayout.footerLeft &&
+      previousLayout.footerRight === currentLayout.footerRight &&
+      previousLayout.differentFirstPage === currentLayout.differentFirstPage
+    ) {
+      return
+    }
+
+    lastAppliedLayoutRef.current = currentLayout
+
+    // First-page zone content: blank when the document omits headers/footers
+    // on the title page, otherwise mirror the common content.
+    const firstHeaderLeft = headerFooterConfig.differentFirstPage ? '' : headerSlots.left
+    const firstHeaderRight = headerFooterConfig.differentFirstPage ? '' : headerSlots.right
+    const firstFooterLeft = headerFooterConfig.differentFirstPage ? '' : footerSlots.left
+    const firstFooterRight = headerFooterConfig.differentFirstPage ? '' : footerSlots.right
+
     editor
       .chain()
       .updatePageWidth(page.width)
       .updatePageHeight(page.height)
-      .updateMargins({ top: topPx, bottom: bottomPx, left: leftPx, right: rightPx })
-      .updateHeaderContent(
-        showHeader ? headerContent : '',
-        showHeader ? pageNumberToken(headerNumberFormat) : ''
-      )
-      .updateFooterContent(
-        showFooter ? footerContent : '',
-        showFooter ? pageNumberToken(footerNumberFormat) : ''
-      )
+      .updateMargins({
+        top: topPx,
+        bottom: bottomPx,
+        left: leftPx,
+        right: rightPx,
+      })
+      .updateContentMargins({
+        top: 0,
+        bottom: 0,
+      })
+      .updateHeaderContent(headerSlots.left, headerSlots.right)
+      .updateFooterContent(footerSlots.left, footerSlots.right)
+      .updateHeaderContent(firstHeaderLeft, firstHeaderRight, 1)
+      .updateFooterContent(firstFooterLeft, firstFooterRight, 1)
       .run()
   }, [
     editor,
@@ -285,12 +419,11 @@ export function PagedEditor({
     bottomPx,
     leftPx,
     rightPx,
-    showHeader,
-    showFooter,
-    headerContent,
-    footerContent,
-    headerNumberFormat,
-    footerNumberFormat,
+    headerSlots.left,
+    headerSlots.right,
+    footerSlots.left,
+    footerSlots.right,
+    headerFooterConfig,
   ])
 
   // Grammar underlines — rebuild when the issue set OR the underline style changes.
@@ -314,7 +447,7 @@ export function PagedEditor({
   }, [editor])
 
   const romanStyle =
-    headerNumberFormat === 'roman' || footerNumberFormat === 'roman'
+    headerFooterConfig.header.default.numberFormat === 'roman' || headerFooterConfig.footer.default.numberFormat === 'roman'
       ? `.rm-with-pagination .rm-page-number::before,
          .rm-with-pagination .rm-page-number-plus::before {
            content: counter(page-number-plus, upper-roman);
@@ -322,15 +455,17 @@ export function PagedEditor({
       : ''
 
   /*
-   * Spread layout.
+   * Spread / grid layout transform.
    *
    * tiptap-pagination-plus gives each page an inline `float: left` and
    * `clear: both`, plus a per-page `margin-top` computed to stack pages
    * vertically. Overriding those three properties and switching the page
-   * container to a two-column grid is enough to pair pages 1|2, 3|4, ...
-   * The extension still owns page height, breaks, and content flow.
+   * container to a grid is enough to pair pages 1|2, 3|4, … (spread) or to
+   * wrap them in a multi-page grid. The extension still owns page height,
+   * breaks, and content flow, so `view.update` measurements stay identical to
+   * the vertical layout (the earlier freeze came from corrupting them).
    */
-    const spreadStyle = `.rm-pages-wrapper {
+  const spreadStyle = `.rm-pages-wrapper {
        display: grid;
        grid-template-columns: repeat(var(--rm-page-columns, 1), var(--rm-page-width));
        gap: ${SPREAD_GAP}px;
@@ -390,32 +525,50 @@ export function PagedEditor({
 
   const pageLabel = spreadPreview ? 'Page' : null
 
+  // Non-printing gridlines (Word: View → Gridlines) drawn as a React-managed
+  // overlay: one absolutely positioned layer per page. Page geometry is pure
+  // math — a page sheet starts every `page.height + gap` and the text area
+  // sits inside the margins — so nothing anchors to the library's zero-height
+  // float markers (which painted the old CSS pseudo-element off-sheet).
+  const [gridPageCount, setGridPageCount] = useState<number>(0)
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !showGridlines) {
+      setGridPageCount(0)
+      return
+    }
+    const sync = (): void => {
+      const count = editor.view.dom.querySelectorAll('.rm-page-break').length
+      setGridPageCount((prev) => (prev === count ? prev : count))
+    }
+    sync()
+    editor.on('update', sync)
+    window.addEventListener('resize', sync)
+    return () => {
+      editor.off('update', sync)
+      window.removeEventListener('resize', sync)
+    }
+  }, [editor, showGridlines])
+
+  const containerClassName = `intellidocs-page-editor${
+    spreadPreview ? ' intellidocs-page-editor--spread' : ''
+  }${
+    showGridlines ? ' intellidocs-page-editor--gridlines' : ''
+  }${
+    headerFooterConfig.header.placement === 'center' ? ' intellidocs-page-editor--header-center' : ''
+  }${
+    headerFooterConfig.footer.placement === 'center' ? ' intellidocs-page-editor--footer-center' : ''
+  }`
+  const containerStyle: CSSProperties = spreadPreview
+    ? { position: 'relative', width: `${page.width * 2 + SPREAD_GAP}px`, margin: '0 auto', zoom: zoomLevel }
+    : { position: 'relative', width: `${page.width}px`, margin: '0 auto', zoom: zoomLevel }
+
   if (!editor) {
-    return (
-      <div
-        className={`intellidocs-page-editor${
-          spreadPreview ? ' intellidocs-page-editor--spread' : ''
-        }`}
-        style={
-          spreadPreview
-            ? { width: `${page.width * 2 + SPREAD_GAP}px`, margin: '0 auto' }
-            : { width: `${page.width}px`, margin: '0 auto' }
-        }
-      />
-    )
+    return <div className={containerClassName} style={containerStyle} />
   }
 
   return (
-    <div
-      className={`intellidocs-page-editor${
-        spreadPreview ? ' intellidocs-page-editor--spread' : ''
-      }`}
-      style={
-        spreadPreview
-          ? { width: `${page.width * 2 + SPREAD_GAP}px`, margin: '0 auto' }
-          : { width: `${page.width}px`, margin: '0 auto' }
-      }
-    >
+    <div className={containerClassName} style={containerStyle}>
       <style>
         {`.ProseMirror.rm-with-pagination {
             background: var(--page-bg);
@@ -446,11 +599,93 @@ export function PagedEditor({
             font-size: 0.6875rem;
             color: var(--text-secondary);
           }
+          /* The library sizes each page's body as page - (margin + header
+             content height) - (margin + footer content height), so the
+             header/footer rows were carved out of the printable area: the
+             first grid row was the header's clickable zone and the last row
+             could not hold text. Measure the content rows as 0px tall (the
+             zone padding, which IS the margin, is untouched) and draw the text
+             inside the margin instead, centred between the page edge and the
+             margin line. overflow must beat the library's inline overflow. */
+          .rm-with-pagination .rm-page-header-content {
+            height: 0 !important;
+            overflow: visible !important;
+            position: relative;
+            top: calc(var(--rm-margin-top) * -0.5);
+          }
+          .rm-with-pagination .rm-page-footer-content {
+            height: 0 !important;
+            overflow: visible !important;
+            position: relative;
+            top: calc(var(--rm-margin-bottom) * 0.5 - 9px);
+          }
+          /* The library lays each zone out as display:inline-flex, which sits
+             in an anonymous line box: the first paragraph then starts a font-
+             dependent 8-11px BELOW the zone's bottom edge (the margin line),
+             pushing every page's text ~0.1in down so imported documents ran
+             long (e.g. the last title-page line spilled to page 2). A block
+             flex zone ends exactly on the margin line. */
+          .rm-with-pagination .rm-page-header,
+          .rm-with-pagination .rm-page-footer {
+            display: flex;
+          }
+          /* The pagination library sets word-break: break-all on every table
+             cell; with its shrink-to-fit tbody that collapsed imported tables
+             to ~36px columns, broke words mid-word and inflated documents by
+             ~20 pages. Break only at word boundaries (or when a single word
+             cannot fit). */
+          .rm-with-pagination table tr td,
+          .rm-with-pagination table tr th {
+            word-break: normal;
+            overflow-wrap: break-word;
+          }
+          /* Centered header/footer placement: fill the space between the page
+             margins so the text centers on the text column, not the page. */
+          .intellidocs-page-editor--header-center .rm-with-pagination .rm-page-header-left,
+          .intellidocs-page-editor--footer-center .rm-with-pagination .rm-page-footer-left {
+            float: none !important;
+            flex: 1 1 auto;
+            width: auto;
+            margin-left: var(--rm-margin-left) !important;
+            margin-right: var(--rm-margin-right) !important;
+            text-align: center;
+          }
           ${romanStyle}
-          ${spreadStyle}
-          ${pageLabel === null ? '' : `.intellidocs-page-editor--spread .rm-pages-wrapper { counter-reset: spread-page; }`}`}
+          ${spreadPreview ? spreadStyle : ''}
+          ${pageLabel === null ? '' : '.intellidocs-page-editor--spread .rm-pages-wrapper { counter-reset: spread-page; }'}`}
       </style>
       <TiptapCanvas editor={editor} onFormatApplied={onFormatApplied} />
+      {showGridlines && gridPageCount > 0 && (
+        <div
+          aria-hidden="true"
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}
+        >
+          {Array.from({ length: gridPageCount }).map((_, index) => {
+            const column = spreadPreview ? index % 2 : 0
+            const row = spreadPreview ? Math.floor(index / 2) : index
+            const sheetTop = row * (page.height + (spreadPreview ? SPREAD_GAP : PAGE_GAP))
+            const sheetLeft = column * (page.width + SPREAD_GAP)
+            return (
+              <div
+                key={index}
+                style={{
+                  position: 'absolute',
+                  top: `${sheetTop + topPx}px`,
+                  left: `${sheetLeft + leftPx}px`,
+                  width: `${page.width - leftPx - rightPx}px`,
+                  height: `${page.height - topPx - bottomPx}px`,
+                  backgroundImage:
+                    'linear-gradient(to right, rgba(15, 23, 42, 0.07) 1px, transparent 1px), ' +
+                    'linear-gradient(to bottom, rgba(15, 23, 42, 0.07) 1px, transparent 1px)',
+                  backgroundSize: '16px 16px',
+                  border: '1px dashed rgba(15, 23, 42, 0.12)',
+                  borderRadius: '2px',
+                }}
+              />
+            )
+          })}
+        </div>
+      )}
       <SlashCommandMenu editor={editor} />
       {loadProgress !== null && (
         <div

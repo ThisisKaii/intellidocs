@@ -1,0 +1,19 @@
+diff --git a/node_modules/tiptap-table-plus/dist/pagination/TableRowGroup.js b/node_modules/tiptap-table-plus/dist/pagination/TableRowGroup.js
+index 3f929c7..72611e7 100644
+--- a/node_modules/tiptap-table-plus/dist/pagination/TableRowGroup.js
++++ b/node_modules/tiptap-table-plus/dist/pagination/TableRowGroup.js
+@@ -76,8 +76,12 @@ export const TableRowGroup = Node.create({
+                                 }
+                             }
+                             const tableNodeType = editor.schema.nodes.table;
+-                            const tableNodeNew = tableNodeType.createAndFill(null, rowGroups);
+-                            tr.replaceWith(pos, pos + tableNode.nodeSize, tableNodeNew);
++                            // Keep the table's own attributes (column sizes, alignment) and map the
++                            // position through earlier replacements in this transaction: with several
++                            // tables regrouped at once the stale position corrupted the document.
++                            const tableNodeNew = tableNodeType.createAndFill(tableNode.attrs, rowGroups);
++                            const mappedPos = tr.mapping.map(pos);
++                            tr.replaceWith(mappedPos, mappedPos + tableNode.nodeSize, tableNodeNew);
+                             modified = true;
+                         }
+                         return false; // Do not descend into table children
