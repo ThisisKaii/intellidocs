@@ -30,6 +30,11 @@ export const tierCheckSchema = z.object({
   documentId: z.string().trim().min(1, 'documentId is required'),
 })
 
+/** Validate the document-structure inference request body. */
+export const inferStructureSchema = z.object({
+  text: z.string().trim().min(1, 'Text is required').max(10000),
+})
+
 /** Validate the body when assigning a preset to a document. */
 export const setDocumentPresetSchema = z.object({
   preset: z.string().trim().max(100),

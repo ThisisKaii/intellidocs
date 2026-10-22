@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { pageNumberFormatSchema } from './documentSchemas'
 
 /** Validate incoming text payloads for prediction-related HTTP routes. */
 export const predictionTextSchema = z.object({
@@ -83,6 +84,9 @@ export const pythonConversionResponseSchema = z.object({
   page_setup: pythonPageSetupSchema,
   header: z.string(),
   footer: z.string(),
+  /** Page-number format read from a PAGE field in the header/footer (absent from older ML builds). */
+  header_number_format: pageNumberFormatSchema.optional(),
+  footer_number_format: pageNumberFormatSchema.optional(),
 })
 
 export type PredictionTextInput = z.infer<typeof predictionTextSchema>

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
-import { google } from 'googleapis'
+import { OAuth2Client } from 'googleapis-common'
+import type { drive_v3 } from 'googleapis/build/src/apis/drive'
 import crypto from 'crypto'
 import os from 'os'
 import path from 'path'
@@ -7,14 +8,15 @@ import { Readable } from 'stream'
 import { rm, readFile, stat } from 'fs/promises'
 import * as driveModel from '../models/driveModel'
 import { getImportJob, isStaleJob, listUserImportJobs } from '../models/importJobModel'
-import { requestDocumentConversion, requestDocumentConversionFromPath } from '../ai/bridge/pythonBridge'
+import { requestDocumentConversion, requestDocumentConversionFromPath, parseDocument } from '../ai/bridge/pythonBridge'
 import { enqueueImportJob, LARGE_FILE_BYTES } from '../skills/processImportJob'
+import { sanitizeImportedHtml } from '../skills/sanitizeImportedHtml'
 import { streamToFileWithProgress, type DownloadStream } from '../skills/streamDownload'
 import { rtfToParagraphs, textToHtml } from '../skills/driveTextExtract'
 import type { LinkGoogleDriveInput } from '../../schemas/driveLinkSchemas'
 
 /** Build a Google OAuth2 client from environment variables. */
-function buildOAuth2Client(): InstanceType<typeof google.auth.OAuth2> {
+function buildOAuth2Client(): OAuth2Client {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
   const redirectUri = process.env.GOOGLE_REDIRECT_URI
@@ -23,7 +25,7 @@ function buildOAuth2Client(): InstanceType<typeof google.auth.OAuth2> {
     throw new Error('Missing Google OAuth2 environment variables')
   }
 
-  return new google.auth.OAuth2(clientId, clientSecret, redirectUri)
+  return new OAuth2Client(clientId, clientSecret, redirectUri)
 }
 
 /** OAuth state values expire after 10 minutes. */
@@ -322,7 +324,7 @@ export async function listFiles(req: Request, res: Response): Promise<void> {
 }
 
 /** Resolve the user's OAuth2 client with stored tokens, refreshing if expired. */
-async function getDriveClient(userId: string): Promise<ReturnType<typeof google.drive>> {
+async function getDriveClient(userId: string): Promise<drive_v3.Drive> {
   return driveModel.getDriveClient(userId)
 }
 
@@ -393,7 +395,7 @@ export async function exportFile(req: Request, res: Response): Promise<void> {
         { responseType: 'arraybuffer' },
       )
       const html = (await toBuffer(exported.data)).toString('utf-8')
-      res.status(200).json({ title, html })
+      res.status(200).json({ title, html: sanitizeImportedHtml(html) })
       return
     }
 
@@ -470,17 +472,24 @@ export async function exportFile(req: Request, res: Response): Promise<void> {
       } else if (!html && mimeType === 'text/plain') {
         html = textToHtml((await readBuffered()).toString('utf-8'))
       } else if (!html && /\.pdf$/i.test(title)) {
-        // A real PDF without Python conversion would be mojibake — refuse loudly.
-        throw new Error(
-          converterError
-            ? `Document conversion service unavailable (${converterError}).`
-            : 'This PDF could not be converted. The document conversion service returned no content.'
-        )
+        // The legacy converter may not handle complex layouts; try the
+        // marker/opendataloader parse pipeline before refusing the file.
+        try {
+          const parsed = await parseDocument({ buffer: await readBuffered(), filename: conversionFilename, mimetype: mimeType })
+          if (parsed?.html) html = parsed.html
+        } catch (parseError) {
+          const parseMsg = parseError instanceof Error ? parseError.message : String(parseError)
+          throw new Error(
+            converterError
+              ? `Document conversion service unavailable (${converterError}; parse: ${parseMsg}).`
+              : `This PDF could not be converted (${parseMsg}).`
+          )
+        }
       } else if (!html) {
         html = textToHtml((await readBuffered()).toString('utf-8'))
       }
 
-      res.status(200).json({ title, html })
+      res.status(200).json({ title, html: sanitizeImportedHtml(html) })
     } finally {
       await rm(tempPath, { force: true }).catch(() => undefined)
     }

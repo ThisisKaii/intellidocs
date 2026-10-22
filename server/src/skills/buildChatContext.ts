@@ -1,5 +1,4 @@
 interface ChatContextInput {
-  documentId?: string
   documentTitle?: string
   documentContent?: string
 }
@@ -76,16 +75,7 @@ function getDocumentStats(text: string, paragraphs: string[], headings: string[]
   }
 }
 
-/** Format a list for inclusion in the provider system prompt. */
-function formatList(label: string, entries: string[]): string {
-  if (entries.length === 0) {
-    return `${label}: unavailable`
-  }
-
-  return `${label}:\n${entries.map((entry: string): string => `- ${entry}`).join('\n')}`
-}
-
-/** Build a compact, document-aware context block for AI chat prompts. */
+/** Build a natural-language, document-aware context block for AI chat prompts. */
 export function buildChatContext(input: ChatContextInput): string {
   const plainText = htmlToPlainText(input.documentContent ?? '')
   const normalizedText = plainText.replace(/\s+/g, ' ').trim()
@@ -98,21 +88,32 @@ export function buildChatContext(input: ChatContextInput): string {
       ? normalizedText.slice(Math.max(normalizedText.length - RECENT_EXCERPT_LIMIT, 0))
       : ''
 
-  return [
-    input.documentId?.trim()
-      ? `Document ID: ${input.documentId.trim()}`
-      : 'Document ID: unavailable',
-    input.documentTitle?.trim()
-      ? `Document title: ${input.documentTitle.trim()}`
-      : 'Document title: unavailable',
-    `Word count: ${stats.wordCount}`,
-    `Paragraph count: ${stats.paragraphCount}`,
-    `Heading count: ${stats.headingCount}`,
-    `Character count: ${stats.characterCount}`,
-    formatList('Detected headings or section-like lines', headings),
-    openingExcerpt ? `Opening excerpt:\n${openingExcerpt}` : 'Opening excerpt: unavailable',
-    recentExcerpt ? `Recent excerpt:\n${recentExcerpt}` : undefined,
+  const title = input.documentTitle?.trim()
+  const parts: string[] = [
+    title
+      ? `The user is working in a document titled "${title}".`
+      : 'The user is working in an untitled document.',
   ]
-    .filter((entry: string | undefined): entry is string => typeof entry === 'string')
-    .join('\n\n')
+
+  if (stats.wordCount === 0) {
+    parts.push('The document is currently empty.')
+    return parts.join('\n\n')
+  }
+
+  const headingNote =
+    stats.headingCount > 0
+      ? ` with ${stats.headingCount} section-like heading${stats.headingCount === 1 ? '' : 's'}`
+      : ''
+  parts.push(
+    `It currently contains about ${stats.wordCount} words across ${stats.paragraphCount} paragraphs${headingNote}.`
+  )
+
+  if (headings.length > 0) {
+    parts.push(`Likely section headings: ${headings.map((heading: string): string => `"${heading}"`).join(', ')}.`)
+  }
+
+  parts.push(`Opening excerpt:\n${openingExcerpt}`)
+  if (recentExcerpt) parts.push(`Recent excerpt:\n${recentExcerpt}`)
+
+  return parts.join('\n\n')
 }

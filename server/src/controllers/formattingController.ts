@@ -6,6 +6,7 @@ import {
   UpdateFormatBindingRequest,
 } from '../types/index'
 import { resolveFormattingTier } from '../skills/resolveFormattingTier'
+import { inferDocumentStructure } from '../skills/inferDocumentStructure'
 import { predictFormat } from '../skills/predictFormat'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 
@@ -191,6 +192,26 @@ export async function deleteBinding(req: Request, res: Response): Promise<void> 
     res.status(204).send()
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete binding'
+    res.status(500).json({ error: message })
+  }
+}
+
+// ── Document structure inference ─────────────────────────────────────────────
+
+/**
+ * Infer the academic archetype of a document's opening text so the editor can
+ * offer to apply the matching standard format when no preset is set yet.
+ */
+export async function inferStructure(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+
+    const text = (req.body as { text: string }).text
+    const structure = inferDocumentStructure(text)
+    res.status(200).json(structure)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Structure inference failed'
     res.status(500).json({ error: message })
   }
 }

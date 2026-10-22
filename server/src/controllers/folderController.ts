@@ -114,8 +114,8 @@ export async function deleteFolder(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const current = await folderModel.getFolderById(userId, id)
-    if (current.name === 'My Drive') {
+    const owned = await folderModel.getOwnedFolder(userId, id)
+    if (owned?.name === 'My Drive') {
       res.status(400).json({ error: 'My Drive cannot be deleted' })
       return
     }
@@ -123,8 +123,9 @@ export async function deleteFolder(req: Request, res: Response): Promise<void> {
     await folderModel.deleteFolder(userId, id)
     res.status(204).send()
   } catch (error) {
+    const status = (error as Error & { status?: number }).status
     const message = error instanceof Error ? error.message : 'Failed to delete folder'
-    res.status(500).json({ error: message })
+    res.status(status ?? 500).json({ error: message })
   }
 }
 
@@ -221,8 +222,9 @@ export async function enrollStudent(req: Request, res: Response): Promise<void> 
     const enrollment = await folderModel.enrollStudent(userId, id, email.trim())
     res.status(201).json(enrollment)
   } catch (error) {
+    const status = (error as Error & { status?: number }).status
     const message = error instanceof Error ? error.message : 'Failed to enroll student'
-    res.status(400).json({ error: message })
+    res.status(status ?? 400).json({ error: message })
   }
 }
 

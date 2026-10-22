@@ -40,6 +40,8 @@ export interface Document {
   user_id: string
   title: string
   content: string
+  /** Short, sanitized content prefix for grid previews (migration 026). */
+  preview_snippet?: string
   header_content: string
   footer_content: string
   show_header: boolean
@@ -97,6 +99,8 @@ export interface ClassEnrollment {
 
 export interface CreateDocumentRequest {
   title: string
+  /** Number the title "Name (1)", "Name (2)" when the user already has that name (imports). */
+  unique_title?: boolean
   content?: string
   header_content?: string
   footer_content?: string
@@ -397,6 +401,12 @@ export interface BehaviorEvent {
   documentId: string
   blockId?: string
   payload?: FormatBehaviorPayload & Record<string, unknown>
+  /** Characters affected by composition events (type/paste/backspace). */
+  char_count?: number
+  /** Document position where a composition event happened. */
+  position?: number
+  /** Document size at event time, for position normalisation. */
+  doc_size?: number
 }
 
 export interface LearnedFormatPattern {

@@ -26,31 +26,25 @@ export interface AIProviderSummary {
   model: string
 }
 
-type AIProvider = 'gemini' | 'groq' | 'openrouter' | 'mistral'
+type AIProvider = 'gemini' | 'groq' | 'openrouter' | 'mistral' | 'nvidia'
 
 /** Read and validate the active AI provider configuration. */
 function getConfig(): {
   provider: AIProvider
   model: string
-  apiKey: string
   url: string
-  headers: Record<string, string>
 } {
   const provider = process.env.AI_PROVIDER as AIProvider | undefined
-  const apiKey = process.env.AI_API_KEY
   const model = process.env.AI_MODEL
 
   if (!provider) throw new Error('AI_PROVIDER is not set')
-  if (!apiKey) throw new Error('AI_API_KEY is not set')
   if (!model) throw new Error('AI_MODEL is not set')
 
   if (provider === 'gemini') {
     return {
       provider,
       model,
-      apiKey,
       url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     }
   }
 
@@ -58,18 +52,35 @@ function getConfig(): {
     groq: 'https://api.groq.com/openai/v1/chat/completions',
     openrouter: 'https://openrouter.ai/api/v1/chat/completions',
     mistral: 'https://api.mistral.ai/v1/chat/completions',
+    nvidia: 'https://integrate.api.nvidia.com/v1/chat/completions',
   }
 
-  return {
-    provider,
-    model,
-    apiKey,
-    url: urlMap[provider],
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
+  return { provider, model, url: urlMap[provider] }
+}
+
+/**
+ * Configured API keys in failover order. AI_API_KEY may hold several
+ * comma-separated keys (e.g. "key1,key2"); each is tried in turn when the
+ * provider answers 429/401/403.
+ */
+function getApiKeys(): string[] {
+  return (process.env.AI_API_KEY ?? '')
+    .split(',')
+    .map((key) => key.trim())
+    .filter((key) => key.length > 0)
+}
+
+/** Request headers for a provider and one API key. */
+function buildHeaders(provider: AIProvider, apiKey: string): Record<string, string> {
+  if (provider === 'gemini') {
+    return { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }
   }
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` }
+}
+
+/** 429 (quota) and 401/403 (invalid key) mean: try the next configured key. */
+function isKeyRotationStatus(status: number): boolean {
+  return status === 401 || status === 403 || status === 429
 }
 
 /** Convert app messages into the provider-specific request payload. */
@@ -135,37 +146,56 @@ function readErrorDetails(payload: unknown): string {
 /** Send a chat request through the configured AI provider. */
 async function chat(messages: Message[], systemPrompt?: string): Promise<string> {
   const config = getConfig()
+  const keys = getApiKeys()
 
-  try {
-    const response = await fetch(config.url, {
-      method: 'POST',
-      headers: config.headers,
-      body: JSON.stringify(buildBody(messages, systemPrompt)),
-    })
+  if (keys.length === 0) {
+    throw new Error('AI_API_KEY is not set')
+  }
 
-    const payload = (await response.json().catch(() => null)) as unknown
+  let lastError: AIClientError | null = null
 
-    if (!response.ok) {
-      const details = readErrorDetails(payload)
+  for (const key of keys) {
+    try {
+      const response = await fetch(config.url, {
+        method: 'POST',
+        headers: buildHeaders(config.provider, key),
+        body: JSON.stringify(buildBody(messages, systemPrompt)),
+        // Providers that queue requests (free tiers) can otherwise hang the
+        // request forever; rotation only covers 429/401/403, so cap the wait.
+        signal: AbortSignal.timeout(60_000),
+      })
+
+      const payload = (await response.json().catch(() => null)) as unknown
+
+      if (!response.ok) {
+        const details = readErrorDetails(payload)
+        const error = new AIClientError(
+          `AI request failed: ${response.status} ${details}`,
+          response.status,
+          details
+        )
+        if (isKeyRotationStatus(response.status)) {
+          lastError = error
+          continue
+        }
+        throw error
+      }
+
+      return readText(config.provider, payload)
+    } catch (error) {
+      if (error instanceof AIClientError) {
+        throw error
+      }
+
       throw new AIClientError(
-        `AI request failed: ${response.status} ${details}`,
-        response.status,
-        details
+        error instanceof Error ? error.message : 'AI request failed',
+        500,
+        'AI request failed'
       )
     }
-
-    return readText(config.provider, payload)
-  } catch (error) {
-    if (error instanceof AIClientError) {
-      throw error
-    }
-
-    throw new AIClientError(
-      error instanceof Error ? error.message : 'AI request failed',
-      500,
-      'AI request failed'
-    )
   }
+
+  throw lastError ?? new AIClientError('AI request failed', 500, 'AI request failed')
 }
 
 /** Stream is not wired yet for the current providers. */

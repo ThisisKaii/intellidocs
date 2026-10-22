@@ -11,6 +11,7 @@ router.post('/comments', validateBody(addCommentSchema), professorController.add
 router.get('/documents/:id/comments', professorController.getDocumentComments)
 router.post('/grade', validateBody(submitGradeSchema), professorController.submitGrade)
 router.get('/documents/:id/review', professorController.getDocumentReview)
+router.get('/folders/:id/similarity', professorController.getFolderSimilarity)
 router.post(
   '/audit/compliance',
   aiArcjet,

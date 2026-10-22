@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { ClassEnrollment, Document, Folder, FolderType } from '../types/index'
+import { listDocuments } from './documentModel'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -60,6 +61,22 @@ async function requireFolder(
     throw new Error('Folder not found')
   }
 
+  return data
+}
+
+/** Fetch a folder the user owns, or null (nullable variant of requireFolder). */
+export async function getOwnedFolder(
+  userId: string,
+  folderId: string
+): Promise<Folder | null> {
+  const { data, error } = await supabase
+    .from('folders')
+    .select('*')
+    .eq('folder_id', folderId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error || !data) return null
   return data
 }
 
@@ -293,12 +310,48 @@ export async function enrollStudent(
     throw new Error(`Failed to enroll student: ${error.message}`)
   }
 
+  await provisionStudentWorkspaceFolder(studentId, folder, student.displayName)
+
   return {
     folder_id: folderId,
     student_id: studentId,
     enrolled_at: new Date().toISOString(),
     email: student.email,
     display_name: student.displayName,
+  }
+}
+
+/**
+ * Ensure an enrolled student owns a personal workspace folder inside the
+ * class folder (their writable coursework area). Idempotent: skips when a
+ * personal folder under this class folder already exists for the student.
+ */
+async function provisionStudentWorkspaceFolder(
+  studentId: string,
+  classFolder: Folder,
+  displayName: string | null
+): Promise<void> {
+  const { data: existing } = await supabase
+    .from('folders')
+    .select('folder_id')
+    .eq('user_id', studentId)
+    .eq('parent_id', classFolder.folder_id)
+    .eq('folder_type', 'personal')
+    .limit(1)
+
+  if (existing && existing.length > 0) return
+
+  const { error } = await supabase.from('folders').insert({
+    user_id: studentId,
+    name: displayName?.trim() || 'Student Workspace',
+    parent_id: classFolder.folder_id,
+    folder_type: 'personal',
+    class_code: null,
+    academic_term: null,
+  })
+
+  if (error) {
+    throw new Error(`Failed to create the student workspace folder: ${error.message}`)
   }
 }
 
@@ -342,16 +395,60 @@ export async function renameFolder(
   return data
 }
 
-/** Delete a folder for the current user. */
+/**
+ * Delete a folder.
+ *
+ * Authorization rules:
+ * - The folder owner can delete their own folders, except when that folder is
+ *   a class workspace (parent is a class folder the owner is not enrolled
+ *   instructor of) — students must not remove their own class workspace.
+ * - The owner of a class folder can delete workspace folders inside it
+ *   (student subfolders), even though the student owns those rows.
+ */
 export async function deleteFolder(
   userId: string,
   folderId: string
 ): Promise<void> {
+  const { data: folder, error: fetchError } = await supabase
+    .from('folders')
+    .select('*')
+    .eq('folder_id', folderId)
+    .maybeSingle()
+
+  if (fetchError || !folder) {
+    throw Object.assign(new Error('Folder not found'), { status: 404 })
+  }
+
+  let parent: { folder_id: string; user_id: string; folder_type?: FolderType } | null = null
+  if (folder.parent_id) {
+    const { data: parentRow } = await supabase
+      .from('folders')
+      .select('folder_id,user_id,folder_type')
+      .eq('folder_id', folder.parent_id)
+      .maybeSingle()
+    parent = parentRow ?? null
+  }
+
+  const ownsFolder = folder.user_id === userId
+  const ownsParent = parent?.user_id === userId
+
+  if (!ownsFolder && !ownsParent) {
+    throw Object.assign(new Error('Folder not found'), { status: 404 })
+  }
+
+  // A folder nested inside a class folder belongs to the class workspace —
+  // only the instructor who owns the class folder may remove it.
+  if (parent?.folder_type === 'class' && !ownsParent) {
+    throw Object.assign(
+      new Error('Students cannot delete their class workspace folder. Only the course instructor can remove it.'),
+      { status: 403 }
+    )
+  }
+
   const { error } = await supabase
     .from('folders')
     .delete()
     .eq('folder_id', folderId)
-    .eq('user_id', userId)
 
   if (error) {
     throw new Error(`Failed to delete folder: ${error.message}`)
@@ -445,14 +542,15 @@ export async function getDocumentsForFolder(
     return []
   }
 
-  const { data, error } = await supabase
-    .from('documents')
-    .select(
-      // Exclude `content` (can be multi-MB) — the folder view only needs metadata.
-      'id,user_id,title,header_content,footer_content,show_header,show_footer,header_number_format,footer_number_format,page_size,margins,orientation,formatting_history,is_isolated,formatting_preset,is_deleted,deleted_at,share_permission,share_token,share_expires_at,created_at,updated_at'
-    )
-    .in('id', documentIds)
-    .order('updated_at', { ascending: false })
+  // Exclude the multi-MB `content` column — the folder view only needs
+  // metadata plus the lightweight preview snippet for grid cards.
+  const { data, error } = await listDocuments<Omit<Document, 'content'>>((columns) =>
+    supabase
+      .from('documents')
+      .select(columns)
+      .in('id', documentIds)
+      .order('updated_at', { ascending: false }),
+  )
 
   if (error) {
     throw new Error(`Failed to fetch folder documents: ${error.message}`)

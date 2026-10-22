@@ -39,6 +39,7 @@ interface AIChatPreviewContext {
   fontSize?: number | null
   target?: string | null
   normalize?: boolean
+  targetCategory?: 'headings' | 'paragraphs' | 'all' | null
 }
 
 interface AIProviderSummary {
@@ -59,6 +60,8 @@ interface FormattingPreview {
   fontSize?: number | null
   /** Chapter/section reference like "chapter 1" the change should target. */
   target?: string | null
+  /** Block category a bulk request targets: headings, paragraphs, or all. */
+  targetCategory?: 'headings' | 'paragraphs' | 'all' | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
   /** Deterministic reply when no provider call is needed (confirmations/follow-ups). */
@@ -84,6 +87,20 @@ const CONFIRMATION_PHRASES = [
   'okay',
   'ok',
   'sounds good',
+]
+
+/**
+ * Phrases that ask for the previous formatting change over the remaining text.
+ * These have no format keyword of their own, so they inherit the last preview.
+ */
+const CONTINUATION_PHRASES = [
+  'format the rest',
+  'do the rest',
+  'format the remaining',
+  'do the remaining',
+  'format the remainder',
+  'format everything else',
+  'format all of it',
 ]
 
 /** Read the active AI provider summary from the environment. */
@@ -119,6 +136,43 @@ function detectFormattingPreview(
   const hasFormats = intent.formats.length > 0
   const hasFontSize = intent.fontSize !== null
 
+  // "Format the rest" style continuations inherit the previous preview and
+  // widen it to the whole document. The deterministic reply keeps this flow
+  // independent of the AI provider.
+  const isContinuation =
+    lastPreview !== null &&
+    lastPreview !== undefined &&
+    !hasFormats &&
+    !hasFontSize &&
+    !intent.normalize &&
+    !intent.target &&
+    CONTINUATION_PHRASES.some((phrase) => normalized.includes(phrase))
+
+  if (isContinuation) {
+    const inheritedFormats =
+      lastPreview.formats && lastPreview.formats.length > 0
+        ? lastPreview.formats
+        : lastPreview.format
+          ? [lastPreview.format]
+          : []
+    if (inheritedFormats.length > 0 || lastPreview.fontSize) {
+      return {
+        format: inheritedFormats[0] ?? lastPreview.format ?? 'body_text',
+        label: labelForFormat({ ...lastPreview, formats: inheritedFormats }),
+        confidence: 0.92,
+        reason: 'Continuing your previous formatting change across the rest of the document.',
+        formats: inheritedFormats,
+        scope: 'all',
+        fontSize: lastPreview.fontSize ?? null,
+        target: null,
+        targetCategory: 'all',
+        normalize: lastPreview.normalize ?? false,
+        shortCircuitReply:
+          'Applying your previous formatting to the rest of the document. Confirm or reject below.',
+      }
+    }
+  }
+
   // A pure confirmation ("latter", "yes", "do it") reuses the previous preview
   // so the accept/reject prompt stays available instead of a rambling reply.
   const isConfirmation =
@@ -140,6 +194,7 @@ function detectFormattingPreview(
       scope: lastPreview.scope ?? 'selection',
       fontSize: lastPreview.fontSize ?? null,
       target: lastPreview.target ?? null,
+      targetCategory: lastPreview.targetCategory ?? null,
       normalize: lastPreview.normalize ?? false,
       shortCircuitReply: 'Got it — here is your formatting change again. Confirm or reject below, or tell me what to adjust.',
     }
@@ -188,6 +243,10 @@ function detectFormattingPreview(
     reasonParts.push(`Targeting "${intent.target.toUpperCase()}" only (no highlighting needed).`)
   } else if (intent.normalize && lastPreview?.scope === 'all') {
     reasonParts.push('Applies to the whole document (matching your last change).')
+  } else if (intent.targetCategory === 'headings') {
+    reasonParts.push('Applies to all headings.')
+  } else if (intent.targetCategory === 'paragraphs') {
+    reasonParts.push('Applies to all paragraphs.')
   } else if (intent.scope === 'all') {
     reasonParts.push('Applies to the whole document.')
   }
@@ -201,7 +260,14 @@ function detectFormattingPreview(
         ? lastPreview.scope
         : intent.scope
   const resolvedTarget = intent.target ?? (intent.normalize ? (lastPreview?.target ?? null) : null)
-  const revertFormats = intent.normalize ? (lastPreview?.formats ?? []) : intent.formats
+  const resolvedCategory = intent.normalize
+    ? (lastPreview?.targetCategory ?? intent.targetCategory)
+    : intent.targetCategory
+  // A new clear request ("remove bold") must carry the mark it names; only
+  // fall back to the previous preview when the message names no mark at all.
+  const revertFormats = intent.normalize
+    ? (intent.formats.length > 0 ? intent.formats : (lastPreview?.formats ?? []))
+    : intent.formats
   const fontSize = intent.fontSize ?? (intent.normalize && lastPreview ? (lastPreview.fontSize ?? null) : null)
 
   return {
@@ -217,6 +283,7 @@ function detectFormattingPreview(
     scope: resolvedScope,
     fontSize,
     target: resolvedTarget,
+    targetCategory: resolvedCategory,
     normalize: intent.normalize,
     shortCircuitReply: intent.normalize
       ? `Done — ${reasonParts.join(' ').replace(/\.$/, '')}. Confirm to apply.`
@@ -308,6 +375,7 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
             scope: preview.scope,
             fontSize: preview.fontSize,
             target: preview.target,
+            targetCategory: preview.targetCategory,
             normalize: preview.normalize,
           }
         : null,

@@ -100,14 +100,19 @@ def _local_models_dir() -> Path:
 def download_base_onnx_model() -> Tuple[Optional[str], Optional[str]]:
     """Return (onnx_path, labels_path) for the base DistilBERT ONNX model.
 
-    Prefers the 24h temp cache backed by the `ml-models` bucket, then falls back
-    to a local `ml/models/distilbert_int8.onnx` + `distilbert_labels.json`.
+    Prefers the 24h temp cache, then a local `ml/models/distilbert_int8.onnx` +
+    `distilbert_labels.json` (no network round trip when the model is already on
+    disk), and only then downloads from the `ml-models` bucket.
     Returns (None, None) when the model is unavailable anywhere.
     """
     onnx_local = _cache_path(BASE_ONNX_OBJECT)
     labels_local = _cache_path(BASE_ONNX_LABELS_OBJECT)
 
     if not (_is_fresh(onnx_local) and _is_fresh(labels_local)):
+        local_onnx = _local_models_dir() / BASE_ONNX_OBJECT
+        local_labels = _local_models_dir() / BASE_ONNX_LABELS_OBJECT
+        if local_onnx.exists() and local_labels.exists():
+            return (str(local_onnx), str(local_labels))
         try:
             client = _client()
             bucket = client.storage.from_(BASE_MODEL_BUCKET)
@@ -115,11 +120,7 @@ def download_base_onnx_model() -> Tuple[Optional[str], Optional[str]]:
             labels_local.write_bytes(bucket.download(BASE_ONNX_LABELS_OBJECT))
         except Exception as exc:  # noqa: BLE001 - optional network feature
             print(f"Base ONNX download warning: {exc}")
-            local_onnx = _local_models_dir() / BASE_ONNX_OBJECT
-            local_labels = _local_models_dir() / BASE_ONNX_LABELS_OBJECT
-            if not (local_onnx.exists() and local_labels.exists()):
-                return (None, None)
-            return (str(local_onnx), str(local_labels))
+            return (None, None)
 
     return (str(onnx_local), str(labels_local))
 

@@ -1,8 +1,12 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'crypto'
 import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion, FormatSnapshot, PageNumberFormat } from '../types/index'
 import { getRedisClient } from '../utils/redisClient'
+import { isDestructiveBlankOverwrite } from '../utils/documentGuards'
 import { isShareLinkExpired } from './shareModel'
+import { nextUniqueTitle } from '../utils/uniqueTitle'
+import { extractPreviewSnippet } from '../utils/previewSnippet'
 
 export const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -14,8 +18,70 @@ export const supabase = createClient(
  * documents can contain several MB of formatted text, and fetching it for
  * every row on the home screen exceeded Supabase's statement timeout.
  */
-const LIST_COLUMNS =
+const LIST_BASE_COLUMNS =
   'id,user_id,title,header_content,footer_content,show_header,show_footer,header_number_format,footer_number_format,page_size,margins,orientation,formatting_history,is_isolated,formatting_preset,is_deleted,deleted_at,share_permission,share_token,share_expires_at,created_at,updated_at'
+
+/** List columns plus the lightweight grid-preview snippet (migration 026). */
+const LIST_COLUMNS = `${LIST_BASE_COLUMNS},preview_snippet`
+
+/** PostgREST/Postgres error codes for an unknown column (migration 026 not applied). */
+const UNDEFINED_COLUMN_CODES = ['42703', 'PGRST204']
+
+/** True when the error means `preview_snippet` does not exist yet. */
+function isUndefinedColumnError(error: { code?: string } | null): boolean {
+  return Boolean(error?.code && UNDEFINED_COLUMN_CODES.includes(error.code))
+}
+
+/** Subset of a Supabase list response the preview fallback inspects. */
+export interface ListResponse<T> {
+  data: T[] | null
+  error: { code?: string; message: string } | null
+}
+
+/**
+ * Run a documents list query with `preview_snippet`, automatically retrying
+ * with the legacy column set while migration 026 has not been applied.
+ * The builder resolves through `unknown` because Supabase's untyped client
+ * otherwise rejects the structural `PromiseLike` match.
+ */
+export async function listDocuments<T>(
+  build: (columns: string) => unknown,
+): Promise<ListResponse<T>> {
+  const result = (await build(LIST_COLUMNS)) as ListResponse<T>
+  if (isUndefinedColumnError(result.error)) {
+    return (await build(LIST_BASE_COLUMNS)) as ListResponse<T>
+  }
+  return result
+}
+
+/** MIME types accepted for editor image uploads (matches the bucket policy). */
+const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+}
+
+/**
+ * Upload an editor image into the public `document-images` bucket under the
+ * owner's folder and return its public URL.
+ */
+export async function uploadDocumentImage(
+  userId: string,
+  file: { buffer: Buffer; mimetype: string },
+): Promise<string> {
+  const extension = IMAGE_MIME_EXTENSIONS[file.mimetype] ?? 'png'
+  const objectPath = `${userId}/${randomUUID()}.${extension}`
+  const { error } = await supabase.storage
+    .from('document-images')
+    .upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: false })
+  if (error) {
+    throw new Error(`Image upload failed: ${error.message}`)
+  }
+  const { data } = supabase.storage.from('document-images').getPublicUrl(objectPath)
+  return data.publicUrl
+}
 
 /** 1-hour TTL for cached document reads. */
 const DOC_CACHE_TTL = 3600
@@ -68,39 +134,47 @@ async function invalidateDocumentCache(id: string): Promise<void> {
 }
 
 export async function getDocuments(userId: string): Promise<Document[]> {
-  const { data, error } = await supabase
-    .from('documents')
-    .select(LIST_COLUMNS)
-    .eq('user_id', userId)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false })
+  const { data, error } = await listDocuments<Omit<Document, 'content'>>((columns) =>
+    supabase
+      .from('documents')
+      .select(columns)
+      .eq('user_id', userId)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false }),
+  )
   if (error) throw new Error(`Failed to get documents: ${error.message}`)
   return (data || []).map((row) => ({ ...row, content: '' }))
 }
 
 /** Return documents in the trash (soft-deleted, owned by the user). */
 export async function getTrashDocuments(userId: string): Promise<Document[]> {
-  const { data, error } = await supabase
-    .from('documents')
-    .select(LIST_COLUMNS)
-    .eq('user_id', userId)
-    .eq('is_deleted', true)
-    .order('deleted_at', { ascending: false })
+  const { data, error } = await listDocuments<Omit<Document, 'content'>>((columns) =>
+    supabase
+      .from('documents')
+      .select(columns)
+      .eq('user_id', userId)
+      .eq('is_deleted', true)
+      .order('deleted_at', { ascending: false }),
+  )
   if (error) throw new Error(`Failed to get trash documents: ${error.message}`)
   return (data || []).map((row) => ({ ...row, content: '' }))
 }
 
 /** Return documents shared to this user by others (active non-deleted shares). */
 export async function getSharedDocuments(userId: string): Promise<Document[]> {
-  const { data, error } = await supabase
-    .from('documents')
-    .select(`${LIST_COLUMNS}, document_shares!inner(permission, owner_id)`)
-    .eq('document_shares.shared_with', userId)
-    .eq('is_deleted', false)
+  const { data, error } = await listDocuments<
+    Omit<Document, 'content'> & { document_shares?: { permission: string; owner_id: string }[] }
+  >((columns) =>
+    supabase
+      .from('documents')
+      .select(`${columns}, document_shares!inner(permission, owner_id)`)
+      .eq('document_shares.shared_with', userId)
+      .eq('is_deleted', false),
+  )
 
   if (error) throw new Error(`Failed to get shared documents: ${error.message}`)
 
-  return (data || []).map((d: Omit<Document, 'content'> & { document_shares?: { permission: string; owner_id: string }[] }) => ({
+  return (data || []).map((d) => ({
     ...d,
     content: '',
     share_permission: (d.document_shares?.[0]?.permission ?? 'view') as Document['share_permission'],
@@ -233,35 +307,66 @@ export async function purgeDocument(id: string, userId: string): Promise<void> {
   void invalidateDocumentCache(id)
 }
 
+/**
+ * Resolve a title that does not clash with any of the user's active documents,
+ * numbering duplicates "Name (1)", "Name (2)", ... (trashed documents do not count).
+ */
+export async function resolveUniqueTitle(userId: string, base: string): Promise<string> {
+  const clean = base.trim()
+  // `_` and `%` are LIKE wildcards; escape them so a title is matched literally.
+  const pattern = `${clean.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+  const { data, error } = await supabase
+    .from('documents')
+    .select('title')
+    .eq('user_id', userId)
+    .eq('is_deleted', false)
+    .ilike('title', pattern)
+  if (error) throw new Error(`Failed to check document titles: ${error.message}`)
+  return nextUniqueTitle(clean, (data ?? []).map((row: { title: string }) => row.title))
+}
+
 export async function createDocument(
   userId: string,
   req: CreateDocumentRequest
 ): Promise<Document> {
-  const { data, error } = await supabase
+  const row: Record<string, unknown> = {
+    user_id: userId,
+    title: req.unique_title ? await resolveUniqueTitle(userId, req.title) : req.title,
+    content: req.content ?? '',
+    header_content: req.header_content ?? '',
+    footer_content: req.footer_content ?? '',
+    show_header: req.show_header ?? false,
+    show_footer: req.show_footer ?? false,
+    header_number_format: req.header_number_format ?? 'none',
+    footer_number_format: req.footer_number_format ?? 'none',
+    page_size: req.page_size ?? 'short',
+    margins: req.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 },
+    orientation: req.orientation ?? 'portrait',
+    formatting_history: [],
+    ...(req.formatting_preset
+      ? { formatting_preset: req.formatting_preset }
+      : {}),
+  }
+
+  let { data, error } = await supabase
     .from('documents')
-    .insert({
-      user_id: userId,
-      title: req.title,
-      content: req.content ?? '',
-      header_content: req.header_content ?? '',
-      footer_content: req.footer_content ?? '',
-      show_header: req.show_header ?? false,
-      show_footer: req.show_footer ?? false,
-      header_number_format: req.header_number_format ?? 'none',
-      footer_number_format: req.footer_number_format ?? 'none',
-      page_size: req.page_size ?? 'short',
-      margins: req.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 },
-      orientation: req.orientation ?? 'portrait',
-      formatting_history: [],
-      ...(req.formatting_preset
-        ? { formatting_preset: req.formatting_preset }
-        : {}),
-    })
+    .insert({ ...row, preview_snippet: extractPreviewSnippet(req.content ?? '') })
     .select()
     .single()
 
+  if (isUndefinedColumnError(error)) {
+    ;({ data, error } = await supabase.from('documents').insert(row).select().single())
+  }
+
   if (error) throw new Error(`Failed to create document: ${error.message}`)
   return data
+}
+
+/** Copy an update payload without `preview_snippet` (pre-migration retry). */
+function withoutPreviewSnippet(payload: Record<string, unknown>): Record<string, unknown> {
+  const clone: Record<string, unknown> = { ...payload }
+  delete clone.preview_snippet
+  return clone
 }
 
 export async function updateDocument(
@@ -286,12 +391,37 @@ export async function updateDocument(
     throw forbidden
   }
 
-  const { data, error } = await supabase
+  // A page that saved before its document finished loading sends the editor's
+  // defaults (blank content + "Untitled Document"); never let that replace a
+  // real, renamed document. Older cached client bundles can still do this.
+  if (isDestructiveBlankOverwrite(doc, req)) {
+    const conflict = new Error('Refusing to replace a non-empty document with an empty, untitled one') as Error & { status: number }
+    conflict.status = 409
+    throw conflict
+  }
+
+  // Refresh the grid-preview snippet whenever the content changes.
+  const updates =
+    req.content === undefined
+      ? req
+      : { ...req, preview_snippet: extractPreviewSnippet(req.content) }
+
+  let { data, error } = await supabase
     .from('documents')
-    .update(req)
+    .update(updates)
     .eq('id', id)
     .select()
     .single()
+
+  if (isUndefinedColumnError(error)) {
+    // Migration 026 not applied yet — retry without the snippet column.
+    ;({ data, error } = await supabase
+      .from('documents')
+      .update(withoutPreviewSnippet(updates as Record<string, unknown>))
+      .eq('id', id)
+      .select()
+      .single())
+  }
 
   if (error) throw new Error(`Failed to update document: ${error.message}`)
   void invalidateDocumentCache(id)

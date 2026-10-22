@@ -40,6 +40,10 @@ export const behaviorEventSchema = z.object({
   documentId: z.string().trim().min(1, 'Document ID is required'),
   blockId: z.string().optional(),
   payload: behaviorPayloadSchema.optional(),
+  // Composition telemetry (type/paste/backspace) consumed by timeline forensics.
+  char_count: z.number().int().nonnegative().optional(),
+  position: z.number().int().nonnegative().optional(),
+  doc_size: z.number().int().nonnegative().optional(),
 })
 
 /** Infer the runtime-validated behavior event type from the schema. */

@@ -55,6 +55,10 @@ function buildBehaviorSummary(
       timestamp: event.timestamp,
       documentId: event.documentId,
       userId: event.userId,
+      // Composition telemetry fields, when the event carries them.
+      ...(typeof event.char_count === 'number' ? { char_count: event.char_count } : {}),
+      ...(typeof event.position === 'number' ? { position: event.position } : {}),
+      ...(typeof event.doc_size === 'number' ? { doc_size: event.doc_size } : {}),
     }))
 
   return {

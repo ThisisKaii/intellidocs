@@ -2,7 +2,7 @@ import { createReadStream } from 'fs'
 import { rm } from 'fs/promises'
 import os from 'os'
 import path from 'path'
-import type { google } from 'googleapis'
+import type { drive_v3 } from 'googleapis/build/src/apis/drive'
 import * as driveModel from '../models/driveModel'
 import {
   createImportJob,
@@ -10,18 +10,23 @@ import {
   updateImportJob,
   type ImportJob,
 } from '../models/importJobModel'
-import { requestDocumentConversion, requestDocumentConversionFromPath } from '../ai/bridge/pythonBridge'
+import {
+  requestDocumentConversion,
+  requestDocumentConversionFromPath,
+  parseDocument,
+} from '../ai/bridge/pythonBridge'
 import {
   streamToFileWithProgress,
   type DownloadStream,
 } from './streamDownload'
 import { rtfToParagraphs, textToHtml } from './driveTextExtract'
+import { sanitizeImportedHtml } from './sanitizeImportedHtml'
 
 /** Files at or below this size convert in one shot; larger ones are queued. */
 export const LARGE_FILE_BYTES = 15 * 1024 * 1024
 
 /** The googleapis Drive client type, aliased so the helper signature stays readable. */
-type DriveClient = ReturnType<typeof google.drive>
+type DriveClient = drive_v3.Drive
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
@@ -89,12 +94,21 @@ async function convertToHtml(args: {
   } else if (!html && mimeType === 'text/plain') {
     html = textToHtml((await readBuffered()).toString('utf-8'))
   } else if (!html && /\.pdf$/i.test(title)) {
-    // A real PDF without Python conversion would be mojibake — refuse loudly.
-    throw new Error(
-      converterError
-        ? `Document conversion service unavailable (${converterError}).`
-        : 'This PDF could not be converted. The document conversion service returned no content.'
-    )
+    // The legacy converter may not handle complex layouts; try the marker/opendataloader
+    // parse pipeline (multi-column + tables + equations) before refusing the file.
+    try {
+      const parsed = buffer
+        ? await parseDocument({ buffer, filename: conversionFilename(title, mimeType), mimetype: mimeType })
+        : await parseDocument({ buffer: await readBuffered(), filename: conversionFilename(title, mimeType), mimetype: mimeType })
+      if (parsed?.html) html = parsed.html
+    } catch (parseError) {
+      const parseMsg = parseError instanceof Error ? parseError.message : String(parseError)
+      throw new Error(
+        converterError
+          ? `Document conversion service unavailable (${converterError}; parse: ${parseMsg}).`
+          : `This PDF could not be converted (${parseMsg}).`
+      )
+    }
   } else if (!html) {
     html = textToHtml((await readBuffered()).toString('utf-8'))
   }
@@ -137,7 +151,7 @@ export async function processImportJob(job: ImportJob): Promise<void> {
       state: 'done',
       progress: 100,
       title,
-      html,
+      html: sanitizeImportedHtml(html),
     })
   } catch (error) {
     await failImportJob(
