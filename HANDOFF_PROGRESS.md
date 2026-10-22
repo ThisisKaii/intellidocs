@@ -982,3 +982,11 @@ metrics under zoom, not a logic bug. "APPROVAL SHEET" on page 1 is correct (Word
 * **Outline:** `decodeEntities` in `TableOfContents.ts` ("&amp;" no longer shown in the outline).
 * **Polish:** `PageHeader` / `EmptyState` components; Settings, Professor (empty states) and Admin (copy only, not verified visually: the test account is a student) got sentence-case titles and calmer cards;
   dashboard/editor labels sentence-cased. Modals (`DocumentCreateModal`, `ImportFileModal`, `ShareModal`, `FolderCreateModal`) and editor toolbar markup were NOT restyled.
+
+### Mixed-provider council + chatbot failover (2026-10-23)
+* `server/src/ai/aiProfiles.ts` parses numbered AI profiles; `aiClient.chat` fails over across them (`chatWithMeta` reports who answered).
+* Council: `runCouncilScan` sends `{profiles, assignments}`; `ml/council_pipeline.py` gives every judge its own profile + failover, request-scoped via ContextVar,
+  tolerates `<think>`/fenced JSON and providers that reject `response_format`; transcript entries carry `provider`/`model` and the inspection modal shows them.
+* Fixed: `_resolve_model(role: Optional[JudgeRole])` referenced `JudgeRole` before it existed (NameError on Python < 3.14); the block was rewritten.
+* Prod example: profile 1 gemini/gemini-2.5-flash, profile 2 nvidia DeepSeek, profile 3 nvidia meta/llama-3.2-11b-vision-instruct (dev: put Llama first).
+* Not verified with live keys in this session (unit tests only).

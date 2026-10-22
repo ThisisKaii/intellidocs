@@ -415,11 +415,21 @@ export interface CouncilScanPeer {
   text: string
 }
 
-/** AI provider details forwarded so the council uses the configured provider. */
+/** One AI backend the council may use (comma-separated keys rotate within it). */
+export interface CouncilAIProfile {
+  provider: string
+  apiKeys: string[]
+  model: string
+}
+
+/**
+ * AI configuration forwarded to the council: every configured profile plus which
+ * profile (0-based index) each judge role uses first. An empty profile list
+ * makes the ML service fall back to its own environment.
+ */
 export interface CouncilAIConfig {
-  provider: string | null
-  apiKey: string | null
-  model: string | null
+  profiles: CouncilAIProfile[]
+  assignments: Record<string, number>
 }
 
 /**
@@ -452,13 +462,17 @@ export async function requestCouncilScan(payload: {
           text: peer.text,
         })),
         timeline: payload.timeline,
-        ai: payload.ai.apiKey
-          ? {
-              provider: payload.ai.provider,
-              api_key: payload.ai.apiKey,
-              model: payload.ai.model,
-            }
-          : null,
+        ai:
+          payload.ai.profiles.length > 0
+            ? {
+                profiles: payload.ai.profiles.map((profile) => ({
+                  provider: profile.provider,
+                  api_key: profile.apiKeys.join(','),
+                  model: profile.model,
+                })),
+                assignments: payload.ai.assignments,
+              }
+            : null,
       },
       { timeout: 180000 }
     )

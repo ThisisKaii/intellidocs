@@ -67,6 +67,9 @@ export interface DeliberationEntry {
   evidence?: string[]
   severity?: MatchSeverity
   synthesis?: boolean
+  /** AI backend that produced this entry (council runs a different model per judge). */
+  provider?: string
+  model?: string
 }
 
 export interface CouncilVerdict {

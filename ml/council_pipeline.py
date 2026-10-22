@@ -4,8 +4,10 @@ Implements the 5-Judge Council with specialized academic personas.
 """
 
 import os
+import re
 import json
 import asyncio
+import contextvars
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -16,10 +18,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# AI Provider Configuration
+class JudgeRole(Enum):
+    STYLOMETRIC_LINGUIST = "stylometric_linguist"
+    FORENSIC_HISTORIAN = "forensic_historian"
+    ATTRIBUTION_SCHOLAR = "attribution_scholar"
+    PARAPHRASE_DETECTIVE = "paraphrase_detective"
+    SYNTHESIZER_ARBITER = "synthesizer_arbiter"
+
+
+# AI Provider Configuration. Profile 1 is AI_PROVIDER / AI_MODEL / AI_API_KEY;
+# profiles 2..9 use the same names with a numeric suffix (AI_PROVIDER_2, ...).
 AI_PROVIDER = os.getenv("AI_PROVIDER", "openrouter")
 AI_API_KEY = os.getenv("AI_API_KEY")
 AI_MODEL = os.getenv("AI_MODEL", "openrouter/auto")
+MAX_PROFILES = 9
 
 # OpenAI-compatible endpoints per provider. The council speaks the OpenAI chat
 # API, so each provider (Gemini, NVIDIA NIM included) exposes a compatible
@@ -33,45 +45,91 @@ AI_BASE_URLS: Dict[str, Optional[str]] = {
     'nvidia': 'https://integrate.api.nvidia.com/v1',
 }
 
-_AI_OVERRIDE: Dict[str, Optional[str]] = {}
-_clients_cache: Dict[tuple, List[AsyncOpenAI]] = {}
-_preferred_key_index: int = 0
-# Free tiers queue concurrent completions; running at most two at a time keeps
-# the four parallel judges inside their per-call timeout on a single key.
-_COMPLETION_SEMAPHORE = asyncio.Semaphore(2)
+
+@dataclass
+class AIProfile:
+    """One AI backend a judge can run on: provider, model, and rotating API keys."""
+    provider: str
+    model: str
+    api_keys: List[str]
+
+
+def _split_keys(raw: Optional[str]) -> List[str]:
+    """Split a comma-separated key list into trimmed, non-empty keys."""
+    return [key.strip() for key in (raw or '').split(',') if key.strip()]
+
+
+# Request-scoped AI configuration. A ContextVar (not a module global) keeps
+# concurrent scans from overwriting each other, and is inherited by the
+# asyncio tasks each scan spawns.
+_AI_CONTEXT: "contextvars.ContextVar[Optional[Dict[str, Any]]]" = contextvars.ContextVar(
+    'council_ai_context', default=None
+)
+_clients_cache: Dict[tuple, AsyncOpenAI] = {}
+_preferred_key_index: Dict[tuple, int] = {}
+_completion_semaphores: Dict[str, asyncio.Semaphore] = {}
+# Free tiers queue concurrent completions; at most two per provider at a time
+# keeps the parallel judges inside their per-call timeout on a single key.
+_COMPLETIONS_PER_PROVIDER = 2
 
 
 def configure_ai(
     provider: Optional[str] = None,
     api_key: Optional[str] = None,
-    model: Optional[str] = None
+    model: Optional[str] = None,
+    profiles: Optional[List[Dict[str, Any]]] = None,
+    assignments: Optional[Dict[str, int]] = None,
 ) -> None:
-    """Override the AI provider for the next review (per-request configuration)."""
-    global _AI_OVERRIDE
-    _AI_OVERRIDE = {'provider': provider, 'api_key': api_key, 'model': model}
+    """Set the AI configuration for the current request.
 
-
-def _resolve_keys() -> List[str]:
-    """Configured API keys in failover order (AI_API_KEY may be comma-separated)."""
-    raw = _AI_OVERRIDE.get('api_key') or AI_API_KEY or ''
-    return [key.strip() for key in raw.split(',') if key.strip()]
-
-
-def _get_clients() -> List[AsyncOpenAI]:
-    """One OpenAI-compatible client per configured key, cached per provider+keys."""
-    provider = _AI_OVERRIDE.get('provider') or AI_PROVIDER
-    keys = _resolve_keys()
-    if not keys:
-        return []
-
-    signature = (provider, tuple(keys))
-    if signature not in _clients_cache:
-        # Keep the cache tiny: only the active provider/key set matters.
-        _clients_cache.clear()
-        _clients_cache[signature] = [
-            AsyncOpenAI(api_key=key, base_url=AI_BASE_URLS.get(provider))
-            for key in keys
+    Either a list of profiles (each {provider, api_key, model}) with optional
+    per-role assignments, or the legacy single provider/api_key/model triple.
+    """
+    if profiles:
+        built = [
+            AIProfile(
+                provider=str(p.get('provider') or AI_PROVIDER),
+                model=str(p.get('model') or AI_MODEL),
+                api_keys=_split_keys(p.get('api_key')),
+            )
+            for p in profiles
         ]
+    elif provider or api_key or model:
+        built = [AIProfile(provider or AI_PROVIDER, model or AI_MODEL, _split_keys(api_key or AI_API_KEY))]
+    else:
+        built = []
+    _AI_CONTEXT.set({
+        'profiles': [p for p in built if p.api_keys],
+        'assignments': dict(assignments or {}),
+    })
+
+
+def _env_profiles() -> List[AIProfile]:
+    """Profiles from the environment: AI_* then AI_*_2 ... AI_*_9 (incomplete ones skipped)."""
+    profiles: List[AIProfile] = []
+    for n in range(1, MAX_PROFILES + 1):
+        suffix = '' if n == 1 else f'_{n}'
+        provider = os.getenv(f'AI_PROVIDER{suffix}') or (AI_PROVIDER if n == 1 else None)
+        model = os.getenv(f'AI_MODEL{suffix}') or (AI_MODEL if n == 1 else None)
+        keys = _split_keys(os.getenv(f'AI_API_KEY{suffix}'))
+        if provider and model and keys:
+            profiles.append(AIProfile(provider.strip().lower(), model.strip(), keys))
+    return profiles
+
+
+def _active_profiles() -> List[AIProfile]:
+    """The request's profiles, or the environment's when the request sent none."""
+    context = _AI_CONTEXT.get()
+    if context and context['profiles']:
+        return context['profiles']
+    return _env_profiles()
+
+
+def _get_client(provider: str, api_key: str) -> AsyncOpenAI:
+    """One OpenAI-compatible client per (provider, key), cached."""
+    signature = (provider, api_key)
+    if signature not in _clients_cache:
+        _clients_cache[signature] = AsyncOpenAI(api_key=api_key, base_url=AI_BASE_URLS.get(provider))
     return _clients_cache[signature]
 
 
@@ -84,33 +142,40 @@ def _is_key_rotation_error(error: Exception) -> bool:
     return any(code in text for code in ('Error code: 401', 'Error code: 403', 'Error code: 429'))
 
 
-async def _create_completion(**kwargs):
-    """Run a chat completion, rotating to the next API key on quota/auth errors.
+def _is_bad_request(error: Exception) -> bool:
+    """400 means the provider rejected a parameter (e.g. response_format)."""
+    return getattr(error, 'status_code', None) == 400 or 'Error code: 400' in str(error)
+
+
+async def _create_completion(profile: AIProfile, **kwargs):
+    """Run a chat completion on one profile, rotating its API keys on quota/auth errors.
 
     The last successful key is remembered so subsequent calls skip exhausted
     keys instead of paying the rejection on every judge.
     """
-    global _preferred_key_index
-    clients = _get_clients()
-    if not clients:
+    if not profile.api_keys:
         return None
 
-    start = _preferred_key_index % len(clients)
-    order = list(range(start, len(clients))) + list(range(0, start))
+    signature = (profile.provider, tuple(profile.api_keys))
+    start = _preferred_key_index.get(signature, 0) % len(profile.api_keys)
+    order = list(range(start, len(profile.api_keys))) + list(range(0, start))
+    semaphore = _completion_semaphores.setdefault(
+        profile.provider, asyncio.Semaphore(_COMPLETIONS_PER_PROVIDER)
+    )
     last_error: Optional[Exception] = None
 
-    async with _COMPLETION_SEMAPHORE:
+    async with semaphore:
         for index in order:
             try:
-                result = await clients[index].chat.completions.create(**kwargs)
-                _preferred_key_index = index
+                result = await _get_client(profile.provider, profile.api_keys[index]).chat.completions.create(**kwargs)
+                _preferred_key_index[signature] = index
                 return result
             except Exception as error:
                 if not _is_key_rotation_error(error):
                     raise
                 last_error = error
                 print(
-                    f"[Council] key #{index + 1} rejected "
+                    f"[Council] {profile.provider} key #{index + 1} rejected "
                     f"({getattr(error, 'status_code', '?')}); trying next key"
                 )
 
@@ -119,24 +184,84 @@ async def _create_completion(**kwargs):
     return None
 
 
-def _resolve_model(role: Optional[JudgeRole] = None) -> str:
-    """Pick the judge model: request override, per-role env, then global AI_MODEL."""
-    override_model = _AI_OVERRIDE.get('model')
-    if override_model:
-        return override_model
-    if role is not None:
-        role_model = os.getenv(f"COUNCIL_{role.value.upper()}_MODEL")
-        if role_model:
-            return role_model
-    return AI_MODEL
+async def _complete_json(profile: AIProfile, model: str, system: str, user: str) -> Optional[str]:
+    """Ask a profile for a JSON answer; retry without response_format if it rejects the parameter."""
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    try:
+        response = await _create_completion(
+            profile, model=model, messages=messages, temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+    except Exception as error:
+        if not _is_bad_request(error):
+            raise
+        response = await _create_completion(profile, model=model, messages=messages, temperature=0.1)
+    if response is None:
+        return None
+    return response.choices[0].message.content
 
 
-class JudgeRole(Enum):
-    STYLOMETRIC_LINGUIST = "stylometric_linguist"
-    FORENSIC_HISTORIAN = "forensic_historian"
-    ATTRIBUTION_SCHOLAR = "attribution_scholar"
-    PARAPHRASE_DETECTIVE = "paraphrase_detective"
-    SYNTHESIZER_ARBITER = "synthesizer_arbiter"
+def _parse_json(text: Optional[str]) -> Dict[str, Any]:
+    """Parse a model's JSON answer, tolerating <think> blocks, code fences and chatter."""
+    cleaned = re.sub(r'<think>.*?</think>', '', text or '', flags=re.DOTALL).strip()
+    fence = re.search(r'```(?:json)?\s*(.*?)```', cleaned, flags=re.DOTALL)
+    if fence:
+        cleaned = fence.group(1).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        start, end = cleaned.find('{'), cleaned.rfind('}')
+        if start != -1 and end > start:
+            return json.loads(cleaned[start:end + 1])
+        raise
+
+
+
+SPECIALIST_ROLES = [
+    JudgeRole.STYLOMETRIC_LINGUIST,
+    JudgeRole.FORENSIC_HISTORIAN,
+    JudgeRole.ATTRIBUTION_SCHOLAR,
+    JudgeRole.PARAPHRASE_DETECTIVE,
+]
+
+
+def _assigned_index(role: "JudgeRole", count: int) -> int:
+    """Which profile (0-based) a judge tries first.
+
+    Order of precedence: the request's assignment, COUNCIL_<ROLE>_PROFILE (1-based),
+    then the default - specialists spread round-robin, the arbiter on profile 1.
+    """
+    context = _AI_CONTEXT.get() or {}
+    requested = (context.get('assignments') or {}).get(role.value)
+    if isinstance(requested, int) and 0 <= requested < count:
+        return requested
+    try:
+        pinned = int(os.getenv(f"COUNCIL_{role.value.upper()}_PROFILE", ""))
+        if 1 <= pinned <= count:
+            return pinned - 1
+    except ValueError:
+        pass
+    if role in SPECIALIST_ROLES:
+        return SPECIALIST_ROLES.index(role) % count
+    return 0
+
+
+def _profile_order(role: "JudgeRole") -> List[AIProfile]:
+    """Profiles for a judge: its assigned one first, then the rest as failover."""
+    profiles = _active_profiles()
+    if not profiles:
+        return []
+    first = _assigned_index(role, len(profiles))
+    return [profiles[first]] + [p for i, p in enumerate(profiles) if i != first]
+
+
+def _model_for(role: "JudgeRole", profile: AIProfile, primary: bool) -> str:
+    """Model for a judge on a profile: COUNCIL_<ROLE>_MODEL pins the primary attempt, else the profile's model."""
+    if primary:
+        pinned = os.getenv(f"COUNCIL_{role.value.upper()}_MODEL")
+        if pinned:
+            return pinned
+    return profile.model
 
 
 @dataclass
@@ -162,6 +287,8 @@ class JudgeEvaluation:
     evidence: List[str]
     severity: str  # 'low', 'medium', 'high', 'critical'
     timestamp: str
+    provider: str = ''
+    model: str = ''
 
 
 @dataclass
@@ -273,55 +400,48 @@ Return JSON:
 
 class CouncilJudge:
     """Individual AI Judge with specialized persona."""
-    
+
     def __init__(self, role: JudgeRole, model: str = None):
         self.role = role
-        self.model = model or _resolve_model(role)
+        self.model = model  # optional hard override; otherwise chosen per profile
         self.prompt = JUDGE_PROMPTS[role]
-    
+
     async def evaluate(self, match_data: Dict[str, Any], timeout: int = 8) -> Optional[JudgeEvaluation]:
-        """Evaluate a match and return judgment."""
-        if not _get_clients():
+        """Evaluate a match on the assigned profile, failing over to the others."""
+        profiles = _profile_order(self.role)
+        if not profiles:
             print(f"[Council] {self.role.value}: no AI provider configured")
             return None
-        try:
-            prompt = self._build_prompt(match_data)
-            
-            response = await asyncio.wait_for(
-                _create_completion(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": self.prompt},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.1,
-                    response_format={"type": "json_object"}
-                ),
-                timeout=timeout
-            )
-            if response is None:
-                return None
-            
-            content = response.choices[0].message.content
-            result = json.loads(content)
-            
-            return JudgeEvaluation(
-                judge_role=self.role,
-                match_id=match_data.get('match_id', ''),
-                verdict=result.get('verdict', 'inconclusive'),
-                confidence=float(result.get('confidence', 0.5)),
-                reasoning=result.get('reasoning', ''),
-                evidence=result.get('evidence', []),
-                severity=result.get('severity', 'medium'),
-                timestamp=datetime.utcnow().isoformat()
-            )
-        except asyncio.TimeoutError:
-            print(f"[Council] {self.role.value} timed out")
-            return None
-        except Exception as e:
-            print(f"[Council] {self.role.value} error: {e}")
-            return None
-    
+
+        prompt = self._build_prompt(match_data)
+        for attempt, profile in enumerate(profiles):
+            model = self.model or _model_for(self.role, profile, primary=attempt == 0)
+            try:
+                content = await asyncio.wait_for(
+                    _complete_json(profile, model, self.prompt, prompt),
+                    timeout=timeout,
+                )
+                if content is None:
+                    continue
+                result = _parse_json(content)
+                return JudgeEvaluation(
+                    judge_role=self.role,
+                    match_id=match_data.get('match_id', ''),
+                    verdict=result.get('verdict', 'inconclusive'),
+                    confidence=float(result.get('confidence', 0.5)),
+                    reasoning=result.get('reasoning', ''),
+                    evidence=result.get('evidence', []),
+                    severity=result.get('severity', 'medium'),
+                    timestamp=datetime.utcnow().isoformat(),
+                    provider=profile.provider,
+                    model=model,
+                )
+            except asyncio.TimeoutError:
+                print(f"[Council] {self.role.value} timed out on {profile.provider}/{model}")
+            except Exception as e:
+                print(f"[Council] {self.role.value} error on {profile.provider}/{model}: {e}")
+        return None
+
     def _build_prompt(self, match_data: Dict[str, Any]) -> str:
         """Build the evaluation prompt for this judge."""
         context = f"""MATCH ID: {match_data.get('match_id', 'unknown')}
@@ -388,46 +508,37 @@ class AICouncil:
         # Round 2: Synthesizer cross-examines and synthesizes
         synthesizer = self.judges[JudgeRole.SYNTHESIZER_ARBITER]
         synthesis_prompt = self._build_synthesis_prompt(match_data, active_evaluations)
-        synth_client_available = bool(_get_clients())
-        if not synth_client_available:
+        profiles = _profile_order(JudgeRole.SYNTHESIZER_ARBITER)
+        if not profiles:
             return self._fallback_verdict(match_data, active_evaluations)
 
-        try:
-            response = await asyncio.wait_for(
-                _create_completion(
-                    model=synthesizer.model,
-                    messages=[
-                        {"role": "system", "content": synthesizer.prompt},
-                        {"role": "user", "content": synthesis_prompt}
-                    ],
-                    temperature=0.1,
-                    response_format={"type": "json_object"}
-                ),
-                timeout=self.config.timeout_seconds
-            )
-            if response is None:
-                return self._fallback_verdict(match_data, active_evaluations)
-            
-            synthesis = json.loads(response.choices[0].message.content)
-            
-            # Build full transcript
-            transcript = self._build_transcript(active_evaluations, synthesis)
-            
-            return CouncilVerdict(
-                match_id=match_data.get('match_id', ''),
-                final_verdict=synthesis.get('final_verdict', 'inconclusive'),
-                overall_confidence=float(synthesis.get('overall_confidence', 0.5)),
-                active_judges=len(active_evaluations) + 1,  # +1 for synthesizer
-                quorum_reached=True,
-                deliberation_transcript=transcript,
-                final_reasoning=synthesis.get('final_reasoning', ''),
-                recommended_action=synthesis.get('recommended_action', 'flag_for_review')
-            )
-        except Exception as e:
-            print(f"[Council] Synthesis failed: {e}")
-            # Fallback: simple majority vote
-            return self._fallback_verdict(match_data, active_evaluations)
-    
+        for attempt, profile in enumerate(profiles):
+            model = synthesizer.model or _model_for(JudgeRole.SYNTHESIZER_ARBITER, profile, primary=attempt == 0)
+            try:
+                content = await asyncio.wait_for(
+                    _complete_json(profile, model, synthesizer.prompt, synthesis_prompt),
+                    timeout=self.config.timeout_seconds,
+                )
+                if content is None:
+                    continue
+                synthesis = _parse_json(content)
+                transcript = self._build_transcript(active_evaluations, synthesis, profile.provider, model)
+                return CouncilVerdict(
+                    match_id=match_data.get('match_id', ''),
+                    final_verdict=synthesis.get('final_verdict', 'inconclusive'),
+                    overall_confidence=float(synthesis.get('overall_confidence', 0.5)),
+                    active_judges=len(active_evaluations) + 1,  # +1 for synthesizer
+                    quorum_reached=True,
+                    deliberation_transcript=transcript,
+                    final_reasoning=synthesis.get('final_reasoning', ''),
+                    recommended_action=synthesis.get('recommended_action', 'flag_for_review')
+                )
+            except Exception as e:
+                print(f"[Council] Synthesis failed on {profile.provider}/{model}: {e}")
+
+        # Every profile failed: simple majority vote
+        return self._fallback_verdict(match_data, active_evaluations)
+
     async def _run_round(self, match_data: Dict[str, Any], roles: List[JudgeRole]) -> List[Optional[JudgeEvaluation]]:
         """Run parallel evaluation by specified judges."""
         tasks = [
@@ -471,7 +582,13 @@ SYNTHESIS TASK:
 
 Return JSON with: final_verdict, overall_confidence, deliberation_transcript, final_reasoning, recommended_action"""
     
-    def _build_transcript(self, evaluations: List[JudgeEvaluation], synthesis: Dict) -> List[Dict]:
+    def _build_transcript(
+        self,
+        evaluations: List[JudgeEvaluation],
+        synthesis: Dict,
+        synth_provider: str = '',
+        synth_model: str = '',
+    ) -> List[Dict]:
         """Build the full deliberation transcript."""
         transcript = []
         for e in evaluations:
@@ -482,7 +599,9 @@ Return JSON with: final_verdict, overall_confidence, deliberation_transcript, fi
                     "confidence": e.confidence,
                     "reasoning": e.reasoning,
                     "evidence": e.evidence,
-                    "severity": e.severity
+                    "severity": e.severity,
+                    "provider": e.provider,
+                    "model": e.model
                 })
         
         transcript.append({
@@ -490,7 +609,9 @@ Return JSON with: final_verdict, overall_confidence, deliberation_transcript, fi
             "verdict": synthesis.get('final_verdict'),
             "confidence": synthesis.get('overall_confidence'),
             "reasoning": synthesis.get('final_reasoning'),
-            "synthesis": True
+            "synthesis": True,
+            "provider": synth_provider,
+            "model": synth_model
         })
         
         return transcript
@@ -528,7 +649,9 @@ Return JSON with: final_verdict, overall_confidence, deliberation_transcript, fi
                 "judge": e.judge_role.value.replace('_', ' ').title(),
                 "verdict": e.verdict,
                 "confidence": e.confidence,
-                "reasoning": e.reasoning
+                "reasoning": e.reasoning,
+                "provider": e.provider,
+                "model": e.model
             } for e in valid],
             final_reasoning=f"Fallback majority vote: {final_verdict} ({verdict_counts.get(final_verdict, 0)}/{len(valid)} judges)",
             recommended_action='flag_for_review'

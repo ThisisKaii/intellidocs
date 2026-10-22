@@ -84,7 +84,17 @@ function TranscriptEntry({ entry }: { entry: DeliberationEntry }): JSX.Element {
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-xs font-semibold text-foreground">{entry.judge}</span>
+        <span className="text-xs font-semibold text-foreground">
+          {entry.judge}
+          {entry.model && (
+            <span
+              className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[0.625rem] font-medium text-muted-foreground"
+              title={entry.provider ? `${entry.provider} · ${entry.model}` : entry.model}
+            >
+              {entry.model.split('/').pop()}
+            </span>
+          )}
+        </span>
         <span className="text-[0.6875rem] font-medium tabular-nums text-muted-foreground">
           {entry.verdict ?? 'inconclusive'}
           {typeof entry.confidence === 'number' ? ` · ${Math.round(entry.confidence * 100)}%` : ''}
@@ -164,6 +174,13 @@ export function CouncilInspectionModal({ isOpen, onClose, detail }: CouncilInspe
   if (!isOpen || !detail) return null
 
   const { scan, matches, documentTitle } = detail
+  // Distinct AI models across every judge in every match (the council runs a mixed panel).
+  const modelCount = new Set(
+    matches
+      .flatMap((match) => match.council_verdict?.deliberation_transcript ?? [])
+      .map((entry) => entry.model)
+      .filter((model): model is string => Boolean(model)),
+  ).size
   const safeIndex = matches.length > 0 ? Math.min(activeMatchIndex, matches.length - 1) : 0
   const activeMatch: PlagiarismMatchRecord | undefined = matches[safeIndex]
   const activeVerdict = activeMatch?.council_verdict ?? null
@@ -187,7 +204,7 @@ export function CouncilInspectionModal({ isOpen, onClose, detail }: CouncilInspe
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <span className="text-xs font-medium text-muted-foreground">
-              {scan.active_judges_count} judges
+              {scan.active_judges_count} judges{modelCount > 0 ? ` · ${modelCount} ${modelCount === 1 ? 'model' : 'models'}` : ''}
             </span>
             <span
               className={`text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full border ${

@@ -903,9 +903,23 @@ class CouncilPeer(BaseModel):
     text: str
 
 
-class CouncilAIConfig(BaseModel):
-    """Per-request AI provider override (from the server's environment)."""
+class CouncilAIProfile(BaseModel):
+    """One AI backend for the council (comma-separated keys rotate within it)."""
 
+    provider: str
+    api_key: str
+    model: str
+
+
+class CouncilAIConfig(BaseModel):
+    """Per-request AI configuration from the server's environment.
+
+    `profiles` + `assignments` (judge role -> profile index) is the current
+    shape; the single provider/api_key/model triple is still accepted.
+    """
+
+    profiles: list[CouncilAIProfile] = []
+    assignments: dict[str, int] = {}
     provider: Optional[str] = None
     api_key: Optional[str] = None
     model: Optional[str] = None
@@ -961,7 +975,12 @@ async def council_scan(request: CouncilScanRequest) -> CouncilScanResponse:
         from timeline_forensics import TimelineForensics, build_composition_events
         from triage_filter import run_full_triage_with_peers
 
-        if request.ai and (request.ai.provider or request.ai.api_key or request.ai.model):
+        if request.ai and request.ai.profiles:
+            configure_ai(
+                profiles=[profile.model_dump() for profile in request.ai.profiles],
+                assignments=request.ai.assignments,
+            )
+        elif request.ai and (request.ai.provider or request.ai.api_key or request.ai.model):
             configure_ai(
                 provider=request.ai.provider,
                 api_key=request.ai.api_key,

@@ -57,3 +57,67 @@ describe('aiClient key rotation', () => {
     expect(seenAuth).toEqual(['Bearer key-one'])
   })
 })
+
+describe('aiClient profile failover', () => {
+  const originalFetch = global.fetch
+  const originalEnv = { ...process.env }
+
+  afterEach(() => {
+    global.fetch = originalFetch
+    process.env = { ...originalEnv }
+  })
+
+  /** Two profiles: Gemini first, NVIDIA second. */
+  function configureTwoProfiles(): void {
+    process.env.AI_PROVIDER = 'gemini'
+    process.env.AI_MODEL = 'gemini-2.5-flash'
+    process.env.AI_API_KEY = 'gem-key'
+    process.env.AI_PROVIDER_2 = 'nvidia'
+    process.env.AI_MODEL_2 = 'meta/llama-3.2-11b-vision-instruct'
+    process.env.AI_API_KEY_2 = 'nv-key'
+  }
+
+  it('answers from the second profile when the first provider is down', async () => {
+    configureTwoProfiles()
+    const urls: string[] = []
+    global.fetch = jest.fn(async (url: unknown) => {
+      urls.push(String(url))
+      if (String(url).includes('generativelanguage')) {
+        return fakeResponse(503, { error: { message: 'overloaded' } })
+      }
+      return fakeResponse(200, { choices: [{ message: { content: 'from llama' } }] })
+    }) as unknown as typeof fetch
+
+    const result = await aiClient.chatWithMeta([{ role: 'user', content: 'hi' }])
+
+    expect(result).toEqual({ text: 'from llama', provider: 'nvidia', model: 'meta/llama-3.2-11b-vision-instruct' })
+    expect(urls).toHaveLength(2)
+  })
+
+  it('fails over when every key of the first profile is rejected', async () => {
+    configureTwoProfiles()
+    global.fetch = jest.fn(async (url: unknown) =>
+      String(url).includes('generativelanguage')
+        ? fakeResponse(429, { error: { message: 'quota' } })
+        : fakeResponse(200, { choices: [{ message: { content: 'second' } }] })
+    ) as unknown as typeof fetch
+
+    expect(await aiClient.chat([{ role: 'user', content: 'hi' }])).toBe('second')
+  })
+
+  it('does not fail over on a malformed request', async () => {
+    configureTwoProfiles()
+    const fetchMock = jest.fn(async () => fakeResponse(400, { error: { message: 'bad request' } }))
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    await expect(aiClient.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow('AI request failed: 400')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('throws the last error when every profile fails', async () => {
+    configureTwoProfiles()
+    global.fetch = jest.fn(async () => fakeResponse(500, { error: { message: 'down' } })) as unknown as typeof fetch
+
+    await expect(aiClient.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow('AI request failed: 500')
+  })
+})

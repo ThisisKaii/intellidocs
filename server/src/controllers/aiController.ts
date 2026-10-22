@@ -347,18 +347,27 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
 
     // Rule-resolved follow-ups (confirmations, reverts, targets) get a short
     // deterministic reply — the AI model never needs to guess or hallucinate.
-    const reply = preview?.shortCircuitReply ?? await aiClient.chat(
-      [
-        ...buildHistoryMessages(body.history),
-        { role: 'user', content: message },
-      ],
-      buildAIChatSystemPrompt({
-        documentContext: buildChatContext(body),
-        rejectedFormattingPreviews: body.rejectedFormattingPreviews ?? [],
-      })
-    )
+    let reply: string
+    let answeredBy: AIProviderSummary | null = null
+    if (preview?.shortCircuitReply) {
+      reply = preview.shortCircuitReply
+    } else {
+      // chatWithMeta reports which profile actually answered after any failover.
+      const response = await aiClient.chatWithMeta(
+        [
+          ...buildHistoryMessages(body.history),
+          { role: 'user', content: message },
+        ],
+        buildAIChatSystemPrompt({
+          documentContext: buildChatContext(body),
+          rejectedFormattingPreviews: body.rejectedFormattingPreviews ?? [],
+        })
+      )
+      reply = response.text
+      answeredBy = { provider: response.provider, model: response.model }
+    }
 
-    const providerSummary = getProviderSummary()
+    const providerSummary = answeredBy ?? getProviderSummary()
 
     res.status(200).json({
       reply,
@@ -456,4 +465,4 @@ export async function triggerUserFineTune(req: Request, res: Response): Promise<
     res.status(500).json({ error: message })
   }
 }
-
+

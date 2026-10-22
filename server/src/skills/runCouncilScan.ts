@@ -3,15 +3,24 @@ import {
   type CouncilScanPeer,
   type CouncilAIConfig,
 } from '../ai/bridge/pythonBridge'
+import { getAIProfiles, resolveJudgeAssignments } from '../ai/aiProfiles'
 import type { PythonCouncilScanResponse } from '../../schemas/plagiarismSchemas'
 import type { ScanDocument } from '../models/plagiarismModel'
 
-/** AI provider details from the server environment, forwarded to the council. */
+/**
+ * AI profiles and judge assignments from the server environment, forwarded to
+ * the council so each judge can run on a different provider. When no AI is
+ * configured the list is empty and the ML service uses its own environment.
+ */
 function councilAIConfig(): CouncilAIConfig {
-  return {
-    provider: process.env.AI_PROVIDER ?? null,
-    apiKey: process.env.AI_API_KEY ?? null,
-    model: process.env.AI_MODEL ?? null,
+  try {
+    const profiles = getAIProfiles()
+    return {
+      profiles: profiles.map(({ provider, apiKeys, model }) => ({ provider, apiKeys, model })),
+      assignments: resolveJudgeAssignments(profiles.length),
+    }
+  } catch {
+    return { profiles: [], assignments: {} }
   }
 }
 

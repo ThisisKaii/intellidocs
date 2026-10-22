@@ -416,6 +416,7 @@ intellidocs/
 - The AI API is ONLY used for:
   - AIChatbot (MCP tool orchestration, preview/confirm UI)
   - Natural language command interpretation
+  - The plagiarism council (five judges, possibly on different providers)
 
 ### Implementation Details
 
@@ -439,11 +440,26 @@ Do NOT use:
 - `OLLAMA_HOST`
 - provider-specific env naming like `GEMINI_API_KEY` inside app logic
 
+#### 2b. Multiple Providers (profiles)
+- `AI_PROVIDER` / `AI_API_KEY` / `AI_MODEL` is profile 1. Extra profiles use the same
+  names with a numeric suffix (`AI_PROVIDER_2`, `AI_API_KEY_2`, `AI_MODEL_2` ... up to 9);
+  incomplete profiles are ignored. Supported providers: gemini, nvidia, groq, openrouter,
+  mistral. Parsing lives in `server/src/ai/aiProfiles.ts`.
+- The chatbot / NLP commands fail over down the profile list (5xx, timeout, unknown model,
+  or all keys rejected); malformed requests (400/422) are not retried.
+- The plagiarism council runs a mixed panel: `server/src/skills/runCouncilScan.ts` sends all
+  profiles plus a judge -> profile assignment to the ML service. Specialists are spread
+  round-robin, the arbiter uses profile 1; `COUNCIL_<ROLE>_PROFILE=<n>` pins a judge. Each
+  judge falls over to the other profiles, and transcript entries record `provider`/`model`.
+  The council's request-scoped config lives in a ContextVar in `ml/council_pipeline.py`
+  (never a module global).
+
 #### 3. Provider Requirements
 - Provider must support native function calling / tool use
 - Provider must work with MCP tool definitions
-- Provider selection is controlled only by `AI_PROVIDER`
-- `aiClient.ts` is the only provider switch point
+- Provider selection is controlled only by the `AI_PROVIDER*` profile variables
+- `aiClient.ts` is the only provider switch point for the backend (the council is the one
+  exception: it calls its providers from the ML service, configured by the server)
 
 #### 4. Current Provider Direction
 IntelliDocs has moved away from Ollama and ngrok.
