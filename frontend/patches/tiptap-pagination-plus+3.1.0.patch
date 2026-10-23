@@ -1,0 +1,17 @@
+diff --git a/node_modules/tiptap-pagination-plus/dist/PaginationPlus.js b/node_modules/tiptap-pagination-plus/dist/PaginationPlus.js
+index 186b675..0f51894 100644
+--- a/node_modules/tiptap-pagination-plus/dist/PaginationPlus.js
++++ b/node_modules/tiptap-pagination-plus/dist/PaginationPlus.js
+@@ -537,8 +537,10 @@ const calculatePageCount = (view, pageOptions, headerHeight = 0, footerHeight =
+         if (lastElementOfEditor && lastPageBreak) {
+             const lastElementRect = lastElementOfEditor.getBoundingClientRect();
+             const lastPageBreakRect = lastPageBreak.getBoundingClientRect();
+-            const lastPageGap = lastElementRect.bottom -
+-                lastPageBreakRect.bottom;
++            // Rects are in zoomed px when the canvas uses CSS zoom; pageContentAreaHeight is not.
++            const zoomScale = editorDom.offsetWidth > 0 ? editorDom.getBoundingClientRect().width / editorDom.offsetWidth : 1;
++            const lastPageGap = (lastElementRect.bottom -
++                lastPageBreakRect.bottom) / zoomScale;
+             if (lastPageGap > 0) {
+                 const addPage = Math.ceil(lastPageGap / pageContentAreaHeight);
+                 return currentPageCount + addPage;

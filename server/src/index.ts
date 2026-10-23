@@ -17,6 +17,7 @@ import adminRoutes from './routes/adminRoutes'
 import formattingRoutes from './routes/formattingRoutes'
 import profileRoutes from './routes/profileRoutes'
 import healthRoutes from './routes/healthRoutes'
+import plagiarismRoutes from './routes/plagiarismRoutes'
 import mcpRouter from './mcp/mcpServer'
 import { authMiddleware } from './middleware/authMiddleware'
 
@@ -58,6 +59,7 @@ app.use('/notifications', authMiddleware, notificationRoutes)
 app.use('/admin', adminRoutes)
 app.use('/formatting', authMiddleware, formattingRoutes)
 app.use('/profile', authMiddleware, profileRoutes)
+app.use('/plagiarism', authMiddleware, plagiarismRoutes)
 app.use('/mcp', authMiddleware, mcpRouter)
 
 // 404 handler
@@ -65,7 +67,9 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' })
 })
 
-// Error handler
+// Error handler. Express requires the 4-argument signature to recognise error
+// middleware, so `next` stays even though it is unused.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack)
   res.status(500).json({ error: 'Internal server error' })

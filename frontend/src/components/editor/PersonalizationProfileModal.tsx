@@ -150,6 +150,7 @@ export default function PersonalizationProfileModal({
         role="dialog"
         aria-modal="true"
         aria-label="Personalization profile dialog"
+        className="animate-overlay"
         onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose() }}
         style={{
           position: 'fixed',
@@ -163,6 +164,7 @@ export default function PersonalizationProfileModal({
         }}
       >
         <div
+          className="animate-modal"
           style={{
             backgroundColor: 'var(--card)',
             borderRadius: '1rem',
@@ -177,7 +179,7 @@ export default function PersonalizationProfileModal({
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
             <div>
-              <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, margin: '0 0 0.125rem', color: 'var(--foreground)' }}>
+              <h2 className="font-display" style={{ fontSize: '1.0625rem', fontWeight: 700, margin: '0 0 0.125rem', color: 'var(--foreground)' }}>
                 Personalization Profile
               </h2>
               <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>

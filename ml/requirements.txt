@@ -5,7 +5,8 @@ scikit-learn>=1.4.0
 torch>=2.2.0
 numpy>=1.26.0
 pandas>=2.1.4
-PyMuPDF>=1.24.0
+PyMuPDF>=1.24.3
+pdf2docx>=0.5.13
 redis>=5.0.1
 supabase>=2.0.3
 python-dotenv>=1.0.0
@@ -20,3 +21,8 @@ transformers>=4.38.0
 onnxruntime>=1.17.0
 optimum[onnxruntime]>=1.17.0
 accelerate>=0.26.0
+
+marker-pdf>=0.3.0
+opendataloader-pdf>=0.1.2
+
+openai>=1.40.0

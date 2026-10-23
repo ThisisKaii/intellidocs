@@ -12,7 +12,13 @@ function normalize(text: string): string {
 }
 
 /** Evaluate one trigger condition against a text block. */
-export function matchesCondition(condition: TriggerCondition, text: string): boolean {
+export function matchesCondition(
+  condition: TriggerCondition | null | undefined,
+  text: string
+): boolean {
+  if (!condition) {
+    return false
+  }
   const normalized = normalize(text)
   const words = normalized.length > 0 ? normalized.split(' ').length : 0
   const chars = normalized.length

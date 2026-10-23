@@ -211,3 +211,41 @@ class TestEmptyInput:
 
     def test_overwrite_with_no_rows(self, conn):
         assert feature_extractor.overwrite_features(conn, []) == 0
+
+
+class _FakeRedis:
+    """Tiny in-memory stand-in for the redis client used by run_once."""
+
+    def __init__(self, store):
+        self.store = store
+
+    def keys(self, pattern):
+        return [k for k in self.store if k.startswith("behavior:")]
+
+    def type(self, key):
+        return "list" if isinstance(self.store[key], list) else "string"
+
+    def lrange(self, key, _start, _end):
+        if not isinstance(self.store[key], list):
+            raise RuntimeError("WRONGTYPE Operation against a key holding the wrong kind of value")
+        return list(self.store[key])
+
+    def delete(self, key):
+        self.store.pop(key, None)
+
+
+class TestAggregatorKeyFiltering:
+    def test_learned_format_map_is_skipped_not_crashed_on(self, tmp_path, monkeypatch):
+        event = json.dumps(_event("bold", "2026-01-01T00:00:00Z", {"text": "Hello"}))
+        store = {
+            "behavior:u1:d1": [event],
+            "behavior:formats:u1": json.dumps({"hello": {"format": "bold"}}),
+        }
+        fake = _FakeRedis(store)
+        monkeypatch.setattr(aggregator, "connect_redis", lambda: fake)
+        monkeypatch.setenv("DUCKDB_PATH", str(tmp_path / "b.duckdb"))
+
+        assert aggregator.run_once() == 1
+        # The learned-format map is application state, so the aggregator leaves it alone.
+        assert "behavior:formats:u1" in store
+        assert "behavior:u1:d1" not in store

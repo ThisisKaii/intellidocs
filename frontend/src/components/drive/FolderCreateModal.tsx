@@ -11,6 +11,8 @@ interface FolderCreateModalProps {
   submitting?: boolean
   /** Server-side error to surface inside the modal. */
   error?: string
+  /** Signed-in user's role. Only professors and admins can create class folders. */
+  userRole?: string
 }
 
 /** Course codes look like CS-201 or BIO 340. */
@@ -18,15 +20,16 @@ const CLASS_CODE_PATTERN = /^[A-Za-z]{2,6}[\s-]?\d{2,4}[A-Za-z]?$/
 
 /**
  * Modal for creating a folder. A professor picks between a private personal
- * workspace and a student class folder; the class folder additionally
- * collects the course code and term shown on its badge.
+ * workspace and a student class folder; students can only create personal folders.
  */
 export default function FolderCreateModal({
   onClose,
   onSubmit,
   submitting = false,
   error,
+  userRole,
 }: FolderCreateModalProps): JSX.Element {
+  const canCreateClass = userRole === 'professor' || userRole === 'admin'
   const [name, setName] = useState('')
   const [folderType, setFolderType] = useState<FolderType>('personal')
   const [classCode, setClassCode] = useState('')
@@ -79,6 +82,7 @@ export default function FolderCreateModal({
       role="dialog"
       aria-modal="true"
       aria-label="New folder"
+      className="animate-overlay"
       onClick={(e) => {
         if (e.target === e.currentTarget && !submitting) onClose()
       }}
@@ -95,6 +99,7 @@ export default function FolderCreateModal({
     >
       <form
         onSubmit={handleSubmit}
+        className="animate-modal"
         style={{
           width: '100%',
           maxWidth: '28rem',
@@ -109,9 +114,11 @@ export default function FolderCreateModal({
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700 }}>New Folder</h2>
+            <h2 className="font-display" style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700 }}>New folder</h2>
             <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>
-              Keep a private workspace, or open a folder to your students.
+              {canCreateClass
+                ? 'Keep a private workspace, or open a folder to your students.'
+                : 'Create a private workspace to organize your documents.'}
             </p>
           </div>
           <button
@@ -147,52 +154,43 @@ export default function FolderCreateModal({
             setName(e.target.value)
             setLocalError('')
           }}
-          placeholder={folderType === 'class' ? 'Thesis Supervision 2026' : 'Chapter Drafts'}
+          placeholder={canCreateClass && folderType === 'class' ? 'Thesis Supervision 2026' : 'Project Drafts'}
           maxLength={120}
-          style={{
-            width: '100%',
-            height: '2.5rem',
-            padding: '0 0.75rem',
-            borderRadius: '0.5rem',
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--background)',
-            color: 'var(--foreground)',
-            fontSize: '0.875rem',
-            fontFamily: 'inherit',
-            outline: 'none',
-            boxSizing: 'border-box',
-          }}
+          className="settings-input w-full h-10"
+          style={{ boxSizing: 'border-box' }}
         />
 
-        <fieldset style={{ border: 'none', padding: 0, margin: '1.25rem 0 0' }}>
-          <legend style={{ fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.5rem', padding: 0 }}>
-            Folder type
-          </legend>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
-            <TypeOption
-              active={folderType === 'personal'}
-              onClick={() => {
-                setFolderType('personal')
-                setLocalError('')
-              }}
-              icon={<FolderIcon className="size-4" />}
-              title="Personal Workspace"
-              description="Only you can see and open it"
-            />
-            <TypeOption
-              active={folderType === 'class'}
-              onClick={() => {
-                setFolderType('class')
-                setLocalError('')
-              }}
-              icon={<GraduationCap className="size-4" />}
-              title="Student Class Folder"
-              description="Share with students and collect submissions"
-            />
-          </div>
-        </fieldset>
+        {canCreateClass && (
+          <fieldset style={{ border: 'none', padding: 0, margin: '1.25rem 0 0' }}>
+            <legend style={{ fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.5rem', padding: 0 }}>
+              Folder type
+            </legend>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.625rem' }}>
+              <TypeOption
+                active={folderType === 'personal'}
+                onClick={() => {
+                  setFolderType('personal')
+                  setLocalError('')
+                }}
+                icon={<FolderIcon className="size-4" />}
+                title="Personal Workspace"
+                description="Only you can see and open it"
+              />
+              <TypeOption
+                active={folderType === 'class'}
+                onClick={() => {
+                  setFolderType('class')
+                  setLocalError('')
+                }}
+                icon={<GraduationCap className="size-4" />}
+                title="Student Class Folder"
+                description="Share with students and collect submissions"
+              />
+            </div>
+          </fieldset>
+        )}
 
-        {folderType === 'class' && (
+        {canCreateClass && folderType === 'class' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '1rem' }}>
             <div>
               <label
@@ -210,7 +208,8 @@ export default function FolderCreateModal({
                 }}
                 placeholder="CS-201"
                 maxLength={24}
-                style={inputStyle}
+                className="settings-input w-full h-10"
+                style={{ boxSizing: 'border-box' }}
               />
             </div>
             <div>
@@ -226,14 +225,15 @@ export default function FolderCreateModal({
                 onChange={(e) => setAcademicTerm(e.target.value)}
                 placeholder="2026-T1"
                 maxLength={32}
-                style={inputStyle}
+                className="settings-input w-full h-10"
+                style={{ boxSizing: 'border-box' }}
               />
             </div>
           </div>
         )}
 
         {shownError && (
-          <p role="alert" style={{ margin: '0.875rem 0 0', fontSize: '0.8125rem', color: 'var(--error)' }}>
+          <p role="alert" className="animate-slide-down" style={{ margin: '0.875rem 0 0', fontSize: '0.8125rem', color: 'var(--error)' }}>
             {shownError}
           </p>
         )}
@@ -243,39 +243,14 @@ export default function FolderCreateModal({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            style={{
-              height: '2.25rem',
-              padding: '0 1rem',
-              borderRadius: '0.5rem',
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'var(--foreground)',
-              fontSize: '0.875rem',
-              fontWeight: 500,
-              cursor: submitting ? 'default' : 'pointer',
-              fontFamily: 'inherit',
-            }}
+            className="btn-ghost h-9 px-4"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting}
-            style={{
-              height: '2.25rem',
-              padding: '0 1rem',
-              borderRadius: '0.5rem',
-              border: 'none',
-              background: 'var(--primary)',
-              color: 'var(--primary-foreground)',
-              fontSize: '0.875rem',
-              fontWeight: 600,
-              cursor: submitting ? 'default' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              fontFamily: 'inherit',
-            }}
+            className="btn-primary h-9 px-4"
           >
             {submitting && <Loader2 className="size-4 animate-spin" />}
             {submitting ? 'Creating…' : 'Create folder'}
@@ -284,20 +259,6 @@ export default function FolderCreateModal({
       </form>
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  height: '2.5rem',
-  padding: '0 0.75rem',
-  borderRadius: '0.5rem',
-  border: '1px solid var(--border)',
-  backgroundColor: 'var(--background)',
-  color: 'var(--foreground)',
-  fontSize: '0.875rem',
-  fontFamily: 'inherit',
-  outline: 'none',
-  boxSizing: 'border-box',
 }
 
 interface TypeOptionProps {
@@ -315,6 +276,7 @@ function TypeOption({ active, onClick, icon, title, description }: TypeOptionPro
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      className="transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xs active:translate-y-0"
       style={{
         display: 'flex',
         flexDirection: 'column',

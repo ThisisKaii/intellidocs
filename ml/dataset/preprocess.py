@@ -34,6 +34,7 @@ FORMATTING_COLUMNS = [
     "text",
     "label",
     "section",
+    "document_type",
 ]
 
 
@@ -149,7 +150,7 @@ def compute_features(text: str) -> dict[str, Any]:
     }
 
 
-def build_formatting_rows(records: list[dict[str, Any]], split: str) -> list[dict[str, Any]]:
+def build_formatting_rows(records: list[dict[str, Any]], split: str, document_type: str = "research_paper") -> list[dict[str, Any]]:
     """Convert WikiText records into supervised formatting examples."""
     rows: list[dict[str, Any]] = []
     for record in records:
@@ -163,13 +164,14 @@ def build_formatting_rows(records: list[dict[str, Any]], split: str) -> list[dic
             "text": text,
             "label": label,
             "section": "body",
+            "document_type": document_type,
         }
         row.update(compute_features(text))
         rows.append(row)
     return rows
 
 
-def generate_synthetic_examples() -> list[dict[str, Any]]:
+def generate_synthetic_examples(document_type: str = "technical_report") -> list[dict[str, Any]]:
     """Generate synthetic training examples for underrepresented format classes."""
     rows: list[dict[str, Any]] = []
 
@@ -183,7 +185,7 @@ def generate_synthetic_examples() -> list[dict[str, Any]]:
     ]
     for title in h2_titles:
         for pattern in [f"== {title} ==", f"= = {title} = ="]:
-            row: dict[str, Any] = {"split": "synthetic", "source_dataset": "synthetic", "text": pattern, "label": "heading2", "section": "body"}
+            row: dict[str, Any] = {"split": "synthetic", "source_dataset": "synthetic", "text": pattern, "label": "heading2", "section": "body", "document_type": document_type}
             row.update(compute_features(pattern))
             rows.append(row)
 
@@ -197,7 +199,7 @@ def generate_synthetic_examples() -> list[dict[str, Any]]:
     ]
     for title in h3_titles:
         for pattern in [f"=== {title} ===", f"= = = {title} = = ="]:
-            row = {"split": "synthetic", "source_dataset": "synthetic", "text": pattern, "label": "heading3", "section": "body"}
+            row = {"split": "synthetic", "source_dataset": "synthetic", "text": pattern, "label": "heading3", "section": "body", "document_type": document_type}
             row.update(compute_features(pattern))
             rows.append(row)
 
@@ -217,7 +219,7 @@ def generate_synthetic_examples() -> list[dict[str, Any]]:
         "> The only true wisdom is in knowing you know nothing.",
     ]
     for quote in quotes:
-        row = {"split": "synthetic", "source_dataset": "synthetic", "text": quote, "label": "blockquote", "section": "body"}
+        row = {"split": "synthetic", "source_dataset": "synthetic", "text": quote, "label": "blockquote", "section": "body", "document_type": document_type}
         row.update(compute_features(quote))
         rows.append(row)
 
@@ -235,7 +237,7 @@ def generate_synthetic_examples() -> list[dict[str, Any]]:
         "    model.fit(X_train, y_train)",
     ]
     for code in code_samples:
-        row = {"split": "synthetic", "source_dataset": "synthetic", "text": code, "label": "code_block", "section": "body"}
+        row = {"split": "synthetic", "source_dataset": "synthetic", "text": code, "label": "code_block", "section": "body", "document_type": document_type}
         row.update(compute_features(code))
         rows.append(row)
 
@@ -255,7 +257,7 @@ def generate_synthetic_examples() -> list[dict[str, Any]]:
         "* Monitor performance metrics",
     ]
     for item in ul_items:
-        row = {"split": "synthetic", "source_dataset": "synthetic", "text": item, "label": "unordered_list", "section": "body"}
+        row = {"split": "synthetic", "source_dataset": "synthetic", "text": item, "label": "unordered_list", "section": "body", "document_type": document_type}
         row.update(compute_features(item))
         rows.append(row)
 
@@ -275,7 +277,7 @@ def generate_synthetic_examples() -> list[dict[str, Any]]:
         "# Update the changelog",
     ]
     for item in ol_items:
-        row = {"split": "synthetic", "source_dataset": "synthetic", "text": item, "label": "ordered_list", "section": "body"}
+        row = {"split": "synthetic", "source_dataset": "synthetic", "text": item, "label": "ordered_list", "section": "body", "document_type": document_type}
         row.update(compute_features(item))
         rows.append(row)
 
@@ -397,7 +399,7 @@ def stream_raw(slug: str, split: str):
     yield from iter_jsonl(path)
 
 
-def build_thesis_rows_streamed(records, split: str, max_rows: int) -> list[dict[str, Any]]:
+def build_thesis_rows_streamed(records, split: str, max_rows: int, document_type: str = "thesis") -> list[dict[str, Any]]:
     """Build thesis rows from a record iterator, stopping at the row cap."""
     rows: list[dict[str, Any]] = []
     for record in records:
@@ -412,6 +414,7 @@ def build_thesis_rows_streamed(records, split: str, max_rows: int) -> list[dict[
             "text": text,
             "label": infer_format_label(text),
             "section": str(record.get("section", "body")).strip() or "body",
+            "document_type": document_type,
         }
         row.update(compute_features(text))
         rows.append(row)
@@ -440,19 +443,19 @@ def preprocess_formatting() -> pd.DataFrame:
 
     WikiText-103 supplies the bulk of the hierarchy signal, the thesis corpus
     adds section labels, and synthetic examples backfill rare classes. The
-    source_dataset and section columns keep each contribution traceable.
+    source_dataset, section, and document_type columns keep each contribution traceable.
     """
     rows: list[dict[str, Any]] = []
     for split in ("train", "validation", "test"):
-        rows.extend(build_formatting_rows(read_raw("wikitext-103", split), split))
+        rows.extend(build_formatting_rows(read_raw("wikitext-103", split), split, document_type="research_paper"))
         # Streamed because the thesis mirrors are far too large to load whole.
         rows.extend(
             build_thesis_rows_streamed(
-                stream_raw("thesis-structural", split), split, THESIS_MAX_ROWS
+                stream_raw("thesis-structural", split), split, THESIS_MAX_ROWS, document_type="thesis"
             )
         )
 
-    rows.extend(generate_synthetic_examples())
+    rows.extend(generate_synthetic_examples(document_type="technical_report"))
     return _write_frame(rows, FORMATTING_COLUMNS, "formatting_examples.csv")
 
 

@@ -3,6 +3,8 @@ import { AuthenticatedRequest } from '../types/express'
 import * as professorModel from '../models/professorModel'
 import * as notificationModel from '../models/notificationModel'
 import * as documentModel from '../models/documentModel'
+import * as folderModel from '../models/folderModel'
+import * as plagiarismModel from '../models/plagiarismModel'
 import { auditCompliance } from '../skills/auditCompliance'
 
 export async function addComment(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -133,6 +135,41 @@ export async function runComplianceAudit(req: AuthenticatedRequest, res: Respons
     res.json(report)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to run compliance audit'
+    res.status(500).json({ error: message })
+  }
+}
+
+/**
+ * Return the class similarity matrix for one of the professor's class folders.
+ * Ownership is checked first, so a professor can only compare submissions in
+ * their own folders.
+ */
+export async function getFolderSimilarity(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const folderId = req.params.id
+    const folder = await folderModel.getFolderById(userId, folderId)
+    if (folder.folder_type !== 'class') {
+      res.status(400).json({ error: 'Similarity analysis is only available for class folders' })
+      return
+    }
+
+    const matrix = await plagiarismModel.getClassSimilarity(folderId)
+    res.json(matrix)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to load similarity matrix'
+    if (message === 'Folder not found') {
+      res.status(404).json({ error: message })
+      return
+    }
     res.status(500).json({ error: message })
   }
 }

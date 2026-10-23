@@ -106,7 +106,8 @@ function buildCss(preset: Omit<AcademicPreset, 'css'>): string {
 .intellidocs-page-editor .ProseMirror h2,
 .intellidocs-page-editor .ProseMirror h3,
 .intellidocs-page-editor .ProseMirror blockquote,
-.intellidocs-page-editor .ProseMirror li {
+.intellidocs-page-editor .ProseMirror li,
+.intellidocs-page-editor .ProseMirror li p {
   ${'text-indent: 0;'}
 }
 ${headingBlock}
@@ -190,4 +191,9 @@ export const ACADEMIC_PRESETS: AcademicPreset[] = [APA_7TH, IEEE, UCLM_CAPSTONE]
  */
 export function withComputedCss(preset: PresetInput): AcademicPreset {
   return { ...preset, css: buildCss(preset) }
+}
+
+/** The built-in preset a (possibly forked) key derives from: `ieee__v2` -> `ieee`. */
+export function basePresetKey(key: string | null | undefined): string | null {
+  return key ? key.split('__')[0] : null
 }

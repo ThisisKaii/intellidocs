@@ -134,6 +134,7 @@ export default function DocumentCreateModal({
   return createPortal(
     <div
       role="presentation"
+      className="animate-overlay"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !submitting) onClose()
       }}
@@ -152,6 +153,7 @@ export default function DocumentCreateModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="document-create-title"
+        className="animate-modal"
         style={{
           width: '100%',
           maxWidth: '38rem',
@@ -176,14 +178,15 @@ export default function DocumentCreateModal({
             <div>
               <h2
                 id="document-create-title"
+                className="font-display"
                 style={{
                   margin: 0,
                   fontSize: '1.125rem',
-                  fontWeight: 650,
+                  fontWeight: 700,
                   color: 'var(--foreground)',
                 }}
               >
-                New Document
+                New document
               </h2>
               <p
                 style={{
@@ -220,7 +223,7 @@ export default function DocumentCreateModal({
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(11rem, 1fr))',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
               gap: '0.625rem',
               padding: '0.75rem 1.5rem',
             }}
@@ -252,7 +255,7 @@ export default function DocumentCreateModal({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(11rem, 1fr))',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                   gap: '0.625rem',
                 }}
               >
@@ -291,24 +294,14 @@ export default function DocumentCreateModal({
                 titleTouched.current = true
                 setTitle(event.target.value)
               }}
-              style={{
-                width: '100%',
-                height: '2.5rem',
-                padding: '0 0.75rem',
-                borderRadius: '0.5rem',
-                border: '1px solid var(--border)',
-                backgroundColor: 'var(--background)',
-                color: 'var(--foreground)',
-                fontSize: '0.875rem',
-                fontFamily: 'inherit',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
+              className="settings-input w-full h-10"
+              style={{ boxSizing: 'border-box' }}
             />
 
             {message && (
               <p
                 role="alert"
+                className="animate-slide-down"
                 style={{ margin: '0.5rem 0 0', fontSize: '0.8125rem', color: 'var(--destructive)' }}
               >
                 {message}
@@ -320,7 +313,7 @@ export default function DocumentCreateModal({
             style={{
               display: 'flex',
               justifyContent: 'flex-end',
-              gap: '0.5rem',
+              gap: '0.625rem',
               padding: '0 1.5rem 1.25rem',
             }}
           >
@@ -328,39 +321,14 @@ export default function DocumentCreateModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              style={{
-                height: '2.25rem',
-                padding: '0 1rem',
-                borderRadius: '0.5rem',
-                border: '1px solid var(--border)',
-                background: 'transparent',
-                color: 'var(--foreground)',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                cursor: submitting ? 'default' : 'pointer',
-                fontFamily: 'inherit',
-              }}
+              className="btn-ghost h-9 px-4"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              style={{
-                height: '2.25rem',
-                padding: '0 1rem',
-                borderRadius: '0.5rem',
-                border: 'none',
-                background: 'var(--primary)',
-                color: 'var(--primary-foreground)',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                cursor: submitting ? 'default' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                fontFamily: 'inherit',
-              }}
+              className="btn-primary h-9 px-4"
             >
               {submitting && <Loader2 className="size-4 animate-spin" />}
               {submitting ? 'Creating…' : 'Create document'}
@@ -388,6 +356,7 @@ function BlueprintCard({ blueprint, active, onClick }: BlueprintCardProps): JSX.
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      className="transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xs active:translate-y-0"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -441,6 +410,7 @@ function UserPresetCard({ preset, active, onClick }: UserPresetCardProps): JSX.E
       onClick={onClick}
       aria-pressed={active}
       title={`Applies ${preset.base_key} structure with your own rules`}
+      className="transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xs active:translate-y-0"
       style={{
         display: 'flex',
         flexDirection: 'column',

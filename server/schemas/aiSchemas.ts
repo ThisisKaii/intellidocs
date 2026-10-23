@@ -25,6 +25,22 @@ const rejectedFormattingPreviewSchema = z.object({
   rejectedAt: z.string().datetime('Rejected timestamp must be valid').optional(),
 })
 
+/**
+ * Validate the snapshot of the last formatting preview shown to the user.
+ * The client sends it back so follow-ups ("yes", "format the rest") resolve
+ * against the previous change instead of the raw message text.
+ */
+const lastPreviewSchema = z.object({
+  format: z.string().trim().max(80).optional(),
+  formats: z.array(z.string().trim().max(80)).max(20).optional(),
+  scope: z.enum(['selection', 'all']).optional(),
+  fontSize: z.number().finite().positive().max(200).nullable().optional(),
+  target: z.string().trim().max(200).nullable().optional(),
+  targetMode: z.enum(['literal', 'section', 'title']).nullable().optional(),
+  targetCategory: z.enum(['headings', 'paragraphs', 'chapters', 'all']).nullable().optional(),
+  normalize: z.boolean().optional(),
+})
+
 /** Validate incoming AI chat requests from HTTP clients. */
 export const aiChatRequestSchema = z.object({
   message: z
@@ -37,6 +53,7 @@ export const aiChatRequestSchema = z.object({
     .array(rejectedFormattingPreviewSchema)
     .max(20, 'Too many rejected formatting previews')
     .optional(),
+  lastPreview: lastPreviewSchema.nullable().optional(),
   documentId: z
     .string()
     .trim()

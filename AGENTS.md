@@ -15,6 +15,11 @@
 - Keep solutions simple. Do not add abstraction or configurability that was not requested.
 - Match existing patterns in this repository even if you would structure it differently in a greenfield project.
 - Do not report success based only on a plausible diff. Verify the result.
+- Stop the local dev stack (ports 3000/5173/8001) whenever you finish a task and verify the ports are free — never leave services running in the background. Helper: `C:\Users\asus\AppData\Local\Temp\opencode\stop-stack.ps1`.
+
+### Loop Circuit Breaker (Non-Negotiable)
+- If you find yourself running the exact same tool, test, or command signature more than twice without progress, you are caught in an iteration loop.
+- You must immediately ABORT further tool executions, summarize what failed and why, and ask the user for direction. Never attempt a 3rd blind retry.
 
 ### Working Approach
 
@@ -279,6 +284,102 @@ intellidocs/
 - Grammar underlines are a custom TipTap plugin (GrammarUnderlineExtension.ts)
 - Keep shared extensions in `editorExtensions` (TiptapEditor.tsx) — single
   source of truth for every editor instance
+- In `tiptap-pagination-plus` the header/footer zones' padding (`--rm-margin-top`
+  / `--rm-margin-bottom`) IS the page margin. Never zero or clamp it — doing so
+  moved body text into the margin and collapsed the header/footer (shipped once).
+- The header/footer CONTENT rows (`.rm-page-header-content` / `-footer-content`)
+  are deliberately measured as 0px tall and drawn inside the margins (see
+  PagedEditor's scoped style). The library otherwise subtracts their height from
+  every page's body, which put the header's clickable zone on the grid's first
+  row and left the last row unusable. Keep `overflow: visible !important` (the
+  library sets inline `overflow:hidden`) and leave the zone padding untouched.
+- The library lays header/footer zones out as `display: inline-flex`, which
+  leaves an 8-11px line-box gap below each zone and pushed every page's text
+  ~0.1in down; PagedEditor forces them to `display: flex`. Keep that override.
+
+---
+
+## Import Pipeline Invariants (do not regress)
+
+- The editor loads a document in ONE transactional `setContent` (pagination
+  paused around it). Never stream large imports as chunked `insertContent`
+  fragments: ProseMirror strips a trailing `<hr>` from every parsed fragment,
+  so chunk boundaries silently deleted page breaks — and adjacent images and
+  paragraphs — from saved documents on every load/save cycle.
+- Page breaks are schema-owned (`PageBreak` node): imports arrive as
+  `<hr class="page-break" data-page-break>` and persist as
+  `<div class="intellidocs-page-break">`. Its `hr.page-break` parse rule must
+  keep `priority: 110` to outrank StarterKit's horizontalRule (first match wins).
+- Never purge blank paragraphs anywhere in the import path. Word blank lines
+  are intentional; emit empty `<p>` elements and NEVER `<p><br/></p>` (a lone
+  `<br>` parses as a hard-break node and renders two line boxes — double-height
+  blank lines).
+- Imported spacing is authoritative: paragraph inline line-height/margins come
+  from Word/PDF (direct `w:spacing` → style chain → docDefaults; PDFs use the
+  measured line ratio). Editor CSS must never override them with `!important`.
+  Every imported paragraph carries an EXPLICIT `text-indent` (0 when Word has
+  none) and base `font-size`, so an applied preset's 0.5in indent / 12pt cannot
+  reshape a title page; "auto" line spacing is scaled by the font's natural
+  line height (`_FONT_LINE_FACTORS`, 1.15 for Times New Roman) because CSS
+  `line-height: N` multiplies 1em while Word multiplies that height. Blank
+  paragraphs size from their paragraph-mark font, not the style default.
+  Header/footer `PAGE` fields are imported as a page-number format, never as
+  the cached number Word last saved.
+- Merely opening a document must not rewrite it: autosave fires on real edits
+  only. `Document.tsx` enforces this with `documentLoadedRef`: it is set only
+  after the server copy is applied, and `scheduleSave`/`saveDocument`/
+  `handleContentChange` do nothing before that (the empty editor emits an update
+  on mount and the "latest" refs start as 'Untitled Document'/'', so an early
+  save used to overwrite real documents with defaults). The server adds a net:
+  `isDestructiveBlankOverwrite` (`server/src/utils/documentGuards.ts`) rejects
+  with 409 a save that blanks a non-empty renamed document AND resets its title.
+  Browser test scripts must still block PUT/PATCH unless they are testing saves.
+- PDFs are normalized to DOCX with pdf2docx and then go through the DOCX
+  converter (`convert_pdf_bytes_to_html` in `ml/src/converter.py`). There is no
+  separate PDF→HTML path — do not reintroduce one. The PDF-only repairs run on
+  the intermediate DOCX before the shared emitter: next-page `sectPr` →
+  page breaks, repeated top/bottom elements (running headers/footers/logos)
+  stripped, heading styles inferred from size/bold/shape, large images
+  re-encoded. Furniture detection must normalize ONLY page-number text
+  (`<page-number>`); never digit-normalize arbitrary lines or "Article 4" /
+  "Question 7" body lines get deleted on short pages.
+- The converter walks EVERYTHING Word nests, not just top-level `p`/`tbl`:
+  block `w:sdt` content controls (the Table of Contents lives in one), inline
+  wrappers (`w:sdt/ins/smartTag/customXml/fldSimple`) and text boxes
+  (`w:txbxContent`; skip the `mc:Fallback` duplicate). Tables are read from
+  `w:tc` directly — never python-docx `row.cells`, which repeats merged cells.
+- Tables use `tiptap-table-plus` (pinned 3.1.0) — never stock TipTap tables with
+  the paginator, which clips them to 0px. Its paginator is only safe with LOOSE
+  rows (no `<tbody>` per row) and NO rowspans: tall tables that need row groups
+  make `tiptap-pagination-plus` grow the page count forever. Vertical merges are
+  therefore flattened (restart cell `border-bottom:none`, continuation emitted
+  as an empty bordered cell). `data-column-size` carries column percents and is
+  only emitted when the widest row has as many cells as the grid. The library
+  has a bug (ghost tables, lost table attrs when regrouping); the fix lives in
+  `frontend/patches/tiptap-table-plus+3.1.0.patch`, applied by `patch-package`
+  (postinstall). After changing the patch, delete `frontend/node_modules/.vite`
+  and restart Vite — a running dev server keeps serving its cached pre-bundle.
+- Page structure follows Word: explicit `w:br type=page`, `pageBreakBefore`
+  (direct or style) and next-page section breaks all become page-break `<hr>`s.
+  `PageBreak.ts` stretches each spacer to the end of its page at runtime
+  (DOM-only height; it must never become a transaction/autosave). The paginator
+  keeps every `.breaker` in one wrapper, so order them by position, not DOM order.
+- The canvas zooms with CSS `zoom`, so `getBoundingClientRect()` is in zoomed px
+  while style heights/widths are not. Every DOM-measuring layout pass
+  (`PageBreak.ts`, `TabStop.ts`) divides by the live scale
+  (`rect.width / offsetWidth` of the editor), and `tiptap-pagination-plus` is
+  patched the same way (`frontend/patches/tiptap-pagination-plus+3.1.0.patch`,
+  its page-count gap mixed zoomed rects with unzoomed page height). Spacer
+  height is derived from the page grid, never from its own current height, and
+  layout passes write only when a value really changes (every style write
+  re-flows the paginator).
+- Tabs: each Word tab is `<span data-tab>` (`TabStop.ts` node); paragraphs carry
+  `data-tab-stops` (`[[align, px, leader], …]`) and `data-default-tab`. Widths
+  are computed at runtime with Word's rule (next custom stop, else next default
+  multiple; right/center stops subtract the following text). Runs of spaces keep
+  their width via alternating U+00A0.
+- Never use the opencode helper `start-stack.ps1` (in the Temp\opencode folder):
+  it starts mock-supabase, which this project no longer uses.
 
 ---
 
@@ -315,6 +416,7 @@ intellidocs/
 - The AI API is ONLY used for:
   - AIChatbot (MCP tool orchestration, preview/confirm UI)
   - Natural language command interpretation
+  - The plagiarism council (five judges, possibly on different providers)
 
 ### Implementation Details
 
@@ -338,11 +440,26 @@ Do NOT use:
 - `OLLAMA_HOST`
 - provider-specific env naming like `GEMINI_API_KEY` inside app logic
 
+#### 2b. Multiple Providers (profiles)
+- `AI_PROVIDER` / `AI_API_KEY` / `AI_MODEL` is profile 1. Extra profiles use the same
+  names with a numeric suffix (`AI_PROVIDER_2`, `AI_API_KEY_2`, `AI_MODEL_2` ... up to 9);
+  incomplete profiles are ignored. Supported providers: gemini, nvidia, groq, openrouter,
+  mistral. Parsing lives in `server/src/ai/aiProfiles.ts`.
+- The chatbot / NLP commands fail over down the profile list (5xx, timeout, unknown model,
+  or all keys rejected); malformed requests (400/422) are not retried.
+- The plagiarism council runs a mixed panel: `server/src/skills/runCouncilScan.ts` sends all
+  profiles plus a judge -> profile assignment to the ML service. Specialists are spread
+  round-robin, the arbiter uses profile 1; `COUNCIL_<ROLE>_PROFILE=<n>` pins a judge. Each
+  judge falls over to the other profiles, and transcript entries record `provider`/`model`.
+  The council's request-scoped config lives in a ContextVar in `ml/council_pipeline.py`
+  (never a module global).
+
 #### 3. Provider Requirements
 - Provider must support native function calling / tool use
 - Provider must work with MCP tool definitions
-- Provider selection is controlled only by `AI_PROVIDER`
-- `aiClient.ts` is the only provider switch point
+- Provider selection is controlled only by the `AI_PROVIDER*` profile variables
+- `aiClient.ts` is the only provider switch point for the backend (the council is the one
+  exception: it calls its providers from the ML service, configured by the server)
 
 #### 4. Current Provider Direction
 IntelliDocs has moved away from Ollama and ngrok.

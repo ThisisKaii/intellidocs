@@ -24,12 +24,12 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  --color-brand-teal: #388087;
-  --color-brand-teal-dark: #27595e;
-  --color-brand-cyan: #6fb3b8;
-  --color-brand-ice: #badfe7;
-  --color-brand-mint: #c2edce;
-  --color-brand-cream: #f6f6f2;
+  --color-brand-teal: #1351aa;
+  --color-brand-teal-dark: #0f4189;
+  --color-brand-cyan: #4a7bc8;
+  --color-brand-ice: #cdd9f0;
+  --color-brand-mint: #e7edf8;
+  --color-brand-cream: #f8fafc;
 
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -52,28 +52,36 @@
 
 @layer base {
   :root {
-    /* Teal-and-paper palette — single unified theme (no dark mode) */
-    --canvas: #f6f6f2;
+    /* Clean slate neutrals with the cobalt accent and a warm ink text colour
+       (see DESIGN.md). The earlier warm beige canvas was purged — it clashed
+       with the white document sheet. */
+    --canvas: #f8fafc;
     --page: #ffffff;
     --surface: #ffffff;
-    --surface-sunken: #efefe9;
-    --border: #deded6;
-    --border-strong: #c4c4ba;
-    --text-primary: #1c2a2b;
-    --text-secondary: #5a6b6c;
-    --text-muted: #8b9899;
-    --accent-strong: #388087;
-    --accent-hover: #2c6a70;
-    --accent-mid: #6fb3b8;
-    --accent-subtle: #e4f1f3;
-    --selection: #badfe7;
-    --highlight: #c2edce;
+    --surface-sunken: #f1f5f9;
+    --border: #e2e8f0;
+    --border-strong: #94a3b8;
+    --text-primary: #3a342f;
+    --text-secondary: #5c524a;
+    --text-muted: #7a7a7a;
+    --accent-strong: #1351aa;
+    --accent-hover: #0f4189;
+    --accent-mid: #4a7bc8;
+    --accent-subtle: #e7edf8;
+    --selection: #cdd9f0;
+    --highlight: #f1e5c3;
     --success: #3e8e5a;
     --warning: #b5772b;
     --error: #c0453f;
-    --info: #388087;
+    --info: #1351aa;
+    /* Text-only status colors, darkened to reach WCAG AA (4.5:1) on their
+       tinted save-status pill. Fills/dots keep --success/--error above. */
+    --success-text: #1f6b3f;
+    --error-text: #a0342f;
     /* Grammar underline: deliberately distinct from --error spelling underline */
     --grammar: #7c3aed;
+    /* Landing-page slate canvas (Swiss 12-column grid backdrop) */
+    --stone: #f8fafc;
 
     --background: var(--canvas);
     --foreground: var(--text-primary);
@@ -93,22 +101,22 @@
     --destructive-foreground: #ffffff;
     --input: var(--border-strong);
     --ring: var(--accent-strong);
-    --radius: 0.375rem;
-    --border-shadow: rgba(56, 128, 135, 0.18);
-    --border-shadow-light: rgb(224, 233, 230);
-    --card-shadow-inner: #fdfefe;
+    --radius: 0.5rem;
+    --border-shadow: rgba(15, 23, 42, 0.14);
+    --border-shadow-light: rgb(226, 232, 240);
+    --card-shadow-inner: #ffffff;
     /* Editor-specific: paper page and canvas */
     --page-bg: var(--page);
     --canvas-bg: var(--canvas);
     --hf-zone-bg: var(--page);
-    --page-shadow: rgba(28, 62, 63, 0.12) 0px 1px 3px, rgba(28, 62, 63, 0.08) 0px 4px 12px;
+    --page-shadow: rgba(15, 23, 42, 0.10) 0px 1px 3px, rgba(15, 23, 42, 0.06) 0px 4px 12px;
     /* Colored style-boundary guides (point 20) */
-    --guide-title: #c2edce;
-    --guide-chapter: #c2edce;
-    --guide-h1: #6fb3b8;
-    --guide-h2h3: #badfe7;
-    --guide-quote: #6fb3b8;
-    --guide-generic: #badfe7;
+    --guide-title: #d8cdb4;
+    --guide-chapter: #d8cdb4;
+    --guide-h1: #6f97cf;
+    --guide-h2h3: #b6c8e6;
+    --guide-quote: #6f97cf;
+    --guide-generic: #b6c8e6;
   }
 
   * {
@@ -141,6 +149,17 @@
 @layer components {
   .rounded-sleek {
     border-radius: 0.5rem;
+  }
+
+  /* Swiss display face for hero/section headlines (DESIGN.md). */
+  .font-display {
+    font-family: 'Syne', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Technical mono for labels, indices, and metrics (always tabular). */
+  .font-tech {
+    font-family: 'Space Mono', ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums;
   }
 
   .border-shadow {
@@ -233,47 +252,66 @@
 }
 
 /* Callouts are labelled blockquotes: data-callout drives the accent colour and
-   the ::before label. A plain blockquote (no data-callout) is unaffected. */
-.intellidocs-editor blockquote[data-callout] {
+   the ::before label. A plain blockquote (no data-callout) is unaffected.
+   Selectors cover the paginated editor (`.intellidocs-page-editor` wraps
+   `.ProseMirror.rm-with-pagination`); `.intellidocs-editor` is kept for
+   non-paginated harnesses. The `.rm-with-pagination` variant outranks
+   PagedEditor's generic blockquote rule. */
+.intellidocs-editor blockquote[data-callout],
+.intellidocs-page-editor blockquote[data-callout],
+.ProseMirror blockquote[data-callout],
+.ProseMirror.rm-with-pagination blockquote[data-callout] {
   position: relative;
-  padding: 0.75rem 1rem 0.75rem 2.5rem;
-  border-radius: 0 0.5rem 0.5rem 0;
+  padding: 1rem 1.25rem 1rem 1.5rem;
+  margin: 1.25rem 0;
+  border-radius: 0.5rem;
+  border-left: 4px solid var(--callout-accent);
   background: color-mix(in srgb, var(--callout-accent) 8%, transparent);
-  border-left-color: var(--callout-accent);
   color: var(--foreground);
 }
 
-.intellidocs-editor blockquote[data-callout]::before {
+.intellidocs-editor blockquote[data-callout]::before,
+.intellidocs-page-editor blockquote[data-callout]::before,
+.ProseMirror blockquote[data-callout]::before,
+.ProseMirror.rm-with-pagination blockquote[data-callout]::before {
   content: attr(data-callout-label);
-  position: absolute;
-  left: 0.75rem;
-  top: 0.75rem;
-  font-size: 0.6875rem;
+  display: block;
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--callout-accent);
+  margin-bottom: 0.375rem;
 }
 
-.intellidocs-editor blockquote[data-callout='note'] {
-  --callout-accent: var(--info);
+.intellidocs-editor blockquote[data-callout='note'],
+.intellidocs-page-editor blockquote[data-callout='note'],
+.ProseMirror blockquote[data-callout='note'],
+.ProseMirror.rm-with-pagination blockquote[data-callout='note'] {
+  --callout-accent: #2563eb; /* Blue */
 }
 
-.intellidocs-editor blockquote[data-callout='warning'] {
-  --callout-accent: var(--warning);
+.intellidocs-editor blockquote[data-callout='warning'],
+.intellidocs-page-editor blockquote[data-callout='warning'],
+.ProseMirror blockquote[data-callout='warning'],
+.ProseMirror.rm-with-pagination blockquote[data-callout='warning'] {
+  --callout-accent: #d97706; /* Amber */
 }
 
-/* --info and --accent-strong resolve to the same value in both themes, so
-   `key` is distinguished from `note` by a heavier background tint rather than
-   by hue. */
-.intellidocs-editor blockquote[data-callout='key'] {
-  --callout-accent: var(--accent-strong);
-  background: color-mix(in srgb, var(--accent-strong) 18%, transparent);
+.intellidocs-editor blockquote[data-callout='key'],
+.intellidocs-page-editor blockquote[data-callout='key'],
+.ProseMirror blockquote[data-callout='key'],
+.ProseMirror.rm-with-pagination blockquote[data-callout='key'] {
+  --callout-accent: #7c3aed; /* Purple */
+  background: color-mix(in srgb, #7c3aed 18%, transparent);
   font-weight: 500;
 }
 
-.intellidocs-editor blockquote[data-callout='example'] {
-  --callout-accent: var(--text-muted);
+.intellidocs-editor blockquote[data-callout='example'],
+.intellidocs-page-editor blockquote[data-callout='example'],
+.ProseMirror blockquote[data-callout='example'],
+.ProseMirror.rm-with-pagination blockquote[data-callout='example'] {
+  --callout-accent: #059669; /* Emerald */
 }
 
 .intellidocs-editor ul,
@@ -344,6 +382,12 @@ div:hover > .card-menu-btn,
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+/* Thin, theme-neutral scrollbars (WebKit + Firefox). */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d4 transparent;
 }
 
 ::-webkit-scrollbar {
@@ -452,6 +496,312 @@ div:hover > .card-menu-btn,
   background-position: left top;
 }
 
+/* ── Academic Tables (Phase 3) ───────────────────────────────────────── */
+
+.academic-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.academic-table caption {
+  caption-side: top;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 0;
+  color: var(--text-secondary);
+}
+
+.academic-table .table-number {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+/* APA Three-Line Table: heavy top/bottom borders, thin header bottom, no vertical borders */
+.academic-table.table-apa-three-line {
+  border-top: 2.5px solid var(--text-primary);
+  border-bottom: 2.5px solid var(--text-primary);
+}
+
+.academic-table.table-apa-three-line thead th {
+  border-bottom: 1px solid var(--text-primary);
+  border-left: none;
+  border-right: none;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  background: transparent;
+}
+
+.academic-table.table-apa-three-line tbody td {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+}
+
+.academic-table.table-apa-three-line tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.academic-table.table-apa-three-line.apa-table {
+  border-top: 2.5px solid var(--text-primary);
+  border-bottom: 2.5px solid var(--text-primary);
+}
+
+/* IEEE Grid Table: full grid with thin borders */
+.academic-table.table-ieee-grid {
+  border: 1px solid var(--border);
+}
+
+.academic-table.table-ieee-grid th,
+.academic-table.table-ieee-grid td {
+  border: 1px solid var(--border);
+  padding: 0.375rem 0.5rem;
+}
+
+.academic-table.table-ieee-grid th {
+  background-color: var(--surface-sunken);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Shaded Header Table */
+.academic-table.table-shaded-header thead th {
+  background-color: var(--accent-subtle);
+  border-bottom: 2px solid var(--accent-strong);
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+}
+
+.academic-table.table-shaded-header tbody td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+}
+
+/* Borderless Table */
+.academic-table.table-borderless {
+  border: none;
+}
+
+.academic-table.table-borderless th,
+.academic-table.table-borderless td {
+  border: none;
+  padding: 0.5rem 0.75rem;
+}
+
+.academic-table.table-borderless thead th {
+  border-bottom: 1px solid var(--border);
+}
+
+/* Minimal Table */
+.academic-table.table-minimal {
+  border: none;
+}
+
+.academic-table.table-minimal th,
+.academic-table.table-minimal td {
+  border: none;
+  padding: 0.375rem 0.5rem;
+}
+
+.academic-table.table-minimal thead th {
+  border-bottom: 1px solid var(--text-primary);
+}
+
+/* APA Cell and Header specific styles */
+.apa-cell {
+  vertical-align: top;
+}
+
+.apa-header {
+  vertical-align: middle;
+  font-weight: 600;
+}
+
+/* Table alignment classes */
+.academic-table.align-left {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.academic-table.align-center {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.academic-table.align-right {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+/* Header column styling */
+.academic-table.has-header-column tbody th {
+  background-color: var(--accent-subtle);
+  font-weight: 600;
+  text-align: left;
+  border-right: 1px solid var(--border);
+}
+
+/* ── Academic Images - Text Wrapping (Phase 3) ───────────────────────── */
+
+.academic-image {
+  margin: 1rem auto;
+  max-width: 100%;
+}
+
+.academic-image img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Inline wrap - image sits in text flow */
+.academic-image.wrap-inline,
+.ProseMirror .image-resizer.wrap-inline {
+  display: inline-block !important;
+  margin: 0.25rem 0.5rem !important;
+  vertical-align: baseline !important;
+  float: none !important;
+  clear: none !important;
+}
+
+/* Wrap left - text wraps right */
+.academic-image.wrap-square.align-left,
+.academic-image.wrap-square:not(.align-right),
+.ProseMirror .image-resizer.wrap-left {
+  float: left !important;
+  clear: left !important;
+  margin: 0.5rem 1.5rem 0.75rem 0 !important;
+  max-width: 55% !important;
+}
+
+/* Wrap right - text wraps left */
+.academic-image.wrap-square.align-right,
+.ProseMirror .image-resizer.wrap-right {
+  float: right !important;
+  clear: right !important;
+  margin: 0.5rem 0 0.75rem 1.5rem !important;
+  max-width: 55% !important;
+}
+
+/* Wrap both / Tight wrap centering */
+.academic-image.wrap-tight,
+.academic-image.wrap-square,
+.ProseMirror .image-resizer.wrap-both {
+  display: block !important;
+  float: none !important;
+  clear: none !important;
+  margin: 0.75rem auto !important;
+  shape-outside: margin-box;
+}
+
+/* Behind text */
+.academic-image.wrap-behind,
+.ProseMirror .image-resizer.wrap-behind-text {
+  position: relative !important;
+  z-index: 0 !important;
+  opacity: 0.82 !important;
+  float: none !important;
+  margin: 1rem auto !important;
+  pointer-events: auto !important;
+}
+
+/* In front of text */
+.academic-image.wrap-in-front,
+.ProseMirror .image-resizer.wrap-in-front {
+  position: relative !important;
+  z-index: 30 !important;
+  float: none !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16) !important;
+  margin: 1rem auto !important;
+}
+
+/* Top & Bottom - break text */
+.academic-image.wrap-top-bottom,
+.academic-image.wrap-none,
+.ProseMirror .image-resizer.wrap-break {
+  display: block !important;
+  float: none !important;
+  clear: both !important;
+  margin: 1.5rem auto !important;
+}
+
+/* Image alignment within column */
+.academic-image.align-left {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.academic-image.align-center {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.academic-image.align-right {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.academic-image.align-float {
+  float: left;
+  margin-right: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.academic-image.align-inline {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Figure caption styling */
+.academic-image figcaption {
+  text-align: center;
+  font-size: 0.875rem;
+  font-style: italic;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.academic-image .figure-number {
+  font-weight: 600;
+}
+
+/* ── Academic Equations (Phase 3) ────────────────────────────────────── */
+
+.academic-equation {
+  font-family: var(--font-mono);
+}
+
+.academic-equation.equation-inline {
+  display: inline-block;
+  padding: 0 0.25rem;
+}
+
+.academic-equation.equation-display {
+  display: block;
+  text-align: center;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--surface-sunken);
+  border-radius: 0.375rem;
+}
+
+.academic-equation .equation-math {
+  font-family: 'Times New Roman', serif;
+  font-style: italic;
+}
+
+.academic-equation .equation-number {
+  float: right;
+  font-family: var(--font-sans);
+  font-style: normal;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin-left: 1rem;
+}
+
 @layer utilities {
   .font-geist {
     font-family: "Geist", "Inter", sans-serif;
@@ -494,6 +844,25 @@ div:hover > .card-menu-btn,
     font-weight: 500;
     line-height: 1.43;
   }
+}
+
+/* Mathematical repeating background gridlines for paginated editor */
+.intellidocs-page-editor--gridlines .ProseMirror.rm-with-pagination {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 30%, transparent) 1px, transparent 1px),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--border) 30%, transparent) 0 1px,
+      transparent 1px var(--page-line-height, 1.5rem)
+    );
+  background-size:
+    calc(100% - (var(--page-margin-left, 2.5cm) + var(--page-margin-right, 2.5cm))) 100%,
+    100% calc(var(--page-line-height, 1.5rem));
+  background-position:
+    top var(--page-margin-top, 2.5cm) left var(--page-margin-left, 2.5cm),
+    top var(--page-margin-top, 2.5cm) left 0;
+  background-repeat: repeat-x, repeat-y;
+  background-attachment: local, local;
 }
 /* History diff compare (plan point 23): green additions, red strikethrough deletions. */
 .history-diff {
@@ -565,45 +934,45 @@ div:hover > .card-menu-btn,
   display: block;
 }
 
-/* ─── Coolors Theme Utilities (#388087, #6FB3B8, #BADFE7, #C2EDCE, #F6F6F2) ─── */
+/* ─── Swiss palette utilities (cobalt #1351AA, #4A7BC8, #CDD9F0, #E7EDF8, #F5F2EC) ─── */
 .badge-mint {
-  background-color: #c2edce;
-  color: #143d35;
+  background-color: #e7edf8;
+  color: #0f3768;
 }
 .badge-cyan {
-  background-color: #badfe7;
-  color: #164347;
+  background-color: #cdd9f0;
+  color: #14315c;
 }
 .badge-teal {
-  background-color: #388087;
+  background-color: #1351aa;
   color: #ffffff;
 }
 .bg-brand-teal {
-  background-color: #388087;
+  background-color: #1351aa;
 }
 .text-brand-teal {
-  color: #388087;
+  color: #1351aa;
 }
 .bg-brand-cyan {
-  background-color: #6fb3b8;
+  background-color: #4a7bc8;
 }
 .text-brand-cyan {
-  color: #6fb3b8;
+  color: #4a7bc8;
 }
 .bg-brand-ice {
-  background-color: #badfe7;
+  background-color: #cdd9f0;
 }
 .border-brand-ice {
-  border-color: #badfe7;
+  border-color: #cdd9f0;
 }
 .bg-brand-mint {
-  background-color: #c2edce;
+  background-color: #e7edf8;
 }
 .text-brand-mint {
-  color: #143d35;
+  color: #0f3768;
 }
 .bg-brand-cream {
-  background-color: #f6f6f2;
+  background-color: #f8fafc;
 }
 
 /* ── Semantic-text-selection + Search/comment highlights (palette) ─── */
@@ -663,11 +1032,27 @@ div:hover > .card-menu-btn,
     outline-color: rgba(99, 102, 241, 0.3);
   }
 }
-.style-origin-outline {
+
+/* ── Outline jump spotlight (React-managed flash overlay) ────────── */
+@keyframes heading-flash {
+  0% {
+    background-color: color-mix(in srgb, var(--accent-strong) 45%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-strong) 30%, transparent);
+  }
+  60% {
+    background-color: color-mix(in srgb, var(--accent-strong) 15%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-strong) 10%, transparent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+.heading-flash-overlay {
+  pointer-events: none;
+  z-index: 5;
   border-radius: 4px;
-  outline: 1.5px dashed var(--accent-strong);
-  outline-offset: 2px;
-  background-color: color-mix(in srgb, var(--accent-strong) 5%, transparent);
+  animation: heading-flash 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* ── Document blueprint placeholders (section 9) ─────────────────── */
@@ -727,7 +1112,520 @@ div:hover > .card-menu-btn,
   border-left: 2px dashed var(--guide-h2h3);
   padding-left: 0.5rem;
 }
-[data-style-guide="quote"] {
+[ data-style-guide="quote"] {
   border-left: 3px dashed var(--guide-quote);
   padding-left: 0.75rem;
+}
+
+/* ── Table of Contents & Outline Navigator (Phase 4) ───────────────────── */
+
+/* TOC Panel - Dot Leaders */
+.toc-entry-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.375rem;
+}
+
+.toc-dot-leader {
+  flex: 1;
+  border-bottom: 1px dotted var(--muted-foreground);
+  margin-bottom: 2px;
+  min-width: 2rem;
+  height: 0.875rem;
+}
+
+.toc-page-number {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+/* Outline Navigator */
+.outline-navigator {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background-color: var(--card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.outline-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--secondary);
+}
+
+.outline-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+
+.outline-count {
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.outline-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+}
+
+.outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outline-item {
+  padding: 0.3125rem 0.5rem;
+  cursor: pointer;
+  transition: background-color 120ms, border-color 120ms;
+  border-radius: 0 0.375rem 0.375rem 0;
+  position: relative;
+}
+
+.outline-item:hover {
+  background-color: var(--secondary);
+}
+
+.outline-item.active {
+  background-color: var(--accent-subtle);
+  border-left: 2px solid var(--accent-strong);
+}
+
+.outline-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.outline-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.outline-item.active .outline-icon {
+  color: var(--accent-strong);
+}
+
+.outline-text {
+  flex: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.outline-item.active .outline-text {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+/* TOC Panel in right sidebar */
+.toc-panel {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background-color: var(--card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.toc-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--secondary);
+}
+
+.toc-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+
+.toc-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc-item {
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 120ms, border-color 120ms;
+  border-radius: 0 0.375rem 0.375rem 0;
+  position: relative;
+}
+
+.toc-item:hover {
+  background-color: var(--secondary);
+}
+
+.toc-item.active {
+  background-color: var(--accent-subtle);
+  border-left: 3px solid var(--accent-strong);
+}
+
+.toc-entry-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.375rem;
+}
+
+.toc-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  margin-bottom: 1px;
+}
+
+.toc-text {
+  flex: 1;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.toc-page-number {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+/* Left panel container for outline navigator */
+.left-panel {
+  width: 280px;
+  min-width: 220px;
+  max-width: 320px;
+  border-right: 1px solid var(--border);
+  background-color: var(--card);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  /* Smooth width animation between the expanded and collapsed rails. */
+  transition: width 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    min-width 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    max-width 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Outline entries gain a hover surface; the active entry keeps its inline
+   accent pill (inline styles win over this rule). */
+.left-panel li:hover {
+  background-color: var(--secondary);
+}
+
+/* Square icon button used in the docked side-panel headers. */
+.panel-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  border: none;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.panel-icon-btn:hover {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.left-panel.collapsed {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+}
+
+/* Responsive: on mobile, left panel becomes a drawer */
+@media (max-width: 1024px) {
+  .left-panel {
+    position: fixed;
+    left: 0;
+    top: 56px; /* header height */
+    bottom: 0;
+    z-index: 100;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+    transform: translateX(-100%);
+    transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .left-panel.open {
+    transform: translateX(0);
+  }
+
+  .left-panel.collapsed {
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    border-right: none;
+  }
+}
+
+/* Workspace main editor area fills remaining flex space naturally */
+.workspace-grid.has-left-panel > main {
+  margin-left: 0;
+}
+
+@media (max-width: 1024px) {
+  .workspace-grid.has-left-panel > main {
+    margin-left: 0;
+  }
+}
+
+/* ── Offline Indicator Animations (Phase 5) ─────────────────────────── */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Fluent Motion Primitives ────────────────────────────────────────── */
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.97) translateY(6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+@keyframes popoverIn {
+  from { opacity: 0; transform: scale(0.95) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Slide up + fade — for page-level staggered list items and content blocks. */
+@keyframes slideUpFade {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Notification / banner entrance — slides in from top. */
+@keyframes slideDownFade {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Subtle left-to-right shimmer for skeleton loading states. */
+@keyframes shimmer {
+  from { background-position: -200% center; }
+  to   { background-position:  200% center; }
+}
+
+/* ── Utility animation classes ── */
+
+.animate-modal   { animation: modalIn   200ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-popover { animation: popoverIn 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-overlay { animation: overlayIn 160ms ease forwards; }
+.animate-slide-up   { animation: slideUpFade   240ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-slide-down { animation: slideDownFade 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Stagger delays — apply on children via style={{ animationDelay: '...' }} or
+   use these classes for static cases. */
+.animation-delay-75  { animation-delay: 75ms; }
+.animation-delay-150 { animation-delay: 150ms; }
+.animation-delay-225 { animation-delay: 225ms; }
+.animation-delay-300 { animation-delay: 300ms; }
+
+/* ── Reusable button primitives ── */
+
+/* Primary filled button. */
+.btn-primary {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.375rem;
+  padding: 0 1.125rem;
+  border-radius: 0.625rem;
+  border: none;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(19, 81, 170, 0.25);
+  transition: background 150ms, box-shadow 150ms, transform 120ms;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 3px 10px rgba(19, 81, 170, 0.35);
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(19, 81, 170, 0.2);
+}
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Ghost outlined button. */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.375rem;
+  padding: 0 1.125rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, box-shadow 150ms, transform 120ms;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--secondary);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.btn-ghost:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Fluent hover defaults for all interactive controls ── */
+/* :where() keeps specificity at zero so Tailwind and inline styles win. */
+:where(button, [role="button"]) {
+  transition:
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    color            150ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color     150ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow       150ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity          150ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform        120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Input focus ring upgrade ── */
+/* Inputs that use the shadow-border technique get a richer focus ring. */
+.input-sleek:focus-visible,
+input.input-sleek:focus {
+  outline: none;
+  box-shadow:
+    0px 0px 0px 1.5px var(--ring),
+    0 0 0 4px color-mix(in srgb, var(--ring) 12%, transparent);
+}
+
+/* ── Settings page input consistency ── */
+.settings-input {
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.settings-input::placeholder {
+  color: var(--muted-foreground);
+}
+.settings-input:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 12%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-modal,
+  .animate-popover,
+  .animate-overlay,
+  .animate-slide-up,
+  .animate-slide-down {
+    animation: none;
+  }
+  :where(button, [role="button"]) {
+    transition: none;
+  }
+}
+
+/* ── Header/footer zone alignment ───────────────────────────────────── */
+/* The pagination library renders each zone as a full-width row containing two
+   floated slots. Center placement puts all content in the left slot, so the
+   row becomes a flex container; the slot keeps the library's left/right page
+   margins so the text centers on the text column, not on the page. Split
+   placement keeps the library's left/right floats. */
+.intellidocs-page-editor--header-center .rm-with-pagination .rm-page-header-content,
+.intellidocs-page-editor--footer-center .rm-with-pagination .rm-page-footer-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.intellidocs-page-editor--header-center .rm-with-pagination .rm-page-header-left,
+.intellidocs-page-editor--footer-center .rm-with-pagination .rm-page-footer-left {
+  float: none !important;
+  flex: 1 1 auto;
+  width: auto;
+  margin-left: var(--rm-margin-left) !important;
+  margin-right: var(--rm-margin-right) !important;
+  text-align: center;
+}
+
+/* The page-one header is a standalone widget inside the editor's content box,
+   which is already inset by the page margins. It must not add them again. */
+.intellidocs-page-editor--header-center .rm-with-pagination .rm-first-page-header .rm-page-header-left {
+  flex: 1 1 100%;
+  width: 100%;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* Center mode puts every piece in the left slot; hide the empty right slot so
+   its margin cannot shrink the centered text column. */
+.intellidocs-page-editor--header-center .rm-with-pagination .rm-page-header-right,
+.intellidocs-page-editor--footer-center .rm-with-pagination .rm-page-footer-right {
+  display: none !important;
 }

@@ -62,10 +62,32 @@ export interface TableShape {
   tableCols: number
 }
 
+/** Academic table style presets. */
+export type AcademicTableStyle =
+  | 'apa-three-line'
+  | 'ieee-grid'
+  | 'shaded-header'
+  | 'borderless'
+  | 'minimal'
+
+/** Text-wrapping modes for academic images. */
+export type ImageWrapMode =
+  | 'inline'
+  | 'square'
+  | 'tight'
+  | 'behind'
+  | 'in-front'
+  | 'top-bottom'
+  | 'none'
+
 /** Table context captured when a table action fires. */
 export interface TableContext extends TableShape {
   tableHasHeader: boolean
   tableAlignment: TableAlignment
+  tableStylePreset?: AcademicTableStyle
+  tableHasHeaderRow?: boolean
+  tableHasHeaderColumn?: boolean
+  tableNumber?: string | number | null
 }
 
 /** Image context captured when an image action fires. */
@@ -74,6 +96,8 @@ export interface ImageContext {
   imageHeight?: number
   imageAlignment: ImageAlignment
   imageHasCaption: boolean
+  imageWrapMode?: ImageWrapMode
+  figureNumber?: string | number | null
 }
 
 /**
@@ -122,6 +146,10 @@ export function snapshotTableContext(editor: Editor): TableContext | undefined {
     tableCols: firstRow ? firstRow.childCount : 0,
     tableHasHeader: firstRow?.type.name === 'tableHeader',
     tableAlignment: alignment,
+    tableStylePreset: node.attrs.stylePreset as AcademicTableStyle | undefined,
+    tableHasHeaderRow: node.attrs.hasHeaderRow,
+    tableHasHeaderColumn: node.attrs.hasHeaderColumn,
+    tableNumber: node.attrs.tableNumber,
   }
 }
 
@@ -144,6 +172,11 @@ export interface ResolvedImage {
   pos: number
 }
 
+/** True for the editor's image node (`imageResize`) and the stock `image` node. */
+function isImageNode(node: { type: { name: string } }): boolean {
+  return node.type.name === 'image' || node.type.name === 'imageResize'
+}
+
 /**
  * Find the image the selection points at: a NodeSelection on the image, or any
  * image inside the selected range. Handles top-level images, which a plain
@@ -152,13 +185,13 @@ export interface ResolvedImage {
 export function resolveImage(editor: Editor): ResolvedImage | undefined {
   if (!editor || editor.isDestroyed) return undefined
   const { selection } = editor.state
-  if (selection instanceof NodeSelection && selection.node.type.name === 'image') {
+  if (selection instanceof NodeSelection && isImageNode(selection.node)) {
     return { node: selection.node, pos: selection.from }
   }
   const { from, to } = selection
   let hit: ResolvedImage | undefined
   editor.state.doc.nodesBetween(from, to, (node, pos) => {
-    if (!hit && node.type.name === 'image') hit = { node, pos }
+    if (!hit && isImageNode(node)) hit = { node, pos }
   })
   return hit
 }
@@ -189,5 +222,7 @@ export function snapshotImageContext(editor: Editor): ImageContext | undefined {
     imageHeight: height,
     imageAlignment: alignment,
     imageHasCaption: Boolean(node.attrs.caption),
+    imageWrapMode: node.attrs.wrapMode as ImageWrapMode | undefined,
+    figureNumber: node.attrs.figureNumber,
   }
 }

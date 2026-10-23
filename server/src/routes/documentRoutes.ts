@@ -32,6 +32,23 @@ const upload = multer({
   },
 })
 
+/**
+ * Multer configuration for editor image uploads.
+ * Memory storage — 10 MB cap, MIME list mirrors the document-images bucket.
+ */
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error(`Image type not allowed: ${file.mimetype}`))
+    }
+  },
+})
+
 router.get('/', documentController.getAllDocuments)
 router.get('/shared', documentController.getSharedDocuments)
 router.get('/trash', documentController.getTrashDocuments)
@@ -40,6 +57,9 @@ router.post('/', validateBody(createDocumentSchema), documentController.createDo
 
 /** Import a local file and create a document from it. Must be before /:id */
 router.post('/import', upload.single('file'), documentController.importDocument)
+
+/** Upload an editor image and get back its public URL. Must be before /:id */
+router.post('/images', imageUpload.single('image'), documentController.uploadImage)
 
 router.get('/:id', documentController.getDocument)
 router.put('/:id', validateBody(updateDocumentSchema), documentController.updateDocument)

@@ -14,6 +14,24 @@ const GUIDE_TEXT_ATTR = 'guideText'
 
 const guideKey = new PluginKey<DecorationSet>('blueprintGuides')
 
+/** Session toggle controlling whether the dashed guide boxes are drawn. */
+interface BlueprintGuidesStorage {
+  enabled: boolean
+}
+
+declare module '@tiptap/core' {
+  interface Storage {
+    blueprintGuides: BlueprintGuidesStorage
+  }
+
+  interface Commands<ReturnType> {
+    blueprintGuides: {
+      /** Show or hide the dashed blueprint guide boxes. */
+      setBlueprintGuidesEnabled: (enabled: boolean) => ReturnType
+    }
+  }
+}
+
 /** True when the node is a blueprint placeholder that still has its original text. */
 function isOutstandingGuide(node: ProseMirrorNode): boolean {
   const hint = node.attrs[GUIDE_HINT_ATTR]
@@ -52,7 +70,27 @@ function buildGuides(doc: ProseMirrorNode): DecorationSet {
 export const BlueprintGuideExtension = Extension.create({
   name: 'blueprintGuides',
 
+  addStorage(): BlueprintGuidesStorage {
+    return { enabled: true }
+  },
+
+  addCommands() {
+    const storage = this.storage
+    return {
+      setBlueprintGuidesEnabled:
+        (enabled: boolean) =>
+        ({ tr, dispatch }) => {
+          storage.enabled = enabled
+          if (dispatch) {
+            dispatch(tr.setMeta(guideKey, { enabled }))
+          }
+          return true
+        },
+    }
+  },
+
   addProseMirrorPlugins() {
+    const storage = this.storage
     return [
       new Plugin<DecorationSet>({
         key: guideKey,
@@ -61,8 +99,12 @@ export const BlueprintGuideExtension = Extension.create({
             return DecorationSet.empty
           },
           apply(tr, value) {
+            const meta = tr.getMeta(guideKey) as { enabled?: boolean } | undefined
+            if (typeof meta?.enabled === 'boolean') {
+              return meta.enabled ? buildGuides(tr.doc) : DecorationSet.empty
+            }
             if (!tr.docChanged) return value
-            return buildGuides(tr.doc)
+            return storage.enabled ? buildGuides(tr.doc) : DecorationSet.empty
           },
         },
         appendTransaction(transactions, _oldState, newState) {

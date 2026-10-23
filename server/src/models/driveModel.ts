@@ -1,5 +1,8 @@
 import 'dotenv/config'
-import { google } from 'googleapis'
+// Only the Drive API and the OAuth2 client are needed; importing the whole
+// `googleapis` package loads all ~330 Google APIs and added ~3s to every start.
+import { OAuth2Client } from 'googleapis-common'
+import { drive, type drive_v3 } from 'googleapis/build/src/apis/drive'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -77,8 +80,8 @@ export async function deleteGoogleTokens(userId: string): Promise<void> {
 function buildClientFromTokens(
   userId: string,
   tokens: GoogleToken
-): InstanceType<typeof google.auth.OAuth2> {
-  const oauth2 = new google.auth.OAuth2(
+): OAuth2Client {
+  const oauth2 = new OAuth2Client(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
@@ -136,8 +139,8 @@ export async function linkProviderTokenIfAbsent(
  */
 export async function getDriveClient(
   userId: string
-): Promise<ReturnType<typeof google.drive>> {
+): Promise<drive_v3.Drive> {
   const tokens = await getGoogleTokens(userId)
   if (!tokens) throw new Error('Google Drive not connected')
-  return google.drive({ version: 'v3', auth: buildClientFromTokens(userId, tokens) })
+  return drive({ version: 'v3', auth: buildClientFromTokens(userId, tokens) })
 }

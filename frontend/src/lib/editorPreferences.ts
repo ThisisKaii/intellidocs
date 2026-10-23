@@ -20,6 +20,10 @@ export interface EditorPreferences {
   highlightColor: HighlightColor
   /** Show colored dashed boundary guides around formatted preset/style blocks. */
   showStyleGuides: boolean
+  /** Formatting suggestions (outlines, chips, panel list) on or off. */
+  formattingSuggestions: boolean
+  /** Grammar and spelling checking (underlines, panel list) on or off. */
+  grammarSuggestions: boolean
 }
 
 const STORAGE_KEY = 'intellidocs:editor-preferences'
@@ -30,6 +34,8 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   sensitivity: 'medium',
   highlightColor: 'indigo',
   showStyleGuides: true,
+  formattingSuggestions: true,
+  grammarSuggestions: true,
 }
 
 /** Map a chosen sensitivity to a minimum confidence the scanner must reach. */

@@ -28,6 +28,7 @@ export const createDocumentSchema = z.object({
   // the preset key to bind, so the document opens already structured.
   content: z.string().max(500000, 'Content must be 500000 characters or fewer').optional(),
   formatting_preset: z.string().trim().max(100).optional(),
+  unique_title: z.boolean().optional(),
 })
 
 /** Validate document update requests from HTTP clients. */

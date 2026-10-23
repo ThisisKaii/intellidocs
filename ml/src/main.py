@@ -2,18 +2,24 @@ import json
 import os
 import pickle
 import sys
+import threading
 import time
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 # Ensure the src/ directory is on sys.path so sibling modules (converter, grammar) resolve
 _SRC_DIR = str(Path(__file__).resolve().parent)
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
-import pandas as pd
-import torch
+# pandas, torch and the sklearn-backed grammar checker cost ~8s to import, so
+# they are imported inside the functions that use them and pre-loaded by a
+# background thread (see _warm_up_heavy_modules) once the server is listening.
+if TYPE_CHECKING:
+    import pandas as pd
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,7 +32,6 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 from grammar.compliance_auditor import audit_document
-from grammar.grammar_checker import evaluate_text
 from grammar.spell_checker import check_spelling
 
 load_dotenv()
@@ -50,15 +55,40 @@ TIER3_CONFIDENCE_THRESHOLD = min(
     max(float(os.getenv("TIER3_CONFIDENCE_THRESHOLD", "0.70")), 0.0), 1.0
 )
 _ONNX_RUNTIME: dict[str, tuple[Any, dict[str, str]]] = {}
+_TOKENIZER_CACHE: dict[str, Any] = {}
+
+
+def _warm_up_heavy_modules() -> None:
+    """Pre-load the slow imports and models off the request path.
+
+    Covers the heavy modules, the base RandomForest payload, the Tier-3 ONNX
+    runtime and its tokenizer. Runs in a daemon thread so the port opens
+    immediately; a request that arrives before this finishes simply loads what
+    it needs itself (Python's import lock makes that safe). Each step is best
+    effort, so a missing artifact never blocks the rest.
+    """
+    import importlib
+
+    for module_name in ("pandas", "torch", "grammar.grammar_checker"):
+        try:
+            importlib.import_module(module_name)
+        except Exception as exc:  # noqa: BLE001 - warm-up is best effort
+            print(f"⚠️ Warm-up import of {module_name} skipped: {exc}")
+    for step_name, step in (
+        ("base model", load_model_payload),
+        ("ONNX runtime", load_onnx_runtime),
+        ("tokenizer", load_tokenizer),
+    ):
+        try:
+            step()
+        except Exception as exc:  # noqa: BLE001 - graceful degradation on missing artifacts
+            print(f"⚠️ Startup warm-up of {step_name} skipped: {exc}")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Warm up the Tier-3 ONNX runtime at startup; failures degrade gracefully."""
-    try:
-        load_onnx_runtime()
-    except Exception as exc:  # noqa: BLE001 - graceful degradation on missing artifacts
-        print(f"⚠️ ONNX startup warmup skipped: {exc}")
+    """Start the background warm-up; the server does not wait for it."""
+    threading.Thread(target=_warm_up_heavy_modules, name="ml-warmup", daemon=True).start()
     yield
 
 
@@ -147,6 +177,7 @@ def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> flo
         return 0.0
 
     try:
+        import torch
         from training.lstm_trainer import ACTION_TO_IDX, FormattingLSTM
 
         payload = torch.load(model_file, map_location=torch.device("cpu"))
@@ -214,6 +245,7 @@ def predict_with_user_lstm(user_id: str, request: PredictRequest) -> Optional[tu
         return None
 
     try:
+        import torch
         from training.lstm_trainer import ACTION_TO_IDX, FormattingLSTM
 
         payload = torch.load(model_file, map_location=torch.device("cpu"))
@@ -303,6 +335,29 @@ def load_onnx_runtime() -> Optional[tuple[Any, dict[str, str]]]:
         return None
 
 
+def load_tokenizer() -> Any:
+    """Return the DistilBERT tokenizer, building it once and reusing it.
+
+    `transformers` costs seconds to import and the tokenizer was previously
+    rebuilt on every prediction; it is now cached for the process lifetime.
+    """
+    cached = _TOKENIZER_CACHE.get("tokenizer")
+    if cached is not None:
+        return cached
+
+    from transformers import AutoTokenizer
+
+    tokenizer_dir = os.getenv(
+        "DISTILBERT_TOKENIZER_DIR",
+        str(ROOT_DIR / "models" / "distilbert_tokenizer"),
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer_dir if os.path.isdir(tokenizer_dir) else "distilbert-base-uncased"
+    )
+    _TOKENIZER_CACHE["tokenizer"] = tokenizer
+    return tokenizer
+
+
 def predict_with_onnx(text: str) -> Optional[tuple[str, float]]:
     """Return a (format, confidence) prediction from the DistilBERT Tier-3 model.
 
@@ -315,17 +370,9 @@ def predict_with_onnx(text: str) -> Optional[tuple[str, float]]:
 
     session, id2label = runtime
     try:
-        from transformers import AutoTokenizer
-
         import numpy as np
 
-        tokenizer_dir = os.getenv(
-            "DISTILBERT_TOKENIZER_DIR",
-            str(ROOT_DIR / "models" / "distilbert_tokenizer"),
-        )
-        tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_dir if os.path.isdir(tokenizer_dir) else "distilbert-base-uncased"
-        )
+        tokenizer = load_tokenizer()
         inputs = tokenizer(text, return_tensors="np", truncation=True, max_length=128)
         feed = {
             name: inputs[name]
@@ -347,8 +394,10 @@ def predict_with_onnx(text: str) -> Optional[tuple[str, float]]:
     return (best_format, confidence)
 
 
-def build_feature_row(request: PredictRequest) -> pd.DataFrame:
+def build_feature_row(request: PredictRequest) -> "pd.DataFrame":
     """Build numeric feature vectors including typographic, academic layout, and hierarchical context attributes."""
+    import pandas as pd
+
     normalized = request.text.strip()
     words = normalized.split()
     word_count = len(words)
@@ -612,6 +661,8 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
 async def grammar_check(request: TextCheckRequest) -> dict[str, Any]:
     """Run the grammar quality checker on the given text."""
     try:
+        from grammar.grammar_checker import evaluate_text
+
         return evaluate_text(request.text)
     except Exception as error:
         raise HTTPException(
@@ -697,17 +748,18 @@ async def audit_compliance(request: ComplianceAuditRequest) -> dict[str, Any]:
 
 
 @app.post("/convert/document")
-async def convert_document(file: UploadFile = File(...)) -> dict[str, Any]:
+def convert_document(file: UploadFile = File(...)) -> dict[str, Any]:
     """Convert uploaded .docx or .pdf file into high-fidelity HTML.
 
-    Returns {"html", "page_setup", "header", "footer"} so the server can persist
-    page size/margins and header/footer content for the imported document.
+    Returns {"html", "page_setup", "header", "footer", "header_number_format",
+    "footer_number_format"} so the server can persist page size/margins,
+    header/footer text and the page-number format read from a PAGE field.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is missing.")
 
     filename_lower = file.filename.lower()
-    content_bytes = await file.read()
+    content_bytes = file.file.read()
 
     try:
         if filename_lower.endswith(".docx"):
@@ -840,6 +892,196 @@ async def trigger_fine_tune(request: FineTuneRequest) -> FineTuneResponse:
     )
 
 
+# ─── AI Council plagiarism scan (peer documents supplied by the server) ───
+
+
+class CouncilPeer(BaseModel):
+    """One peer document to compare the scanned document against."""
+
+    document_id: str
+    user_id: str
+    text: str
+
+
+class CouncilAIProfile(BaseModel):
+    """One AI backend for the council (comma-separated keys rotate within it)."""
+
+    provider: str
+    api_key: str
+    model: str
+
+
+class CouncilAIConfig(BaseModel):
+    """Per-request AI configuration from the server's environment.
+
+    `profiles` + `assignments` (judge role -> profile index) is the current
+    shape; the single provider/api_key/model triple is still accepted.
+    """
+
+    profiles: list[CouncilAIProfile] = []
+    assignments: dict[str, int] = {}
+    provider: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+
+
+class CouncilScanRequest(BaseModel):
+    document_id: str
+    user_id: str
+    folder_id: str
+    text: str
+    peers: list[CouncilPeer] = []
+    # Raw behavior events (action, timestamp, char_count, position, …) used by
+    # the timeline forensics engine.
+    timeline: list[dict] = []
+    ai: Optional[CouncilAIConfig] = None
+
+
+class CouncilScanMatch(BaseModel):
+    paragraph_index: int
+    char_start: int
+    char_end: int
+    matched_document_id: Optional[str] = None
+    matched_student_id: Optional[str] = None
+    similarity_score: float
+    match_type: str
+    match_severity: str
+    source_excerpt: Optional[str] = None
+    target_excerpt: Optional[str] = None
+    flagged_text: str
+    council_verdict: Optional[dict] = None
+    # Timeline forensics: verdict, evidence, and composition metrics.
+    forensics: Optional[dict] = None
+
+
+class CouncilScanResponse(BaseModel):
+    matches: list[CouncilScanMatch]
+    transcript: list[dict]
+    active_judges: int
+    quorum_reached: bool
+    peer_similarity_score: float
+    overall_originality_score: float
+    processing_time_ms: float
+
+
+@app.post('/council/scan', response_model=CouncilScanResponse)
+async def council_scan(request: CouncilScanRequest) -> CouncilScanResponse:
+    """
+    Run the 3-stage triage (lexical pre-filter → context windows → 5-judge
+    council) for one document against peer documents supplied by the server.
+    """
+    try:
+        from council_pipeline import configure_ai
+        from timeline_forensics import TimelineForensics, build_composition_events
+        from triage_filter import run_full_triage_with_peers
+
+        if request.ai and request.ai.profiles:
+            configure_ai(
+                profiles=[profile.model_dump() for profile in request.ai.profiles],
+                assignments=request.ai.assignments,
+            )
+        elif request.ai and (request.ai.provider or request.ai.api_key or request.ai.model):
+            configure_ai(
+                provider=request.ai.provider,
+                api_key=request.ai.api_key,
+                model=request.ai.model,
+            )
+
+        peers = [peer.model_dump() for peer in request.peers]
+        result = await run_full_triage_with_peers(
+            document_id=request.document_id,
+            html_content=request.text,
+            user_id=request.user_id,
+            folder_id=request.folder_id,
+            peers=peers,
+        )
+
+        # Timeline forensics: resolve a concrete authorship verdict per match
+        # from the client's composition events (no DOCX in this flow).
+        composition_events = build_composition_events(request.timeline)
+        forensics_engine = TimelineForensics()
+        forensics_by_match: dict[str, dict[str, Any]] = {}
+        for flagged in result.flagged_clusters:
+            para = asdict(flagged) if hasattr(flagged, '__dataclass_fields__') else dict(flagged)
+            analysis = await forensics_engine.analyze_composition(
+                document_id=request.document_id,
+                user_id=request.user_id,
+                target_text=str(para.get('text', '')),
+                char_start=int(para.get('char_start', 0)),
+                char_end=int(para.get('char_end', 0)),
+                timeline_events=composition_events,
+                document_length=len(request.text),
+            )
+            summary = (
+                forensics_engine.get_timeline_summary(analysis.timeline_events)
+                if analysis.timeline_events
+                else None
+            )
+            forensics_by_match[str(para.get('match_id', ''))] = {
+                'timeline_verdict': analysis.verdict.value,
+                'confidence': round(float(analysis.confidence), 3),
+                'evidence': analysis.evidence,
+                'priority_author': analysis.priority_author,
+                'priority_timestamp': (
+                    analysis.priority_timestamp.isoformat()
+                    if analysis.priority_timestamp
+                    else None
+                ),
+                'composition': summary,
+                'doc_metadata': None,
+            }
+
+        verdicts_by_match: dict[str, dict[str, Any]] = {}
+        transcript: list[dict[str, Any]] = []
+        active_judges = 0
+        quorum_reached = True
+
+        for verdict in result.council_verdicts:
+            payload = asdict(verdict) if hasattr(verdict, '__dataclass_fields__') else dict(verdict)
+            verdicts_by_match[str(payload.get('match_id', ''))] = payload
+            transcript.append(payload)
+            active_judges = max(active_judges, int(payload.get('active_judges') or 0))
+            quorum_reached = quorum_reached and bool(payload.get('quorum_reached'))
+
+        matches: list[CouncilScanMatch] = []
+        peer_similarity = 0.0
+        for flagged in result.flagged_clusters:
+            para = asdict(flagged) if hasattr(flagged, '__dataclass_fields__') else dict(flagged)
+            similarity_percent = round(float(para.get('similarity_score', 0.0)) * 100, 2)
+            peer_similarity = max(peer_similarity, similarity_percent)
+            matches.append(CouncilScanMatch(
+                paragraph_index=int(para.get('paragraph_index', 0)),
+                char_start=int(para.get('char_start', 0)),
+                char_end=int(para.get('char_end', 0)),
+                matched_document_id=para.get('matched_document_id'),
+                matched_student_id=para.get('matched_student_id'),
+                similarity_score=similarity_percent,
+                match_type=str(para.get('match_type', 'verbatim')),
+                match_severity=str(para.get('match_severity', 'medium')),
+                source_excerpt=para.get('source_excerpt'),
+                target_excerpt=para.get('target_excerpt'),
+                flagged_text=str(para.get('text', ''))[:2000],
+                council_verdict=verdicts_by_match.get(str(para.get('match_id', ''))),
+                forensics=forensics_by_match.get(str(para.get('match_id', ''))),
+            ))
+
+        peer_similarity = round(min(peer_similarity, 100.0), 2)
+        originality = round(max(0.0, 100.0 - peer_similarity), 2)
+
+        return CouncilScanResponse(
+            matches=matches,
+            transcript=transcript,
+            active_judges=active_judges,
+            quorum_reached=quorum_reached,
+            peer_similarity_score=peer_similarity,
+            overall_originality_score=originality,
+            processing_time_ms=round(float(result.processing_time_ms), 2),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'Council scan failed: {exc}') from exc
+
 
 if __name__ == "__main__":
     import uvicorn
@@ -850,3 +1092,71 @@ if __name__ == "__main__":
         port=int(os.getenv("PORT", "8001")),
         log_level="info",
     )
+
+
+
+class ParseDocumentResponse(BaseModel):
+    html: str
+    title: str | None = None
+    word_count: int = 0
+    detected_template: str = 'generic'
+    reading_order_applied: bool = False
+
+
+@app.post('/parse/document', response_model=ParseDocumentResponse)
+async def parse_document(file: UploadFile = File(...)) -> ParseDocumentResponse:
+    content = await file.read()
+    suffix = Path(file.filename or '').suffix.lower()
+    try:
+        html = None
+        # Try marker first (best for complex layouts)
+        try:
+            from marker.converters.pdf import PdfConverter  # type: ignore
+            from marker.models import create_model_dict  # type: ignore
+            from marker.output import text_from_rendered  # type: ignore
+            from marker.renderers.markdown import MarkdownRenderer  # type: ignore
+            converter = PdfConverter(
+                artifact_dict=create_model_dict(),
+                renderer=MarkdownRenderer(),
+                use_llm=False,
+            )
+            rendered = converter(content)
+            marker_html = text_from_rendered(rendered)
+            # Ensure marker returns a string (some versions return dict)
+            if isinstance(marker_html, str):
+                html = marker_html
+            elif isinstance(marker_html, dict) and 'text' in marker_html:
+                html = marker_html['text']
+            elif isinstance(marker_html, dict) and 'markdown' in marker_html:
+                html = marker_html['markdown']
+        except Exception:
+            html = None
+        # Fallback to existing converters
+        if not html:
+            if suffix == '.pdf':
+                html = convert_pdf_bytes_to_html(content)
+            elif suffix in ('.docx', '.doc'):
+                html = convert_docx_bytes_to_html(content)
+            else:
+                raise HTTPException(status_code=400, detail='Unsupported file type')
+        # Ensure html is a string
+        if not isinstance(html, str):
+            html = str(html)
+        word_count = len(html.split()) if html else 0
+        title = None
+        import re
+        m = re.search(r'<h1[^>]*>(.*?)</h1>', html, re.IGNORECASE | re.DOTALL)
+        if m:
+            title = re.sub(r'<[^>]+>', '', m.group(1)).strip()
+        return ParseDocumentResponse(
+            html=html or '',
+            title=title,
+            word_count=word_count,
+            detected_template='generic',
+            reading_order_applied=True,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'Document parse failed: {exc}') from exc
+

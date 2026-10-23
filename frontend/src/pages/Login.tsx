@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff } from 'lucide-react'
 import { LogoMark } from '../components/Logo'
+import { AuthShell } from '../components/AuthShell'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 
@@ -10,10 +11,10 @@ function Login(): JSX.Element {
   const navigate = useNavigate()
   const { login, loginWithGoogle } = useAuth()
   const [email, setEmail] = useState('')
-const [password, setPassword] = useState('')
-// Controls whether the password field renders as text or masked dots.
-const [showPassword, setShowPassword] = useState(false)
-const [error, setError] = useState('')
+  const [password, setPassword] = useState('')
+  // Controls whether the password field renders as text or masked dots.
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleGoogleSignIn() {
@@ -21,7 +22,7 @@ const [error, setError] = useState('')
     setLoading(true)
     try {
       await loginWithGoogle()
-      // loginWithGoogle redirects to Google â€” no further action needed here
+      // loginWithGoogle redirects to Google — no further action needed here
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed')
       setLoading(false)
@@ -77,70 +78,77 @@ const [error, setError] = useState('')
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        minHeight: '100vh',
-        alignItems: 'center',
-        justifyContent: 'center',
-        // Theme-aware so Login and Register stay consistent in both modes.
-        backgroundColor: 'var(--canvas)',
-        padding: '1.5rem',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
+    <AuthShell>
+      {/* Page-level entry — whole card slides up */}
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
         style={{ width: '100%', maxWidth: '360px' }}
       >
-        {/* Logo + heading */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              marginBottom: '1.25rem',
-            }}
-          >
+        {/* Logo + heading — secondary stagger */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.05 }}
+          style={{ textAlign: 'center', marginBottom: '2rem' }}
+        >
+          <div className="lg:hidden" style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.25rem' }}>
             <LogoMark size={52} title="IntelliDocs" />
           </div>
-          <h1
+          <span
+            className="font-tech"
             style={{
-              fontSize: '1.5rem',
+              display: 'block',
+              fontSize: '0.6875rem',
               fontWeight: 700,
-              letterSpacing: '-0.03em',
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              color: 'var(--muted-foreground)',
+              marginBottom: '0.5rem',
+            }}
+          >
+            Academic Workspace
+          </span>
+          <h1
+            className="font-display"
+            style={{
+              fontSize: '1.625rem',
+              fontWeight: 800,
+              letterSpacing: '-0.02em',
               color: 'var(--text-primary)',
               margin: '0 0 0.375rem',
             }}
           >
-            IntelliDocs
+            Welcome back
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', margin: 0 }}>
-            Sign in to your academic workspace
+            Sign in to continue to your documents
           </p>
-        </div>
+        </motion.div>
 
-        {/* Card */}
-        <div
+        {/* Card — staggered slightly after logo */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.38, delay: 0.1 }}
           style={{
             backgroundColor: 'var(--card)',
-            borderRadius: '0.75rem',
+            borderRadius: '0.375rem',
             padding: '1.75rem',
-            // Teal outline plus a soft glow. Expressed with --ring so the card
-            // keeps the same treatment in light and dark mode. Register uses an
-            // identical value - keep the two in sync.
-            boxShadow:
-              '0 0 0 1px color-mix(in srgb, var(--ring) 35%, transparent), 0 4px 24px color-mix(in srgb, var(--ring) 12%, transparent)',
+            // Swiss modernist treatment: crisp 1px architectural border + flat low shadow.
+            // Register uses an identical value — keep the two in sync.
+            border: '1px solid var(--border-strong)',
+            boxShadow: 'rgba(58, 52, 47, 0.06) 0px 4px 16px',
           }}
         >
           {/* Google Sign-In Button */}
-          <button
+          <motion.button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={loading}
+            whileHover={!loading ? { y: -1, boxShadow: '0 4px 12px rgba(0,0,0,0.10)' } : {}}
+            whileTap={!loading ? { y: 0 } : {}}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -170,17 +178,24 @@ const [error, setError] = useState('')
               <path fill="none" d="M0 0h48v48H0z"/>
             </svg>
             Continue with Google
-          </button>
+          </motion.button>
 
           {/* Divider */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '0.5rem 0' }}>
             <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border)' }} />
-            <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>or continue with email</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>
+              or continue with email
+            </span>
             <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border)' }} />
           </div>
 
+          {/* Error banner — animated entrance */}
           {error && (
-            <div
+            <motion.div
+              key={error}
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.22 }}
               style={{
                 backgroundColor: 'rgba(255,91,79,0.08)',
                 border: '1px solid rgba(255,91,79,0.25)',
@@ -192,12 +207,17 @@ const [error, setError] = useState('')
               <p style={{ fontSize: '0.8125rem', color: 'var(--destructive)', margin: 0 }}>
                 {error}
               </p>
-            </div>
+            </motion.div>
           )}
 
           <form onSubmit={handleSubmit} noValidate>
-            {/* Email */}
-            <div style={{ marginBottom: '1rem' }}>
+            {/* Email — stagger delay 1 */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.13 }}
+              style={{ marginBottom: '1rem' }}
+            >
               <label
                 htmlFor="email"
                 style={{
@@ -240,10 +260,15 @@ const [error, setError] = useState('')
                   e.currentTarget.style.boxShadow = '0px 0px 0px 1px var(--border-shadow)'
                 }}
               />
-            </div>
+            </motion.div>
 
-            {/* Password */}
-            <div style={{ marginBottom: '1.25rem' }}>
+            {/* Password — stagger delay 2 */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.19 }}
+              style={{ marginBottom: '1.25rem' }}
+            >
               <div
                 style={{
                   display: 'flex',
@@ -254,21 +279,13 @@ const [error, setError] = useState('')
               >
                 <label
                   htmlFor="password"
-                  style={{
-                    fontSize: '0.8125rem',
-                    fontWeight: 500,
-                    color: 'var(--foreground)',
-                  }}
+                  style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--foreground)' }}
                 >
                   Password
                 </label>
                 <Link
                   to="/forgot-password"
-                  style={{
-                    fontSize: '0.8125rem',
-                    color: 'var(--primary)',
-                    textDecoration: 'none',
-                  }}
+                  style={{ fontSize: '0.8125rem', color: 'var(--primary)', textDecoration: 'none' }}
                 >
                   Forgot password?
                 </Link>
@@ -292,8 +309,8 @@ const [error, setError] = useState('')
                     backgroundColor: 'var(--background)',
                     color: 'var(--foreground)',
                     fontSize: '0.875rem',
-                    // Right padding reserves room for the reveal button so
-                    // text never runs underneath it.
+                    // Right padding reserves room for the reveal button so text never
+                    // runs underneath it.
                     padding: '0 2.5rem 0 0.75rem',
                     outline: 'none',
                     transition: 'box-shadow 150ms',
@@ -337,36 +354,48 @@ const [error, setError] = useState('')
                   )}
                 </button>
               </div>
-            </div>
+            </motion.div>
 
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                display: 'block',
-                width: '100%',
-                height: '42px',
-                borderRadius: '0.625rem',
-                border: 'none',
-                backgroundColor: 'var(--primary)',
-                color: 'var(--primary-foreground)',
-                fontSize: '0.9375rem',
-                fontWeight: 700,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                letterSpacing: '0.01em',
-                boxShadow: '0 2px 8px rgba(56,128,135,0.3)',
-                opacity: loading ? 0.7 : 1,
-                transition: 'opacity 150ms, box-shadow 150ms',
-                fontFamily: 'inherit',
-              }}
+            {/* Submit — stagger delay 3 */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.25 }}
             >
-              {loading ? 'Signing inâ€¦' : 'Sign in'}
-            </button>
+              <motion.button
+                type="submit"
+                disabled={loading}
+                whileHover={!loading ? { y: -1, boxShadow: '0 4px 14px rgba(19,81,170,0.4)' } : {}}
+                whileTap={!loading ? { y: 0 } : {}}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  height: '42px',
+                  borderRadius: '0.625rem',
+                  border: 'none',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--primary-foreground)',
+                  fontSize: '0.9375rem',
+                  fontWeight: 700,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  letterSpacing: '0.01em',
+                  boxShadow: '0 2px 8px rgba(19,81,170,0.3)',
+                  opacity: loading ? 0.7 : 1,
+                  transition: 'opacity 150ms, box-shadow 150ms',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {loading ? 'Signing in…' : 'Sign in'}
+              </motion.button>
+            </motion.div>
           </form>
-        </div>
+        </motion.div>
 
-        <p
+        {/* Footer link — fades in last */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.35 }}
           style={{
             textAlign: 'center',
             marginTop: '1.25rem',
@@ -381,9 +410,9 @@ const [error, setError] = useState('')
           >
             Create one
           </Link>
-        </p>
+        </motion.p>
       </motion.div>
-    </div>
+    </AuthShell>
   )
 }
 

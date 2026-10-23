@@ -28,6 +28,18 @@ export interface FormattingIntentResult {
   normalize: boolean
   /** Chapter or section reference such as "chapter 1" or "introduction". */
   target: string | null
+  /**
+   * How the target is meant: 'literal' (a quoted phrase: just those words),
+   * 'section' (a named section or chapter: the heading and everything under it),
+   * or 'title' (the document title).
+   */
+  targetMode: 'literal' | 'section' | 'title' | null
+  /**
+   * Which blocks a bulk request targets: all headings, all paragraphs, every
+   * chapter heading, or the whole document. Defaults to 'all' when no specific
+   * category is named.
+   */
+  targetCategory: 'headings' | 'paragraphs' | 'chapters' | 'all'
 }
 
 /** Normalize a user message before intent matching. */
@@ -56,7 +68,34 @@ const BULK_SCOPE_PHRASES = [
   'all the text',
   'every line',
   'every paragraph',
+  'all headings',
+  'every heading',
+  'all subheadings',
+  'all sections',
+  'the rest',
+  'remaining',
 ]
+
+/**
+ * Detect whether a bulk request names a specific block category. Plural or
+ * quantified forms ("all headings", "every paragraph") count; singular
+ * references ("this heading") do not — those keep selection scope.
+ */
+function detectTargetCategory(message: string): 'headings' | 'paragraphs' | 'chapters' | 'all' {
+  // "all the chapter headings" names chapters only, not every heading level.
+  if (/\bchapter\s+(?:headings?|titles?|headers?)\b|\b(?:all|every|each)\s+(?:the\s+)?chapters?\b/.test(message)) {
+    return 'chapters'
+  }
+  const headingsPattern =
+    /\b(?:sub-?headings|headings|section (?:headings|titles))\b|\b(?:all|every|each)\s+(?:sub-?heading|section heading|title)\b|\b(?:all|every|each)\s+h[123]\b/
+  if (headingsPattern.test(message)) return 'headings'
+
+  const paragraphsPattern =
+    /\bparagraphs\b|\b(?:all|every|each)\s+paragraph\b|\b(?:all|every|each)\s+(?:body|normal)\s+text\b/
+  if (paragraphsPattern.test(message)) return 'paragraphs'
+
+  return 'all'
+}
 
 /** Detect a request like "font size 20" / "size of 20" / "12pt" and return points. */
 function detectFontSize(message: string): number | null {
@@ -122,8 +161,11 @@ function detectAlignment(
   'back to default',
   'return to normal',
   'remove bold',
+  'remove the bold',
   'remove italic',
+  'remove the italic',
   'remove underline',
+  'remove the underline',
   'remove all formatting',
   'remove the formatting',
   'remove formatting',
@@ -162,22 +204,185 @@ const NUMBER_WORDS: Record<string, string> = {
   twenty: '20',
 }
 
-/** Detect a chapter/section reference such as "chapter 1" or "introduction". */
-function detectTarget(message: string): string | null {
+/** Command and generic words that must not become phrase-prefixed targets. */
+const TARGET_STOP_WORDS = new Set([
+  'bold',
+  'bolded',
+  'italic',
+  'italicized',
+  'underline',
+  'underlined',
+  'normal',
+  'plain',
+  'center',
+  'centre',
+  'left',
+  'right',
+  'justify',
+  'justified',
+  'here',
+  'there',
+  'this',
+  'that',
+  'it',
+  'them',
+  'me',
+  'us',
+  'document',
+  'doc',
+  'paragraph',
+  'section',
+  'chapter',
+  'line',
+  'block',
+  'page',
+  'heading',
+  'title',
+  'text',
+  'word',
+  'words',
+  'phrase',
+  'content',
+  'to',
+  'as',
+  'in',
+  'into',
+  'with',
+  'and',
+  'then',
+  'for',
+  'of',
+  'on',
+  'at',
+  'by',
+  'from',
+  'my',
+  'our',
+  'your',
+  'his',
+  'her',
+  'their',
+  'first',
+  'last',
+  'next',
+  'previous',
+  'above',
+  'below',
+  'the',
+  'a',
+  'an',
+])
+
+/** Standard academic section names used as fallback targets. */
+const KNOWN_SECTION_NAMES = [
+  'introduction',
+  'literature review',
+  'methodology',
+  'methods',
+  'results',
+  'discussion',
+  'conclusion',
+  'references',
+  'appendix',
+  'abstract',
+  'approval sheet',
+  'acknowledgement',
+  'acknowledgments',
+  'dedication',
+  'certification',
+  'glossary',
+  'bibliography',
+  'appendices',
+  'table of contents',
+  'list of tables',
+  'list of figures',
+  'definition of terms',
+] as const
+
+/** Match a known section name anywhere in the message. */
+const NAMED_SECTION_PATTERN = new RegExp(`\\b(${KNOWN_SECTION_NAMES.join('|')})\\b`)
+
+/** True when the whole candidate is a known section name. */
+function isKnownSection(candidate: string): boolean {
+  return KNOWN_SECTION_NAMES.some((name) => name === candidate.toLowerCase())
+}
+
+/** A detected target and how it should be applied. */
+interface DetectedTarget {
+  target: string
+  mode: 'literal' | 'section' | 'title'
+}
+
+/**
+ * Detect an explicit target. A quoted phrase means exactly those words
+ * (literal); a chapter/section reference or standard section name means the
+ * whole section (heading plus everything under it); "the title" means the
+ * document title.
+ */
+function detectTarget(message: string): DetectedTarget | null {
+  // 1. Quoted targets have highest priority. Boundary checks avoid treating
+  // an apostrophe in a contraction ("don't") as an opening quote.
+  const doubleQuoted = message.match(/"([^"]{2,80})"/)
+  if (doubleQuoted) return { target: doubleQuoted[1].trim(), mode: 'literal' }
+
+  const singleQuoted = message.match(/(?:^|[\s(\[{,;:])'([^']{2,80})'(?=$|[\s)\]}.,;:!?])/)
+  if (singleQuoted) return { target: singleQuoted[1].trim(), mode: 'literal' }
+
+  // 2. Phrase-prefixed targets: "text approval sheet", "heading abstract".
+  const prefixMatch = message.match(
+    /\b(?:text|heading|title|phrase|words?)\s+(?:of\s+|for\s+|titled\s+|named\s+|called\s+)?([a-z][a-z0-9\s-]{1,40})/i
+  )
+  if (prefixMatch) {
+    const candidate = prefixMatch[1]
+      .trim()
+      .replace(/^(?:the|a|an|my|our|your|his|her|their)\s+/i, '')
+      .replace(
+        /\s+\b(?:bold|bolded|italic|italicized|underline|underlined|normal|plain|center|centre|left|right|justify|justified|font|size|with|and|then)\b.*$/i,
+        ''
+      )
+      .trim()
+    // Only accept a phrase-prefixed candidate when it is a known section or
+    // the message uses an explicit target marker ("text of ...", "title
+    // titled ..."). This prevents commands like "make the heading look
+    // better" from targeting the words "look better".
+    const hasExplicitMarker =
+      /\b(?:text|heading|title|phrase|words?)\s+(?:of|for|titled|named|called)\b/i.test(message)
+    if (
+      candidate.length >= 3 &&
+      !/^\d+$/.test(candidate) &&
+      !TARGET_STOP_WORDS.has(candidate.toLowerCase()) &&
+      !/^(?:to|as|in|into|with|and|then|for|of|on|at|by|from|first|last|next|previous|above|below)\b/i.test(candidate) &&
+      !/^(?:chapter|section)\s+\d+$/i.test(candidate) &&
+      (hasExplicitMarker || isKnownSection(candidate))
+    ) {
+      return { target: candidate, mode: isKnownSection(candidate) ? 'section' : 'literal' }
+    }
+  }
+
+  // 3. Chapter references.
   const chapterMatch = message.match(/(?:entire\s+|whole\s+|full\s+)?chapter\s+([0-9]{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/)
   if (chapterMatch) {
     const number = NUMBER_WORDS[chapterMatch[1]] ?? chapterMatch[1]
-    return `chapter ${number}`
+    return { target: `chapter ${number}`, mode: 'section' }
   }
 
+  // 4. Section references.
   const sectionMatch = message.match(/(?:entire\s+|whole\s+|full\s+)?section\s+([0-9]{1,2}|one|two|three|four|five)\b/)
   if (sectionMatch) {
     const number = NUMBER_WORDS[sectionMatch[1]] ?? sectionMatch[1]
-    return `section ${number}`
+    return { target: `section ${number}`, mode: 'section' }
   }
 
-  const namedMatch = message.match(/\b(introduction|literature review|methodology|methods|results|discussion|conclusion|references|appendix|abstract)\b/)
-  return namedMatch ? namedMatch[1] : null
+  // 5. Standard academic section names.
+  const namedMatch = message.match(NAMED_SECTION_PATTERN)
+  if (namedMatch) return { target: namedMatch[1], mode: 'section' }
+
+  // 6. The document title ("center the title", "make the title bold").
+  // "this title heading" is a normal selection request, so require "the/my" or "document title".
+  if (/\b(?:(?:the|my)\s+(?:document\s+|paper\s+|manuscript\s+)?|(?:document|paper|manuscript)\s+)title\b(?!\s+(?:page|heading))/.test(message)) {
+    return { target: 'title', mode: 'title' }
+  }
+  return null
 }
 
 /** Parse one or more formatting intents from a natural-language chatbot message. */
@@ -260,9 +465,13 @@ export function parseFormattingIntent(
     if (firstConfidence === 0) firstConfidence = ALIGNMENT_CONFIDENCE
   }
 
-  const target = detectTarget(normalized)
+  const detected = detectTarget(normalized)
+  const target = detected?.target ?? null
+  const targetCategory = detectTargetCategory(normalized)
+  // A named category ("all headings") is itself a document-wide request.
   const scope: 'selection' | 'all' =
     target !== null ||
+    targetCategory !== 'all' ||
     BULK_SCOPE_PHRASES.some((phrase) => normalized.includes(phrase))
       ? 'all'
       : 'selection'
@@ -277,5 +486,7 @@ export function parseFormattingIntent(
     fontSize: detectFontSize(normalized),
     normalize,
     target,
+    targetMode: detected?.mode ?? null,
+    targetCategory,
   }
 }

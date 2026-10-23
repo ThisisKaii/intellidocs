@@ -10,6 +10,7 @@ import {
   updateBinding,
   deleteBinding,
   tierCheck,
+  inferStructure,
 } from '../controllers/formattingController'
 import { aiArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
@@ -19,6 +20,7 @@ import {
   updateFormatBindingSchema,
   tierCheckSchema,
   setDocumentPresetSchema,
+  inferStructureSchema,
 } from '../../schemas/formattingSchemas'
 
 const router = Router()
@@ -41,6 +43,9 @@ router.get('/bindings', listBindings)
 router.post('/bindings', validateBody(createFormatBindingSchema), createBinding)
 router.put('/bindings/:id', validateBody(updateFormatBindingSchema), updateBinding)
 router.delete('/bindings/:id', deleteBinding)
+
+// Document structure inference — pure classification, no AI provider involved
+router.post('/infer-structure', validateBody(inferStructureSchema), inferStructure)
 
 // Three-tier resolution (ML fallback is AI-facing → protected)
 router.post('/tier-check', aiArcjet, validateBody(tierCheckSchema), tierCheck)

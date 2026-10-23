@@ -19,6 +19,10 @@ import {
   type PythonPredictionResponse,
   type PythonSpellingCheckResponse,
 } from '../../../schemas/predictionSchemas'
+import {
+  pythonCouncilScanResponseSchema,
+  type PythonCouncilScanResponse,
+} from '../../../schemas/plagiarismSchemas'
 
 export interface PredictionResponse {
   predictedFormat: string
@@ -366,5 +370,121 @@ export async function triggerFineTune(userId: string): Promise<FineTuneBridgeRes
     user_id: userId,
   })
   return response.data
+}
+
+
+
+
+export interface ParseDocumentResponse {
+  html: string
+  title?: string
+  word_count?: number
+  detected_template?: string
+  reading_order_applied?: boolean
+}
+
+/**
+ * Stream a document to the ML service for parsing (multi-column + tables + equations).
+ */
+export async function parseDocument(file: { buffer: Buffer; filename: string; mimetype: string }): Promise<ParseDocumentResponse> {
+  const mlApiUrl = getMLApiUrl()
+  const FormData = (await import('form-data')).default
+  const form = new FormData()
+  form.append('file', file.buffer, { filename: file.filename, contentType: file.mimetype })
+  try {
+    const response = await axios.post<ParseDocumentResponse>(`${mlApiUrl}/parse/document`, form, {
+      headers: form.getHeaders(),
+      timeout: 120000,
+      maxContentLength: 50 * 1024 * 1024,
+    })
+    return response.data
+  } catch (error) {
+    mlError(
+      'document parse',
+      mlApiUrl,
+      error,
+      'Ensure marker/opendataloader deps are installed in the ML environment and the /parse/document endpoint is running.'
+    )
+  }
+}
+
+/** One peer document supplied to the council scan. */
+export interface CouncilScanPeer {
+  documentId: string
+  userId: string
+  text: string
+}
+
+/** One AI backend the council may use (comma-separated keys rotate within it). */
+export interface CouncilAIProfile {
+  provider: string
+  apiKeys: string[]
+  model: string
+}
+
+/**
+ * AI configuration forwarded to the council: every configured profile plus which
+ * profile (0-based index) each judge role uses first. An empty profile list
+ * makes the ML service fall back to its own environment.
+ */
+export interface CouncilAIConfig {
+  profiles: CouncilAIProfile[]
+  assignments: Record<string, number>
+}
+
+/**
+ * Run the triage + 5-judge council scan for one document against its peers.
+ * This is the only bridge function that talks to the /council/scan endpoint.
+ */
+export async function requestCouncilScan(payload: {
+  documentId: string
+  userId: string
+  folderId: string
+  text: string
+  peers: CouncilScanPeer[]
+  /** Raw behavior events used by the timeline forensics engine. */
+  timeline: unknown[]
+  ai: CouncilAIConfig
+}): Promise<PythonCouncilScanResponse> {
+  const mlApiUrl = getMLApiUrl()
+
+  try {
+    const response = await axios.post(
+      `${mlApiUrl}/council/scan`,
+      {
+        document_id: payload.documentId,
+        user_id: payload.userId,
+        folder_id: payload.folderId,
+        text: payload.text,
+        peers: payload.peers.map((peer) => ({
+          document_id: peer.documentId,
+          user_id: peer.userId,
+          text: peer.text,
+        })),
+        timeline: payload.timeline,
+        ai:
+          payload.ai.profiles.length > 0
+            ? {
+                profiles: payload.ai.profiles.map((profile) => ({
+                  provider: profile.provider,
+                  api_key: profile.apiKeys.join(','),
+                  model: profile.model,
+                })),
+                assignments: payload.ai.assignments,
+              }
+            : null,
+      },
+      { timeout: 180000 }
+    )
+
+    return pythonCouncilScanResponseSchema.parse(response.data)
+  } catch (error) {
+    mlError(
+      'council scan',
+      mlApiUrl,
+      error,
+      'Start the FastAPI service (ml/src/main.py) locally or fix ML_API_URL / PYTHON_API_URL.'
+    )
+  }
 }
 

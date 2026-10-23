@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type DocumentRecord, type DriveFile, type FolderRecord, type FolderType, type StorageSummary, type UserPreset } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
 import { useImportJob } from '@/hooks/useImportJob'
@@ -24,19 +24,11 @@ import ImportFileModal, { type ImportProgress, ImportProgressToast } from '@/com
 import ShareModal from '@/components/ShareModal'
 import { supabase } from '@/lib/supabase'
 import { useDriveCache } from '@/hooks/useDriveCache'
+import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
+import { motion } from 'framer-motion'
 
 /** One day in milliseconds — used for the "Recent" filter. */
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000
-
-/** Resolve a title to a unique name, appending " (2)", " (3)" etc. when it conflicts. */
-function uniqueTitle(base: string, existingTitles: string[]): string {
-  const clean = base.trim()
-  const used = new Set(existingTitles.map((t) => t.trim().toLowerCase()))
-  if (!used.has(clean.toLowerCase())) return clean
-  let n = 2
-  while (used.has(`${clean} (${n})`.toLowerCase())) n += 1
-  return `${clean} (${n})`
-}
 
 interface ConfirmDialogState {
   title: string
@@ -56,24 +48,22 @@ function ConfirmDialog({
 }): JSX.Element | null {
   if (!dialog) return null
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center animate-overlay">
+      <div className="absolute inset-0 bg-black/45 backdrop-blur-xs" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-2xl animate-modal">
         <h2 className="text-base font-semibold text-foreground m-0 mb-2">{dialog.title}</h2>
-        <p className="text-sm text-muted-foreground mb-6">{dialog.description}</p>
-        <div className="flex justify-end gap-2">
+        <p className="text-sm text-muted-foreground mb-6 leading-relaxed">{dialog.description}</p>
+        <div className="flex justify-end gap-2.5">
           <button
             onClick={onClose}
-            className="inline-flex items-center h-9 px-4 rounded-lg border border-border text-foreground text-sm font-medium cursor-pointer hover:bg-secondary"
-            style={{ fontFamily: 'inherit' }}
+            className="btn-ghost h-9 px-4 rounded-lg text-sm"
           >
             Cancel
           </button>
           <button
             onClick={() => { dialog.onConfirm(); onClose() }}
-            className="inline-flex items-center h-9 px-4 rounded-lg border-none text-white text-sm font-medium cursor-pointer hover:opacity-90"
+            className="btn-primary h-9 px-4 rounded-lg text-sm"
             style={{
-              fontFamily: 'inherit',
               backgroundColor: dialog.tone === 'primary' ? 'var(--primary, hsl(221 83% 53%))' : 'var(--destructive, hsl(0 72% 51%))',
             }}
           >
@@ -87,7 +77,11 @@ function ConfirmDialog({
 
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
+
+  const initialFolderId = searchParams.get('folder')
+  const initialView = searchParams.get('view')
 
   /* ── Core data ─────────────────────────────────────── */
   const [allDocuments, setAllDocuments] = useState<DocumentRecord[]>([])
@@ -103,8 +97,20 @@ export default function HomePage(): JSX.Element {
   /* ── UI state ──────────────────────────────────────── */
   const [query, setQuery] = useState<string>('')
   const [editing, setEditing] = useState<DriveTableEditState | null>(null)
-  const [selection, setSelection] = useState<FolderSelection>({ type: 'all' })
-  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([])
+  const [selection, setSelection] = useState<FolderSelection>(() => {
+    if (initialFolderId) {
+      return { type: 'folder', folderId: initialFolderId, folderName: 'Folder' }
+    }
+    if (initialView === 'trash') return { type: 'trash' }
+    if (initialView === 'shared') return { type: 'shared' }
+    return { type: 'all' }
+  })
+  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>(() => {
+    if (initialFolderId) {
+      return [{ id: initialFolderId, name: 'Folder' }]
+    }
+    return []
+  })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [driveOpen, setDriveOpen] = useState<boolean>(false)
   const [importFileOpen, setImportFileOpen] = useState<boolean>(false)
@@ -150,6 +156,17 @@ export default function HomePage(): JSX.Element {
       .catch(() => { /* Storage is non-critical; keep the card muted on failure. */ })
     return () => { cancelled = true }
   }, [])
+
+  /* ── Sync folder name and breadcrumbs when folders load ── */
+  useEffect(() => {
+    if (selection.type === 'folder' && selection.folderId && folders.length > 0) {
+      const match = folders.find((f) => f.folder_id === selection.folderId)
+      if (match && match.name !== selection.folderName) {
+        setSelection((prev) => ({ ...prev, folderName: match.name }))
+        setBreadcrumbs([{ id: match.folder_id, name: match.name }])
+      }
+    }
+  }, [folders, selection.type, selection.folderId, selection.folderName])
 
   /* ── Load folder-specific documents when navigating into a folder ── */
   useEffect(() => {
@@ -289,6 +306,17 @@ export default function HomePage(): JSX.Element {
         content: buildBlueprintHtml(input.blueprint),
         formatting_preset: input.presetKey ?? undefined,
       })
+      // The preset's page size, orientation and margins apply from the first open.
+      const preset = ACADEMIC_PRESETS.find((candidate) => candidate.key === input.presetKey)
+      if (preset) {
+        try {
+          await api.documents.update(doc.id, {
+            page_size: preset.pageSize,
+            orientation: preset.orientation,
+            margins: preset.margins,
+          })
+        } catch { /* the editor falls back to the default page setup */ }
+      }
       setCreateModalOpen(false)
       if (selection.type === 'folder' && selection.folderId) {
         try {
@@ -336,7 +364,7 @@ export default function HomePage(): JSX.Element {
 
   /** Create a document inside the current selection (folder aware). */
   async function createImportedDocument(displayTitle: string, html: string): Promise<void> {
-    const doc = await api.documents.create(displayTitle)
+    const doc = await api.documents.create(displayTitle, { unique_title: true })
     await api.documents.update(doc.id, { content: html })
     if (selection.type === 'folder' && selection.folderId) {
       try {
@@ -346,36 +374,11 @@ export default function HomePage(): JSX.Element {
     navigate(`/document/${doc.id}`)
   }
 
+  /** Import converted content as a new document; the server numbers duplicate names "(1)", "(2)". */
   async function handleImportDoc(title: string, html: string): Promise<void> {
     try {
       setError('')
-      const existing = new Set(allDocuments.map((d) => d.title.trim().toLowerCase()))
-      const collision = existing.has(title.trim().toLowerCase())
-
-      if (!collision) {
-        await createImportedDocument(title, html)
-        return
-      }
-
-      // Duplicate title: let the user keep the duplicate or auto-number it.
-      setConfirmDialog({
-        title: 'Title already exists',
-        description: `You already have a document named "${title}". Import a copy with a new name instead?`,
-        confirmLabel: 'Use "title (2)"',
-        tone: 'primary',
-        onConfirm: () => {
-          void createImportedDocument(uniqueTitle(title, allDocuments.map((d) => d.title)), html)
-            .then(() => {})
-            .catch((err) => {
-              setConfirmDialog({
-                title: 'Import failed',
-                description: err instanceof Error ? err.message : 'Failed to import document',
-                confirmLabel: 'OK',
-                onConfirm: () => {},
-              })
-            })
-        },
-      })
+      await createImportedDocument(title, html)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import document')
     }
@@ -444,8 +447,16 @@ export default function HomePage(): JSX.Element {
     setEditing(null)
     if (sel.type === 'folder' && sel.folderId && sel.folderName) {
       setBreadcrumbs([{ id: sel.folderId, name: sel.folderName }])
+      setSearchParams({ folder: sel.folderId })
     } else {
       setBreadcrumbs([])
+      if (sel.type === 'trash') {
+        setSearchParams({ view: 'trash' })
+      } else if (sel.type === 'shared') {
+        setSearchParams({ view: 'shared' })
+      } else {
+        setSearchParams({})
+      }
     }
   }
 
@@ -460,6 +471,7 @@ export default function HomePage(): JSX.Element {
     setSelectedIds(new Set())
     setEditing(null)
     setBreadcrumbs((prev) => [...prev, { id: folder.folder_id, name: folder.name }])
+    setSearchParams({ folder: folder.folder_id })
   }
 
   /** Breadcrumb navigation — click a crumb to go back. */
@@ -468,6 +480,7 @@ export default function HomePage(): JSX.Element {
       setSelection({ type: 'all' })
       setBreadcrumbs([])
       setSelectedIds(new Set())
+      setSearchParams({})
       return
     }
     const idx = breadcrumbs.findIndex((b) => b.id === crumb.id)
@@ -476,6 +489,7 @@ export default function HomePage(): JSX.Element {
     setBreadcrumbs(newCrumbs)
     setSelection({ type: 'folder', folderId: crumb.id, folderName: crumb.name })
     setSelectedIds(new Set())
+    setSearchParams({ folder: crumb.id })
   }
 
   /* ── Editing ───────────────────────────────────────── */
@@ -684,9 +698,29 @@ export default function HomePage(): JSX.Element {
       case 'trash':
         return 'Trash'
       default:
-        return 'My Documents'
+        return 'My documents'
     }
   }, [selection])
+
+  /* ── Global search shortcut ────────────────────────── */
+  // Captured in the capture phase so the browser omnibar never opens; focus
+  // and select whatever the search omnibar already holds.
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        e.stopPropagation()
+        const searchInput = document.getElementById('drive-search-input') as HTMLInputElement | null
+        if (searchInput) {
+          searchInput.focus()
+          searchInput.select()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, { capture: true })
+  }, [])
 
   /* ─── Render ───────────────────────────────────────── */
 
@@ -721,33 +755,41 @@ export default function HomePage(): JSX.Element {
       <div className="flex flex-col flex-1 min-w-0 bg-background h-screen overflow-hidden px-4 pb-4">
         {/* ── Top Header ────────────────────────────── */}
         <header className="w-full flex-shrink-0 pt-3 pb-3">
-          <div className="flex items-center justify-between h-14 gap-2">
-            {/* Hamburger (mobile only) + Search */}
-            <div className="flex items-center flex-1 min-w-0 gap-2">
+          <div className="relative flex items-center justify-between h-14 px-2">
+            {/* Left: Hamburger (mobile only) */}
+            <div className="flex items-center gap-2 z-10">
               <button
                 type="button"
                 aria-label="Open navigation"
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden flex items-center justify-center size-12 shrink-0 rounded-full bg-card text-foreground border border-border cursor-pointer hover:bg-secondary transition-colors"
+                className="lg:hidden flex items-center justify-center size-10 shrink-0 rounded-full bg-card text-foreground border border-border cursor-pointer hover:bg-secondary transition-colors"
                 style={{ fontFamily: 'inherit' }}
               >
                 <Menu className="size-5" />
               </button>
-              <div className="flex-1 max-w-2xl relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground pointer-events-none" strokeWidth={2} />
+            </div>
+
+            {/* Center: Search Omnibar (Centered across header) */}
+            <div className="absolute left-1/2 -translate-x-1/2 w-full max-w-xl px-4 pointer-events-auto z-0">
+              <div className="relative w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" strokeWidth={2} />
                 <input
+                  id="drive-search-input"
                   type="text"
-                  placeholder="Search"
+                  placeholder="Search documents, folders, class codes..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="w-full h-12 pl-12 pr-4 rounded-full bg-card text-foreground placeholder:text-muted-foreground text-[1rem] outline-none border border-border transition-colors hover:border-primary/60 focus:border-primary focus:shadow-md"
+                  className="w-full h-11 pl-11 pr-20 rounded-2xl bg-card text-foreground placeholder:text-muted-foreground text-sm outline-none border border-border/70 transition-all hover:border-primary/50 focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-xs"
                   style={{ fontFamily: 'inherit' }}
                 />
+                <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-mono text-muted-foreground bg-secondary rounded-md border border-border/60 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                  Ctrl K
+                </kbd>
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-3 shrink-0 ml-2">
+            {/* Right: Actions */}
+            <div className="flex items-center gap-3 shrink-0 ml-auto z-10">
               {user?.role === 'admin' && (
                 <button
                   onClick={() => navigate('/admin')}
@@ -765,18 +807,29 @@ export default function HomePage(): JSX.Element {
 
         {/* Pending Professor Notification Banner */}
         {user?.role === 'professor' && user?.verificationStatus === 'pending' && (
-          <div className="mx-4 mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 text-xs font-medium flex items-center justify-between">
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            className="mx-4 mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 text-xs font-medium flex items-center justify-between"
+          >
             <span>
               <strong>Professor Application Pending:</strong> Your request to register as a Professor is under review by an Administrator. Document review and grading features will be unlocked once approved.
             </span>
-          </div>
+          </motion.div>
         )}
 
+
         {/* ── Content Wrapper ───────────────────────── */}
-        <main className="flex-1 bg-card rounded-2xl overflow-y-auto px-6 py-6" style={{ boxShadow: '0 1px 2px 0 rgba(60,64,67,0.1)' }}>
+        <motion.main className="flex-1 bg-card border border-border rounded-2xl overflow-y-auto px-6 py-6 shadow-sm" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}>
           {/* Section header */}
           <div className="mb-4">
-            <h1 className="text-2xl font-normal text-foreground m-0">{pageTitle}</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold normal-case tracking-tight text-foreground m-0">{pageTitle}</h1>
+              <span className="text-xs font-medium text-muted-foreground bg-secondary rounded-full px-2.5 py-1 leading-none">
+                {visibleDocuments.length} {visibleDocuments.length === 1 ? 'document' : 'documents'}
+              </span>
+            </div>
             {selection.type === 'trash' && (
               <p className="text-sm text-muted-foreground mt-1">
                 Items in trash are permanently deleted after you confirm. Restore anything you still need.
@@ -865,7 +918,7 @@ export default function HomePage(): JSX.Element {
               void driveCache.refresh()
             }}
           />
-        </main>
+        </motion.main>
       </div>
 
       <DriveImportDialog
@@ -878,6 +931,7 @@ export default function HomePage(): JSX.Element {
         <ImportFileModal
           onClose={() => setImportFileOpen(false)}
           onProgress={setImportProgress}
+          onError={(message) => setError(message)}
           onImported={() => {
             // Refresh document list after successful import
             api.documents.list().then(setAllDocuments).catch(() => {})
@@ -895,6 +949,7 @@ export default function HomePage(): JSX.Element {
           onSubmit={submitCreateFolder}
           submitting={folderSubmitting}
           error={folderModalError}
+          userRole={user?.role}
         />
       )}
 
@@ -942,7 +997,7 @@ export default function HomePage(): JSX.Element {
             <button
               type="button"
               aria-label="Create new"
-              className="flex items-center justify-center size-14 rounded-full bg-[#388087] text-white border-none cursor-pointer shadow-lg shadow-primary/30 hover:bg-[#2d6b72] active:scale-95 transition-all"
+              className="flex items-center justify-center size-14 rounded-full bg-[var(--accent-strong)] text-white border-none cursor-pointer shadow-lg shadow-primary/30 hover:bg-[var(--accent-hover)] active:scale-95 transition-all"
               style={{ fontFamily: 'inherit' }}
             >
               <Plus className="size-6" />
@@ -950,13 +1005,13 @@ export default function HomePage(): JSX.Element {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" style={{ minWidth: '190px' }}>
             <DropdownMenuItem onClick={() => void handleCreateDocument()} className="gap-2 py-2.5 cursor-pointer">
-              <FileText className="size-4" /> New Document
+              <FileText className="size-4" /> New document
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCreateFolder} className="gap-2 py-2.5 cursor-pointer">
-              <FolderIcon className="size-4 text-primary" /> New Folder
+              <FolderIcon className="size-4 text-primary" /> New folder
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setImportFileOpen(true)} className="gap-2 py-2.5 cursor-pointer">
-              <Upload className="size-4 text-primary" /> Import from File
+              <Upload className="size-4 text-primary" /> Import from file
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setDriveOpen(true)} className="gap-2 py-2.5 cursor-pointer">
               <HardDrive className="size-4 text-primary" /> Import from Drive

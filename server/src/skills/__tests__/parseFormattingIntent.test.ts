@@ -146,4 +146,129 @@ describe('parseFormattingIntent', () => {
 
     expect(result.target).toBe('introduction')
   })
+
+  it('treats a heading category request as document-wide heading scope', () => {
+    const result = parseFormattingIntent('Now format all headings and make them bold and centered')
+
+    expect(result.scope).toBe('all')
+    expect(result.targetCategory).toBe('headings')
+    expect(result.formats).toContain('bold')
+    expect(result.formats).toContain('align_center')
+  })
+
+  it('detects paragraph category requests', () => {
+    const result = parseFormattingIntent('Justify all paragraphs')
+
+    expect(result.scope).toBe('all')
+    expect(result.targetCategory).toBe('paragraphs')
+    expect(result.formats).toContain('align_justify')
+  })
+
+  it('handles "the rest" and "remaining" as bulk scope', () => {
+    const rest = parseFormattingIntent('Bold the rest')
+    const remaining = parseFormattingIntent('Format the remaining paragraphs')
+
+    expect(rest.scope).toBe('all')
+    expect(remaining.scope).toBe('all')
+    expect(remaining.targetCategory).toBe('paragraphs')
+  })
+
+  it('keeps selection scope for a singular heading reference', () => {
+    const result = parseFormattingIntent('Make this heading bold')
+
+    expect(result.scope).toBe('selection')
+    expect(result.targetCategory).toBe('all')
+    expect(result.formats).toContain('bold')
+  })
+
+  it('extracts a quoted target and targets the whole document', () => {
+    const result = parseFormattingIntent("remove the bold format of the 'approval sheet' text")
+
+    expect(result.target).toBe('approval sheet')
+    expect(result.scope).toBe('all')
+    expect(result.normalize).toBe(true)
+    expect(result.formats).toContain('bold')
+  })
+
+  it('extracts a double-quoted target', () => {
+    const result = parseFormattingIntent('Make "List of Tables" bold')
+
+    expect(result.target).toBe('list of tables')
+    expect(result.scope).toBe('all')
+  })
+
+  it('extracts a phrase-prefixed target without swallowing command words', () => {
+    const result = parseFormattingIntent('Format the text approval sheet bold')
+
+    expect(result.target).toBe('approval sheet')
+    expect(result.scope).toBe('all')
+    expect(result.formats).toContain('bold')
+  })
+
+  it('does not treat a heading level as a target phrase', () => {
+    const result = parseFormattingIntent('Make this heading 1')
+
+    expect(result.target).toBeNull()
+    expect(result.scope).toBe('selection')
+  })
+
+  it('does not treat a generic word after a heading prefix as a target', () => {
+    const here = parseFormattingIntent('Use a minor heading here')
+    const title = parseFormattingIntent('Make this title heading bold')
+    const command = parseFormattingIntent('Change the heading to bold')
+    const vague = parseFormattingIntent('Make the heading look better')
+
+    expect(here.target).toBeNull()
+    expect(title.target).toBeNull()
+    expect(command.target).toBeNull()
+    expect(vague.target).toBeNull()
+  })
+
+  it('extracts an explicitly marked phrase target', () => {
+    const result = parseFormattingIntent('Make the title of the thesis bold')
+
+    expect(result.target).toBe('thesis')
+    expect(result.scope).toBe('all')
+  })
+
+  it('does not treat an apostrophe in a contraction as a quoted target', () => {
+    const result = parseFormattingIntent("Don't change the formatting here")
+
+    expect(result.target).toBeNull()
+  })
+})
+describe('parseFormattingIntent target modes', () => {
+  it('treats a quoted phrase as literal words', () => {
+    const result = parseFormattingIntent('Change the "approval sheet" to bold')
+    expect(result.target).toBe('approval sheet')
+    expect(result.targetMode).toBe('literal')
+  })
+
+  it('treats an unquoted section name as the whole section', () => {
+    const result = parseFormattingIntent('Change the approval sheet to bold')
+    expect(result.target).toBe('approval sheet')
+    expect(result.targetMode).toBe('section')
+  })
+
+  it('treats chapter references as whole sections', () => {
+    expect(parseFormattingIntent('make chapter two italic').targetMode).toBe('section')
+    expect(parseFormattingIntent('make chapter two italic').target).toBe('chapter 2')
+  })
+
+  it('recognises "the title" as the document title', () => {
+    const result = parseFormattingIntent('Center the title')
+    expect(result.target).toBe('title')
+    expect(result.targetMode).toBe('title')
+    expect(result.formats).toContain('align_center')
+  })
+
+  it('keeps targetMode null when no target is named', () => {
+    expect(parseFormattingIntent('make this bold').targetMode).toBeNull()
+  })
+
+  it('limits "all the chapter headings" to chapter headings', () => {
+    const result = parseFormattingIntent('Make all the chapter headings 14pt')
+    expect(result.targetCategory).toBe('chapters')
+    expect(result.fontSize).toBe(14)
+  })
 })
