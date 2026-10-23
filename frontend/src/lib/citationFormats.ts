@@ -239,3 +239,35 @@ export function generateCitationKey(ref: Pick<CitationReference, 'authors' | 'ye
   const word = ref.title.split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, '') || 'work'
   return `${surname}${ref.year}${word}`
 }
+
+/** How IEEE citation numbers change when a reference is removed: old number -> new number (null = removed). */
+export type CitationNumberMap = Map<number, number | null>
+
+/**
+ * Remove a reference and close the gap in the IEEE citation order. Returns the
+ * remaining references with compacted `cited` numbers and the mapping the text's
+ * [n] markers need (the removed source maps to null).
+ */
+export function removeReferenceAndRenumber(
+  references: CitationReference[],
+  removedId: string
+): { references: CitationReference[]; mapping: CitationNumberMap } {
+  const mapping: CitationNumberMap = new Map()
+  const removed = references.find((ref) => ref.id === removedId)
+  if (removed?.cited != null) mapping.set(removed.cited, null)
+
+  const remaining = references.filter((ref) => ref.id !== removedId)
+  const order = remaining
+    .filter((ref) => ref.cited != null)
+    .sort((a, b) => (a.cited ?? 0) - (b.cited ?? 0))
+  const next = new Map<string, number>()
+  order.forEach((ref, index) => {
+    next.set(ref.id, index + 1)
+    if (ref.cited != null && ref.cited !== index + 1) mapping.set(ref.cited, index + 1)
+  })
+
+  return {
+    references: remaining.map((ref) => (next.has(ref.id) ? { ...ref, cited: next.get(ref.id) } : ref)),
+    mapping,
+  }
+}

@@ -77,4 +77,37 @@ describe('inferDocumentStructure', () => {
     expect(result.type).toBe('academic_thesis')
     expect(result.matchedMarkers).toContain('in partial fulfillment of the requirements')
   })
+
+  it('does not count IEEE markers that only appear in the References section', () => {
+    const text = [
+      'Notes on Slide Layout',
+      'Some plain introductory prose about layout.',
+      'References',
+      '[1] A. Author, IEEE Transactions on Pattern Analysis, 2020.',
+    ].join('\n')
+
+    expect(inferDocumentStructure(text).type).toBe('unknown')
+  })
+
+  it('treats Abstract\u2014 and Index Terms\u2014 run-ins as strong IEEE markers', () => {
+    const text = 'A Paper\nAbstract\u2014We study slides.\nIndex Terms\u2014slides, layout'
+
+    const result = inferDocumentStructure(text)
+
+    expect(result.type).toBe('ieee_manuscript')
+    expect(result.matchedMarkers).toContain('abstract\u2014')
+  })
+
+  it('keeps an IEEE run-in abstract with Keywords: on the IEEE side', () => {
+    const text = 'A Paper\nAbstract \u2014 We study slides.\nKeywords: slides, layout'
+
+    expect(inferDocumentStructure(text).type).toBe('ieee_manuscript')
+  })
+
+  it('does not pick APA from Keywords: alone', () => {
+    const result = inferDocumentStructure('A Paper\nSome text.\nKeywords: slides, layout')
+
+    expect(result.type).toBe('unknown')
+    expect(result.presetKey).toBeNull()
+  })
 })

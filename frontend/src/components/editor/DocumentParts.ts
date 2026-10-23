@@ -89,7 +89,7 @@ function collectSections(editor: Editor): PartEntry[] {
 
 /** Caption paragraphs ("Figure 2. …" / "Table 1: …"), marked or typed by hand. */
 function collectCaptions(editor: Editor, kind: 'figure' | 'table'): PartEntry[] {
-  const label = kind === 'figure' ? /^Figure\s+\d+\s*[.:]/i : /^Table\s+\d+\s*[.:]/i
+  const label = kind === 'figure' ? /^(?:Figure|Fig\.)\s+\d+\s*[.:]/i : /^Table\s+(?:\d+|[IVXLCDM]+)\s*[.:]/i
   const entries: PartEntry[] = []
   editor.state.doc.forEach((node, offset) => {
     if (node.type.name !== 'paragraph' || node.attrs.generated) return
@@ -141,8 +141,8 @@ function italicTextNodes(html: string): JSONContent[] {
   return nodes
 }
 
-/** The References block: a title and one paragraph per formatted bibliography entry. */
-export function buildReferenceNodes(entriesHtml: string[]): JSONContent[] {
+/** The References block: an optional title and one paragraph per formatted bibliography entry. */
+export function buildReferenceNodes(entriesHtml: string[], withTitle: boolean = true): JSONContent[] {
   const title: JSONContent = {
     type: 'paragraph',
     attrs: { generated: 'refs', textAlign: 'center' },
@@ -153,7 +153,29 @@ export function buildReferenceNodes(entriesHtml: string[]): JSONContent[] {
     attrs: { generated: 'refs' },
     content: italicTextNodes(html),
   }))
-  return [title, ...entries]
+  return withTitle ? [title, ...entries] : entries
+}
+
+/** Placeholder text the IEEE blueprint puts under its References heading. */
+const REFERENCES_PLACEHOLDER = 'IEEE numbered style, in order of citation.'
+
+/**
+ * Position just after an existing "References" heading, replacing the blueprint's
+ * placeholder paragraph under it, or null when the document has no such heading.
+ * Used so a generated bibliography fills the heading the document already has
+ * instead of adding a second "REFERENCES" title.
+ */
+export function referencesHeadingEnd(editor: Editor): { at: number; placeholder: { from: number; to: number } | null } | null {
+  let result: { at: number; placeholder: { from: number; to: number } | null } | null = null
+  const doc = editor.state.doc
+  doc.forEach((node, offset) => {
+    if (result || node.type.name !== 'heading' || !/^references:?$/i.test(node.textContent.trim().replace(/^[ivxlcdm]+\.\s+/i, ''))) return
+    const at = offset + node.nodeSize
+    const next = doc.nodeAt(at)
+    const placeholder = next && next.textContent.trim() === REFERENCES_PLACEHOLDER ? { from: at, to: at + next.nodeSize } : null
+    result = { at, placeholder }
+  })
+  return result
 }
 
 /** First top-level run of paragraphs tagged with `kind`, as a document range. */

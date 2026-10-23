@@ -47,9 +47,9 @@ import { CitationAssistant } from '@/components/editor/CitationAssistant'
 import HelpSheet from '@/components/editor/HelpSheet'
 import OriginalityCard from '@/components/editor/OriginalityCard'
 import LearningCard from '@/components/editor/LearningCard'
-import { CITATION_STYLE_LABELS, type CitationData, type CitationReference, type CitationStyle } from '@/lib/citationFormats'
+import { CITATION_STYLE_LABELS, type CitationData, type CitationNumberMap, type CitationReference, type CitationStyle } from '@/lib/citationFormats'
 import DocumentPartsPanel from '@/components/editor/DocumentPartsPanel'
-import { buildReferenceNodes, insertOrUpdateGenerated, pageNumberAt } from '@/components/editor/DocumentParts'
+import { buildReferenceNodes, insertOrUpdateGenerated, pageNumberAt, referencesHeadingEnd } from '@/components/editor/DocumentParts'
 import { OfflineIndicator } from '@/components/editor/OfflineIndicator'
 import { useOfflineSync } from '@/hooks/useOfflineBuffer'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
@@ -301,6 +301,16 @@ export default function Document(): JSX.Element {
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
   const [spreadPreview, setSpreadPreview] = useState<boolean>(false)
+  const isIeeePreset = basePresetKey(formattingPreset) === 'ieee'
+  // The two-page spread is an IEEE view; leave it when the document stops being IEEE.
+  useEffect(() => {
+    if (!isIeeePreset) setSpreadPreview(false)
+  }, [isIeeePreset])
+  // Captions read "Fig. 1" / "TABLE I" in IEEE documents. Opening a document only sets the
+  // style; labels are rewritten when the user switches preset, never just by opening.
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.storage.captions.labelStyle = isIeeePreset ? 'ieee' : 'default'
+  }, [editor, isIeeePreset])
   /** Visual canvas zoom (1 = 100%). Layout and pagination are unaffected. */
   const [zoomLevel, setZoomLevel] = useState<number>(1)
   /** Latest zoom value for listeners bound with empty dependency lists. */
@@ -2054,6 +2064,30 @@ export default function Document(): JSX.Element {
     scrollToDocPos(range?.from ?? editor.state.selection.from)
   }
 
+  /**
+   * After a reference is removed, rewrite the [n] markers in the text to the new IEEE
+   * numbers. Markers of the removed source become [?] so the author sees what to fix.
+   * Edits run last to first so earlier positions stay valid.
+   */
+  function remapCitationMarkers(mapping: CitationNumberMap): void {
+    if (!editor || editor.isDestroyed || !editor.isEditable) return
+    const edits: Array<{ from: number; to: number; text: string }> = []
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return true
+      for (const match of node.text.matchAll(/\[(\d+)\]/g)) {
+        const old = Number(match[1])
+        if (!mapping.has(old)) continue
+        const next = mapping.get(old)
+        edits.push({ from: pos + (match.index ?? 0), to: pos + (match.index ?? 0) + match[0].length, text: next == null ? '[?]' : `[${next}]` })
+      }
+      return true
+    })
+    if (edits.length === 0) return
+    const tr = editor.state.tr
+    for (const edit of edits.sort((a, b) => b.from - a.from)) tr.insertText(edit.text, edit.from, edit.to)
+    editor.view.dispatch(tr)
+  }
+
   /** Jump to an overlapping passage reported by the originality check. */
   function jumpToPassage(passageText: string): void {
     const range = locateIssue({ type: 'passage', original: passageText.slice(0, 160), suggestion: '', explanation: '' })
@@ -2320,6 +2354,9 @@ export default function Document(): JSX.Element {
     setMargins({ ...preset.margins })
     setOrientation(preset.orientation)
     setFormattingPreset(key)
+    // Switching preset restyles the captions and, for IEEE, the citation style.
+    if (editor && !editor.isDestroyed) editor.commands.setCaptionLabelStyle(basePresetKey(key) === 'ieee' ? 'ieee' : 'default')
+    if (basePresetKey(key) === 'ieee') setCitationStyle('ieee')
     if (id) {
       try {
         await api.formatting.setDocumentPreset(id, key)
@@ -3135,8 +3172,17 @@ export default function Document(): JSX.Element {
                 onStyleChange={setCitationStyle}
                 references={references}
                 onReferencesChange={setReferences}
+                onCitationNumbersChanged={remapCitationMarkers}
                 onInsertBibliography={(entries) => {
-                  if (editor && editor.isEditable) insertOrUpdateGenerated(editor, 'refs', buildReferenceNodes(entries))
+                  if (!editor || !editor.isEditable) return
+                  // Fill the document's own References heading when it has one, instead of adding a second title.
+                  const heading = referencesHeadingEnd(editor)
+                  if (heading && !editor.getHTML().includes('data-generated="refs"')) {
+                    const range = heading.placeholder ?? { from: heading.at, to: heading.at }
+                    editor.chain().focus().insertContentAt(range, buildReferenceNodes(entries, false)).run()
+                    return
+                  }
+                  insertOrUpdateGenerated(editor, 'refs', buildReferenceNodes(entries, !heading))
                 }}
                 onInsertCitation={(citationText: string) => {
                   if (editor) {

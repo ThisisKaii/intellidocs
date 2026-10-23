@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath } from 'url'
@@ -14,6 +14,11 @@ export default defineConfig({
   // package out of optimizeDeps and let Vite's asset pipeline serve it.
   optimizeDeps: {
     exclude: ['harper.js'],
+  },
+  // Unit tests run in jsdom so editor code that touches the DOM can be tested.
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts'],
   },
   resolve: {
     alias: {

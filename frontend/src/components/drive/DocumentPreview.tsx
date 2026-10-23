@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
+import { ACADEMIC_PRESETS, basePresetKey } from '@/components/editor/academicPresets'
 import { PAGE_SIZES, inToPx } from '@/components/editor/HeaderFooterPlugin'
 import type { MarginValues, PageOrientation, PageSizeKey } from '@/components/editor/HeaderFooterPlugin'
 
@@ -157,7 +157,7 @@ function pageCanvas(setup: PreviewPageSetup): { width: number; height: number; p
 export function DocumentPreview({ html, setup }: { html: string; setup: PreviewPageSetup }): JSX.Element {
   const frameRef = useRef<HTMLDivElement>(null)
   const canvas = useMemo(() => pageCanvas(setup), [setup])
-  const presetKey = ACADEMIC_PRESETS.find((preset) => preset.key === setup.formattingPreset)?.key
+  const presetKey = ACADEMIC_PRESETS.find((preset) => preset.key === basePresetKey(setup.formattingPreset))?.key
   const [scale, setScale] = useState(0.25)
 
   useLayoutEffect(() => {

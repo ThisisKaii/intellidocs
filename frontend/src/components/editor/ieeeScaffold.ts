@@ -30,6 +30,8 @@ export interface SourceSection {
   isTitle: boolean
   /** Serialized HTML for the run's blocks, including its heading. */
   html: string
+  /** Level of the heading that opened the run, when it has one. */
+  level?: 1 | 2 | 3
 }
 
 /** One output slot in the IEEE structure. */
@@ -37,6 +39,8 @@ export interface ScaffoldSlot {
   section: BlueprintSection
   /** Source HTML carried into this slot, or null when nothing matched. */
   content: string | null
+  /** True for a slot that is not rendered because another slot absorbed its content (extra author lines). */
+  skip?: boolean
 }
 
 export interface ScaffoldResult {
@@ -60,6 +64,38 @@ export function normalizeHeadingName(name: string): string {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/**
+ * Other names authors use for an IEEE section. A source heading with one of
+ * these names fills the matching IEEE slot, so "Methodology" lands in
+ * "Proposed Method" instead of being filed under Unmapped Content.
+ */
+const SECTION_ALIASES: Readonly<Record<string, string>> = {
+  method: 'proposed method',
+  methods: 'proposed method',
+  methodology: 'proposed method',
+  'research methodology': 'proposed method',
+  'proposed methodology': 'proposed method',
+  results: 'results and discussion',
+  discussion: 'results and discussion',
+  'results and analysis': 'results and discussion',
+  conclusions: 'conclusion',
+  'conclusion and future work': 'conclusion',
+  keywords: 'index terms',
+  'key words': 'index terms',
+  'related works': 'related work',
+  'literature review': 'related work',
+  'review of related literature': 'related work',
+  experiments: 'experimental setup',
+  reference: 'references',
+  bibliography: 'references',
+}
+
+/** The name a section is matched under: normalized, with common alternative names folded in. */
+export function canonicalSectionName(name: string): string {
+  const normalized = normalizeHeadingName(name)
+  return SECTION_ALIASES[normalized] ?? normalized
 }
 
 /**
@@ -109,7 +145,7 @@ export function buildScaffold(
           if (claimed.has(index) || source.heading === null || source.isTitle) {
             return false
           }
-          return normalizeHeadingName(source.heading) === target
+          return canonicalSectionName(source.heading) === target
         })
       }
     }
@@ -121,6 +157,25 @@ export function buildScaffold(
     claimed.add(matchIndex)
     return { section, content: sections[matchIndex].html }
   })
+
+  // Content that came before any heading (an author block written as plain
+  // paragraphs) fills the first author line; the other author lines are not
+  // repeated as placeholders.
+  const frontMatterIndex = sections.findIndex(
+    (source, index) => !claimed.has(index) && source.heading === null && !source.isTitle
+  )
+  if (frontMatterIndex !== -1) {
+    const firstAuthor = slots.findIndex((slot) => slot.section.group === 'author_block' && slot.content === null)
+    if (firstAuthor !== -1) {
+      claimed.add(frontMatterIndex)
+      slots[firstAuthor] = { section: slots[firstAuthor].section, content: sections[frontMatterIndex].html }
+      slots.forEach((slot, index) => {
+        if (index !== firstAuthor && slot.section.group === 'author_block' && slot.content === null) {
+          slots[index] = { ...slot, skip: true }
+        }
+      })
+    }
+  }
 
   const leftovers = sections.filter((_, index) => !claimed.has(index))
 
@@ -192,6 +247,32 @@ export function runInLabel(section: BlueprintSection): string | null {
 }
 
 /**
+ * Removes an existing "Abstract—" / "Index Terms—" run-in label from the first
+ * paragraph of carried text, so the label rebuilt for the slot is never doubled.
+ */
+export function removeRunInLabel(html: string): string {
+  return html.replace(
+    /^(\s*<p[^>]*>)\s*(?:<(?:strong|em|b|i)>\s*)*(?:abstract|index terms|keywords?)(?:\s*<\/(?:strong|em|b|i)>)*\s*[\u2014\u2013:-]\s*/i,
+    '$1'
+  )
+}
+
+/**
+ * Puts a run-in label at the start of the first paragraph of carried body text,
+ * so "Abstract—" and the abstract text share one paragraph. Anything after the
+ * first paragraph (more paragraphs, images, tables) stays outside it, and
+ * nothing is ever wrapped inside another paragraph.
+ */
+export function mergeRunIn(label: string, bodyHtml: string, style: string = ''): string {
+  const styleAttr = style ? ` style="${style}"` : ''
+  const first = /^\s*<p([^>]*)>([\s\S]*?)<\/p>/i.exec(bodyHtml)
+  if (!first) {
+    return `<p${styleAttr}>${label}</p>${bodyHtml}`
+  }
+  return `<p${styleAttr}>${label} ${first[2]}</p>${bodyHtml.slice(first[0].length)}`
+}
+
+/**
  * Builds the final HTML for a scaffold: IEEE sections in order, then any
  * source sections that matched nothing.
  *
@@ -204,8 +285,20 @@ export function renderScaffoldHtml(
   blueprint: DocumentBlueprint,
   renderBlank: (blueprint: DocumentBlueprint) => string
 ): string {
-  const blocks = result.slots.map((slot) => {
+  const blocks = result.slots.map((slot, index) => {
+    if (slot.skip) {
+      return ''
+    }
+
     if (slot.content === null) {
+      // The blueprint's body placeholder after a heading is dropped when the
+      // heading's own section already carried its text across.
+      const previous = result.slots[index - 1]
+      const isBodyPlaceholder =
+        slot.section.block === 'paragraph' && !slot.section.group && slotMatchName(slot.section) === null
+      if (isBodyPlaceholder && previous?.section.block === 'heading' && previous.content !== null) {
+        return ''
+      }
       return renderBlank({ ...blueprint, sections: [slot.section] })
     }
 
@@ -215,8 +308,9 @@ export function renderScaffoldHtml(
 
     if (slot.section.block === 'paragraph') {
       const label = runInLabel(slot.section)
-      const body = stripLeadingHeading(slot.content)
-      return label === null ? body : `<p>${label} ${body}</p>`
+      const body = removeRunInLabel(stripLeadingHeading(slot.content))
+      // IEEE sets the abstract and index terms in 9pt.
+      return label === null ? body : mergeRunIn(label, body, 'font-size: 9pt')
     }
 
     if (slot.section.block === 'heading' && slot.section.level) {

@@ -52,6 +52,8 @@ import {
   formatInTextCitation,
   generateCitationKey,
   orderForBibliography,
+  removeReferenceAndRenumber,
+  type CitationNumberMap,
   sortReferences,
   type CitationReference,
   type CitationStyle,
@@ -103,6 +105,8 @@ interface CitationAssistantProps {
   onReferencesChange?: (refs: CitationReference[]) => void
   /** Insert mode callback - called when user wants to insert a citation at cursor. */
   onInsertCitation?: (citationText: string) => void
+  /** Called when removing a reference changes IEEE numbers: the text's [n] markers must follow. */
+  onCitationNumbersChanged?: (mapping: CitationNumberMap) => void
   /** Put the formatted bibliography into the document as a References block. */
   onInsertBibliography?: (entriesHtml: string[]) => void
 }
@@ -115,6 +119,7 @@ export function CitationAssistant({
   onReferencesChange,
   onInsertCitation,
   onInsertBibliography,
+  onCitationNumbersChanged,
 }: CitationAssistantProps): ReactNode {
   const [searchQuery, setSearchQuery] = useState('')
   const [lookupQuery, setLookupQuery] = useState('')
@@ -176,8 +181,9 @@ export function CitationAssistant({
   }
 
   const handleDeleteReference = (id: string) => {
-    const updated = references.filter((r) => r.id !== id)
+    const { references: updated, mapping } = removeReferenceAndRenumber(references, id)
     onReferencesChange?.(updated)
+    if (mapping.size > 0) onCitationNumbersChanged?.(mapping)
   }
 
   const handleInsertCitation = (ref: CitationReference) => {

@@ -18,6 +18,8 @@ export interface HeadingStyle {
   fontStyle?: 'normal' | 'italic'
   /** CSS text-transform (e.g. 'uppercase' or 'none'). */
   textTransform: 'uppercase' | 'capitalize' | 'none'
+  /** Render as small capitals (IEEE section headings). */
+  smallCaps?: boolean
   /** Extra note shown in the UI (e.g. "Ends with a period"). */
   note?: string
 }
@@ -40,6 +42,10 @@ export interface AcademicPreset {
    * IEEE: sections are uppercase, the title is title case at 24pt.
    */
   title?: HeadingStyle
+  /** Margin sets earlier versions of this preset used, so existing documents do not look drifted. */
+  legacyMargins?: MarginValues[]
+  /** Extra scoped rules appended to the generated stylesheet. */
+  extraCss?: string
   /** Scoped stylesheet applied while this preset is active. */
   css: string
 }
@@ -50,10 +56,12 @@ type PresetInput = Omit<AcademicPreset, 'css'>
 function headingRule(tag: 'h1' | 'h2' | 'h3', style: HeadingStyle): string {
   const textTransform = style.textTransform === 'none' ? 'none' : style.textTransform
   const fontStyle = style.fontStyle ?? 'normal'
+  const fontVariant = style.smallCaps ? 'small-caps' : 'normal'
   return `${tag} {
     text-align: ${style.textAlign};
     font-weight: ${style.fontWeight};
     font-style: ${fontStyle};
+    font-variant: ${fontVariant};
     font-size: ${style.fontSize};
     text-transform: ${textTransform};
     margin: 0.5em 0 0.4em;
@@ -111,7 +119,8 @@ function buildCss(preset: Omit<AcademicPreset, 'css'>): string {
   ${'text-indent: 0;'}
 }
 ${headingBlock}
-${titleBlock}`
+${titleBlock}
+${preset.extraCss ?? ''}`
 }
 
 /** APA 7th Edition academic paper style. */
@@ -139,16 +148,20 @@ const IEEE: PresetInput = {
   key: 'ieee',
   name: 'IEEE Conference',
   description:
-    'IEEE — 0.75" margins, Times New Roman 10pt, centered uppercase Roman-numeral sections (I. II. III.), italic alphabetised subsections. Two-column body not yet applied.',
+    'IEEE — Letter, 0.75" top, 1" bottom and 0.625" side margins, Times New Roman 10pt justified, centered small-caps Roman-numeral sections (I. II. III.), italic alphabetised subsections.',
   pageSize: 'letter',
   orientation: 'portrait',
-  margins: { top: 0.75, bottom: 0.75, left: 0.75, right: 0.75 },
+  margins: { top: 0.75, bottom: 1, left: 0.625, right: 0.625 },
+  legacyMargins: [{ top: 0.75, bottom: 0.75, left: 0.75, right: 0.75 }],
+  extraCss: `
+.intellidocs-page-editor .ProseMirror p { text-align: justify; }
+.intellidocs-page-editor .ProseMirror h1 { text-align: center; }`,
   fontFamily: "'Times New Roman', Times, serif",
   baseFontSize: '10pt',
   lineHeight: 1.15,
   firstLineIndent: '0.25in',
   headings: {
-    level1: { textAlign: 'center', fontSize: '10pt', fontWeight: 700, textTransform: 'uppercase' },
+    level1: { textAlign: 'center', fontSize: '10pt', fontWeight: 400, textTransform: 'none', smallCaps: true },
     level2: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, alphabetised (A. Speech and Speech Disorders)' },
     level3: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, run-in (1) Background:)' },
   },
@@ -156,8 +169,8 @@ const IEEE: PresetInput = {
     textAlign: 'center',
     fontSize: '24pt',
     fontWeight: 400,
-    textTransform: 'capitalize',
-    note: '24pt title case, regular weight',
+    textTransform: 'none',
+    note: '24pt, regular weight, title case as typed',
   },
 }
 

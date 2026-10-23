@@ -3,6 +3,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 import {
   applyIeeeNumberingToTexts,
+  leadingNumberLength,
   type IeeeHeadingLevel,
   type IeeeHeadingText,
 } from './ieeeNumbering'
@@ -29,14 +30,14 @@ function collectHeadings(doc: ProseMirrorNode): LocatedHeading[] {
       return true
     }
 
-     const docRole = node.attrs['docRole']
-     found.push({
-       level: level as IeeeHeadingLevel,
-       text: node.textContent,
-       unnumbered: docRole === 'title',
-       from: pos + 1,
-       to: pos + 1 + node.content.size,
-     })
+    const docRole = node.attrs['docRole']
+    found.push({
+      level: level as IeeeHeadingLevel,
+      text: node.textContent,
+      unnumbered: docRole === 'title',
+      from: pos + 1,
+      to: pos + 1 + node.content.size,
+    })
     return false
   })
 
@@ -44,12 +45,16 @@ function collectHeadings(doc: ProseMirrorNode): LocatedHeading[] {
 }
 
 /**
- * Renumbers the document's headings to IEEE convention, rewriting each
- * heading's text in place.
+ * Renumbers the document's headings to IEEE convention.
  *
- * Existing numbers are stripped first, so running this twice is a no-op
- * rather than doubling the label. Returns true when any heading text changed,
- * which lets the caller skip a no-op transaction and its behavior event.
+ * Only each heading's leading label ("I. ", "A. ", "1) ") is replaced, so bold,
+ * italic and links inside the heading survive. Edits are applied from the last
+ * heading to the first, because an edit that changes a label's length would
+ * otherwise shift the positions of every heading after it.
+ *
+ * Existing numbers are stripped first, so running this twice is a no-op.
+ * Returns true when any heading changed, which lets the caller skip a no-op
+ * transaction and its behavior event.
  */
 export function applyIeeeNumbering(editor: Editor): boolean {
   const headings = collectHeadings(editor.state.doc)
@@ -62,14 +67,27 @@ export function applyIeeeNumbering(editor: Editor): boolean {
   const tr = editor.state.tr
   let changed = false
 
-  headings.forEach((heading, index) => {
+  for (let index = headings.length - 1; index >= 0; index -= 1) {
+    const heading = headings[index]
     const next = nextTexts[index]
-    if (next === heading.text) {
-      return
+    if (next === heading.text.trim()) {
+      continue
     }
-    tr.insertText(next, heading.from, heading.to)
+
+    const oldLabelLength = leadingNumberLength(heading.text)
+    const nextLabelLength = leadingNumberLength(next)
+    const nextLabel = next.slice(0, nextLabelLength)
+    if (heading.text.slice(0, oldLabelLength) === nextLabel) {
+      continue
+    }
+
+    if (nextLabel === '') {
+      tr.delete(heading.from, heading.from + oldLabelLength)
+    } else {
+      tr.insertText(nextLabel, heading.from, heading.from + oldLabelLength)
+    }
     changed = true
-  })
+  }
 
   if (!changed) {
     return false

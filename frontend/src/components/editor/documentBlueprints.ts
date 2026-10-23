@@ -91,7 +91,7 @@ const APA_7TH: DocumentBlueprint = {
 const IEEE: DocumentBlueprint = {
   key: 'ieee',
   name: 'IEEE Conference Template',
-  description: '0.75" margins, Times New Roman 10pt, I./II./III. sections, italic A. subsections, numbered citations.',
+  description: 'IEEE margins, Times New Roman 10pt, I./II./III. sections, italic A. subsections, numbered citations.',
   presetKey: 'ieee',
   sections: [
     { block: 'title', placeholder: 'Paper Title', hint: 'Title: 24pt Roman, Centered' },
@@ -240,13 +240,14 @@ export function hasDriftedFromPreset(
 ): boolean {
   if (!preset) return false
 
-  const target = preset.margins
   const now = current.margins
-  const marginDrift =
-    Math.abs(target.top - now.top) > 0.01 ||
-    Math.abs(target.bottom - now.bottom) > 0.01 ||
-    Math.abs(target.left - now.left) > 0.01 ||
-    Math.abs(target.right - now.right) > 0.01
+  const matches = (target: { top: number; bottom: number; left: number; right: number }): boolean =>
+    Math.abs(target.top - now.top) <= 0.01 &&
+    Math.abs(target.bottom - now.bottom) <= 0.01 &&
+    Math.abs(target.left - now.left) <= 0.01 &&
+    Math.abs(target.right - now.right) <= 0.01
+  // Margins an earlier version of the preset used still count as the standard.
+  const marginDrift = ![preset.margins, ...(preset.legacyMargins ?? [])].some(matches)
 
   return marginDrift || preset.pageSize !== current.pageSize
 }
