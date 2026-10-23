@@ -137,6 +137,7 @@ const UNNUMBERED_HEADINGS: readonly string[] = [
   'acknowledgement',
   'acknowledgments',
   'acknowledgements',
+  'bibliography',
   'unmapped content',
 ]
 
@@ -145,7 +146,13 @@ const UNNUMBERED_HEADINGS: readonly string[] = [
  * whitespace. Used to strip an already-applied number so renumbering is
  * idempotent rather than producing `I. I. INTRODUCTION`.
  */
-const LEADING_NUMBER = /^\s*(?:[IVXLCDM]+|[A-Z]|\d{1,2})\s*[.)]\s+/i
+const LEADING_NUMBER = /^\s*(?:(?:[IVXLCDM]{1,6}|[A-Z]|\d{1,2})[.)]|\d+(?:\.\d+)+\.?)\s+/
+
+/** Length of the leading IEEE number label in heading text (0 when there is none). */
+export function leadingNumberLength(text: string): number {
+  const match = LEADING_NUMBER.exec(text)
+  return match ? match[0].length : 0
+}
 
 /** Removes a leading IEEE number label from heading text, if present. */
 export function stripIeeeNumber(text: string): string {
@@ -157,8 +164,9 @@ export function stripIeeeNumber(text: string): string {
  * stripped of any leading number first, so `I. References` is still detected.
  */
 export function isUnnumberedIeeeHeading(text: string): boolean {
-  const bare = stripIeeeNumber(text).toLowerCase()
-  return UNNUMBERED_HEADINGS.includes(bare)
+  const bare = stripIeeeNumber(text).toLowerCase().replace(/[:.\s]+$/, '')
+  // "Appendix A" style headings carry their own letter and are never numbered I., II.
+  return UNNUMBERED_HEADINGS.includes(bare) || /^appendix\b/.test(bare)
 }
 
 /** A heading paired with the text it currently shows. */

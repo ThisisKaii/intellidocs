@@ -23,6 +23,8 @@ interface TypeProfile {
   label: string
   presetKey: string
   markers: string[]
+  /** Markers that on their own point to this type; each counts double. */
+  strongMarkers?: string[]
 }
 
 /**
@@ -46,6 +48,7 @@ const PROFILES: TypeProfile[] = [
     label: 'IEEE Manuscript',
     presetKey: 'ieee',
     markers: ['index terms', 'ieee', 'transactions on'],
+    strongMarkers: ['abstract—', 'index terms—'],
   },
   {
     type: 'apa_manuscript',
@@ -55,15 +58,37 @@ const PROFILES: TypeProfile[] = [
   },
 ]
 
-/** Lowercase and flatten the opening of the text so markers match reliably. */
+/** A line that is just the References heading (optionally numbered), which ends the front matter. */
+const REFERENCES_HEADING = /^ *(?:[ivx]+\. *)?references *$/m
+
+/**
+ * Lowercase and flatten the opening of the text so markers match reliably.
+ * The sample stops at the References heading: citations such as "IEEE Trans."
+ * there say nothing about the manuscript's own style. Em/en-dash run-ins are
+ * normalized to an em dash with no surrounding space.
+ */
 function normalizeSample(text: string): string {
-  return text.slice(0, STRUCTURE_SAMPLE_CHARS).toLowerCase().replace(/\s+/g, ' ')
+  const opening = text.slice(0, STRUCTURE_SAMPLE_CHARS).toLowerCase()
+  const cut = opening.search(REFERENCES_HEADING)
+  return (cut > 0 ? opening.slice(0, cut) : opening)
+    .replace(/\s+/g, ' ')
+    .replace(/\s*[—–]\s*/g, '—')
+}
+
+/**
+ * True when a marker is present. A plain "abstract" does not count when it is
+ * the IEEE "Abstract—" run-in, and "keywords:" is only a hint of APA, so it
+ * never counts on its own (see inferDocumentStructure).
+ */
+function hasMarker(sample: string, marker: string): boolean {
+  if (marker === 'abstract') return /abstract(?!—)/.test(sample)
+  return sample.includes(marker)
 }
 
 /**
  * Infer the academic archetype of an unformatted document from the markers in
- * its opening 3,000 characters. The profile with the most distinct markers
- * wins; ties favour the thesis profile. Returns type 'unknown' with no preset
+ * its opening 3,000 characters (before any References heading). The profile
+ * with the highest marker score (strong markers count double) wins; ties favour the thesis profile. Returns type 'unknown' with no preset
  * key when nothing matches, so callers can safely skip the prompt.
  */
 export function inferDocumentStructure(text: string): InferredDocumentStructure {
@@ -71,12 +96,20 @@ export function inferDocumentStructure(text: string): InferredDocumentStructure 
 
   let best: TypeProfile | null = null
   let bestMarkers: string[] = []
+  let bestScore = 0
 
   for (const profile of PROFILES) {
-    const matched = profile.markers.filter((marker) => sample.includes(marker))
-    if (matched.length > bestMarkers.length) {
+    let matched = profile.markers.filter((marker) => hasMarker(sample, marker))
+    // Keywords: appears in IEEE, ACM and thesis papers too, so it only supports APA.
+    if (profile.type === 'apa_manuscript' && matched.every((marker) => marker === 'keywords:')) {
+      matched = []
+    }
+    const strong = (profile.strongMarkers ?? []).filter((marker) => sample.includes(marker))
+    const score = matched.length + strong.length * 2
+    if (score > bestScore) {
       best = profile
-      bestMarkers = matched
+      bestScore = score
+      bestMarkers = [...matched, ...strong.filter((marker) => !matched.includes(marker))]
     }
   }
 

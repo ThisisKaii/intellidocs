@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useEditor, type Editor } from '@tiptap/react'
 import { PaginationPlus } from 'tiptap-pagination-plus'
+import { ColumnsDraft } from './ColumnsDraft'
 import {
   editorExtensions,
   TiptapCanvas,
@@ -225,6 +226,7 @@ export function PagedEditor({
   const editor = useEditor({
     extensions: [
       ...editorExtensions,
+      ColumnsDraft,
       PaginationPlus.configure({
         enabled: true,
         pageWidth: page.width,
@@ -649,6 +651,19 @@ export function PagedEditor({
             margin-left: var(--rm-margin-left) !important;
             margin-right: var(--rm-margin-right) !important;
             text-align: center;
+          }
+          /* Two-column draft (IEEE): pagination is off, so the body flows in two
+             columns on one long page-width sheet; front matter spans both. */
+          .ProseMirror.ieee-columns-draft {
+            columns: 2;
+            column-gap: 0.25in;
+            padding: ${topPx}px ${rightPx}px ${bottomPx}px ${leftPx}px !important;
+            width: ${page.width}px;
+            box-sizing: border-box;
+            text-align: justify;
+          }
+          .ProseMirror.ieee-columns-draft .ieee-front {
+            column-span: all;
           }
           ${romanStyle}
           ${spreadPreview ? spreadStyle : ''}

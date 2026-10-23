@@ -20,6 +20,7 @@ import type { NodeViewRendererProps } from '@tiptap/core'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import Highlight from '@tiptap/extension-highlight'
+import { IeeePrintPreview } from './IeeePrintPreview'
 import { GrammarUnderlineExtension } from './GrammarUnderlineExtension'
 import { SuggestionDecorationsExtension } from './SuggestionDecorationsExtension'
 import { BlueprintGuideExtension } from './BlueprintGuideExtension'
@@ -100,6 +101,7 @@ import { api } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { IndentExtension } from './IndentExtension'
 import { exportThesisWord, exportThesisPdf } from '@/lib/thesisExport'
+import { exportIeeeDocx } from '@/lib/ieeeExport'
 import {
   snapshotTableContext,
   snapshotTableShape,
@@ -1451,6 +1453,21 @@ export function TiptapToolbar({
   const [spaceBefore, setSpaceBefore] = useState(0)
   const [spaceAfter, setSpaceAfter] = useState(0)
   const [openExport, setOpenExport] = useState(false)
+  const [ieeePreviewHtml, setIeeePreviewHtml] = useState<string | null>(null)
+  const [columnsDraft, setColumnsDraft] = useState(false)
+
+  /** Flips the IEEE two-column draft view: pagination off + columns on, or back. */
+  const toggleColumnsDraft = (): void => {
+    if (!editor) return
+    const next = !columnsDraft
+    if (next) {
+      editor.commands.disablePagination()
+    } else {
+      editor.commands.enablePagination()
+    }
+    editor.commands.setColumnsDraft(next)
+    setColumnsDraft(next)
+  }
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -2240,6 +2257,28 @@ export function TiptapToolbar({
               }
             }}
           />
+        )}
+        {basePresetKey(activePreset) === 'ieee' && (
+          <>
+            <ToolButton
+              icon={Printer}
+              title="Exact IEEE print preview (two columns, PDF)"
+              onClick={() => setIeeePreviewHtml(editor?.getHTML() ?? '')}
+            />
+            <ToolButton
+              icon={Columns}
+              title={
+                columnsDraft
+                  ? 'Back to paged view'
+                  : 'Two-column draft (one long sheet, pagination off)'
+              }
+              active={columnsDraft}
+              onClick={() => toggleColumnsDraft()}
+            />
+          </>
+        )}
+        {ieeePreviewHtml !== null && (
+          <IeeePrintPreview html={ieeePreviewHtml} onClose={() => setIeeePreviewHtml(null)} />
         )}
         {basePresetKey(activePreset) === 'ieee' && onSpreadPreviewChange && (
           <ToolButton
@@ -3388,17 +3427,31 @@ export function TiptapToolbar({
                 </span>
               </MenuItem>
 
-              <MenuItem
-                onClick={() => {
-                  setOpenExport(false)
-                  if (editor) exportThesisWord(editor.getHTML(), documentTitle)
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <GraduationCap style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-                  <span>Thesis Word (1.5&Prime; binding)</span>
-                </span>
-              </MenuItem>
+              {basePresetKey(activePreset) === 'ieee' ? (
+                <MenuItem
+                  onClick={() => {
+                    setOpenExport(false)
+                    if (editor) void exportIeeeDocx(editor.getHTML(), documentTitle)
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileText style={{ width: '14px', height: '14px', opacity: 0.7 }} />
+                    <span>IEEE paper (Word)</span>
+                  </span>
+                </MenuItem>
+              ) : (
+                <MenuItem
+                  onClick={() => {
+                    setOpenExport(false)
+                    if (editor) exportThesisWord(editor.getHTML(), documentTitle)
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <GraduationCap style={{ width: '14px', height: '14px', opacity: 0.7 }} />
+                    <span>Thesis Word (1.5&Prime; binding)</span>
+                  </span>
+                </MenuItem>
+              )}
 
               <MenuItem
                 onClick={() => {
