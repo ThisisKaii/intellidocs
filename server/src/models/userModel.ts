@@ -38,8 +38,9 @@ export async function updateOwnProfile(
 }
 
 /**
- * Sum the byte size of a user's active (non-trashed) documents and resolve
- * the account quota from their role. Returns null if the profile is missing.
+ * Read the stored size of a user's active (non-trashed) documents from the
+ * `user_storage_bytes` database function and resolve the account quota from
+ * their role. Returns null if the profile is missing.
  * If the size query fails (e.g. a very large document exceeds Supabase's
  * statement timeout), the quota is still returned with usedBytes = 0 so the
  * sidebar card never turns a data miss into a 500.
@@ -55,20 +56,12 @@ export async function getUserStorageSummary(userId: string): Promise<StorageSumm
 
   let usedBytes = 0
   try {
-    const { data: docs, error } = await supabase
-      .from('documents')
-      .select('content')
-      .eq('user_id', userId)
-      .eq('is_deleted', false)
-
+    // Summed inside the database (migration 027): never download document content for this.
+    const { data, error } = await supabase.rpc('user_storage_bytes', { p_user_id: userId })
     if (error) throw new Error(`Failed to load user storage: ${error.message}`)
-
-    usedBytes = (docs ?? []).reduce(
-      (total, doc) => total + Buffer.byteLength(doc.content ?? '', 'utf8'),
-      0,
-    )
+    usedBytes = Number(data ?? 0)
   } catch (e) {
-    console.error('Storage summary size query failed (degrading to 0):', e)
+    console.error('Storage summary size query failed (degrading to 0; is migration 027 applied?):', e)
   }
 
   return { usedBytes, quotaBytes: STORAGE_QUOTA_BYTES[role], role }

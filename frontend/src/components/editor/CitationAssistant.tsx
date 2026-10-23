@@ -67,6 +67,8 @@ export interface CitationReference {
   institution?: string
   reportNumber?: string
   customFields?: Record<string, string>
+  /** IEEE order: 1 for the first source cited in the text, 2 for the next, and so on. */
+  cited?: number
 }
 
 const TYPE_LABELS: Record<CitationReference['type'], string> = {
@@ -133,14 +135,14 @@ function formatAuthorName(name: string, style: CitationStyle): string {
 function formatInTextCitation(
   ref: CitationReference,
   style: CitationStyle,
-  options?: { pageNumber?: string; prefix?: string; suffix?: string }
+  options?: { pageNumber?: string; prefix?: string; suffix?: string; ordinal?: number }
 ): string {
   const page = options?.pageNumber ? `:${options.pageNumber}` : ''
   const prefix = options?.prefix || ''
   const suffix = options?.suffix || ''
 
   if (style === 'ieee') {
-    return `${prefix}[${ref.id}]${suffix}${page}`
+    return `${prefix}[${options?.ordinal ?? ref.cited ?? '?'}]${suffix}${page}`
   }
   const firstAuthor = ref.authors[0]?.split(' ').pop() || 'Anonymous'
   return `${prefix}(${firstAuthor}, ${ref.year}${page})${suffix}`
@@ -191,6 +193,13 @@ function sortReferences(references: CitationReference[]): CitationReference[] {
   })
 }
 
+/** References in bibliography order: IEEE lists cited sources by first citation, APA is alphabetical. */
+function orderForBibliography(references: CitationReference[], style: CitationStyle): CitationReference[] {
+  if (style !== 'ieee') return sortReferences(references)
+  const cited = references.filter((r) => r.cited != null).sort((a, b) => (a.cited ?? 0) - (b.cited ?? 0))
+  return [...cited, ...sortReferences(references.filter((r) => r.cited == null))]
+}
+
 /** Group references by type for organized bibliography. */
 function groupReferencesByType(references: CitationReference[]): Record<string, CitationReference[]> {
   const groups: Record<string, CitationReference[]> = {}
@@ -215,6 +224,8 @@ interface CitationAssistantProps {
   onReferencesChange?: (refs: CitationReference[]) => void
   /** Insert mode callback - called when user wants to insert a citation at cursor. */
   onInsertCitation?: (citationText: string) => void
+  /** Put the formatted bibliography into the document as a References block. */
+  onInsertBibliography?: (entriesHtml: string[]) => void
 }
 
 export function CitationAssistant({
@@ -224,6 +235,7 @@ export function CitationAssistant({
   references = [],
   onReferencesChange,
   onInsertCitation,
+  onInsertBibliography,
 }: CitationAssistantProps): ReactNode {
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -244,6 +256,7 @@ export function CitationAssistant({
   )
 
   const sortedRefs = sortReferences(filteredRefs)
+  const bibliographyRefs = orderForBibliography(references, citationStyle)
   const groupedRefs = groupReferencesByType(sortedRefs)
 
   const handleAddReference = () => {
@@ -270,11 +283,16 @@ export function CitationAssistant({
   }
 
   const handleInsertCitation = (ref: CitationReference) => {
-    const citationText = formatInTextCitation(ref, citationStyle)
-    onInsertCitation?.(citationText)
-    if (editor) {
-      editor.chain().focus().insertContent(citationText).run()
+    // The first time a source is cited it takes the next IEEE number.
+    let ordinal = ref.cited
+    if (ordinal == null) {
+      ordinal = references.reduce((max, r) => Math.max(max, r.cited ?? 0), 0) + 1
+      onReferencesChange?.(references.map((r) => (r.id === ref.id ? { ...r, cited: ordinal } : r)))
     }
+    const citationText = formatInTextCitation(ref, citationStyle, { ordinal })
+    // The parent inserts the text at the cursor; fall back to the editor only when no handler is given.
+    if (onInsertCitation) onInsertCitation(citationText)
+    else if (editor) editor.chain().focus().insertContent(citationText).run()
   }
 
   const handleAuthorChange = (index: number, value: string) => {
@@ -477,20 +495,31 @@ export function CitationAssistant({
       {activeTab === 'bibliography' && (
         <div style={contentStyle}>
           <div style={bibliographyHeaderStyle}>
-            <h3 style={manageTitleStyle}>Generated Bibliography</h3>
-            <button
-              type="button"
-              onClick={() => {
-                const text = sortedRefs.map((ref, i) => formatBibliographyEntry(ref, citationStyle, i + 1)).join('\n\n')
-                navigator.clipboard.writeText(text)
-              }}
-              style={addButtonStyle}
-            >
-              <Copy style={{ width: '14px', height: '14px', marginRight: '0.375rem' }} />
-              Copy All
-            </button>
+            <h3 style={manageTitleStyle}>Bibliography</h3>
+            <div style={{ display: 'flex', gap: '0.375rem' }}>
+              <button
+                type="button"
+                disabled={bibliographyRefs.length === 0}
+                onClick={() => onInsertBibliography?.(bibliographyRefs.map((ref, i) => formatBibliographyEntry(ref, citationStyle, i + 1)))}
+                style={addButtonStyle}
+              >
+                Insert in document
+              </button>
+              <button
+                type="button"
+                disabled={bibliographyRefs.length === 0}
+                onClick={() => {
+                  const text = bibliographyRefs.map((ref, i) => formatBibliographyEntry(ref, citationStyle, i + 1).replace(/<[^>]+>/g, '')).join(String.fromCharCode(10, 10))
+                  navigator.clipboard.writeText(text)
+                }}
+                style={addButtonStyle}
+              >
+                <Copy style={{ width: '14px', height: '14px', marginRight: '0.375rem' }} />
+                Copy
+              </button>
+            </div>
           </div>
-          {sortedRefs.length === 0 ? (
+          {bibliographyRefs.length === 0 ? (
             <div style={emptyStyle}>
               <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>
                 Add references in the Manage tab to generate a bibliography.
@@ -498,7 +527,7 @@ export function CitationAssistant({
             </div>
           ) : (
             <ol style={bibliographyListStyle}>
-              {sortedRefs.map((ref, i) => (
+              {bibliographyRefs.map((ref, i) => (
                 <li key={ref.id} style={bibliographyItemStyle} dangerouslySetInnerHTML={{ __html: formatBibliographyEntry(ref, citationStyle, i + 1) }} />
               ))}
             </ol>

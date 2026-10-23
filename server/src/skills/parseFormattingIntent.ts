@@ -29,10 +29,17 @@ export interface FormattingIntentResult {
   /** Chapter or section reference such as "chapter 1" or "introduction". */
   target: string | null
   /**
-   * Which blocks a bulk request targets: all headings, all paragraphs, or the
-   * whole document. Defaults to 'all' when no specific category is named.
+   * How the target is meant: 'literal' (a quoted phrase: just those words),
+   * 'section' (a named section or chapter: the heading and everything under it),
+   * or 'title' (the document title).
    */
-  targetCategory: 'headings' | 'paragraphs' | 'all'
+  targetMode: 'literal' | 'section' | 'title' | null
+  /**
+   * Which blocks a bulk request targets: all headings, all paragraphs, every
+   * chapter heading, or the whole document. Defaults to 'all' when no specific
+   * category is named.
+   */
+  targetCategory: 'headings' | 'paragraphs' | 'chapters' | 'all'
 }
 
 /** Normalize a user message before intent matching. */
@@ -74,7 +81,11 @@ const BULK_SCOPE_PHRASES = [
  * quantified forms ("all headings", "every paragraph") count; singular
  * references ("this heading") do not — those keep selection scope.
  */
-function detectTargetCategory(message: string): 'headings' | 'paragraphs' | 'all' {
+function detectTargetCategory(message: string): 'headings' | 'paragraphs' | 'chapters' | 'all' {
+  // "all the chapter headings" names chapters only, not every heading level.
+  if (/\bchapter\s+(?:headings?|titles?|headers?)\b|\b(?:all|every|each)\s+(?:the\s+)?chapters?\b/.test(message)) {
+    return 'chapters'
+  }
   const headingsPattern =
     /\b(?:sub-?headings|headings|section (?:headings|titles))\b|\b(?:all|every|each)\s+(?:sub-?heading|section heading|title)\b|\b(?:all|every|each)\s+h[123]\b/
   if (headingsPattern.test(message)) return 'headings'
@@ -278,6 +289,14 @@ const KNOWN_SECTION_NAMES = [
   'acknowledgement',
   'acknowledgments',
   'dedication',
+  'certification',
+  'glossary',
+  'bibliography',
+  'appendices',
+  'table of contents',
+  'list of tables',
+  'list of figures',
+  'definition of terms',
 ] as const
 
 /** Match a known section name anywhere in the message. */
@@ -288,19 +307,26 @@ function isKnownSection(candidate: string): boolean {
   return KNOWN_SECTION_NAMES.some((name) => name === candidate.toLowerCase())
 }
 
+/** A detected target and how it should be applied. */
+interface DetectedTarget {
+  target: string
+  mode: 'literal' | 'section' | 'title'
+}
+
 /**
- * Detect an explicit target — a quoted phrase first (e.g. 'approval sheet'),
- * then a phrase-prefixed name, then chapter/section references, then the
- * standard academic section names.
+ * Detect an explicit target. A quoted phrase means exactly those words
+ * (literal); a chapter/section reference or standard section name means the
+ * whole section (heading plus everything under it); "the title" means the
+ * document title.
  */
-function detectTarget(message: string): string | null {
+function detectTarget(message: string): DetectedTarget | null {
   // 1. Quoted targets have highest priority. Boundary checks avoid treating
   // an apostrophe in a contraction ("don't") as an opening quote.
   const doubleQuoted = message.match(/"([^"]{2,80})"/)
-  if (doubleQuoted) return doubleQuoted[1].trim()
+  if (doubleQuoted) return { target: doubleQuoted[1].trim(), mode: 'literal' }
 
   const singleQuoted = message.match(/(?:^|[\s(\[{,;:])'([^']{2,80})'(?=$|[\s)\]}.,;:!?])/)
-  if (singleQuoted) return singleQuoted[1].trim()
+  if (singleQuoted) return { target: singleQuoted[1].trim(), mode: 'literal' }
 
   // 2. Phrase-prefixed targets: "text approval sheet", "heading abstract".
   const prefixMatch = message.match(
@@ -329,7 +355,7 @@ function detectTarget(message: string): string | null {
       !/^(?:chapter|section)\s+\d+$/i.test(candidate) &&
       (hasExplicitMarker || isKnownSection(candidate))
     ) {
-      return candidate
+      return { target: candidate, mode: isKnownSection(candidate) ? 'section' : 'literal' }
     }
   }
 
@@ -337,19 +363,26 @@ function detectTarget(message: string): string | null {
   const chapterMatch = message.match(/(?:entire\s+|whole\s+|full\s+)?chapter\s+([0-9]{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/)
   if (chapterMatch) {
     const number = NUMBER_WORDS[chapterMatch[1]] ?? chapterMatch[1]
-    return `chapter ${number}`
+    return { target: `chapter ${number}`, mode: 'section' }
   }
 
   // 4. Section references.
   const sectionMatch = message.match(/(?:entire\s+|whole\s+|full\s+)?section\s+([0-9]{1,2}|one|two|three|four|five)\b/)
   if (sectionMatch) {
     const number = NUMBER_WORDS[sectionMatch[1]] ?? sectionMatch[1]
-    return `section ${number}`
+    return { target: `section ${number}`, mode: 'section' }
   }
 
   // 5. Standard academic section names.
   const namedMatch = message.match(NAMED_SECTION_PATTERN)
-  return namedMatch ? namedMatch[1] : null
+  if (namedMatch) return { target: namedMatch[1], mode: 'section' }
+
+  // 6. The document title ("center the title", "make the title bold").
+  // "this title heading" is a normal selection request, so require "the/my" or "document title".
+  if (/\b(?:(?:the|my)\s+(?:document\s+|paper\s+|manuscript\s+)?|(?:document|paper|manuscript)\s+)title\b(?!\s+(?:page|heading))/.test(message)) {
+    return { target: 'title', mode: 'title' }
+  }
+  return null
 }
 
 /** Parse one or more formatting intents from a natural-language chatbot message. */
@@ -432,7 +465,8 @@ export function parseFormattingIntent(
     if (firstConfidence === 0) firstConfidence = ALIGNMENT_CONFIDENCE
   }
 
-  const target = detectTarget(normalized)
+  const detected = detectTarget(normalized)
+  const target = detected?.target ?? null
   const targetCategory = detectTargetCategory(normalized)
   // A named category ("all headings") is itself a document-wide request.
   const scope: 'selection' | 'all' =
@@ -452,6 +486,7 @@ export function parseFormattingIntent(
     fontSize: detectFontSize(normalized),
     normalize,
     target,
+    targetMode: detected?.mode ?? null,
     targetCategory,
   }
 }

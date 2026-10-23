@@ -4,6 +4,8 @@ import type { Editor } from '@tiptap/react'
 import { Check, Eye, EyeOff, GraduationCap, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { STYLE_ITEMS, type StyleItem } from './styleCommands'
 import { ACADEMIC_PRESETS, type AcademicPreset } from './academicPresets'
+import { useEditorPreferences } from '@/hooks/useEditorPreferences'
+import { setEditorPreferences } from '@/lib/editorPreferences'
 
 /** A user-created style alias stored in localStorage and bound to a built-in format. */
 interface CustomStyle extends StyleItem {
@@ -107,12 +109,8 @@ export default function EditorStylesPanel({
   const [customStyles, setCustomStyles] = useState<CustomStyle[]>(loadCustomStyles)
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>(loadCustomPresets)
   const [manageOpen, setManageOpen] = useState<boolean>(false)
-  const [showBlueprintGuides, setShowBlueprintGuides] = useState<boolean>(true)
-
-  // A document load swaps in a fresh editor; mirror its stored toggle state.
-  useEffect(() => {
-    if (editor) setShowBlueprintGuides(editor.storage.blueprintGuides.enabled)
-  }, [editor])
+  const prefs = useEditorPreferences()
+  const showBlueprintGuides = prefs.showStyleGuides
 
   // Custom entries lead the strip so the user's own styles/presets come first.
   const allStyles: StyleEntry[] = [...customStyles, ...STYLE_ITEMS]
@@ -150,10 +148,7 @@ export default function EditorStylesPanel({
 
   /** Toggle the dashed blueprint guide boxes on or off. */
   function toggleBlueprintGuides(): void {
-    if (!editor) return
-    const next = !showBlueprintGuides
-    setShowBlueprintGuides(next)
-    editor.commands.setBlueprintGuidesEnabled(next)
+    setEditorPreferences({ showStyleGuides: !showBlueprintGuides })
   }
 
   return (

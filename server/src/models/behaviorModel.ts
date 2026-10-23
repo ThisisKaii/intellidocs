@@ -27,6 +27,17 @@ export async function appendBehaviorEvent(
 
 const patternsKey = (userId: string): string => `behavior:formats:${userId}`
 
+/**
+ * Merge one mark flag (bold/italic/underline). A mark the user applied stays
+ * learned when a later event merely shows it absent (a size-only change must
+ * not erase bold); only the mark's own toggle action can switch it off.
+ */
+function mergeMarkFlag(existing: boolean | undefined, incoming: boolean | undefined, isOwnAction: boolean): boolean {
+  if (incoming === true) return true
+  if (incoming === false && isOwnAction) return false
+  return existing ?? incoming ?? false
+}
+
 /** Pure merge of a format-apply event into the user's text→format memory map. */
 export function mergeLearnedPattern(
   map: Record<string, LearnedFormatPattern>,
@@ -45,9 +56,9 @@ export function mergeLearnedPattern(
     // primary suggestion; later events enrich the combined attributes.
     format: existing?.format ?? payload.format ?? action,
     snippet: existing?.snippet ?? text.slice(0, 80),
-    bold: typeof payload.bold === 'boolean' ? payload.bold : (existing?.bold ?? false),
-    italic: typeof payload.italic === 'boolean' ? payload.italic : (existing?.italic ?? false),
-    underline: typeof payload.underline === 'boolean' ? payload.underline : (existing?.underline ?? false),
+    bold: mergeMarkFlag(existing?.bold, payload.bold, action === 'bold'),
+    italic: mergeMarkFlag(existing?.italic, payload.italic, action === 'italic'),
+    underline: mergeMarkFlag(existing?.underline, payload.underline, action === 'underline'),
     fontSize:
       typeof payload.fontSize === 'number'
         ? payload.fontSize

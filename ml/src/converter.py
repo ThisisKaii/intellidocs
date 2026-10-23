@@ -676,7 +676,7 @@ def _paragraph_list_info(
         fmt = levels.get(str(ilvl), levels.get("0", "bullet"))
 
     kind = "ul" if fmt == "bullet" else "ol"
-    return {"kind": kind, "level": ilvl}
+    return {"kind": kind, "level": ilvl, "num_id": num_id}
 
 
 def _paragraph_to_html(
@@ -981,6 +981,9 @@ def _body_to_html(
     stack: List[Dict[str, str]] = []
     open_li_depth: Optional[int] = None
     pending_page_break = False
+    # Items seen so far per (numId, level): a numbered list interrupted by other
+    # paragraphs reopens with <ol start="n"> so Word's numbering carries on.
+    item_counts: Dict[Tuple[str, int], int] = {}
 
     def close_list() -> None:
         nonlocal open_li_depth
@@ -1034,6 +1037,12 @@ def _body_to_html(
 
             kind = info["kind"]
             target_depth = info["level"] + 1
+            count_key = (info["num_id"], info["level"])
+            item_counts[count_key] = item_counts.get(count_key, 0) + 1
+            # A new item at this level restarts the deeper levels of the same list.
+            for deeper in [k for k in item_counts if k[0] == info["num_id"] and k[1] > info["level"]]:
+                del item_counts[deeper]
+            ordinal = item_counts[count_key]
 
             # Close lists deeper than the target depth.
             while len(stack) > target_depth:
@@ -1052,7 +1061,9 @@ def _body_to_html(
                 # Open nested list(s) (inside the current open <li>) or a fresh list.
                 while len(stack) < target_depth:
                     stack.append({"kind": kind})
-                    out.append(f"<{kind}>")
+                    opens_this_item = len(stack) == target_depth
+                    start_attr = f' start="{ordinal}"' if kind == "ol" and opens_this_item and ordinal > 1 else ""
+                    out.append(f"<{kind}{start_attr}>")
                 out.append("<li>")
                 open_li_depth = target_depth
 

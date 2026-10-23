@@ -3,6 +3,7 @@ import * as documentModel from '../models/documentModel'
 import { resolvePendingSharesByUser } from '../models/shareModel'
 import { CreateDocumentRequest, PageNumberFormat, UpdateDocumentRequest } from '../types/index'
 import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
+import { uploadImportImages } from '../skills/uploadImportImages'
 import { sanitizeImportedHtml } from '../skills/sanitizeImportedHtml'
 import path from 'path'
 
@@ -515,13 +516,20 @@ export async function importDocument(req: Request, res: Response): Promise<void>
       htmlContent = htmlBlocks.join('\n')
     }
 
+    // Embedded base64 images go to storage so the saved document stays small.
+    const [storedContent, storedHeader, storedFooter] = await Promise.all([
+      uploadImportImages(userId, htmlContent),
+      uploadImportImages(userId, headerContent),
+      uploadImportImages(userId, footerContent),
+    ])
+
     // Create the document with the converted content, page setup, and header/footer
     const document = await documentModel.createDocument(userId, {
       title,
       unique_title: true,
-      content: sanitizeImportedHtml(htmlContent),
-      header_content: headerContent,
-      footer_content: footerContent,
+      content: sanitizeImportedHtml(storedContent),
+      header_content: storedHeader,
+      footer_content: storedFooter,
       // Word's header/footer exists on the page; turn the editor's on whenever
       // the file had text or a PAGE field there (page numbers are re-created by
       // the editor, not stored as the frozen number Word last saved).

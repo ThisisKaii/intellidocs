@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { api, type BehaviorSummaryResponse, type DocumentRecord, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
+import { api, type DocumentRecord, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
 import {
   TiptapToolbar,
   type Editor,
@@ -17,19 +17,18 @@ import {
   type BehaviorEventPayload,
   createBehaviorEvent,
 } from '@/components/editor/behaviorListener'
-import GrammarPanel, { type GrammarIssue } from '@/components/editor/GrammarPanel'
+import type { GrammarIssue } from '@/components/editor/GrammarPanel'
 import type { Suggestion } from '@/components/editor/SuggestionPanel'
 import GrammarOverlay from '@/components/editor/GrammarOverlay'
 import InlineSuggestionChip from '@/components/editor/InlineSuggestionChip'
 import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import EditorSidePanel, { type SidePanelTab } from '@/components/editor/EditorSidePanel'
-import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
+import { ACADEMIC_PRESETS, basePresetKey } from '@/components/editor/academicPresets'
 import { hasDriftedFromPreset } from '@/components/editor/documentBlueprints'
 import PresetForkPrompt from '@/components/PresetForkPrompt'
 import { applyStyleCommand } from '@/components/editor/styleCommands'
 import FormattingPanel from '@/components/editor/FormattingPanel'
-import McpDebugPanel from '@/components/editor/McpDebugPanel'
 import WordProgress from '@/components/editor/WordProgress'
 import DocumentZoomWidget, { clampZoom, ZOOM_STEP } from '@/components/editor/DocumentZoomWidget'
 import { PAGE_SIZES } from '@/components/editor/HeaderFooterPlugin'
@@ -37,16 +36,20 @@ import { useAuth } from '@/hooks/useAuth'
 import ShareModal from '@/components/ShareModal'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
 import { ArrowLeft, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose } from 'lucide-react'
+import { useGrammarCheck } from '@/hooks/useGrammarCheck'
 import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import DocumentTypePrompt from '@/components/editor/DocumentTypePrompt'
 import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
+import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
 import type { TOCEntry } from '@/components/editor/TableOfContents'
 import { OutlineNavigator } from '@/components/editor/OutlineNavigator'
-import { CitationAssistant } from '@/components/editor/CitationAssistant'
+import { CitationAssistant, type CitationReference } from '@/components/editor/CitationAssistant'
+import DocumentPartsPanel from '@/components/editor/DocumentPartsPanel'
+import { buildReferenceNodes, insertOrUpdateGenerated } from '@/components/editor/DocumentParts'
 import { OfflineIndicator } from '@/components/editor/OfflineIndicator'
 import { useOfflineSync } from '@/hooks/useOfflineBuffer'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
-import { confidenceThreshold, highlightColorCss } from '@/lib/editorPreferences'
+import { confidenceThreshold, highlightColorCss, setEditorPreferences } from '@/lib/editorPreferences'
 import { readFormatSnapshot } from '@/lib/formatSnapshot'
 import {
   cacheDocumentRead,
@@ -103,6 +106,63 @@ interface RemotePresence {
 const AUTO_FORMAT_DELAY = 1200
 const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.22
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
+
+/** Where a chip suggestion came from, for the popup badge. */
+function describeSuggestionSource(prompt: { suggestionSource?: string; formatGroup?: string }): 'learned' | 'preset' | 'ml' | 'scanner' {
+  if (prompt.suggestionSource === 'learned') return 'learned'
+  if (prompt.formatGroup?.startsWith('blueprint-')) return 'preset'
+  if (prompt.suggestionSource === 'ml') return 'ml'
+  return 'scanner'
+}
+
+/** One plain sentence explaining why a chip suggestion is offered. */
+function describeSuggestionReason(prompt: { suggestionSource?: string; formatGroup?: string; groupMembers?: unknown[] }): string {
+  if (prompt.suggestionSource === 'learned') return 'You formatted matching text this way before, so IntelliDocs is offering the same look here.'
+  if (prompt.formatGroup?.startsWith('blueprint-')) return 'Your document type has a standard style for this part, and a few blocks do not match it yet.'
+  if (prompt.formatGroup) return 'Blocks that play the same role in your document are styled differently.'
+  if (prompt.suggestionSource === 'ml') return 'Predicted from how similar documents are laid out.'
+  return 'This line looks like it should be formatted this way, based on its wording and position.'
+}
+
+/** CSS that draws a suggestion's look on the page, or null when it cannot be drawn as a style. */
+function suggestionPreviewStyle(prompt: {
+  format: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  fontSize?: number | null
+  textAlign?: string
+}): { inlineStyle: string; blockStyle: string } | null {
+  const inline: string[] = []
+  const block: string[] = []
+  if (prompt.bold) inline.push('font-weight:700')
+  if (prompt.italic) inline.push('font-style:italic')
+  if (prompt.underline) inline.push('text-decoration:underline')
+  if (typeof prompt.fontSize === 'number' && prompt.fontSize > 0) inline.push(`font-size:${prompt.fontSize}pt`)
+  if (prompt.textAlign) block.push(`text-align:${prompt.textAlign}`)
+  switch (prompt.format) {
+    case 'bold': inline.push('font-weight:700'); break
+    case 'italic': inline.push('font-style:italic'); break
+    case 'underline': inline.push('text-decoration:underline'); break
+    case 'heading1': case 'h1': inline.push('font-size:20pt', 'font-weight:700'); break
+    case 'heading2': case 'h2': inline.push('font-size:16pt', 'font-weight:700'); break
+    case 'heading3': case 'h3': inline.push('font-size:14pt', 'font-weight:700'); break
+    case 'title': inline.push('font-size:22pt', 'font-weight:700'); block.push('text-align:center'); break
+    default: break
+  }
+  if (inline.length === 0 && block.length === 0) return null
+  return { inlineStyle: inline.join(';'), blockStyle: block.join(';') }
+}
+
+/** Show the model's real confidence as a whole percent (never rescaled upward). */
+function confidenceToPercent(confidence: number): number {
+  return Math.min(99, Math.max(1, Math.round(confidence * 100)))
+}
+
+/** Key that remembers a rejected suggestion for one piece of text, so it is not re-offered. */
+function suppressionKey(format: string, text: string): string {
+  return `${format}::${text.trim().toLowerCase()}`
+}
 
 /** Char delta in one editor update treated as a bulk insertion (paste). */
 const COMPOSITION_PASTE_MIN_CHARS = 50
@@ -184,8 +244,6 @@ export default function Document(): JSX.Element {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved')
   const [wordCount, setWordCount] = useState<number>(0)
   const [formatHistory, setFormatHistory] = useState<string[]>([])
-  const [behaviorSummary, setBehaviorSummary] = useState<BehaviorSummaryResponse | null>(null)
-  const [behaviorSummaryLoading, setBehaviorSummaryLoading] = useState<boolean>(false)
 
   /* ── Page layout state ─────────────────────────────────────────────── */
   const [pageSize, setPageSize] = useState<PageSizeKey>('short')
@@ -197,11 +255,20 @@ export default function Document(): JSX.Element {
     orientation: 'portrait' as PageOrientation,
   })
 
-  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(true)
+  /** Phones and small tablets: panels start closed and the assistant is a bottom sheet. */
+  const [isNarrow, setIsNarrow] = useState<boolean>(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches)
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)')
+    const onChange = (event: MediaQueryListEvent): void => setIsNarrow(event.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
+  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches)
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>('assistant')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
+  const [previewMode, setPreviewMode] = useState<'before' | 'after'>('after')
   // Learned-format match awaiting a click: highlight only, popup opens on click.
   const [pendingLearnedFormat, setPendingLearnedFormat] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
@@ -223,36 +290,47 @@ export default function Document(): JSX.Element {
   /** Latest zoom value for listeners bound with empty dependency lists. */
   const zoomLevelRef = useRef<number>(1)
   zoomLevelRef.current = zoomLevel
-  /** Master switch for in-canvas suggestion overlays and chips. */
-  const [showFormatOverlays, setShowFormatOverlays] = useState<boolean>(true)
   /** Non-printing alignment gridlines over each page's text area. */
   const [showGridlines, setShowGridlines] = useState<boolean>(false)
 const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
-  const [references, setReferences] = useState<Array<{
-    id: string
-    type: 'journal' | 'book' | 'conference' | 'website' | 'thesis' | 'report' | 'other'
-    authors: string[]
-    title: string
-    year: number
-    venue?: string
-    volume?: string
-    issue?: string
-    pages?: string
-    doi?: string
-    url?: string
-    publisher?: string
-    edition?: string
-    isbn?: string
-    institution?: string
-    reportNumber?: string
-    customFields?: Record<string, string>
-  }>>([])
+  const [references, setReferences] = useState<CitationReference[]>([])
+  // References live in this browser, keyed by document, until they get a server column.
+  const referencesKey = id ? `intellidocs.references.${id}` : null
+  useEffect(() => {
+    if (!referencesKey) return
+    try {
+      const raw = localStorage.getItem(referencesKey)
+      if (!raw) return
+      const saved = JSON.parse(raw) as { style?: 'ieee' | 'apa'; references?: CitationReference[] }
+      if (Array.isArray(saved.references)) setReferences(saved.references)
+      if (saved.style === 'ieee' || saved.style === 'apa') setCitationStyle(saved.style)
+    } catch {
+      /* unreadable or blocked storage: start with no saved references */
+    }
+  }, [referencesKey])
+  useEffect(() => {
+    if (!referencesKey) return
+    try {
+      localStorage.setItem(referencesKey, JSON.stringify({ style: citationStyle, references }))
+    } catch {
+      /* storage full or blocked: references stay in memory only */
+    }
+  }, [referencesKey, citationStyle, references])
+
  
-  const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(true)
+  const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState<boolean>(false)
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
  
   const prefs = useEditorPreferences()
+  /** Master switch for in-canvas formatting suggestions: outlines, chips and the panel list. */
+  const showFormatOverlays = prefs.formattingSuggestions
+  const formattingSuggestionsRef = useRef<boolean>(prefs.formattingSuggestions)
+  formattingSuggestionsRef.current = prefs.formattingSuggestions
+  // One preference drives every preset overlay: the guide boxes and the style borders.
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.commands.setBlueprintGuidesEnabled(prefs.showStyleGuides)
+  }, [editor, prefs.showStyleGuides])
  
   /** Memoized header/footer config to prevent re-render loops in PagedEditor */
   const headerFooterConfig = useMemo<HeaderFooterConfig>(() => ({
@@ -296,12 +374,25 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     activeSuggestion: scannerActive,
     acceptSuggestion: acceptScannerSuggestion,
     rejectSuggestion: rejectScannerSuggestion,
+    selectSuggestion: selectScannerSuggestion,
   } = useAutoFormatScanner({
     editor,
-    enabled: !!editor && !readOnly && !isHydrating,
+    enabled: !!editor && !readOnly && !isHydrating && prefs.formattingSuggestions,
     minConfidence: confidenceThreshold(prefs),
     presetKey: formattingPreset,
   })
+
+  // Grammar + spelling auto-check runs whatever side-panel tab is open, so the
+  // wavy underlines in the document never depend on the panel being visible.
+  const grammarCheck = useGrammarCheck({
+    text: content,
+    enabled: !!editor && !readOnly && prefs.grammarSuggestions,
+    onIssues: setGrammarIssues,
+  })
+  // Turning grammar checking off clears its underlines and list at once.
+  useEffect(() => {
+    if (!prefs.grammarSuggestions) setGrammarIssues([])
+  }, [prefs.grammarSuggestions])
 
   // ── Document structure inference ─────────────────────────────────────
   // An unformatted document with no preset bound gets one offer to adopt the
@@ -418,6 +509,14 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     applyZoom((available * 0.9) / pageWidthPx)
   }
 
+  // On a narrow screen, fit the page to the screen width once the canvas is up.
+  useEffect(() => {
+    if (!isNarrow || !editor) return
+    const timer = window.setTimeout(handleFitWidth, 700)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNarrow, editor, pageSize, orientation])
+
   // Initialize offline sync for this document
   useOfflineSync(id)
 
@@ -439,24 +538,28 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     }
   }
 
-  /** Smooth-scroll to a scanner suggestion's ProseMirror position. */
+  /** Scroll the zoomed canvas so an editor position sits near the top (works at any zoom). */
+  const scrollToDocPos = useCallback((pos: number, behavior: ScrollBehavior = 'smooth'): void => {
+    if (!editor || editor.isDestroyed) return
+    const container = editorCanvasRef.current
+    if (!container) return
+    requestAnimationFrame(() => {
+      if (editor.isDestroyed) return
+      const coords = editor.view.coordsAtPos(pos)
+      const containerRect = container.getBoundingClientRect()
+      const target = container.scrollTop + (coords.top - containerRect.top) / zoomLevelRef.current - 96
+      container.scrollTo({ top: Math.max(0, target), behavior })
+    })
+  }, [editor])
+
+  /** Select a scanner suggestion's block, outline it, and scroll it into view. */
   const jumpToScannerTarget = useCallback((suggestion: ScannerSuggestion): void => {
     if (!editor || editor.isDestroyed) return
-
-    // Focus editor and scroll to position
-    editor.chain().focus().setTextSelection(suggestion.from).run()
-
-    // Scroll the editor's viewport to bring the target into view
-    const editorView = editor.view
-    const coords = editorView.coordsAtPos(suggestion.from)
-    const editorContainer = editorView.dom.closest('.intellidocs-page-editor')?.parentElement
-    if (editorContainer) {
-      const containerRect = editorContainer.getBoundingClientRect()
-      const scrollTop = editorContainer.scrollTop
-      const targetY = coords.top - containerRect.top + scrollTop - 80
-      editorContainer.scrollTo({ top: targetY, behavior: 'smooth' })
-    }
-  }, [editor])
+    const pos = Math.min(suggestion.from + 1, editor.state.doc.content.size)
+    editor.chain().focus().setTextSelection(pos).run()
+    setSuggestionRange({ from: suggestion.from, to: suggestion.to })
+    scrollToDocPos(pos)
+  }, [editor, scrollToDocPos])
 
   /** Smooth-scroll the canvas so the given editor position sits near the top. */
   function scrollCanvasToPos(pos: number): void {
@@ -681,25 +784,6 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     setDocOwnerId(doc.user_id ?? null)
   }
 
-  async function loadBehaviorSummary(): Promise<void> {
-    if (!id) return
-
-    setBehaviorSummaryLoading(true)
-
-    try {
-      const summary = await api.behavior.summary(id)
-      setBehaviorSummary(summary)
-    } catch (error) {
-      console.error('Behavior summary load failed', error)
-    } finally {
-      setBehaviorSummaryLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void loadBehaviorSummary()
-  }, [id])
-
   useEffect(() => {
     latestTitleRef.current = title
   }, [title])
@@ -732,18 +816,18 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   function buildAiDocumentContext(html: string): string {
     const plainText = getPlainText(html)
     const words = plainText.match(/\b[\w']+\b/g) ?? []
-    const outline = Array.from(
-      html.matchAll(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi),
-      (match) => match[1].replace(/<[^>]*>/g, '').trim()
-    ).filter((heading) => heading.length > 0)
+    // Every section the document has (real headings plus bold structural lines
+    // such as APPROVAL SHEET or DEDICATION), so the assistant knows what exists
+    // even when the text excerpt below is cut short.
+    const outline = extractTOCFromHTML(html).map((entry) => entry.text)
 
-    const excerpt = plainText.slice(0, 4000)
+    const excerpt = plainText.slice(0, 2500)
     const outlineBlock =
       outline.length > 0
-        ? `\n\nDocument outline:\n- ${outline.slice(0, 20).join('\n- ')}`
+        ? `\n\nDocument outline:\n- ${outline.slice(0, 60).join('\n- ')}`
         : ''
     const truncatedNote =
-      plainText.length > 4000
+      plainText.length > 2500
         ? '\n\n[Content truncated. Ask the user to run: /mcp getDocumentContent documentId=YOUR_ID page=1]'
         : ''
     return `${excerpt}${outlineBlock}\n\nWord count: ${words.length}${truncatedNote}`
@@ -763,6 +847,9 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
       blockquote: 'Blockquote',
       unordered_list: 'Bullet List',
       ordered_list: 'Numbered List',
+      orderedList: 'Numbered List',
+      bulletList: 'Bullet List',
+      title: 'Title',
       paragraph: 'Paragraph',
     }
 
@@ -860,7 +947,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   /** Build a suggestion card for a learned cross-document format match. */
   function buildLearnedSuggestion(result: TierCheckResponse): Suggestion {
     const label = buildLearnedLabel(result)
-    const confidencePercent = Math.min(98, Math.max(80, Math.round((result.confidence ?? 0) * 100 * 2.8)))
+    const confidencePercent = confidenceToPercent(result.confidence ?? 0)
     return {
       format: result.format ?? 'paragraph',
       confidence: confidencePercent,
@@ -895,25 +982,46 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
       to = $pos.after()
     }
 
-    const chain = editor.chain().focus()
-    chain.setTextSelection({ from, to })
-    if (s.bold) chain.setBold()
-    if (s.italic) chain.setItalic()
-    if (s.underline) chain.setUnderline()
-    if (typeof s.fontSize === 'number' && s.fontSize > 0) {
-      chain.setFontSize(`${s.fontSize}pt`)
+    // A selection that straddles block boundaries makes the second mark command
+    // in a sequence (bold then size) silently drop, so marks go over the text
+    // inside the blocks, just like a manual selection would.
+    const doc = editor.state.doc
+    const textFrom = doc.resolve(from).depth === 0 ? from + 1 : from
+    const textTo = doc.resolve(to).depth === 0 ? to - 1 : to
+    const textRange = { from: textFrom, to: Math.max(textFrom, textTo) }
+    // One ProseMirror transaction adds every learned mark; font size merges into
+    // any existing text style so the font family survives.
+    const { schema } = editor.state
+    const tr = editor.state.tr
+    for (const [wanted, markName] of [[s.bold, 'bold'], [s.italic, 'italic'], [s.underline, 'underline']] as const) {
+      if (wanted && schema.marks[markName]) tr.addMark(textRange.from, textRange.to, schema.marks[markName].create())
     }
+    if (typeof s.fontSize === 'number' && s.fontSize > 0 && schema.marks.textStyle) {
+      const styleType = schema.marks.textStyle
+      editor.state.doc.nodesBetween(textRange.from, textRange.to, (node, pos) => {
+        if (!node.isText) return true
+        const existing = node.marks.find((mark) => mark.type === styleType)
+        tr.addMark(
+          Math.max(pos, textRange.from),
+          Math.min(pos + node.nodeSize, textRange.to),
+          styleType.create({ ...(existing?.attrs ?? {}), fontSize: `${s.fontSize}pt` })
+        )
+        return false
+      })
+    }
+    if (tr.docChanged) editor.view.dispatch(tr)
     // Block type first, then alignment LAST — converting a paragraph to a
     // heading resets the paragraph's text-align attribute, so alignment
     // must be applied after the node type change to survive.
-    if (s.format === 'blockquote') chain.setBlockquote()
-    else if (s.format === 'heading1' || s.format === 'h1') chain.setHeading({ level: 1 })
-    else if (s.format === 'heading2' || s.format === 'h2') chain.setHeading({ level: 2 })
-    else if (s.format === 'heading3' || s.format === 'h3') chain.setHeading({ level: 3 })
+    const block = editor.chain().focus().setTextSelection({ from, to })
+    if (s.format === 'blockquote') block.setBlockquote()
+    else if (s.format === 'heading1' || s.format === 'h1') block.setHeading({ level: 1 })
+    else if (s.format === 'heading2' || s.format === 'h2') block.setHeading({ level: 2 })
+    else if (s.format === 'heading3' || s.format === 'h3') block.setHeading({ level: 3 })
     if (s.textAlign && ['left', 'center', 'right', 'justify'].includes(s.textAlign)) {
-      chain.setTextAlign(s.textAlign)
+      block.setTextAlign(s.textAlign)
     }
-    chain.run()
+    block.run()
 
     return { from, to }
   }
@@ -1048,6 +1156,22 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     editor.commands.setSuggestionHighlight(active ? { ...active } : null)
   }, [editor, suggestionRange, scannerActive, pendingLearnedFormat, readOnly, showFormatOverlays])
 
+  // While the suggestion popup is open, draw the suggested look on the page as a
+  // preview (decorations only, so the document and its undo history stay untouched).
+  const previewStyle = formatPrompt ? suggestionPreviewStyle(formatPrompt) : null
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !editor.commands.setSuggestionPreview) return
+    const show = showFormatOverlays && !readOnly && formatPrompt && suggestionRange && previewStyle && previewMode === 'after'
+    editor.commands.setSuggestionPreview(
+      show && suggestionRange && previewStyle ? { ...suggestionRange, ...previewStyle } : null
+    )
+  }, [editor, formatPrompt, suggestionRange, previewMode, previewStyle?.inlineStyle, previewStyle?.blockStyle, showFormatOverlays, readOnly])
+
+  // Each newly opened popup starts on "After".
+  useEffect(() => {
+    setPreviewMode('after')
+  }, [formatPrompt?.format, formatPrompt?.label])
+
   // Turning the overlay master switch off clears any live suggestion state so
   // no chip, outline, or pending highlight lingers.
   useEffect(() => {
@@ -1057,7 +1181,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     setPendingLearnedFormat(null)
   }, [showFormatOverlays])
 
-  // Keyboard: Enter accepts, Esc rejects, Alt+ArrowUp/Down cycles "change to".
+  // Keyboard: Ctrl/Cmd+Enter accepts, Esc rejects, Alt+ArrowUp/Down cycles "change to".
   useEffect(() => {
     function onSuggestionKey(event: KeyboardEvent): void {
       if (!formatPrompt || !suggestionRange) return
@@ -1068,7 +1192,8 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
         handlePromptReject()
         return
       }
-      if (event.key === 'Enter') {
+      // Plain Enter must keep making new lines; accepting needs Ctrl/Cmd.
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
         event.preventDefault()
         handlePromptAccept(formatPrompt)
         return
@@ -1147,6 +1272,25 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
         return
       }
 
+      // With formatting suggestions turned off, learned and ML tiers stay silent.
+      if (!formattingSuggestionsRef.current && (result.tier === 'learned' || result.tier === 'ml')) {
+        setSuggestions([])
+        setShowSuggestions(false)
+        setPendingLearnedFormat(null)
+        return
+      }
+
+      // A suggestion the user already rejected for this exact text stays quiet.
+      if (result.format && (result.tier === 'learned' || result.tier === 'ml')) {
+        const quietUntil = suppressedAutoFormatsRef.current[suppressionKey(result.format, activeText)]
+        if (quietUntil && quietUntil > Date.now()) {
+          setSuggestions([])
+          setShowSuggestions(false)
+          setPendingLearnedFormat(null)
+          return
+        }
+      }
+
       // Tier 1/2 — preset rule or custom binding: apply immediately.
       if (result.tier === 'binding' || result.tier === 'preset') {
         if (result.format) {
@@ -1197,7 +1341,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
           // Highlight the matched block first; the chip pops only on click.
           setPendingLearnedFormat({
             format: result.format,
-            confidence: Math.min(98, Math.max(80, Math.round(result.confidence * 100 * 2.8))),
+            confidence: confidenceToPercent(result.confidence),
             label: buildLearnedLabel(result),
             bold: result.bold,
             italic: result.italic,
@@ -1258,7 +1402,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
 
       const newSuggestions: Suggestion[] = []
       if (predictedFormat !== 'paragraph' && predictedFormat !== 'body_text') {
-        const confidencePercent = Math.min(98, Math.max(80, Math.round(confidence * 100 * 2.8)))
+        const confidencePercent = confidenceToPercent(confidence)
         newSuggestions.push({
           format: predictedFormat,
           confidence: confidencePercent,
@@ -1296,10 +1440,6 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   }
 
 
-
-  function countBehaviorBucket(bucket: Record<string, number> | undefined): number {
-    return Object.values(bucket ?? {}).reduce((total, count) => total + count, 0)
-  }
 
   function scheduleSave(): void {
     if (readOnly || !documentLoadedRef.current) return
@@ -1648,7 +1788,6 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
         .catch((error) => console.error('Format prompt acceptance feedback failed', error))
     }
 
-    void loadBehaviorSummary()
 
     setFormatPrompt(null)
     setPendingLearnedFormat(null)
@@ -1662,7 +1801,11 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     const confidence =
       typeof format === 'string' ? formatPrompt?.confidence : format.confidence
 
-    if (typeof format === 'object' && format.suggestionSource === 'learned') {
+    const carriesStyle =
+      typeof format === 'object' &&
+      !format.formatGroup &&
+      (format.bold || format.italic || format.underline || format.fontSize || format.textAlign)
+    if (typeof format === 'object' && (format.suggestionSource === 'learned' || carriesStyle)) {
       // Keep the applied block highlighted after accept so the user sees
       // exactly which text received the learned format.
       const appliedRange = applyLearnedFormat(format)
@@ -1729,7 +1872,11 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   }
 
   function rejectAutoSuggestion(format: string): void {
-    suppressedAutoFormatsRef.current[format] =
+    const rejectedText =
+      editor && !editor.isDestroyed && suggestionRange
+        ? editor.state.doc.textBetween(suggestionRange.from, suggestionRange.to, ' ')
+        : ''
+    suppressedAutoFormatsRef.current[suppressionKey(format, rejectedText)] =
       Date.now() + AUTO_FORMAT_SUPPRESSION_MS
 
     if (id) {
@@ -1752,7 +1899,6 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
         .catch((error) => console.error('Format prompt rejection feedback failed', error))
     }
 
-    void loadBehaviorSummary()
   }
 
   function handlePromptReject(): void {
@@ -1771,6 +1917,49 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     setPendingLearnedFormat(null)
     setSuggestions([])
     setShowSuggestions(false)
+  }
+
+  /** Panel click on a formatting suggestion: jump to it and open its popup in the document. */
+  function openScannerInDocument(suggestion: ScannerSuggestion): void {
+    if (!editor || editor.isDestroyed || readOnly) return
+    selectScannerSuggestion(suggestion.key)
+    jumpToScannerTarget(suggestion)
+    setFormatPrompt({
+      format: suggestion.format,
+      confidence: suggestion.confidence,
+      formatGroup: suggestion.formatGroup,
+      groupMembers: suggestion.groupMembers,
+      label: suggestion.label,
+      suggestionSource: suggestion.suggestionSource,
+      ...(suggestion.captures ?? {}),
+    })
+  }
+
+  /** Panel click on a learned/ML suggestion: open its popup on the block under the caret. */
+  function openMlInDocument(suggestion: Suggestion): void {
+    if (!editor || editor.isDestroyed || readOnly) return
+    const $pos = editor.state.doc.resolve(editor.state.selection.from)
+    const range = $pos.depth >= 1 ? { from: $pos.before(), to: $pos.after() } : null
+    if (range) setSuggestionRange(range)
+    setFormatPrompt({ ...suggestion })
+    scrollToDocPos(range?.from ?? editor.state.selection.from)
+  }
+
+  /** Panel click on a grammar/spelling issue: jump to the word and open its fix popover there. */
+  function openGrammarInDocument(issue: GrammarIssue): void {
+    const range = locateIssue(issue)
+    if (!range || !editor || editor.isDestroyed) return
+    editor.chain().focus().setTextSelection(range).run()
+    scrollToDocPos(range.from, 'auto')
+    window.setTimeout(() => {
+      if (!editor || editor.isDestroyed) return
+      const start = editor.view.coordsAtPos(range.from)
+      const end = editor.view.coordsAtPos(range.to)
+      handleGrammarClick(
+        issue,
+        new DOMRect(start.left, start.top, Math.max(end.right - start.left, 12), Math.max(start.bottom - start.top, 14))
+      )
+    }, 150)
   }
 
   function handleGrammarApply(issue: GrammarIssue, suggestion?: string): void {
@@ -1931,7 +2120,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   }
 
   /** Resolve the active preset (if the doc uses one of the academic presets). */
-  const activeAcademicPreset = ACADEMIC_PRESETS.find((p) => p.key === formattingPreset)
+  const activeAcademicPreset = ACADEMIC_PRESETS.find((p) => p.key === basePresetKey(formattingPreset))
 
   /* ── Blueprint drift → "save as my own version" (section 9) ────────────────
    *
@@ -2053,6 +2242,30 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
       return found === null
     })
     return found
+  }
+
+  /**
+   * Find where a grammar/spelling issue sits: the whole phrase inside one text
+   * block, else the longest leading run of its words (an issue can span blocks
+   * because the checker reads the document as one stream of text).
+   */
+  function locateIssue(issue: GrammarIssue): { from: number; to: number } | null {
+    if (!editor || editor.isDestroyed) return null
+    const words = issue.original.trim().split(/\s+/)
+    for (let count = words.length; count >= 1; count -= 1) {
+      const needle = words.slice(0, count).join(' ').toLowerCase()
+      if (needle.length < 2) continue
+      let found: { from: number; to: number } | null = null
+      editor.state.doc.descendants((node, pos) => {
+        if (found) return false
+        if (!node.isTextblock) return true
+        const index = node.textContent.toLowerCase().indexOf(needle)
+        if (index >= 0) found = { from: pos + 1 + index, to: pos + 1 + index + needle.length }
+        return false
+      })
+      if (found) return found
+    }
+    return null
   }
 
   /** Build a viewport rect for a grammar issue so the fix popover can anchor to it. */
@@ -2623,7 +2836,16 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
 
           {/* Page setup drifted from the standard blueprint — offer a fork */}
           {forkPromptOpen && activeAcademicPreset && (
-            <div style={{ maxWidth: '32rem', margin: '0 auto', width: '100%' }}>
+            <div
+              style={{
+                position: 'fixed',
+                bottom: '7.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(32rem, calc(100vw - 2rem))',
+                zIndex: 40,
+              }}
+            >
               <PresetForkPrompt
                 baseName={activeAcademicPreset.name}
                 driftedOn="Your page setup"
@@ -2637,7 +2859,17 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
 
           {/* Inferred document archetype — offer the matching standard format */}
           {structurePrompt && !formattingPreset && !readOnly && (
-            <div style={{ maxWidth: '32rem', margin: '0 auto', width: '100%' }}>
+            <div
+              style={{
+                // Floats above the status bar and the zoom widget so it never covers them.
+                position: 'fixed',
+                bottom: '7.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(32rem, calc(100vw - 2rem))',
+                zIndex: 40,
+              }}
+            >
               <DocumentTypePrompt
                 typeLabel={structurePrompt.typeLabel}
                 presetName={
@@ -2654,6 +2886,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
         {/* Right panel — docked editor assistant with suggestions queue */}
         <EditorSidePanel
           open={rightPanelOpen}
+          compact={isNarrow}
           activeTab={sidePanelTab}
           onToggle={() => setRightPanelOpen((open) => !open)}
           onTabChange={setSidePanelTab}
@@ -2665,13 +2898,17 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
           activeScannerKey={scannerActive?.key ?? null}
           mlSuggestions={showSuggestions ? suggestions : []}
           grammarIssues={grammarIssues}
-          onJumpTo={jumpToScannerTarget}
-          onAcceptScanner={acceptScannerSuggestion}
-          onRejectScanner={rejectScannerSuggestion}
-          onApplyMl={(s) => handlePromptAccept(s)}
-          onDismissMl={() => handlePromptReject()}
-          onApplyGrammar={handleGrammarApply}
-          onDismissGrammar={handleGrammarDismiss}
+          grammarLoading={grammarCheck.loading}
+          grammarError={grammarCheck.error}
+          grammarCheckedAt={grammarCheck.lastCheckedAt}
+          onCheckGrammar={() => void grammarCheck.runCheck()}
+          onOpenScanner={openScannerInDocument}
+          onOpenMl={openMlInDocument}
+          onOpenGrammar={openGrammarInDocument}
+          formattingEnabled={prefs.formattingSuggestions}
+          grammarEnabled={prefs.grammarSuggestions}
+          onFormattingEnabledChange={(value) => setEditorPreferences({ formattingSuggestions: value })}
+          onGrammarEnabledChange={(value) => setEditorPreferences({ grammarSuggestions: value })}
           onFocusEditor={focusEditor}
           readOnly={readOnly}
           onVersionRestored={(version) => {
@@ -2712,124 +2949,16 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
             setFormatHistory(snapshot.formatting_history)
             setFormattingPreset(snapshot.formatting_preset)
           }}
-          extraSections={
+          toolsSection={
             <>
-              {/* Grammar & spell check — visible panel + wavy underlines in the editor */}
-              <GrammarPanel
-                text={content}
-                activeIssues={grammarIssues}
-                onCheckComplete={setGrammarIssues}
-                onApply={handleGrammarApply}
-                onDismiss={handleGrammarDismiss}
-                autoCheck
-                autoCheckDelayMs={2500}
-                autoCheckCooldownMs={12000}
-              />
+              <DocumentPartsPanel editor={editor} readOnly={readOnly} />
 
               {/* Formatting preset + custom rules (Tier 1 & 2) */}
               <FormattingPanel
                 documentId={id}
                 activePreset={formattingPreset}
                 onPresetChange={setFormattingPreset}
-                showOverlays={showFormatOverlays}
-                onShowOverlaysChange={setShowFormatOverlays}
               />
-
-              {/* Session stats */}
-              <div
-                style={{
-                  borderRadius: '0.5rem',
-                  border: '1px solid var(--border)',
-                  padding: '0.75rem',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <p
-                    style={{
-                      fontSize: '0.6875rem',
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      color: 'var(--muted-foreground)',
-                      margin: 0,
-                    }}
-                  >
-                    Session
-                  </p>
-                  <button
-                    type="button"
-                    onMouseDown={(event) => {
-                      event.preventDefault()
-                      void loadBehaviorSummary()
-                    }}
-                    disabled={behaviorSummaryLoading}
-                    style={{
-                      fontSize: '0.6875rem',
-                      fontWeight: 600,
-                      color: 'var(--muted-foreground)',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      cursor: behaviorSummaryLoading ? 'not-allowed' : 'pointer',
-                      opacity: behaviorSummaryLoading ? 0.5 : 1,
-                      padding: 0,
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    {behaviorSummaryLoading ? 'Loading…' : 'Refresh'}
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
-                  <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Words</span>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{wordCount}</span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
-                  <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>Behavior events</span>
-                  <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>{behaviorSummary?.totalEvents ?? 0}</span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.625rem' }}>
-                  <div style={{ borderRadius: '0.375rem', backgroundColor: 'var(--secondary)', padding: '0.625rem' }}>
-                    <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
-                      Accepted
-                    </p>
-                    <p style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--success)', margin: 0 }}>
-                      {countBehaviorBucket(behaviorSummary?.chatPreviewAccepted)}
-                    </p>
-                  </div>
-                  <div style={{ borderRadius: '0.375rem', backgroundColor: 'var(--secondary)', padding: '0.625rem' }}>
-                    <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>
-                      Rejected
-                    </p>
-                    <p style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--error)', margin: 0 }}>
-                      {countBehaviorBucket(behaviorSummary?.chatPreviewRejected)}
-                    </p>
-                  </div>
-                </div>
-
-                {behaviorSummary && behaviorSummary.latestEvents.length > 0 ? (
-                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
-                    <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0 0 0.5rem' }}>
-                      Latest feedback
-                    </p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                      {behaviorSummary.latestEvents.slice(0, 3).map((event) => (
-                        <div key={`${event.action}-${event.timestamp}`} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--foreground)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {event.action}
-                          </span>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', flexShrink: 0 }}>
-                            {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <McpDebugPanel documentId={id} documentContent={chatContent} />
 
               <CitationAssistant
                 editor={editor}
@@ -2837,6 +2966,9 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
                 onStyleChange={setCitationStyle}
                 references={references}
                 onReferencesChange={setReferences}
+                onInsertBibliography={(entries) => {
+                  if (editor && editor.isEditable) insertOrUpdateGenerated(editor, 'refs', buildReferenceNodes(entries))
+                }}
                 onInsertCitation={(citationText: string) => {
                   if (editor) {
                     editor.chain().focus().insertContent(citationText).run()
@@ -2878,6 +3010,11 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
           anchor={suggestionAnchor}
           label={formatPrompt.label ?? formatSuggestionLabel(formatPrompt.format)}
           confidence={formatPrompt.confidence}
+          source={describeSuggestionSource(formatPrompt)}
+          previewMode={previewMode}
+          previewAvailable={previewStyle !== null}
+          onPreviewModeChange={setPreviewMode}
+          reason={describeSuggestionReason(formatPrompt)}
           queuePosition={queuePosition}
           queueTotal={queueTotal}
           nextLabel={cycleNextLabel}

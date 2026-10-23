@@ -172,6 +172,11 @@ export interface ResolvedImage {
   pos: number
 }
 
+/** True for the editor's image node (`imageResize`) and the stock `image` node. */
+function isImageNode(node: { type: { name: string } }): boolean {
+  return node.type.name === 'image' || node.type.name === 'imageResize'
+}
+
 /**
  * Find the image the selection points at: a NodeSelection on the image, or any
  * image inside the selected range. Handles top-level images, which a plain
@@ -180,13 +185,13 @@ export interface ResolvedImage {
 export function resolveImage(editor: Editor): ResolvedImage | undefined {
   if (!editor || editor.isDestroyed) return undefined
   const { selection } = editor.state
-  if (selection instanceof NodeSelection && selection.node.type.name === 'image') {
+  if (selection instanceof NodeSelection && isImageNode(selection.node)) {
     return { node: selection.node, pos: selection.from }
   }
   const { from, to } = selection
   let hit: ResolvedImage | undefined
   editor.state.doc.nodesBetween(from, to, (node, pos) => {
-    if (!hit && node.type.name === 'image') hit = { node, pos }
+    if (!hit && isImageNode(node)) hit = { node, pos }
   })
   return hit
 }

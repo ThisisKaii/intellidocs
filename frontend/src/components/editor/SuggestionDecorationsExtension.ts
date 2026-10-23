@@ -10,9 +10,19 @@ export interface OutlineRange {
   to: number
 }
 
+/** A suggested look drawn over a range without touching the document. */
+export interface PreviewSpec extends OutlineRange {
+  /** CSS for the text itself (weight, style, size, underline). */
+  inlineStyle: string
+  /** CSS for the surrounding block (alignment). */
+  blockStyle: string
+}
+
 interface DecorationRanges {
   /** Pulsing outline marking where a formatting suggestion will land. */
   suggestion: OutlineRange | null
+  /** The suggested look, shown until the suggestion is accepted or rejected. */
+  preview: PreviewSpec | null
 }
 
 interface SuggestionPluginState {
@@ -25,6 +35,8 @@ declare module '@tiptap/core' {
     suggestionDecorations: {
       /** Set, or clear with null, the pulsing suggestion outline range. */
       setSuggestionHighlight: (range: OutlineRange | null) => ReturnType
+      /** Draw, or clear with null, a before/after preview that never edits the document. */
+      setSuggestionPreview: (preview: PreviewSpec | null) => ReturnType
     }
   }
 
@@ -91,6 +103,19 @@ function buildDecorations(state: EditorState, ranges: DecorationRanges): Decorat
 
   addOutline(ranges.suggestion, SUGGESTION_CLASS)
 
+  const preview = ranges.preview
+  const previewRange = normalise(preview, doc)
+  if (preview && previewRange) {
+    if (preview.inlineStyle) {
+      decorations.push(Decoration.inline(previewRange.from, previewRange.to, { style: preview.inlineStyle }))
+    }
+    if (preview.blockStyle) {
+      for (const span of blockSpans(doc, previewRange)) {
+        decorations.push(Decoration.node(span.from, span.to, { style: preview.blockStyle }))
+      }
+    }
+  }
+
   return DecorationSet.create(doc, decorations)
 }
 
@@ -125,6 +150,15 @@ export const SuggestionDecorationsExtension = Extension.create({
           if (dispatch) dispatch(tr)
           return true
         },
+      setSuggestionPreview:
+        (preview: PreviewSpec | null) =>
+        ({ state, tr, dispatch }) => {
+          const current = suggestionKey.getState(state)?.ranges.preview ?? null
+          if (current === null && preview === null) return true
+          tr.setMeta(suggestionKey, { preview })
+          if (dispatch) dispatch(tr)
+          return true
+        },
     }
   },
 
@@ -138,7 +172,7 @@ export const SuggestionDecorationsExtension = Extension.create({
         state: {
           init() {
             return {
-              ranges: { suggestion: null },
+              ranges: { suggestion: null, preview: null },
               decorations: DecorationSet.empty,
             }
           },
@@ -147,11 +181,18 @@ export const SuggestionDecorationsExtension = Extension.create({
             if (meta) {
               const ranges: DecorationRanges = {
                 suggestion: 'suggestion' in meta ? (meta.suggestion ?? null) : value.ranges.suggestion,
+                preview: 'preview' in meta ? (meta.preview ?? null) : value.ranges.preview,
               }
               return { ranges, decorations: buildDecorations(newState, ranges) }
             }
-            if (tr.docChanged && value.ranges.suggestion) {
-              const ranges: DecorationRanges = { suggestion: mapRange(value.ranges.suggestion, tr) }
+            if (tr.docChanged && (value.ranges.suggestion || value.ranges.preview)) {
+              const mappedPreview = value.ranges.preview
+                ? { ...value.ranges.preview, ...mapRange(value.ranges.preview, tr) }
+                : null
+              const ranges: DecorationRanges = {
+                suggestion: mapRange(value.ranges.suggestion, tr),
+                preview: mappedPreview,
+              }
               return { ranges, decorations: buildDecorations(newState, ranges) }
             }
             return value

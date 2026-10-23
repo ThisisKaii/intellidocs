@@ -7,6 +7,8 @@ import {
   type TriggerCondition,
 } from '@/services/api'
 import { FORMAT_LABELS } from './SuggestionPanel'
+import { useEditorPreferences } from '@/hooks/useEditorPreferences'
+import { setEditorPreferences } from '@/lib/editorPreferences'
 
 const FORMAT_OPTIONS = Object.keys(FORMAT_LABELS)
 
@@ -14,9 +16,6 @@ interface FormattingPanelProps {
   documentId: string | undefined
   activePreset: string | null
   onPresetChange: (preset: string | null) => void
-  /** Master switch for in-canvas suggestion overlays and chips. */
-  showOverlays?: boolean
-  onShowOverlaysChange?: (value: boolean) => void
 }
 
 interface BindingForm {
@@ -41,9 +40,8 @@ export default function FormattingPanel({
   documentId,
   activePreset,
   onPresetChange,
-  showOverlays = true,
-  onShowOverlaysChange,
 }: FormattingPanelProps): JSX.Element {
+  const prefs = useEditorPreferences()
   const [presets, setPresets] = useState<FormatPreset[]>([])
   const [bindings, setBindings] = useState<FormatBinding[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -124,42 +122,33 @@ export default function FormattingPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* ── Overlay master switch ── */}
-      {onShowOverlaysChange && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '0.75rem',
-            paddingBottom: '0.75rem',
-            borderBottom: '1px solid var(--border)',
-          }}
-        >
-          <div>
-            <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--foreground)', margin: 0 }}>
-              Format Overlays &amp; Chips
-            </p>
-            <p
-              style={{
-                fontSize: '0.6875rem',
-                color: 'var(--muted-foreground)',
-                margin: '0.125rem 0 0',
-                lineHeight: 1.4,
-              }}
-            >
-              Show inline suggestions and inconsistency alerts
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={showOverlays}
-            onChange={(e) => onShowOverlaysChange(e.target.checked)}
-            style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: 'pointer' }}
-            aria-label="Show format overlays and chips"
-          />
+      {/* ── Preset overlays switch ── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          paddingBottom: '0.75rem',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        <div>
+          <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--foreground)', margin: 0 }}>
+            Preset overlays
+          </p>
+          <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0.125rem 0 0', lineHeight: 1.4 }}>
+            Dashed guide boxes and colored heading borders from your preset
+          </p>
         </div>
-      )}
+        <input
+          type="checkbox"
+          checked={prefs.showStyleGuides}
+          onChange={(e) => setEditorPreferences({ showStyleGuides: e.target.checked })}
+          style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+          aria-label="Show preset overlays"
+        />
+      </div>
 
       {/* ── Tier 1: Presets ── */}
       <div>

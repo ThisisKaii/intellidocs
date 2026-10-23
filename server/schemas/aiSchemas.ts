@@ -36,7 +36,8 @@ const lastPreviewSchema = z.object({
   scope: z.enum(['selection', 'all']).optional(),
   fontSize: z.number().finite().positive().max(200).nullable().optional(),
   target: z.string().trim().max(200).nullable().optional(),
-  targetCategory: z.enum(['headings', 'paragraphs', 'all']).nullable().optional(),
+  targetMode: z.enum(['literal', 'section', 'title']).nullable().optional(),
+  targetCategory: z.enum(['headings', 'paragraphs', 'chapters', 'all']).nullable().optional(),
   normalize: z.boolean().optional(),
 })
 

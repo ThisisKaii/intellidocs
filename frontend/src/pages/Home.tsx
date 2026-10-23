@@ -24,6 +24,7 @@ import ImportFileModal, { type ImportProgress, ImportProgressToast } from '@/com
 import ShareModal from '@/components/ShareModal'
 import { supabase } from '@/lib/supabase'
 import { useDriveCache } from '@/hooks/useDriveCache'
+import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
 import { motion } from 'framer-motion'
 
 /** One day in milliseconds — used for the "Recent" filter. */
@@ -305,6 +306,17 @@ export default function HomePage(): JSX.Element {
         content: buildBlueprintHtml(input.blueprint),
         formatting_preset: input.presetKey ?? undefined,
       })
+      // The preset's page size, orientation and margins apply from the first open.
+      const preset = ACADEMIC_PRESETS.find((candidate) => candidate.key === input.presetKey)
+      if (preset) {
+        try {
+          await api.documents.update(doc.id, {
+            page_size: preset.pageSize,
+            orientation: preset.orientation,
+            margins: preset.margins,
+          })
+        } catch { /* the editor falls back to the default page setup */ }
+      }
       setCreateModalOpen(false)
       if (selection.type === 'folder' && selection.folderId) {
         try {

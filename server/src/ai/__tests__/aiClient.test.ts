@@ -56,6 +56,23 @@ describe('aiClient key rotation', () => {
     )
     expect(seenAuth).toEqual(['Bearer key-one'])
   })
+
+  it('reports a timed-out request as a 504 so the next profile can take over', async () => {
+    process.env.AI_PROVIDER = 'nvidia'
+    process.env.AI_MODEL = 'meta/llama-3.3-70b-instruct'
+    process.env.AI_API_KEY = 'key-one'
+
+    global.fetch = jest.fn(async () => {
+      const timeout = new Error('The operation was aborted due to timeout')
+      timeout.name = 'TimeoutError'
+      throw timeout
+    }) as unknown as typeof fetch
+
+    await expect(aiClient.chat([{ role: 'user', content: 'hi' }])).rejects.toMatchObject({
+      status: 504,
+      message: 'The AI provider took too long to respond',
+    })
+  })
 })
 
 describe('aiClient profile failover', () => {

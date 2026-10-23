@@ -39,7 +39,7 @@ interface GrammarPanelProps {
 }
 
 /** Build a user-facing grammar result from grammar and spelling API responses. */
-function buildGrammarResult(
+export function buildGrammarResult(
   grammar: {
     score: number
     status: string

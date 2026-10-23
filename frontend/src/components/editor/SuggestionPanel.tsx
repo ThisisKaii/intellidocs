@@ -3,6 +3,8 @@ import { Brain, X } from 'lucide-react'
 
 /** Format labels for display. */
 const FORMAT_LABELS: Record<string, string> = {
+  orderedList: 'Numbered List',
+  bulletList: 'Bullet List',
   bold: 'Bold',
   italic: 'Italic',
   underline: 'Underline',

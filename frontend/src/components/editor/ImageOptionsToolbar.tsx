@@ -167,6 +167,15 @@ export default function ImageOptionsToolbar({ editor }: { editor: Editor }): JSX
       <ToolbarDivider />
 
       <ToolbarButton
+        title="Add a numbered figure caption below the image"
+        onClick={() => editor.chain().focus().insertCaption('figure').run()}
+      >
+        Caption
+      </ToolbarButton>
+
+      <ToolbarDivider />
+
+      <ToolbarButton
         title="Delete image"
         danger
         onClick={() => editor.chain().focus().deleteSelection().run()}

@@ -1,3 +1,5 @@
+import { listOutlineSections } from './documentSections'
+
 interface ChatContextInput {
   documentTitle?: string
   documentContent?: string
@@ -13,6 +15,7 @@ interface DocumentStats {
 const OPENING_EXCERPT_LIMIT = 1200
 const RECENT_EXCERPT_LIMIT = 700
 const HEADING_LIMIT = 8
+const OUTLINE_LIMIT = 60
 
 /** Decode common HTML entities that appear in saved editor content. */
 function decodeHtmlEntities(text: string): string {
@@ -77,7 +80,13 @@ function getDocumentStats(text: string, paragraphs: string[], headings: string[]
 
 /** Build a natural-language, document-aware context block for AI chat prompts. */
 export function buildChatContext(input: ChatContextInput): string {
-  const plainText = htmlToPlainText(input.documentContent ?? '')
+  const rawContent = input.documentContent ?? ''
+  // The editor appends a "Document outline:" block listing every section; keep it
+  // whole (the excerpts below are short) and leave it out of the excerpt text.
+  const outline = listOutlineSections(rawContent).slice(0, OUTLINE_LIMIT)
+  const outlineStart = rawContent.indexOf('Document outline:')
+  const contentWithoutOutline = outlineStart === -1 ? rawContent : rawContent.slice(0, outlineStart)
+  const plainText = htmlToPlainText(contentWithoutOutline)
   const normalizedText = plainText.replace(/\s+/g, ' ').trim()
   const paragraphs = getParagraphs(plainText)
   const headings = getHeadingCandidates(paragraphs)
@@ -108,7 +117,13 @@ export function buildChatContext(input: ChatContextInput): string {
     `It currently contains about ${stats.wordCount} words across ${stats.paragraphCount} paragraphs${headingNote}.`
   )
 
-  if (headings.length > 0) {
+  if (outline.length > 0) {
+    parts.push(
+      `The document contains these sections, in order (so each of them exists even if its text is not excerpted below): ${outline
+        .map((section: string): string => `"${section}"`)
+        .join(', ')}.`
+    )
+  } else if (headings.length > 0) {
     parts.push(`Likely section headings: ${headings.map((heading: string): string => `"${heading}"`).join(', ')}.`)
   }
 

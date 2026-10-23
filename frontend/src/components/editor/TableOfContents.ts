@@ -25,6 +25,10 @@ export const DEFAULT_TOC_CONFIG: TOCConfig = {
   includeFigures: false,
 }
 
+/** Bold all-caps section titles that count as level-1 sections even when styled as plain paragraphs. */
+export const STRUCTURAL_SECTION_PATTERN =
+  /^(CHAPTER\s+[IVXLCDM0-9]+|INTRODUCTION|ABSTRACT|ACKNOWLEDGEMENTS?|APPROVAL SHEET|DEDICATION|CERTIFICATION|GLOSSARY|TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|REFERENCES|BIBLIOGRAPHY|APPENDICES|RECOMMENDATIONS?)\b/i
+
 /**
  * Extract headings from HTML content and build TOC entries.
  * Returns an array of TOCEntry objects with heading text, level, and placeholder page numbers.
@@ -50,8 +54,7 @@ export function extractTOCFromHTML(html: string): Omit<TOCEntry, 'pageNumber' | 
   // paragraphs rather than real headings (guide Task 5). Deduped against the
   // headings captured above so a real <h1> is never listed twice.
   const seen = new Set(entries.map((entry) => entry.text.replace(/\s+/g, ' ').toLowerCase()))
-  const structuralRegex =
-    /^(CHAPTER\s+[IVXLCDM0-9]+|INTRODUCTION|ABSTRACT|ACKNOWLEDGEMENTS?|APPROVAL SHEET|TABLE OF CONTENTS|LIST OF TABLES|LIST OF FIGURES|REFERENCES|BIBLIOGRAPHY|APPENDICES|RECOMMENDATIONS?)\b/i
+  const structuralRegex = STRUCTURAL_SECTION_PATTERN
   const paragraphRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi
   while ((match = paragraphRegex.exec(html)) !== null) {
     const inner = match[1]

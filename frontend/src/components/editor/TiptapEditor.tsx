@@ -39,6 +39,9 @@ import {
   inToPx,
 } from './HeaderFooterPlugin'
 import { AcademicObjectsExtension } from './AcademicObjects'
+import { basePresetKey } from './academicPresets'
+import { CaptionExtension } from './CaptionExtension'
+import { GeneratedBlockExtension } from './DocumentParts'
 import { applyIeeeNumbering } from './ieeeNumberingCommand'
 import { convertToIeee } from './ieeeConvertCommand'
 import EditorStylesPanel from './EditorStylesPanel'
@@ -1023,6 +1026,8 @@ export const editorExtensions = [
   TabStop,
   HeaderFooterExtension,
   AcademicObjectsExtension,
+  CaptionExtension,
+  GeneratedBlockExtension,
   TextStyle,
   Color,
   FontFamily,
@@ -2200,7 +2205,7 @@ export function TiptapToolbar({
           active={isActive('orderedList')}
           onClick={() => run('ordered_list', () => editor?.chain().focus().toggleOrderedList().run())}
         />
-        {activePreset === 'ieee' && (
+        {basePresetKey(activePreset) === 'ieee' && (
           <ToolButton
             icon={Hash}
             title="Renumber IEEE headings (I. II. A. 1))"
@@ -2214,7 +2219,7 @@ export function TiptapToolbar({
             }
           />
         )}
-        {activePreset === 'ieee' && (
+        {basePresetKey(activePreset) === 'ieee' && (
           <ToolButton
             icon={LayoutTemplate}
             title="Restructure into IEEE format"
@@ -2236,7 +2241,7 @@ export function TiptapToolbar({
             }}
           />
         )}
-        {activePreset === 'ieee' && onSpreadPreviewChange && (
+        {basePresetKey(activePreset) === 'ieee' && onSpreadPreviewChange && (
           <ToolButton
             icon={BookOpen}
             title={
@@ -2545,18 +2550,10 @@ export function TiptapToolbar({
                   <MenuItem
                     onClick={() => {
                       closeAllMenus()
-                      run('table_auto_number', () => editor?.chain().focus().nextTableNumber().run(), tableContextPayload)
+                      run('table_caption_add', () => editor?.chain().focus().insertCaption('table').run(), tableContextPayload)
                     }}
                   >
-                    Auto-number Table
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      closeAllMenus()
-                      run('table_caption_add', () => editor?.chain().focus().setTableCaption('Table caption').run(), tableContextPayload)
-                    }}
-                  >
-                    Add Caption
+                    Add numbered caption
                   </MenuItem>
                   <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
                   <MenuItem
@@ -2686,22 +2683,12 @@ export function TiptapToolbar({
                 <MenuItem
                   onClick={() => {
                     closeAllMenus()
-                    run('figure_auto_number', () => editor?.chain().focus().nextFigureNumber().run(), imageContextPayload)
+                    setOpenImageMenu(false)
+                    run('image_caption_add', () => editor?.chain().focus().insertCaption('figure').run(), imageContextPayload)
                   }}
                 >
-                  Auto-number Figure
+                  Add numbered caption
                 </MenuItem>
-                {!imageContext.imageHasCaption && (
-                  <MenuItem
-                    onClick={() => {
-                      closeAllMenus()
-                      setOpenImageMenu(false)
-                      run('image_caption_add', () => editor?.chain().focus().addImageCaption().run(), imageContextPayload)
-                    }}
-                  >
-                    Add Caption
-                  </MenuItem>
-                )}
                 <MenuItem
                   onClick={() => {
                     closeAllMenus()

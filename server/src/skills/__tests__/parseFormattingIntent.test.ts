@@ -237,3 +237,38 @@ describe('parseFormattingIntent', () => {
     expect(result.target).toBeNull()
   })
 })
+describe('parseFormattingIntent target modes', () => {
+  it('treats a quoted phrase as literal words', () => {
+    const result = parseFormattingIntent('Change the "approval sheet" to bold')
+    expect(result.target).toBe('approval sheet')
+    expect(result.targetMode).toBe('literal')
+  })
+
+  it('treats an unquoted section name as the whole section', () => {
+    const result = parseFormattingIntent('Change the approval sheet to bold')
+    expect(result.target).toBe('approval sheet')
+    expect(result.targetMode).toBe('section')
+  })
+
+  it('treats chapter references as whole sections', () => {
+    expect(parseFormattingIntent('make chapter two italic').targetMode).toBe('section')
+    expect(parseFormattingIntent('make chapter two italic').target).toBe('chapter 2')
+  })
+
+  it('recognises "the title" as the document title', () => {
+    const result = parseFormattingIntent('Center the title')
+    expect(result.target).toBe('title')
+    expect(result.targetMode).toBe('title')
+    expect(result.formats).toContain('align_center')
+  })
+
+  it('keeps targetMode null when no target is named', () => {
+    expect(parseFormattingIntent('make this bold').targetMode).toBeNull()
+  })
+
+  it('limits "all the chapter headings" to chapter headings', () => {
+    const result = parseFormattingIntent('Make all the chapter headings 14pt')
+    expect(result.targetCategory).toBe('chapters')
+    expect(result.fontSize).toBe(14)
+  })
+})

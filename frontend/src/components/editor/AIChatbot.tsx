@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
+import { undoDepth } from '@tiptap/pm/history'
 import { api, type AIChatPreviewMeta, type RejectedFormattingPreview } from '@/services/api'
+import { applyFormatsToRanges, isChapterHeading, resolveTargetRanges } from './chatFormatting'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -12,7 +14,8 @@ interface ChatMessage {
   preview_formats?: string[] | null
   preview_scope?: 'selection' | 'all' | null
   preview_target?: string | null
-  preview_target_category?: 'headings' | 'paragraphs' | 'all' | null
+  preview_target_mode?: 'literal' | 'section' | 'title' | null
+  preview_target_category?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
   preview_normalize?: boolean | null
   preview_font_size?: number | null
   preview_reason?: string | null
@@ -76,6 +79,8 @@ export default function AIChatbot({
   const [rejectedPreviews, setRejectedPreviews] = useState<RejectedFormattingPreview[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const lastPreviewRef = useRef<AIChatPreviewMeta | null>(null)
+  /** Changes applied from this chat, newest last, so "undo that" can really revert them. */
+  const appliedStackRef = useRef<Array<{ depthBefore: number; label: string }>>([])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -158,6 +163,8 @@ export default function AIChatbot({
   /** Human-readable scope suffix for the preview, honoring chapter targets. */
   function previewScopeLabel(msg: ChatMessage): string {
     if (msg.preview_scope === 'all') {
+      if (msg.preview_target && msg.preview_target_mode === 'literal') return `— the words “${msg.preview_target}”`
+      if (msg.preview_target && msg.preview_target_mode === 'title') return '— the document title'
       if (msg.preview_target) {
         const words = msg.preview_target.split(' ')
         const capitalized = words
@@ -166,6 +173,7 @@ export default function AIChatbot({
         return `— ${capitalized}`
       }
       if (msg.preview_target_category === 'headings') return '— all headings'
+      if (msg.preview_target_category === 'chapters') return '— every chapter heading'
       if (msg.preview_target_category === 'paragraphs') return '— all paragraphs'
       return '— entire document'
     }
@@ -227,7 +235,7 @@ export default function AIChatbot({
    * centered" so the rest of the document is left untouched.
    */
   function applyFormatsToBlocks(
-    category: 'headings' | 'paragraphs',
+    category: 'headings' | 'paragraphs' | 'chapters',
     formats: string[],
     fontSize?: number,
     normalize = false
@@ -240,7 +248,9 @@ export default function AIChatbot({
       const matches =
         category === 'headings'
           ? node.type.name === 'heading'
-          : node.type.name === 'paragraph'
+          : category === 'chapters'
+            ? isChapterHeading(node)
+            : node.type.name === 'paragraph'
       if (matches) {
         const from = pos + 1
         const to = pos + node.nodeSize - 1
@@ -278,91 +288,28 @@ export default function AIChatbot({
   }
 
   /**
-   * Locate a block whose text matches a quoted phrase or a chapter/section
-   * reference and format it without manual highlighting. Chapter/section
-   * targets extend through the following subsections; explicit phrases are
-   * reformatted surgically so only the matching block changes.
+   * Format what a target names without any manual highlighting: the exact
+   * words for a quoted phrase, the whole section (title block plus everything
+   * under it) for a section or chapter name, or the document title. Returns how
+   * many places changed (0 when the target is not in the document).
    */
-  function applyFormatsToTarget(target: string, formats: string[], fontSize?: number, normalize = false): boolean {
-    if (!editor || editor.isDestroyed) return false
-    const doc = editor.state.doc
-    const targetKey = target.toLowerCase().replace(/\s+/g, ' ').trim()
-    let from: number | null = null
-    let to: number | null = null
-
-    // Search every text block: imported documents often style structural
-    // sections such as APPROVAL SHEET as paragraphs, not headings.
-    doc.descendants((node, pos) => {
-      if (from !== null) return false
-      if (node.type.name !== 'heading' && node.type.name !== 'paragraph') return true
-      const text = (node.textContent ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
-      if (!text.includes(targetKey)) return true
-
-      const isSectionTarget =
-        targetKey.startsWith('chapter ') || targetKey.startsWith('section ')
-      if (isSectionTarget) {
-        const headStart = pos + 1
-        const headLevel = Number(node.attrs?.level ?? 1)
-        let sectionEnd = doc.content.size
-        let stop = false
-        doc.descendants((nd, np) => {
-          if (stop) return false
-          if (np <= pos) return true
-          if (nd.type.name === 'heading') {
-            const ndLevel = Number(nd.attrs?.level ?? 1)
-            if (ndLevel <= headLevel) {
-              sectionEnd = np
-              stop = true
-              return false
-            }
-          }
-          return true
-        })
-        from = headStart
-        to = sectionEnd
-      } else {
-        // Surgical target: reformat only the matching block's text.
-        from = pos + 1
-        to = Math.max(pos + 1, pos + node.nodeSize - 1)
-      }
-      return false
-    })
-
-    if (from === null || to === null) return false
-
-    let chain = editor.chain().focus().setTextSelection({ from, to })
-    if (normalize) {
-      // A targeted "remove bold" must clear only the named mark; a general
-      // clear with no named mark removes every mark in the block.
-      const requestedMarks = formats.filter(
-        (format) => format === 'bold' || format === 'italic' || format === 'underline'
-      )
-      if (requestedMarks.length > 0) {
-        for (const mark of requestedMarks) chain = chain.unsetMark(mark)
-      } else {
-        chain = chain.unsetAllMarks()
-      }
-    } else {
-      for (const format of formats) {
-        if (format === 'bold') chain = chain.setMark('bold')
-        else if (format === 'italic') chain = chain.setMark('italic')
-        else if (format === 'underline') chain = chain.setMark('underline')
-      }
-    }
-    if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
-    chain.run()
-
-    // Alignment is a block attribute, so apply it over the same range.
-    const align = normalize ? null : alignmentOf(formats)
-    if (align) {
-      editor.chain().focus().setTextSelection({ from, to }).setTextAlign(align).run()
-    }
-
-    // Put the caret at the start of the target and scroll it into view so the
-    // change is visible without the user hunting for the block.
-    editor.commands.setTextSelection(from)
+  function applyFormatsToTarget(
+    target: string,
+    mode: ChatMessage['preview_target_mode'],
+    formats: string[],
+    fontSize?: number,
+    normalize = false
+  ): number {
+    if (!editor || editor.isDestroyed) return 0
+    const ranges = resolveTargetRanges(editor.state.doc, target, mode ?? 'section')
+    if (ranges.length === 0) return 0
+    applyFormatsToRanges(editor, ranges, formats, fontSize, normalize)
+    // Put the caret at the start of the first match and scroll it into view so
+    // the change is visible without the user hunting for it.
+    const first = Math.min(...ranges.map((range) => range.from))
+    editor.commands.setTextSelection(first)
     editor.commands.scrollIntoView()
-    return true
+    return ranges.length
   }
 
   /** Clear existing marks in the given scope, optionally setting a font size. */
@@ -406,14 +353,18 @@ export default function AIChatbot({
     const scopeNote =
       scope === 'all' && targetCategory === 'headings'
         ? ' (all headings)'
-        : scope === 'all' && targetCategory === 'paragraphs'
-          ? ' (all paragraphs)'
-          : ''
+        : scope === 'all' && targetCategory === 'chapters'
+          ? ' (every chapter heading)'
+          : scope === 'all' && targetCategory === 'paragraphs'
+            ? ' (all paragraphs)'
+            : ''
 
     let targetWarning = ''
+    const depthBefore = undoDepth(editor.state)
     if (target && scope === 'all') {
-      const ok = applyFormatsToTarget(target, formats, fontSize, normalize)
-      if (!ok) targetWarning = ` (could not find "${target}" in the document)`
+      const places = applyFormatsToTarget(target, msg.preview_target_mode, formats, fontSize, normalize)
+      if (places === 0) targetWarning = ` (could not find "${target}" in the document)`
+      else if (msg.preview_target_mode === 'literal' && places > 1) targetWarning = ` (${places} places)`
     } else if (scope === 'all' && targetCategory && targetCategory !== 'all') {
       applyFormatsToBlocks(targetCategory, formats, fontSize, normalize)
     } else if (normalize) {
@@ -462,17 +413,33 @@ export default function AIChatbot({
 
     onFeedbackLogged?.()
 
+    const appliedLabel = `${applied.length > 0 ? applied.join(' + ') : formatPreviewLabel(msg.preview_format ?? '')}${target && scope === 'all' ? ` on “${target}”` : ''}${scopeNote}${targetWarning}`
+    // Remember how to take this change back (only when the document really changed).
+    if (undoDepth(editor.state) > depthBefore) {
+      appliedStackRef.current.push({ depthBefore, label: appliedLabel })
+    }
+
     setMessages((current) =>
       current.map((message, index) =>
         index === messageIndex
           ? {
               ...message,
               preview_status: 'applied',
-              command_applied: `${applied.length > 0 ? applied.join(' + ') : formatPreviewLabel(msg.preview_format ?? '')}${scopeNote}${targetWarning}`,
+              command_applied: appliedLabel,
             }
           : message
       )
     )
+  }
+
+  /** Undo the most recent change applied from this chat; returns what was undone, or null when there is nothing. */
+  function undoLastChatChange(): string | null {
+    const last = appliedStackRef.current.pop()
+    if (!editor || editor.isDestroyed || !last) return null
+    for (let guard = 0; guard < 20 && undoDepth(editor.state) > last.depthBefore; guard += 1) {
+      if (!editor.commands.undo()) break
+    }
+    return last.label
   }
 
   /** Reject a formatting preview without changing the document. */
@@ -537,6 +504,23 @@ export default function AIChatbot({
     setInput('')
     setMessages((current) => [...current, { role: 'user', content: userMsg }])
     setLoading(true)
+
+    // "Undo that" really reverts the last change applied from this chat; the
+    // server cannot do that, so it is handled here without an AI call.
+    if (/^\s*(?:please\s+|pls\s+|can you\s+|could you\s+)?(?:undo|revert|take back|reverse)(?:\s+(?:that|it|this|the last(?:\s+(?:change|one|formatting))?|the change|the formatting))?\s*[.!?]*\s*$/i.test(userMsg)) {
+      const undone = undoLastChatChange()
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: undone
+            ? `Done — I undid ${undone}.`
+            : 'There is nothing from this chat to undo yet. I can only take back changes I applied here.',
+        },
+      ])
+      setLoading(false)
+      return
+    }
 
     const mcpCommand = parseMcpCommand(userMsg)
     if (mcpCommand) {
@@ -613,7 +597,7 @@ export default function AIChatbot({
                 role: 'assistant' as const,
                 // Keep a compact record of what was applied so follow-ups like
                 // "format the rest" know what already happened in this chat.
-                content: `[Formatting applied: ${message.command_applied}]`,
+                content: `(Earlier in this chat the user applied: ${message.command_applied}.)`,
               }
             : {
                 role: message.role,
@@ -661,6 +645,7 @@ export default function AIChatbot({
             : null,
         preview_scope: response.preview?.scope ?? null,
         preview_target: response.preview?.target ?? null,
+        preview_target_mode: response.preview?.targetMode ?? null,
         preview_target_category: response.preview?.targetCategory ?? null,
         preview_normalize: response.preview?.normalize ?? false,
         preview_font_size: response.preview?.fontSize ?? null,
@@ -680,6 +665,7 @@ export default function AIChatbot({
             scope: response.preview?.scope ?? 'selection',
             fontSize: response.preview?.fontSize ?? null,
             target: response.preview?.target ?? null,
+            targetMode: response.preview?.targetMode ?? null,
             targetCategory: response.preview?.targetCategory ?? null,
             normalize: response.preview?.normalize ?? false,
           }

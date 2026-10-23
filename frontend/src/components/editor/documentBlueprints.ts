@@ -1,4 +1,4 @@
-import type { AcademicPreset } from './academicPresets'
+import { basePresetKey, type AcademicPreset } from './academicPresets'
 
 /**
  * Document blueprints offered by the "New Document" modal. A blueprint is a
@@ -184,7 +184,8 @@ export const DOCUMENT_BLUEPRINTS: DocumentBlueprint[] = [
 
 /** Look up a blueprint by key; unknown keys fall back to the blank blueprint. */
 export function getBlueprint(key: string): DocumentBlueprint {
-  return DOCUMENT_BLUEPRINTS.find((blueprint) => blueprint.key === key) ?? BLANK
+  const base = basePresetKey(key)
+  return DOCUMENT_BLUEPRINTS.find((blueprint) => blueprint.key === key || blueprint.key === base) ?? BLANK
 }
 
 /** Escape text for safe interpolation into the blueprint's HTML. */

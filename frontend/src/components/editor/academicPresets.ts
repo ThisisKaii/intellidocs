@@ -192,3 +192,8 @@ export const ACADEMIC_PRESETS: AcademicPreset[] = [APA_7TH, IEEE, UCLM_CAPSTONE]
 export function withComputedCss(preset: PresetInput): AcademicPreset {
   return { ...preset, css: buildCss(preset) }
 }
+
+/** The built-in preset a (possibly forked) key derives from: `ieee__v2` -> `ieee`. */
+export function basePresetKey(key: string | null | undefined): string | null {
+  return key ? key.split('__')[0] : null
+}

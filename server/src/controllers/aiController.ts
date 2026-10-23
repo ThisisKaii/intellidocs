@@ -4,6 +4,8 @@ import { buildAIChatSystemPrompt } from '../ai/prompts/systemPrompts'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 import { buildChatContext } from '../skills/buildChatContext'
 import { parseFormattingIntent } from '../skills/parseFormattingIntent'
+import { buildFormattingReply } from '../skills/buildFormattingReply'
+import { documentHasTarget, listOutlineSections } from '../skills/documentSections'
 
 interface ErrorWithStatus {
   status?: number
@@ -38,8 +40,9 @@ interface AIChatPreviewContext {
   scope?: 'selection' | 'all'
   fontSize?: number | null
   target?: string | null
+  targetMode?: 'literal' | 'section' | 'title' | null
   normalize?: boolean
-  targetCategory?: 'headings' | 'paragraphs' | 'all' | null
+  targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
 }
 
 interface AIProviderSummary {
@@ -60,8 +63,10 @@ interface FormattingPreview {
   fontSize?: number | null
   /** Chapter/section reference like "chapter 1" the change should target. */
   target?: string | null
-  /** Block category a bulk request targets: headings, paragraphs, or all. */
-  targetCategory?: 'headings' | 'paragraphs' | 'all' | null
+  /** How the target is meant: literal words, a whole section, or the document title. */
+  targetMode?: 'literal' | 'section' | 'title' | null
+  /** Block category a bulk request targets: headings, paragraphs, chapter headings, or all. */
+  targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
   /** Deterministic reply when no provider call is needed (confirmations/follow-ups). */
@@ -200,8 +205,9 @@ function detectFormattingPreview(
     }
   }
 
-  // Clear/revert requests produce a preview even without explicit formats.
-  if (!hasFormats && !hasFontSize && !intent.normalize && !intent.target) {
+  // A preview needs something to apply: a format, a font size, or a clear/revert.
+  // A bare target ("format the table of contents like APA") is a question for the AI.
+  if (!hasFormats && !hasFontSize && !intent.normalize) {
     return null
   }
 
@@ -233,18 +239,21 @@ function detectFormattingPreview(
       reasonParts.push('Detected a request to clear existing formatting.')
     }
   }
-  if (intent.matchedPhrase) {
-    reasonParts.push(`Detected formatting intent from "${intent.matchedPhrase}".`)
-  }
   if (hasFontSize) {
     reasonParts.push(`Font size ${intent.fontSize}pt requested.`)
   }
-  if (intent.target) {
-    reasonParts.push(`Targeting "${intent.target.toUpperCase()}" only (no highlighting needed).`)
+  if (intent.target && intent.targetMode === 'literal') {
+    reasonParts.push(`Only the exact words "${intent.target}", wherever they appear.`)
+  } else if (intent.target && intent.targetMode === 'title') {
+    reasonParts.push('The document title.')
+  } else if (intent.target) {
+    reasonParts.push(`The whole "${intent.target.toUpperCase()}" section: its heading and everything under it.`)
   } else if (intent.normalize && lastPreview?.scope === 'all') {
     reasonParts.push('Applies to the whole document (matching your last change).')
   } else if (intent.targetCategory === 'headings') {
     reasonParts.push('Applies to all headings.')
+  } else if (intent.targetCategory === 'chapters') {
+    reasonParts.push('Applies to every chapter heading.')
   } else if (intent.targetCategory === 'paragraphs') {
     reasonParts.push('Applies to all paragraphs.')
   } else if (intent.scope === 'all') {
@@ -283,11 +292,10 @@ function detectFormattingPreview(
     scope: resolvedScope,
     fontSize,
     target: resolvedTarget,
+    targetMode: intent.target ? intent.targetMode : (intent.normalize ? (lastPreview?.targetMode ?? null) : null),
     targetCategory: resolvedCategory,
     normalize: intent.normalize,
-    shortCircuitReply: intent.normalize
-      ? `Done — ${reasonParts.join(' ').replace(/\.$/, '')}. Confirm to apply.`
-      : null,
+    shortCircuitReply: null,
   }
 }
 
@@ -345,12 +353,46 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
 
     const preview = detectFormattingPreview(message, body.lastPreview)
 
-    // Rule-resolved follow-ups (confirmations, reverts, targets) get a short
-    // deterministic reply — the AI model never needs to guess or hallucinate.
+    // A named section that is not in the document gets an honest answer instead
+    // of a preview the editor cannot apply.
+    if (
+      preview?.target &&
+      !preview.shortCircuitReply &&
+      !documentHasTarget(body.documentContent ?? '', preview.target, preview.targetMode ?? null)
+    ) {
+      const sections = listOutlineSections(body.documentContent ?? '').slice(0, 8)
+      const hint = sections.length > 0 ? ` The sections I can see are: ${sections.join(', ')}.` : ''
+      const providerSummary = getProviderSummary()
+      res.status(200).json({
+        reply: `I couldn’t find “${preview.target}” in this document.${hint}`,
+        provider: providerSummary.provider,
+        model: providerSummary.model,
+        mode: 'chat',
+        preview: null,
+      })
+      return
+    }
+
+    // Formatting requests get a deterministic reply built from the preview the
+    // editor will show, so the words can never contradict the Apply button.
+    // Only open questions and writing help go to the AI model.
     let reply: string
     let answeredBy: AIProviderSummary | null = null
     if (preview?.shortCircuitReply) {
       reply = preview.shortCircuitReply
+    } else if (preview) {
+      reply = buildFormattingReply(
+        {
+          formats: preview.formats ?? [],
+          fontSize: preview.fontSize ?? null,
+          normalize: preview.normalize ?? false,
+          scope: preview.scope ?? 'selection',
+          target: preview.target ?? null,
+          targetMode: preview.targetMode ?? null,
+          targetCategory: preview.targetCategory ?? null,
+        },
+        message
+      )
     } else {
       // chatWithMeta reports which profile actually answered after any failover.
       const response = await aiClient.chatWithMeta(
@@ -384,18 +426,24 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
             scope: preview.scope,
             fontSize: preview.fontSize,
             target: preview.target,
+            targetMode: preview.targetMode ?? null,
             targetCategory: preview.targetCategory,
             normalize: preview.normalize,
           }
         : null,
     })
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'AI chat request failed'
     const status =
       typeof (error as ErrorWithStatus | undefined)?.status === 'number'
         ? (error as ErrorWithStatus).status as number
         : 500
+    // Provider outages and timeouts get a plain message instead of the raw abort text.
+    const message =
+      status >= 500
+        ? 'The assistant is taking too long right now. Try again in a moment.'
+        : error instanceof Error
+          ? error.message
+          : 'AI chat request failed'
 
     res.status(status).json({ error: message })
   }

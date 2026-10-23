@@ -390,8 +390,10 @@ export interface AIChatPreview {
   fontSize?: number | null
   /** Chapter/section reference like "chapter 1" the change should target without highlighting. */
   target?: string | null
-  /** Block category a bulk request targets: headings, paragraphs, or all. */
-  targetCategory?: 'headings' | 'paragraphs' | 'all' | null
+  /** How the target is meant: literal words, a whole section, or the document title. */
+  targetMode?: 'literal' | 'section' | 'title' | null
+  /** Block category a bulk request targets: headings, paragraphs, chapter headings, or all. */
+  targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
 }
@@ -403,7 +405,8 @@ export interface AIChatPreviewMeta {
   scope?: 'selection' | 'all'
   fontSize?: number | null
   target?: string | null
-  targetCategory?: 'headings' | 'paragraphs' | 'all' | null
+  targetMode?: 'literal' | 'section' | 'title' | null
+  targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
   normalize?: boolean
 }
 

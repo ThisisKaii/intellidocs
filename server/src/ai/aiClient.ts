@@ -124,6 +124,9 @@ function readErrorDetails(payload: unknown): string {
   return 'Unknown provider error'
 }
 
+/** Longest a single provider attempt may take before failing over. */
+const REQUEST_TIMEOUT_MS = 25_000
+
 /** Send one request through a single profile, rotating its API keys on quota/auth errors. */
 async function chatWithProfile(
   profile: AIProfile,
@@ -139,8 +142,9 @@ async function chatWithProfile(
         headers: buildHeaders(profile.provider, key),
         body: JSON.stringify(buildBody(profile, messages, systemPrompt)),
         // Providers that queue requests (free tiers) can otherwise hang the
-        // request forever; rotation only covers 429/401/403, so cap the wait.
-        signal: AbortSignal.timeout(60_000),
+        // request forever; rotation only covers 429/401/403, so cap the wait
+        // short enough that failover still reaches the next profile in time.
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
 
       const payload = (await response.json().catch(() => null)) as unknown
@@ -163,6 +167,10 @@ async function chatWithProfile(
     } catch (error) {
       if (error instanceof AIClientError) {
         throw error
+      }
+
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        throw new AIClientError('The AI provider took too long to respond', 504, 'timeout')
       }
 
       throw new AIClientError(

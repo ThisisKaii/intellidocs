@@ -197,3 +197,50 @@ class TestParagraphMarkSize:
         blank = doc.add_paragraph()
         self._mark_size(blank, 26)
         assert re.search(r'empty-spacer" style="[^"]*font-size:13pt', _html(doc))
+
+
+def _numbered_item(doc: docx.Document, text: str, num_id: str) -> None:
+    """Add a paragraph that carries direct numbering properties (level 0)."""
+    p = doc.add_paragraph(text)
+    num_pr = parse_xml(
+        f'<w:numPr xmlns:w="{W_NS}"><w:ilvl w:val="0"/><w:numId w:val="{num_id}"/></w:numPr>'
+    )
+    p._p.get_or_add_pPr().append(num_pr)
+
+
+def _decimal_num_id(doc: docx.Document) -> str:
+    """The id of a numbering instance whose first level is decimal."""
+    root = doc.part.numbering_part.element
+    decimal_abstracts = {
+        a.get(qn("w:abstractNumId"))
+        for a in root.findall(qn("w:abstractNum"))
+        if a.find(qn("w:lvl")) is not None
+        and a.find(qn("w:lvl")).find(qn("w:numFmt")) is not None
+        and a.find(qn("w:lvl")).find(qn("w:numFmt")).get(qn("w:val")) == "decimal"
+    }
+    for num in root.findall(qn("w:num")):
+        if num.find(qn("w:abstractNumId")).get(qn("w:val")) in decimal_abstracts:
+            return num.get(qn("w:numId"))
+    raise AssertionError("template has no decimal numbering")
+
+
+class TestListNumbering:
+    """A numbered list split by other paragraphs keeps counting instead of restarting."""
+
+    def test_interrupted_numbered_list_continues(self) -> None:
+        doc = docx.Document()
+        num_id = _decimal_num_id(doc)
+        _numbered_item(doc, "one", num_id)
+        _numbered_item(doc, "two", num_id)
+        doc.add_paragraph("interruption")
+        _numbered_item(doc, "three", num_id)
+        html = _html(doc)
+        assert html.count("<ol") == 2
+        assert '<ol start="3">' in html
+
+    def test_unbroken_list_has_no_start_attribute(self) -> None:
+        doc = docx.Document()
+        num_id = _decimal_num_id(doc)
+        _numbered_item(doc, "one", num_id)
+        _numbered_item(doc, "two", num_id)
+        assert "start=" not in _html(doc)
