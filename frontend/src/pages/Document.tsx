@@ -43,14 +43,19 @@ import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
 import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
 import type { TOCEntry } from '@/components/editor/TableOfContents'
 import { OutlineNavigator } from '@/components/editor/OutlineNavigator'
-import { CitationAssistant, type CitationReference } from '@/components/editor/CitationAssistant'
+import { CitationAssistant } from '@/components/editor/CitationAssistant'
+import HelpSheet from '@/components/editor/HelpSheet'
+import OriginalityCard from '@/components/editor/OriginalityCard'
+import LearningCard from '@/components/editor/LearningCard'
+import { CITATION_STYLE_LABELS, type CitationData, type CitationReference, type CitationStyle } from '@/lib/citationFormats'
 import DocumentPartsPanel from '@/components/editor/DocumentPartsPanel'
-import { buildReferenceNodes, insertOrUpdateGenerated } from '@/components/editor/DocumentParts'
+import { buildReferenceNodes, insertOrUpdateGenerated, pageNumberAt } from '@/components/editor/DocumentParts'
 import { OfflineIndicator } from '@/components/editor/OfflineIndicator'
 import { useOfflineSync } from '@/hooks/useOfflineBuffer'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { confidenceThreshold, highlightColorCss, setEditorPreferences } from '@/lib/editorPreferences'
 import { readFormatSnapshot } from '@/lib/formatSnapshot'
+import { clearLocalDraft, readLocalDraft, writeLocalDraft, type LocalDraft } from '@/lib/localDraft'
 import {
   cacheDocumentRead,
   evictCachedDocument,
@@ -242,6 +247,17 @@ export default function Document(): JSX.Element {
     footerNumberFormat: 'none' as PageNumberFormat,
   })
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved')
+  /** Unsaved edits from an earlier session that are newer than the server copy. */
+  const [recoveredDraft, setRecoveredDraft] = useState<LocalDraft | null>(null)
+  const [helpOpen, setHelpOpen] = useState<boolean>(false)
+  /** Spoken to screen readers after an accept, fix or dismiss, which otherwise change the page silently. */
+  const [announcement, setAnnouncement] = useState<string>('')
+  // The slash menu's /help command asks for the sheet through a window event.
+  useEffect(() => {
+    const open = (): void => setHelpOpen(true)
+    window.addEventListener('intellidocs:open-help', open)
+    return () => window.removeEventListener('intellidocs:open-help', open)
+  }, [])
   const [wordCount, setWordCount] = useState<number>(0)
   const [formatHistory, setFormatHistory] = useState<string[]>([])
 
@@ -292,32 +308,49 @@ export default function Document(): JSX.Element {
   zoomLevelRef.current = zoomLevel
   /** Non-printing alignment gridlines over each page's text area. */
   const [showGridlines, setShowGridlines] = useState<boolean>(false)
-const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
+  const [citationStyle, setCitationStyle] = useState<CitationStyle>('ieee')
   const [references, setReferences] = useState<CitationReference[]>([])
-  // References live in this browser, keyed by document, until they get a server column.
+  /** The citation data last loaded from or saved to the server, as JSON; edits are compared against it. */
+  const savedCitationsRef = useRef<string | null>(null)
   const referencesKey = id ? `intellidocs.references.${id}` : null
+
+  // A copy kept in this browser covers the time before the server copy loads, and
+  // servers that have not applied the citation migration yet.
   useEffect(() => {
     if (!referencesKey) return
     try {
       const raw = localStorage.getItem(referencesKey)
       if (!raw) return
-      const saved = JSON.parse(raw) as { style?: 'ieee' | 'apa'; references?: CitationReference[] }
+      const saved = JSON.parse(raw) as Partial<CitationData>
       if (Array.isArray(saved.references)) setReferences(saved.references)
-      if (saved.style === 'ieee' || saved.style === 'apa') setCitationStyle(saved.style)
+      if (saved.style && saved.style in CITATION_STYLE_LABELS) setCitationStyle(saved.style)
     } catch {
       /* unreadable or blocked storage: start with no saved references */
     }
   }, [referencesKey])
-  useEffect(() => {
-    if (!referencesKey) return
-    try {
-      localStorage.setItem(referencesKey, JSON.stringify({ style: citationStyle, references }))
-    } catch {
-      /* storage full or blocked: references stay in memory only */
-    }
-  }, [referencesKey, citationStyle, references])
 
- 
+  // Save style and references with the document shortly after they change.
+  useEffect(() => {
+    if (!id) return
+    const data: CitationData = { style: citationStyle, references }
+    const json = JSON.stringify(data)
+    try {
+      if (referencesKey) localStorage.setItem(referencesKey, json)
+    } catch {
+      /* storage full or blocked: the server copy is the one that matters */
+    }
+    if (readOnly || savedCitationsRef.current === null || savedCitationsRef.current === json) return
+    const timer = window.setTimeout(() => {
+      api.documents
+        .update(id, { citation_data: data }, shareToken)
+        .then(() => {
+          savedCitationsRef.current = json
+        })
+        .catch((error) => console.error('Saving references failed', error))
+    }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [id, referencesKey, citationStyle, references, readOnly, shareToken])
+
   const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState<boolean>(false)
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
@@ -386,6 +419,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   // wavy underlines in the document never depend on the panel being visible.
   const grammarCheck = useGrammarCheck({
     text: content,
+    editor,
     enabled: !!editor && !readOnly && prefs.grammarSuggestions,
     onIssues: setGrammarIssues,
   })
@@ -652,6 +686,13 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
         if (cancelled) return
         applyLoadedDocument(doc)
         documentLoadedRef.current = true
+        // Edits that never reached the server are offered back, never applied silently.
+        const draft = readLocalDraft(docId)
+        if (draft && draft.content !== (doc.content ?? '') && new Date(draft.savedAt).getTime() > new Date(doc.updated_at).getTime()) {
+          setRecoveredDraft(draft)
+        } else if (draft) {
+          clearLocalDraft(docId)
+        }
         // Share-link visitors who are not the owner get a read-only session —
         // unless the link grants edit permission and is not expired.
         const linkExpired = Boolean(
@@ -782,6 +823,14 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     setIsIsolated(doc.is_isolated ?? false)
     setFormattingPreset(doc.formatting_preset ?? null)
     setDocOwnerId(doc.user_id ?? null)
+    if (doc.citation_data) {
+      setCitationStyle(doc.citation_data.style)
+      setReferences(doc.citation_data.references)
+      savedCitationsRef.current = JSON.stringify(doc.citation_data)
+    } else {
+      // No server copy yet: the first edit (or a browser-held copy) will be saved as one.
+      savedCitationsRef.current = JSON.stringify({ style: 'ieee', references: [] })
+    }
   }
 
   useEffect(() => {
@@ -924,6 +973,12 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
       fontSize: extractFontSizePt(editor.getAttributes('textStyle').fontSize),
       textAlign: resolveTextAlign(editor),
     }
+  }
+
+  /** Behavior payload for a format that came from accepting a suggestion (not learned from). */
+  function suggestionPayload(formatType: string): BehaviorEventPayload | undefined {
+    const captured = captureFormatPayload(formatType)
+    return captured ? { ...captured, fromSuggestion: true } : undefined
   }
 
   /** Human label for a learned format (e.g. "Bold + 14pt + Center"). */
@@ -1295,7 +1350,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
       if (result.tier === 'binding' || result.tier === 'preset') {
         if (result.format) {
           applyPromptFormat(result.format)
-          handleFormat(result.format)
+          handleFormat(result.format, suggestionPayload(result.format))
         }
         setSuggestions([])
         setShowSuggestions(false)
@@ -1489,6 +1544,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
       setContent(nextContent)
       saveRetryCountRef.current = 0
       setSaveStatus('saved')
+      clearLocalDraft(id)
       if (id) void evictCachedDocument(id)
 
       // Broadcast the finished stroke to collaborators on the live channel.
@@ -1511,6 +1567,8 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
       }
     } catch (error) {
       console.error('Autosave failed', error)
+      // Keep the unsaved edits in this browser so a closed tab or a long outage loses nothing.
+      writeLocalDraft(id, { title: nextTitle, content: nextContent })
       // Give up after a few consecutive failures instead of retrying forever.
       saveRetryCountRef.current += 1
       if (saveRetryCountRef.current >= MAX_SAVE_RETRIES) {
@@ -1530,6 +1588,34 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
         }, AUTOSAVE_DELAY)
       }
     }
+  }
+
+  // Closing the tab with a save still pending keeps those edits for the next visit.
+  useEffect(() => {
+    if (!id) return
+    const keepPendingEdits = (): void => {
+      if (documentLoadedRef.current && (pendingSaveRef.current || savingRef.current)) {
+        writeLocalDraft(id, { title: latestTitleRef.current, content: latestContentRef.current })
+      }
+    }
+    window.addEventListener('beforeunload', keepPendingEdits)
+    return () => window.removeEventListener('beforeunload', keepPendingEdits)
+  }, [id])
+
+  /** Put recovered unsaved edits back into the document and save them. */
+  function restoreRecoveredDraft(): void {
+    if (!recoveredDraft || !id) return
+    latestTitleRef.current = recoveredDraft.title || latestTitleRef.current
+    if (recoveredDraft.title) setTitle(recoveredDraft.title)
+    setContent(recoveredDraft.content)
+    handleContentChange(recoveredDraft.content)
+    setRecoveredDraft(null)
+  }
+
+  /** Forget recovered unsaved edits and keep the saved copy. */
+  function discardRecoveredDraft(): void {
+    if (id) clearLocalDraft(id)
+    setRecoveredDraft(null)
   }
 
   function handleContentChange(newContent: string): void {
@@ -1763,6 +1849,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
 
   /** Shared accept tail: feedback logging, scanner dismissal, chip cleanup. */
   function finishPromptAccept(applied: string, confidence: number | undefined): void {
+    setAnnouncement(`Applied ${formatSuggestionLabel(applied)}.`)
     // Dismiss the active scanner suggestion
     if (scannerActive) {
       acceptScannerSuggestion(scannerActive.key)
@@ -1819,7 +1906,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     } else {
       applyPromptFormat(applied)
     }
-    handleFormat(applied)
+    handleFormat(applied, suggestionPayload(applied))
     finishPromptAccept(applied, confidence)
   }
 
@@ -1856,7 +1943,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     // Focus-safe: restore the caret the user had before the bulk apply.
     editor.chain().setTextSelection({ from: previous.from, to: previous.to }).run()
 
-    handleFormat(format)
+    handleFormat(format, suggestionPayload(format))
 
     if (id) {
       api.behavior
@@ -1902,6 +1989,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   }
 
   function handlePromptReject(): void {
+    setAnnouncement('Suggestion dismissed.')
     const rejectedFormat = formatPrompt?.format ?? suggestions[0]?.format
 
     if (rejectedFormat) {
@@ -1918,6 +2006,27 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     setSuggestions([])
     setShowSuggestions(false)
   }
+
+  // Which page each grammar issue is on, measured after the layout settles.
+  const [grammarPages, setGrammarPages] = useState<Map<GrammarIssue, number>>(new Map())
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || grammarIssues.length === 0) {
+      setGrammarPages(new Map())
+      return
+    }
+    const timer = window.setTimeout(() => {
+      if (editor.isDestroyed) return
+      const pages = new Map<GrammarIssue, number>()
+      for (const issue of grammarIssues.slice(0, 100)) {
+        const range = locateIssue(issue)
+        if (range) pages.set(issue, pageNumberAt(editor, range.from))
+      }
+      setGrammarPages(pages)
+    }, 800)
+    return () => window.clearTimeout(timer)
+    // locateIssue only reads the editor, which is already a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, grammarIssues, content])
 
   /** Panel click on a formatting suggestion: jump to it and open its popup in the document. */
   function openScannerInDocument(suggestion: ScannerSuggestion): void {
@@ -1945,6 +2054,14 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
     scrollToDocPos(range?.from ?? editor.state.selection.from)
   }
 
+  /** Jump to an overlapping passage reported by the originality check. */
+  function jumpToPassage(passageText: string): void {
+    const range = locateIssue({ type: 'passage', original: passageText.slice(0, 160), suggestion: '', explanation: '' })
+    if (!range || !editor || editor.isDestroyed) return
+    editor.chain().focus().setTextSelection(range).run()
+    scrollToDocPos(range.from)
+  }
+
   /** Panel click on a grammar/spelling issue: jump to the word and open its fix popover there. */
   function openGrammarInDocument(issue: GrammarIssue): void {
     const range = locateIssue(issue)
@@ -1963,6 +2080,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   }
 
   function handleGrammarApply(issue: GrammarIssue, suggestion?: string): void {
+    setAnnouncement(`Fixed ${issue.original}.`)
     if (!editor || !editor.isEditable) return
 
     function preserveReplacementCase(originalText: string, replacementSuggestion: string): string {
@@ -2001,6 +2119,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
   }
 
   function handleGrammarDismiss(issue: GrammarIssue): void {
+    setAnnouncement(`Ignored ${issue.original}.`)
     setGrammarIssues((prev) => prev.filter((i) => i !== issue))
     setActiveGrammarIssue((active) => (active === issue ? null : active))
   }
@@ -2834,6 +2953,50 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
             />
           )}
 
+          {/* Unsaved edits from an earlier session */}
+          {recoveredDraft && !readOnly && (
+            <div
+              role="status"
+              style={{
+                position: 'fixed',
+                bottom: '7.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(32rem, calc(100vw - 2rem))',
+                zIndex: 41,
+                padding: '0.75rem 0.875rem',
+                borderRadius: '0.625rem',
+                border: '1px solid var(--border)',
+                borderLeft: '3px solid var(--primary)',
+                backgroundColor: 'var(--card)',
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.12)',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)' }}>
+                We found unsaved changes from {new Date(recoveredDraft.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+              </p>
+              <p style={{ margin: '0.2rem 0 0', fontSize: '0.75rem', lineHeight: 1.45, color: 'var(--muted-foreground)' }}>
+                They never reached the server. Restore them, or keep the saved version.
+              </p>
+              <div style={{ display: 'flex', gap: '0.375rem', marginTop: '0.625rem' }}>
+                <button
+                  type="button"
+                  onClick={restoreRecoveredDraft}
+                  style={{ height: '1.875rem', padding: '0 0.75rem', borderRadius: '0.4375rem', border: 'none', background: 'var(--primary)', color: 'var(--primary-foreground)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  Restore my changes
+                </button>
+                <button
+                  type="button"
+                  onClick={discardRecoveredDraft}
+                  style={{ height: '1.875rem', padding: '0 0.75rem', borderRadius: '0.4375rem', border: '1px solid var(--border)', background: 'transparent', color: 'var(--foreground)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  Keep saved version
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Page setup drifted from the standard blueprint — offer a fork */}
           {forkPromptOpen && activeAcademicPreset && (
             <div
@@ -2901,6 +3064,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
           grammarLoading={grammarCheck.loading}
           grammarError={grammarCheck.error}
           grammarCheckedAt={grammarCheck.lastCheckedAt}
+          grammarPages={grammarPages}
           onCheckGrammar={() => void grammarCheck.runCheck()}
           onOpenScanner={openScannerInDocument}
           onOpenMl={openMlInDocument}
@@ -2910,6 +3074,7 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
           onFormattingEnabledChange={(value) => setEditorPreferences({ formattingSuggestions: value })}
           onGrammarEnabledChange={(value) => setEditorPreferences({ grammarSuggestions: value })}
           onFocusEditor={focusEditor}
+          onOpenHelp={() => setHelpOpen(true)}
           readOnly={readOnly}
           onVersionRestored={(version) => {
             // Push the restored snapshot back into both the editor and the
@@ -2952,6 +3117,10 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
           toolsSection={
             <>
               <DocumentPartsPanel editor={editor} readOnly={readOnly} />
+
+              {id && !readOnly && <OriginalityCard documentId={id} onJump={jumpToPassage} />}
+
+              {!readOnly && <LearningCard />}
 
               {/* Formatting preset + custom rules (Tier 1 & 2) */}
               <FormattingPanel
@@ -3032,6 +3201,9 @@ const [citationStyle, setCitationStyle] = useState<'ieee' | 'apa'>('ieee')
           onReject={handlePromptReject}
         />
       )}
+
+      <HelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
 
       {shareOpen && id && (
         <ShareModal documentId={id} onClose={() => setShareOpen(false)} />

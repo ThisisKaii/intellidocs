@@ -20,7 +20,9 @@ export async function appendBehaviorEvent(
 
   // Cross-document learning: when the event captures a text+format pair, fold
   // it into the user's learned-pattern map so other documents can suggest it.
-  if (payload.payload?.text) {
+  // A format the user accepted from a suggestion is not a new observation; counting
+  // it would let each accept inflate the confidence of the suggestion itself.
+  if (payload.payload?.text && !payload.payload.fromSuggestion) {
     await learnFormatPattern(userId, event.action, payload.payload)
   }
 }

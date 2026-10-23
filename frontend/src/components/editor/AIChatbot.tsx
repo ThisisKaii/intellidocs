@@ -20,6 +20,8 @@ interface ChatMessage {
   preview_font_size?: number | null
   preview_reason?: string | null
   preview_status?: 'pending' | 'applied' | 'rejected' | null
+  /** Document sections an AI answer was based on (undefined for rule-based replies). */
+  sources?: Array<{ title: string }>
 }
 
 interface ChatHistoryEntry {
@@ -432,6 +434,18 @@ export default function AIChatbot({
     )
   }
 
+  /** Scroll the document to the section an answer came from and put the caret there. */
+  function jumpToSection(title: string): void {
+    if (!editor || editor.isDestroyed) return
+    if (title === 'Opening of the document') {
+      editor.chain().focus().setTextSelection(1).scrollIntoView().run()
+      return
+    }
+    const ranges = resolveTargetRanges(editor.state.doc, title, 'section')
+    if (ranges.length === 0) return
+    editor.chain().focus().setTextSelection(ranges[0].from).scrollIntoView().run()
+  }
+
   /** Undo the most recent change applied from this chat; returns what was undone, or null when there is nothing. */
   function undoLastChatChange(): string | null {
     const last = appliedStackRef.current.pop()
@@ -651,6 +665,7 @@ export default function AIChatbot({
         preview_font_size: response.preview?.fontSize ?? null,
         preview_reason: previewFormat ? previewReason : null,
         preview_status: previewFormat ? 'pending' : null,
+        sources: previewFormat ? undefined : response.sources,
       }
 
       // Remember the last shown preview so follow-ups ("back to normal",
@@ -768,6 +783,22 @@ export default function AIChatbot({
                     }}
                   >
                     {m.content}
+                    {m.role === 'assistant' && m.sources ? (
+                      <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.25rem' }}>
+                        {m.sources.map((source) => (
+                          <button
+                            key={source.title}
+                            type="button"
+                            onClick={() => jumpToSection(source.title)}
+                            title="Show this part of the document"
+                            style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0.125rem 0.5rem', borderRadius: '999px', border: '1px solid var(--border)', backgroundColor: 'var(--card)', color: 'var(--foreground)', fontSize: '0.6875rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                          >
+                            From: {source.title}
+                          </button>
+                        ))}
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>AI answer · check important details</span>
+                      </div>
+                    ) : null}
                     {m.preview_status || m.preview_format || (m.preview_formats?.length ?? 0) > 0 || m.preview_font_size ? (
                       <div
                         style={{

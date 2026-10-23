@@ -18,6 +18,7 @@ import formattingRoutes from './routes/formattingRoutes'
 import profileRoutes from './routes/profileRoutes'
 import healthRoutes from './routes/healthRoutes'
 import plagiarismRoutes from './routes/plagiarismRoutes'
+import citationRoutes from './routes/citationRoutes'
 import mcpRouter from './mcp/mcpServer'
 import { authMiddleware } from './middleware/authMiddleware'
 
@@ -60,6 +61,7 @@ app.use('/admin', adminRoutes)
 app.use('/formatting', authMiddleware, formattingRoutes)
 app.use('/profile', authMiddleware, profileRoutes)
 app.use('/plagiarism', authMiddleware, plagiarismRoutes)
+app.use('/citations', authMiddleware, citationRoutes)
 app.use('/mcp', authMiddleware, mcpRouter)
 
 // 404 handler

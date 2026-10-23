@@ -1629,3 +1629,15 @@ input.input-sleek:focus {
 .intellidocs-page-editor--footer-center .rm-with-pagination .rm-page-footer-right {
   display: none !important;
 }
+
+
+/* Keyboard focus: a clear ring on the controls of the side panel, the suggestion popup and dialogs. */
+aside button:focus-visible,
+aside [role='tab']:focus-visible,
+aside input[type='checkbox']:focus-visible,
+[role='dialog'] button:focus-visible,
+[role='status'] button:focus-visible,
+.panel-icon-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

@@ -4,7 +4,7 @@ import {
   predictFormatting,
   spellingCheck,
 } from '../controllers/predictionController'
-import { chatWithAI, logAIFeedback, triggerUserFineTune } from '../controllers/aiController'
+import { chatWithAI, getLearningStats, logAIFeedback, triggerUserFineTune } from '../controllers/aiController'
 import { aiArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
 import { predictionTextSchema } from '../../schemas/predictionSchemas'
@@ -48,6 +48,8 @@ router.post(
   logAIFeedback
 )
 
+router.get('/feedback/stats', aiArcjet, getLearningStats)
+
 router.post(
   '/fine-tune',
   aiArcjet,
@@ -55,4 +57,4 @@ router.post(
 )
 
 export default router
-
+

@@ -31,6 +31,29 @@ export const createDocumentSchema = z.object({
   unique_title: z.boolean().optional(),
 })
 
+/** One saved reference; unknown keys are dropped so only the form's fields are stored. */
+const citationReferenceSchema = z.object({
+  id: z.string().min(1).max(120),
+  type: z.enum(['journal', 'book', 'conference', 'website', 'thesis', 'report', 'other']),
+  authors: z.array(z.string().max(200)).max(50),
+  title: z.string().max(500),
+  year: z.number().int().min(0).max(3000),
+  venue: z.string().max(300).optional(),
+  volume: z.string().max(40).optional(),
+  issue: z.string().max(40).optional(),
+  pages: z.string().max(40).optional(),
+  doi: z.string().max(200).optional(),
+  url: z.string().max(500).optional(),
+  publisher: z.string().max(200).optional(),
+  cited: z.number().int().min(1).max(10000).optional(),
+})
+
+/** The document's citation style and reference list. */
+const citationDataSchema = z.object({
+  style: z.enum(['ieee', 'apa', 'mla', 'chicago']),
+  references: z.array(citationReferenceSchema).max(500),
+})
+
 /** Validate document update requests from HTTP clients. */
 export const updateDocumentSchema = z
   .object({
@@ -53,6 +76,7 @@ export const updateDocumentSchema = z
     formatting_history: z.array(z.string()).max(500).optional(),
     is_isolated: z.boolean().optional(),
     formatting_preset: z.string().max(100).nullable().optional(),
+    citation_data: citationDataSchema.optional(),
   })
   .refine(
     (data) =>
@@ -69,7 +93,8 @@ export const updateDocumentSchema = z
       data.orientation !== undefined ||
       data.formatting_history !== undefined ||
       data.is_isolated !== undefined ||
-      data.formatting_preset !== undefined,
+      data.formatting_preset !== undefined ||
+      data.citation_data !== undefined,
     {
       message: 'At least one field must be provided',
     }

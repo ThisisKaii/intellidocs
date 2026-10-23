@@ -964,6 +964,74 @@ class CouncilScanResponse(BaseModel):
     processing_time_ms: float
 
 
+class OriginalityPeer(BaseModel):
+    """One of the student's other documents to compare against."""
+
+    document_id: str
+    title: str = ''
+    text: str
+
+
+class OriginalityRequest(BaseModel):
+    text: str
+    peers: list[OriginalityPeer] = []
+
+
+class OriginalityPassage(BaseModel):
+    paragraph_index: int
+    text: str
+    similarity: float
+    match_type: str
+    peer_document_id: str
+    peer_title: str
+    peer_excerpt: str
+
+
+class OriginalityResponse(BaseModel):
+    overlap_percent: float
+    passages: list[OriginalityPassage]
+
+
+@app.post('/originality/check', response_model=OriginalityResponse)
+async def originality_check(request: OriginalityRequest) -> OriginalityResponse:
+    """
+    Student self-check: lexical (difflib) paragraph matching against the
+    student's own other documents. Reuses the council's stage-1 pre-filter and
+    never runs the council or any AI judge.
+    """
+    try:
+        from triage_filter import TriageFilter, extract_paragraphs
+
+        triage = TriageFilter()
+        flagged = triage._stage1_peer_pre_filter(
+            'self-check',
+            request.text,
+            [{'document_id': p.document_id, 'user_id': '', 'text': p.text} for p in request.peers],
+        )
+        titles = {p.document_id: p.title for p in request.peers}
+        total_chars = sum(
+            len(text) for (_i, text, _s, _e) in extract_paragraphs(request.text, triage.config.min_paragraph_length)
+        )
+        flagged_chars = sum(len(item['text']) for item in flagged)
+        overlap = round(100.0 * flagged_chars / total_chars, 1) if total_chars else 0.0
+
+        passages = [
+            OriginalityPassage(
+                paragraph_index=item['paragraph_index'],
+                text=item['text'],
+                similarity=round(item['similarity_score'] * 100, 1),
+                match_type=item['match_type'],
+                peer_document_id=item['matched_document_id'],
+                peer_title=titles.get(item['matched_document_id'], ''),
+                peer_excerpt=item['source_excerpt'],
+            )
+            for item in flagged
+        ]
+        return OriginalityResponse(overlap_percent=min(overlap, 100.0), passages=passages)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'Originality check failed: {exc}')
+
+
 @app.post('/council/scan', response_model=CouncilScanResponse)
 async def council_scan(request: CouncilScanRequest) -> CouncilScanResponse:
     """

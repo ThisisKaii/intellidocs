@@ -130,6 +130,13 @@ export interface UpdateDocumentRequest {
   formatting_history?: string[]
   is_isolated?: boolean
   formatting_preset?: string | null
+  citation_data?: CitationData
+}
+
+/** A document's citation style and saved references. */
+export interface CitationData {
+  style: 'ieee' | 'apa' | 'mla' | 'chicago'
+  references: Array<CitationLookupResult & { id: string; cited?: number }>
 }
 
 // ── Three-tier formatting control system ────────────────────────────────────
@@ -381,6 +388,8 @@ export interface FormatBehaviorPayload {
   underline?: boolean
   fontSize?: number | null
   textAlign?: string
+  /** Set when the format came from accepting a suggestion; excluded from learning. */
+  fromSuggestion?: boolean
   tableRows?: number
   tableCols?: number
   tableAlignment?: 'left' | 'center' | 'right'
@@ -546,4 +555,19 @@ export interface ComplianceReport {
     style: StyleConsistencyResult | null
     flow: FlowConsistencyResult | null
   }
+}
+
+/** A source reference found by a citation lookup, ready to fill the reference form. */
+export interface CitationLookupResult {
+  type: 'journal' | 'book' | 'conference' | 'website' | 'thesis' | 'report' | 'other'
+  authors: string[]
+  title: string
+  year: number
+  venue?: string
+  volume?: string
+  issue?: string
+  pages?: string
+  doi?: string
+  url?: string
+  publisher?: string
 }

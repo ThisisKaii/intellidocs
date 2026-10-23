@@ -74,3 +74,20 @@ export async function getFeedbackAccuracyStats(
   }
 }
 
+
+/** The most recent feedback rows for a user, newest first, for progress summaries. */
+export async function listFeedbackRows(
+  userId: string,
+  limit: number = 5000
+): Promise<Array<{ prediction_type: string; accepted: boolean; created_at: string }>> {
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('prediction_feedback')
+    .select('prediction_type,accepted,created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error || !data) return []
+  return data as Array<{ prediction_type: string; accepted: boolean; created_at: string }>
+}

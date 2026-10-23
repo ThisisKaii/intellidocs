@@ -4,6 +4,7 @@
 /// <reference types="vite/client" />
 
 import { supabase } from '../lib/supabase'
+import { generateCitationKey, type CitationData, type CitationReference } from '@/lib/citationFormats'
 import type { ComplianceReport } from '../components/ThesisChecklist'
 import type { CouncilMatchVerdict } from '../components/editor/plagiarismTypes'
 import {
@@ -57,6 +58,8 @@ export interface DocumentRecord {
   formatting_history: unknown[]
   is_isolated: boolean
   formatting_preset: string | null
+  /** Citation style and references saved with the document (migration 029). */
+  citation_data?: CitationData | null
   is_deleted: boolean
   deleted_at: string | null
   share_permission?: SharePermission
@@ -207,6 +210,7 @@ interface UpdateDocumentRequest {
   formatting_history?: string[]
   is_isolated?: boolean
   formatting_preset?: string | null
+  citation_data?: CitationData
 }
 
 // ── Three-tier formatting control system types ──────────────────────────────
@@ -410,12 +414,28 @@ export interface AIChatPreviewMeta {
   normalize?: boolean
 }
 
+/** Accept/reject counts for one group of suggestions; the rate is a whole percent or null with no data. */
+export interface LearningBucket {
+  total: number
+  accepted: number
+  acceptRate: number | null
+}
+
+/** The user's suggestion accept rates (server: summarizeLearning). */
+export interface LearningSummary {
+  overall: LearningBucket
+  byType: Record<string, LearningBucket>
+  weekly: Array<LearningBucket & { weekStart: string }>
+}
+
 export interface AIChatResponse {
   reply: string
   provider: string
   model: string
   mode?: 'chat' | 'preview'
   preview?: AIChatPreview | null
+  /** Sections of the document an AI answer was based on; present only for AI answers. */
+  sources?: Array<{ title: string }>
 }
 
 export type MCPToolName =
@@ -509,6 +529,23 @@ export interface ClassSimilarityPair {
 export interface ClassSimilarityMatrix {
   students: ClassSimilarityStudent[]
   pairs: ClassSimilarityPair[]
+}
+
+/** One passage that overlaps with another of the student's own documents. */
+export interface OriginalityPassage {
+  paragraph_index: number
+  text: string
+  similarity: number
+  match_type: string
+  peer_document_id: string
+  peer_title: string
+  peer_excerpt: string
+}
+
+/** Result of the student originality self-check. */
+export interface OriginalityResult {
+  overlap_percent: number
+  passages: OriginalityPassage[]
 }
 
 /** A persisted plagiarism scan row. */
@@ -1075,6 +1112,10 @@ export const api = {
         }),
       })
     },
+    /** How often the user accepts suggestions: overall, by kind and week by week. */
+    learningStats: async (): Promise<LearningSummary> => {
+      return fetchAPI<LearningSummary>('ai/feedback/stats')
+    },
     /** Log structured user feedback (acceptance or rejection) for an AI formatting prediction. */
     logFeedback: async (payload: {
       documentId?: string
@@ -1258,6 +1299,18 @@ export const api = {
     },
   },
 
+  citations: {
+    /** Find a reference from a DOI, a link or words from its title. */
+    lookup: async (query: string): Promise<CitationReference> => {
+      const found = await fetchAPI<Omit<CitationReference, 'id'>>('citations/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      })
+      return { ...found, id: generateCitationKey(found) }
+    },
+  },
+
   plagiarism: {
     /** Run a council scan for one submission in a class folder. */
     runScan: async (folderId: string, documentId: string): Promise<PlagiarismScanDetail> => {
@@ -1265,6 +1318,14 @@ export const api = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documentId, folderId }),
+      })
+    },
+    /** Compare a document with the student's own other documents (nothing stored). */
+    selfCheck: async (documentId: string): Promise<OriginalityResult> => {
+      return fetchAPI<OriginalityResult>('plagiarism/self-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId }),
       })
     },
     /** Fetch one scan with its flagged matches. */

@@ -16,6 +16,8 @@ export interface BehaviorEventPayload {
   underline?: boolean
   fontSize?: number | null
   textAlign?: string
+  /** True when the format came from accepting a suggestion (logged, not learned from). */
+  fromSuggestion?: boolean
   /** Shape of the table at the moment of the action. */
   tableRows?: number
   tableCols?: number

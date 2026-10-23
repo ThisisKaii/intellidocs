@@ -15,6 +15,7 @@ import {
   Scissors,
   ClipboardPaste,
   FileText,
+  HelpCircle,
 } from 'lucide-react'
 
 interface SlashCommand {
@@ -109,6 +110,15 @@ const COMMANDS: SlashCommand[] = [
     category: 'blocks',
     keywords: ['page', 'break', 'new page'],
     action: (e) => e.chain().focus().insertContent({ type: 'pageBreak' }).run(),
+  },
+  {
+    id: 'help',
+    label: 'Help',
+    description: 'Commands, shortcuts and how suggestions work',
+    icon: HelpCircle,
+    category: 'actions',
+    keywords: ['help', 'shortcuts', 'commands', 'how'],
+    action: () => window.dispatchEvent(new CustomEvent('intellidocs:open-help')),
   },
   {
     id: 'divider',

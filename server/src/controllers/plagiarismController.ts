@@ -2,8 +2,10 @@ import { Response } from 'express'
 import { AuthenticatedRequest } from '../types/express'
 import * as behaviorModel from '../models/behaviorModel'
 import * as folderModel from '../models/folderModel'
+import * as documentModel from '../models/documentModel'
 import * as plagiarismModel from '../models/plagiarismModel'
 import { runCouncilScan } from '../skills/runCouncilScan'
+import { runOriginalityCheck } from '../skills/runOriginalityCheck'
 
 /** True when the user owns the folder (folderModel throws otherwise). */
 async function ownsFolder(userId: string, folderId: string): Promise<boolean> {
@@ -91,6 +93,30 @@ export async function runScan(req: AuthenticatedRequest, res: Response): Promise
     res.status(201).json({ scan, matches, documentTitle: document.title })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to run scan'
+    res.status(errorStatus(err)).json({ error: message })
+  }
+}
+
+/** Compare the student's own document with their other documents; nothing is stored. */
+export async function selfCheck(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const { documentId } = req.body as { documentId: string }
+    const document = await documentModel.getDocumentById(documentId, userId)
+    const others = await plagiarismModel.getOwnOtherDocuments(userId, documentId)
+
+    const result = await runOriginalityCheck({
+      document: { id: document.id, title: document.title, content: document.content },
+      others,
+    })
+    res.json(result)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to check originality'
     res.status(errorStatus(err)).json({ error: message })
   }
 }

@@ -11,6 +11,7 @@ import {
   RefreshCw,
   SpellCheck2,
   Wand2,
+  HelpCircle,
 } from 'lucide-react'
 import AIChatbot from './AIChatbot'
 import HistoryPanel from './HistoryPanel'
@@ -22,7 +23,7 @@ import type { Suggestion } from './SuggestionPanel'
 
 export type SidePanelTab = 'assistant' | 'suggestions' | 'tools' | 'history'
 
-type QueueView = 'formatting' | 'grammar'
+type QueueView = 'all' | 'formatting' | 'grammar'
 
 const VIEW_STORAGE_KEY = 'intellidocs.suggestionView'
 
@@ -43,6 +44,8 @@ interface EditorSidePanelProps {
   grammarLoading: boolean
   grammarError: string | null
   grammarCheckedAt: number | null
+  /** Page each grammar issue is on, once the layout is known. */
+  grammarPages?: Map<GrammarIssue, number>
   onCheckGrammar: () => void
   /** Jump to a formatting suggestion in the document and open its popup there. */
   onOpenScanner: (suggestion: ScannerSuggestion) => void
@@ -60,6 +63,8 @@ interface EditorSidePanelProps {
   toolsSection?: ReactNode
   /** Called after a version snapshot is restored onto the document. */
   onVersionRestored?: (version: DocumentVersion) => void
+  /** Opens the help sheet. */
+  onOpenHelp?: () => void
   /** Narrow screens: render as a bottom sheet that never covers the page until opened. */
   compact?: boolean
 }
@@ -67,7 +72,8 @@ interface EditorSidePanelProps {
 /** Read the remembered suggestion view, defaulting to formatting. */
 function readStoredView(): QueueView {
   try {
-    return localStorage.getItem(VIEW_STORAGE_KEY) === 'grammar' ? 'grammar' : 'formatting'
+    const stored = localStorage.getItem(VIEW_STORAGE_KEY)
+    return stored === 'grammar' || stored === 'all' ? stored : 'formatting'
   } catch {
     return 'formatting'
   }
@@ -90,6 +96,7 @@ export default function EditorSidePanel({
   grammarLoading,
   grammarError,
   grammarCheckedAt,
+  grammarPages,
   onCheckGrammar,
   onOpenScanner,
   onOpenMl,
@@ -102,6 +109,7 @@ export default function EditorSidePanel({
   readOnly = false,
   toolsSection,
   onVersionRestored,
+  onOpenHelp,
   compact = false,
 }: EditorSidePanelProps): JSX.Element {
   const suggestionCount = scannerSuggestions.length + mlSuggestions.length
@@ -173,6 +181,11 @@ export default function EditorSidePanel({
               <kbd style={{ fontFamily: 'var(--font-mono)', fontSize: '0.625rem', color: 'var(--muted-foreground)' }}>
                 Ctrl+\
               </kbd>
+            )}
+            {onOpenHelp && (
+              <button type="button" onClick={onOpenHelp} title="Help: commands and shortcuts" aria-label="Help" className="panel-icon-btn">
+                <HelpCircle style={{ width: '16px', height: '16px' }} />
+              </button>
             )}
             <button
               type="button"
@@ -265,6 +278,7 @@ export default function EditorSidePanel({
               grammarLoading={grammarLoading}
               grammarError={grammarError}
               grammarCheckedAt={grammarCheckedAt}
+              grammarPages={grammarPages}
               formattingEnabled={formattingEnabled}
               grammarEnabled={grammarEnabled}
               onFormattingEnabledChange={onFormattingEnabledChange}
@@ -338,6 +352,7 @@ interface SuggestionQueueProps {
   grammarLoading: boolean
   grammarError: string | null
   grammarCheckedAt: number | null
+  grammarPages?: Map<GrammarIssue, number>
   formattingEnabled: boolean
   grammarEnabled: boolean
   onFormattingEnabledChange: (value: boolean) => void
@@ -363,7 +378,7 @@ function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
     }
   }
 
-  const enabled = view === 'formatting' ? formattingEnabled : grammarEnabled
+  const enabled = view === 'all' ? formattingEnabled || grammarEnabled : view === 'formatting' ? formattingEnabled : grammarEnabled
   const setEnabled = view === 'formatting' ? props.onFormattingEnabledChange : props.onGrammarEnabledChange
 
   return (
@@ -372,13 +387,20 @@ function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
         role="tablist"
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          gridTemplateColumns: '1fr 1fr 1fr',
           gap: '0.25rem',
           padding: '0.25rem',
           borderRadius: '0.625rem',
           backgroundColor: 'var(--secondary)',
         }}
       >
+        <SegmentButton
+          active={view === 'all'}
+          icon={<Sparkles style={{ width: '13px', height: '13px' }} />}
+          label="All"
+          count={(formattingEnabled ? scannerSuggestions.length + mlSuggestions.length : 0) + (grammarEnabled ? grammarIssues.length : 0)}
+          onClick={() => chooseView('all')}
+        />
         <SegmentButton
           active={view === 'formatting'}
           icon={<Wand2 style={{ width: '13px', height: '13px' }} />}
@@ -389,13 +411,19 @@ function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
         <SegmentButton
           active={view === 'grammar'}
           icon={<SpellCheck2 style={{ width: '13px', height: '13px' }} />}
-          label="Grammar & spelling"
+          label="Grammar"
           count={grammarEnabled ? grammarIssues.length : 0}
           onClick={() => chooseView('grammar')}
         />
       </div>
 
-      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--foreground)' }}>
+      {view === 'all' ? (
+        <>
+          <SwitchRow label="Formatting suggestions" checked={formattingEnabled} onChange={props.onFormattingEnabledChange} />
+          <SwitchRow label="Grammar & spelling checks" checked={grammarEnabled} onChange={props.onGrammarEnabledChange} />
+        </>
+      ) : null}
+      <label style={{ display: view === 'all' ? 'none' : 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--foreground)' }}>
         {view === 'formatting' ? 'Formatting suggestions' : 'Grammar & spelling checks'}
         <input
           type="checkbox"
@@ -415,6 +443,8 @@ function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
           title="Turned off"
           body={view === 'formatting' ? 'No formatting suggestions will appear while this is off.' : 'Underlines and the list are hidden while this is off.'}
         />
+      ) : view === 'all' ? (
+        <AllView {...props} />
       ) : view === 'formatting' ? (
         <FormattingView {...props} />
       ) : (
@@ -462,6 +492,115 @@ function SegmentButton({ active, icon, label, count, onClick }: SegmentButtonPro
         {count}
       </span>
     </button>
+  )
+}
+
+/** A labelled on/off switch. */
+function SwitchRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }): JSX.Element {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--foreground)' }}>
+      {label}
+      <input
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-label={`Turn ${label.toLowerCase()} on or off`}
+        style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }}
+      />
+    </label>
+  )
+}
+
+interface AllItem {
+  key: string
+  page: number | null
+  category: string
+  onOpen: () => void
+  body: ReactNode
+}
+
+/** Every suggestion in one list, grouped by the page it is on. */
+function AllView({
+  scannerSuggestions,
+  mlSuggestions,
+  grammarIssues,
+  formattingEnabled,
+  grammarEnabled,
+  grammarPages,
+  onOpenScanner,
+  onOpenMl,
+  onOpenGrammar,
+}: SuggestionQueueProps): JSX.Element {
+  const items: AllItem[] = []
+  if (formattingEnabled) {
+    mlSuggestions.forEach((s, i) =>
+      items.push({
+        key: `ml-${i}`,
+        page: null,
+        category: 'Formatting',
+        onOpen: () => onOpenMl(s),
+        body: <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{formatLabel(s)}</span>,
+      })
+    )
+    scannerSuggestions.forEach((s) =>
+      items.push({
+        key: s.key,
+        page: s.pageNumber,
+        category: 'Formatting',
+        onOpen: () => onOpenScanner(s),
+        body: (
+          <>
+            <span style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600 }}>{s.label ?? FORMAT_LABELS[s.format] ?? s.format}</span>
+            <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>“{s.preview}”</span>
+          </>
+        ),
+      })
+    )
+  }
+  if (grammarEnabled) {
+    grammarIssues.forEach((issue, i) =>
+      items.push({
+        key: `g-${i}`,
+        page: grammarPages?.get(issue) ?? null,
+        category: issue.kind === 'spelling' ? 'Spelling' : 'Grammar',
+        onOpen: () => onOpenGrammar(issue),
+        body: (
+          <span style={{ fontSize: '0.8125rem', fontWeight: 600, wordBreak: 'break-word' }}>
+            <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>{issue.original}</span>
+            <span style={{ color: 'var(--muted-foreground)' }}> → </span>
+            <span style={{ color: 'var(--success)' }}>{issue.suggestion}</span>
+          </span>
+        ),
+      })
+    )
+  }
+
+  if (items.length === 0) {
+    return <EmptyState title="Nothing to review" body="Formatting suggestions, grammar and spelling issues will all be listed here by page." />
+  }
+
+  const pages = Array.from(new Set(items.map((item) => item.page))).sort((a, b) => (a ?? 9999) - (b ?? 9999))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {pages.map((page) => (
+        <div key={page ?? 'other'} style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+          <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
+            {page === null ? 'Current block' : `Page ${page}`}
+          </div>
+          {items
+            .filter((item) => item.page === page)
+            .map((item) => (
+              <NavCard key={item.key} active={false} onClick={item.onOpen}>
+                <span style={{ display: 'block', marginBottom: '0.125rem' }}>
+                  <Pill>{item.category}</Pill>
+                </span>
+                {item.body}
+              </NavCard>
+            ))}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -557,6 +696,7 @@ function GrammarView({
   grammarLoading,
   grammarError,
   grammarCheckedAt,
+  grammarPages,
   onCheckGrammar,
   onOpenGrammar,
 }: SuggestionQueueProps): JSX.Element {
@@ -603,7 +743,7 @@ function GrammarView({
       ) : (
         shown.map((issue, i) => (
           <NavCard key={`${issue.original}-${i}`} active={false} onClick={() => onOpenGrammar(issue)}>
-            <CardHeader title={issue.kind === 'spelling' ? 'Spelling' : 'Grammar'} badge="" hideBadge />
+            <CardHeader title={issue.kind === 'spelling' ? 'Spelling' : 'Grammar'} badge={grammarPages?.has(issue) ? `Page ${grammarPages.get(issue)}` : ''} hideBadge={!grammarPages?.has(issue)} />
             <span style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, wordBreak: 'break-word' }}>
               <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>{issue.original}</span>
               <span style={{ color: 'var(--muted-foreground)' }}> → </span>

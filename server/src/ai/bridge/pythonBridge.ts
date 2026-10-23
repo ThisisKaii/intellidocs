@@ -21,7 +21,9 @@ import {
 } from '../../../schemas/predictionSchemas'
 import {
   pythonCouncilScanResponseSchema,
+  pythonOriginalityResponseSchema,
   type PythonCouncilScanResponse,
+  type PythonOriginalityResponse,
 } from '../../../schemas/plagiarismSchemas'
 
 export interface PredictionResponse {
@@ -488,3 +490,45 @@ export async function requestCouncilScan(payload: {
   }
 }
 
+
+/** One of the student's other documents supplied to the originality check. */
+export interface OriginalityPeer {
+  documentId: string
+  title: string
+  text: string
+}
+
+/**
+ * Compare a document against the student's own other documents (lexical only,
+ * no AI judges). This is the only bridge function that talks to /originality/check.
+ */
+export async function requestOriginalityCheck(payload: {
+  text: string
+  peers: OriginalityPeer[]
+}): Promise<PythonOriginalityResponse> {
+  const mlApiUrl = getMLApiUrl()
+
+  try {
+    const response = await axios.post(
+      `${mlApiUrl}/originality/check`,
+      {
+        text: payload.text,
+        peers: payload.peers.map((peer) => ({
+          document_id: peer.documentId,
+          title: peer.title,
+          text: peer.text,
+        })),
+      },
+      { timeout: 60000 }
+    )
+
+    return pythonOriginalityResponseSchema.parse(response.data)
+  } catch (error) {
+    mlError(
+      'originality check',
+      mlApiUrl,
+      error,
+      'Start the FastAPI service (ml/src/main.py) locally or fix ML_API_URL / PYTHON_API_URL.'
+    )
+  }
+}

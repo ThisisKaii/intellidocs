@@ -1,8 +1,13 @@
 import { listOutlineSections } from './documentSections'
+import type { DocumentSection } from './retrieveDocumentSections'
 
 interface ChatContextInput {
   documentTitle?: string
   documentContent?: string
+  /** Sections picked for this question from the full saved document. */
+  retrievedSections?: DocumentSection[]
+  /** Every section title of the full saved document, in order. */
+  allSectionTitles?: string[]
 }
 
 interface DocumentStats {
@@ -83,7 +88,7 @@ export function buildChatContext(input: ChatContextInput): string {
   const rawContent = input.documentContent ?? ''
   // The editor appends a "Document outline:" block listing every section; keep it
   // whole (the excerpts below are short) and leave it out of the excerpt text.
-  const outline = listOutlineSections(rawContent).slice(0, OUTLINE_LIMIT)
+  const outline = (input.allSectionTitles ?? listOutlineSections(rawContent)).slice(0, OUTLINE_LIMIT)
   const outlineStart = rawContent.indexOf('Document outline:')
   const contentWithoutOutline = outlineStart === -1 ? rawContent : rawContent.slice(0, outlineStart)
   const plainText = htmlToPlainText(contentWithoutOutline)
@@ -127,8 +132,16 @@ export function buildChatContext(input: ChatContextInput): string {
     parts.push(`Likely section headings: ${headings.map((heading: string): string => `"${heading}"`).join(', ')}.`)
   }
 
-  parts.push(`Opening excerpt:\n${openingExcerpt}`)
-  if (recentExcerpt) parts.push(`Recent excerpt:\n${recentExcerpt}`)
+  if (input.retrievedSections && input.retrievedSections.length > 0) {
+    parts.push(
+      `Parts of the document most relevant to the question (answer from these and name the section you used):\n${input.retrievedSections
+        .map((section: DocumentSection): string => `[${section.title}]\n${section.text}`)
+        .join('\n\n')}`
+    )
+  } else {
+    parts.push(`Opening excerpt:\n${openingExcerpt}`)
+    if (recentExcerpt) parts.push(`Recent excerpt:\n${recentExcerpt}`)
+  }
 
   return parts.join('\n\n')
 }

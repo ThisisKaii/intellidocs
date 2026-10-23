@@ -16,6 +16,8 @@ const behaviorPayloadSchema = z.object({
   underline: z.boolean().optional(),
   fontSize: z.number().int().positive().nullable().optional(),
   textAlign: z.string().optional(),
+  // True when the format came from accepting a suggestion: logged, but never learned from.
+  fromSuggestion: z.boolean().optional(),
   // Table shape at the moment of the action.
   tableRows: z.number().int().nonnegative().optional(),
   tableCols: z.number().int().nonnegative().optional(),
