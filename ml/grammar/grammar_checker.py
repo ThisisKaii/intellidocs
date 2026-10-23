@@ -27,7 +27,7 @@ SUBJECT_VERB_ERRORS = {
     "i is", "i has",
 }
 
-SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
+SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
 WORD_PATTERN = re.compile(r"\b[\w']+\b", re.UNICODE)
 
 ACADEMIC_KEYWORDS = frozenset({

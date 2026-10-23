@@ -252,6 +252,24 @@ export async function getFolderPeerDocuments(
   return (docs ?? []) as ScanDocument[]
 }
 
+/** The student's other live documents (latest 30, content only) for self-check. */
+export async function getOwnOtherDocuments(
+  userId: string,
+  excludeDocumentId: string,
+): Promise<{ id: string; title: string; content: string }[]> {
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id,title,content')
+    .eq('user_id', userId)
+    .eq('is_deleted', false)
+    .neq('id', excludeDocumentId)
+    .order('updated_at', { ascending: false })
+    .limit(30)
+
+  if (error) throw new Error(`Failed to load your documents: ${error.message}`)
+  return (data ?? []) as { id: string; title: string; content: string }[]
+}
+
 /** Persist a completed scan and return the stored row. */
 export async function createScan(input: {
   documentId: string

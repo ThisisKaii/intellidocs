@@ -68,6 +68,30 @@ export const pythonCouncilScanResponseSchema = z.object({
   processing_time_ms: z.number().min(0),
 })
 
+/** Validate the request to self-check one of the student's own documents. */
+export const selfCheckSchema = z.object({
+  documentId: z.string().trim().min(1, 'documentId is required'),
+})
+
+/** One passage that overlaps with another of the student's documents. */
+export const originalityPassageSchema = z.object({
+  paragraph_index: z.number().int().min(0),
+  text: z.string(),
+  similarity: z.number().min(0).max(100),
+  match_type: z.string(),
+  peer_document_id: z.string(),
+  peer_title: z.string(),
+  peer_excerpt: z.string(),
+})
+
+/** Validate the originality-check response returned by the Python service. */
+export const pythonOriginalityResponseSchema = z.object({
+  overlap_percent: z.number().min(0).max(100),
+  passages: z.array(originalityPassageSchema),
+})
+
+export type OriginalityPassage = z.infer<typeof originalityPassageSchema>
+export type PythonOriginalityResponse = z.infer<typeof pythonOriginalityResponseSchema>
 export type CouncilVerdictPayload = z.infer<typeof councilVerdictSchema>
 export type MatchComposition = z.infer<typeof matchCompositionSchema>
 export type PythonMatchForensics = z.infer<typeof pythonMatchForensicsSchema>

@@ -131,7 +131,11 @@ function italicTextNodes(html: string): JSONContent[] {
   for (const part of html.split(/(<i>.*?<\/i>)/g)) {
     if (!part) continue
     const italic = part.startsWith('<i>')
-    const text = (italic ? part.slice(3, -4) : part).replace(/<[^>]+>/g, '')
+    const text = (italic ? part.slice(3, -4) : part)
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
     if (text) nodes.push(italic ? { type: 'text', text, marks: [{ type: 'italic' }] } : { type: 'text', text })
   }
   return nodes

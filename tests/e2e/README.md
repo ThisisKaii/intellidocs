@@ -125,3 +125,15 @@ These are not application defects and cannot be asserted here:
   a redirect; only the failure paths are covered.
 - **The production Compose stack is not exercised.** It needs Docker, TLS
   certificates, and a reachable domain.
+
+## Survey-feature regression tests
+
+`test_round3_regression.py` covers the panel navigator (grammar rows, All view with page numbers,
+on/off switches), per-block grammar checking, the help sheet, citation styles and DOI lookup,
+recovery of unsaved edits after a failed save, document Q&A with source chips, and the originality
+card. Start the stack first (server 3000, frontend 5173, ML 8001), then:
+
+    pytest tests/e2e/test_round3_regression.py -v
+
+The chat test needs an AI provider key in the server `.env`; the DOI test skips itself when Crossref
+is unreachable.

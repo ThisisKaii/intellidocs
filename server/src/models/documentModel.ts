@@ -362,10 +362,11 @@ export async function createDocument(
   return data
 }
 
-/** Copy an update payload without `preview_snippet` (pre-migration retry). */
+/** Copy an update payload without the columns added by later migrations (pre-migration retry). */
 function withoutPreviewSnippet(payload: Record<string, unknown>): Record<string, unknown> {
   const clone: Record<string, unknown> = { ...payload }
   delete clone.preview_snippet
+  delete clone.citation_data
   return clone
 }
 

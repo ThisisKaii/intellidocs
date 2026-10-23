@@ -1,6 +1,7 @@
 jest.mock('../../utils/redisClient', () => ({ getRedisClient: jest.fn() }))
 
-import { mergeLearnedPattern } from '../behaviorModel'
+import { appendBehaviorEvent, mergeLearnedPattern } from '../behaviorModel'
+import { getRedisClient } from '../../utils/redisClient'
 
 const TEXT = 'Quarterly Results Overview'
 
@@ -22,5 +23,18 @@ describe('mergeLearnedPattern', () => {
 
   it('ignores text that is too short to learn from', () => {
     expect(mergeLearnedPattern({}, 'bold', { text: 'ab', bold: true })).toEqual({})
+  })
+
+  it('does not learn from a format the user accepted from a suggestion', async () => {
+    const client = { rPush: jest.fn(), get: jest.fn().mockResolvedValue(null), set: jest.fn() }
+    ;(getRedisClient as jest.Mock).mockResolvedValue(client)
+    const base = { timestamp: '2026-01-01T00:00:00.000Z', documentId: 'd1' }
+
+    await appendBehaviorEvent('u1', { ...base, action: 'bold', payload: { text: TEXT, bold: true, fromSuggestion: true } })
+    expect(client.rPush).toHaveBeenCalledTimes(1)
+    expect(client.set).not.toHaveBeenCalled()
+
+    await appendBehaviorEvent('u1', { ...base, action: 'bold', payload: { text: TEXT, bold: true } })
+    expect(client.set).toHaveBeenCalledTimes(1)
   })
 })

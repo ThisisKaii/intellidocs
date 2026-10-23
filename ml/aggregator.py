@@ -37,6 +37,10 @@ def ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute("ALTER TABLE behavior_events ADD COLUMN IF NOT EXISTS block_id TEXT")
 
 
+# Keys removed per DEL call once their events are stored.
+DELETE_BATCH_SIZE = 100
+
+
 class UpstashRedis:
     """Just the commands the aggregator needs, over Upstash's REST API."""
 
@@ -60,8 +64,9 @@ class UpstashRedis:
         rows = self._call("LRANGE", key, start, stop) or []
         return [row if isinstance(row, str) else json.dumps(row) for row in rows]
 
-    def delete(self, key: str) -> None:
-        self._call("DEL", key)
+    def delete(self, *keys: str) -> None:
+        if keys:
+            self._call("DEL", *keys)
 
 
 def connect_redis() -> Any:
@@ -81,17 +86,35 @@ def is_event_list_key(r: redis.Redis, key: str) -> bool:
 
 
 def collect_events(r: redis.Redis, key: str) -> List[Dict[str, Any]]:
-    raw_items = r.lrange(key, 0, -1)
-    if not raw_items:
-        return []
-    r.delete(key)
+    """Read (without deleting) every parseable event in one list key."""
     events: List[Dict[str, Any]] = []
-    for raw in raw_items:
+    for raw in r.lrange(key, 0, -1):
         try:
             events.append(json.loads(raw))
         except Exception:
             continue
     return events
+
+
+def event_row(event: Dict[str, Any], key: str) -> Optional[tuple]:
+    """Build one behavior_events row, or None when required fields are missing."""
+    user_id = str(event.get("userId", ""))
+    document_id = str(event.get("documentId", ""))
+    action = str(event.get("action", ""))
+    if not user_id or not document_id or not action:
+        return None
+    ts_raw = str(event.get("timestamp", ""))
+    payload = event.get("payload")
+    return (
+        user_id,
+        document_id,
+        action,
+        parse_timestamp(ts_raw),
+        ts_raw,
+        key,
+        json.dumps(payload) if payload is not None else None,
+        str(event.get("blockId", "")) or None,
+    )
 
 
 def run_once() -> int:
@@ -106,47 +129,33 @@ def run_once() -> int:
         ensure_schema(conn)
 
         keys = [key for key in r.keys("behavior:*") if is_event_list_key(r, key)]
-        total = 0
+        rows: List[tuple] = []
+        read_keys: List[str] = []
 
         for key in keys:
             events = collect_events(r, key)
             if not events:
                 continue
+            read_keys.append(key)
+            rows.extend(row for row in (event_row(e, key) for e in events) if row is not None)
 
-            for event in events:
-                user_id = str(event.get("userId", ""))
-                document_id = str(event.get("documentId", ""))
-                action = str(event.get("action", ""))
-                ts_raw = str(event.get("timestamp", ""))
-                event_ts = parse_timestamp(ts_raw)
-                block_id = str(event.get("blockId", "")) or None
-                payload = event.get("payload")
-
-                if not user_id or not document_id or not action:
-                    continue
-
-                conn.execute(
-                    """
-                    INSERT INTO behavior_events
-                      (user_id, document_id, action, event_ts, event_ts_raw, source_key,
-                       payload, block_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        user_id,
-                        document_id,
-                        action,
-                        event_ts,
-                        ts_raw,
-                        key,
-                        json.dumps(payload) if payload is not None else None,
-                        block_id,
-                    ],
-                )
-                total += 1
+        # One batched insert, then one batched delete: keys are only removed once
+        # their events are safely in DuckDB.
+        if rows:
+            conn.executemany(
+                """
+                INSERT INTO behavior_events
+                  (user_id, document_id, action, event_ts, event_ts_raw, source_key,
+                   payload, block_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+        for start in range(0, len(read_keys), DELETE_BATCH_SIZE):
+            r.delete(*read_keys[start:start + DELETE_BATCH_SIZE])
+        return len(rows)
     finally:
         conn.close()
-    return total
 
 
 def main() -> None:

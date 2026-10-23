@@ -6,6 +6,10 @@ import { buildChatContext } from '../skills/buildChatContext'
 import { parseFormattingIntent } from '../skills/parseFormattingIntent'
 import { buildFormattingReply } from '../skills/buildFormattingReply'
 import { documentHasTarget, listOutlineSections } from '../skills/documentSections'
+import { retrieveSections, splitIntoSections, type DocumentSection } from '../skills/retrieveDocumentSections'
+import { getDocumentForUser } from '../models/documentModel'
+import { listFeedbackRows } from '../models/feedbackModel'
+import { summarizeLearning } from '../skills/summarizeLearning'
 
 interface ErrorWithStatus {
   status?: number
@@ -378,6 +382,7 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
     // Only open questions and writing help go to the AI model.
     let reply: string
     let answeredBy: AIProviderSummary | null = null
+    let sources: Array<{ title: string }> = []
     if (preview?.shortCircuitReply) {
       reply = preview.shortCircuitReply
     } else if (preview) {
@@ -394,6 +399,22 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
         message
       )
     } else {
+      // Ground the answer in the saved document: the parts that match the question,
+      // not just the excerpt the browser sent. Falls back to that excerpt on any failure.
+      let retrieved: DocumentSection[] = []
+      let allTitles: string[] | undefined
+      if (body.documentId) {
+        try {
+          const doc = await getDocumentForUser(body.documentId, userId, req.user?.email)
+          const sections = splitIntoSections(doc.content ?? '')
+          retrieved = retrieveSections(sections, message)
+          allTitles = sections.map((section) => section.title).filter((title) => title !== 'Opening of the document')
+        } catch {
+          retrieved = []
+        }
+      }
+      sources = retrieved.map((section) => ({ title: section.title }))
+
       // chatWithMeta reports which profile actually answered after any failover.
       const response = await aiClient.chatWithMeta(
         [
@@ -401,7 +422,7 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
           { role: 'user', content: message },
         ],
         buildAIChatSystemPrompt({
-          documentContext: buildChatContext(body),
+          documentContext: buildChatContext({ ...body, retrievedSections: retrieved, allSectionTitles: allTitles }),
           rejectedFormattingPreviews: body.rejectedFormattingPreviews ?? [],
         })
       )
@@ -416,6 +437,7 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       provider: providerSummary.provider,
       model: providerSummary.model,
       mode: preview ? 'preview' : 'chat',
+      sources,
       preview: preview
         ? {
             format: preview.format,
@@ -480,6 +502,21 @@ export async function logAIFeedback(req: Request, res: Response): Promise<void> 
     res.status(201).json({ status: 'ok', message: 'Feedback logged successfully' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to log AI feedback'
+    res.status(500).json({ error: message })
+  }
+}
+
+/** How often this user accepts suggestions, overall, by kind and week by week. */
+export async function getLearningStats(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    res.status(200).json(summarizeLearning(await listFeedbackRows(userId)))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not load learning stats'
     res.status(500).json({ error: message })
   }
 }

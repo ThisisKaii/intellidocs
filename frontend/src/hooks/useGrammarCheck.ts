@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Editor } from '@tiptap/react'
 import { api } from '@/services/api'
 import { buildGrammarResult, type GrammarIssue } from '@/components/editor/GrammarPanel'
 
 interface UseGrammarCheckOptions {
-  /** Document text or HTML; tags are stripped before checking. */
+  /** Changes whenever the document does; re-reads the editor's text. */
   text: string
+  /** The editor whose text blocks are checked, one line per block. */
+  editor: Editor | null
   enabled: boolean
   delayMs?: number
   cooldownMs?: number
@@ -24,11 +27,30 @@ interface UseGrammarCheckResult {
 const MAX_CHECK_CHARS = 50000
 
 /**
+ * The text to check: one line per text block, so separate headings, table cells and
+ * paragraphs are never read as one run-on sentence by the checker.
+ */
+function readCheckText(editor: Editor | null, html: string): string {
+  if (editor && !editor.isDestroyed) {
+    const lines: string[] = []
+    editor.state.doc.descendants((node) => {
+      if (!node.isTextblock) return true
+      const line = node.textContent.replace(/\s+/g, ' ').trim()
+      if (line) lines.push(line)
+      return false
+    })
+    return lines.join('\n')
+  }
+  return html.replace(/<[^>]*>/g, ' ').replace(/[ \t]+/g, ' ').trim()
+}
+
+/**
  * Grammar + spelling auto-check that runs whenever the document changes,
  * independent of which side-panel tab is open (so underlines never disappear).
  */
 export function useGrammarCheck({
   text,
+  editor,
   enabled,
   delayMs = 2500,
   cooldownMs = 12000,
@@ -41,8 +63,6 @@ export function useGrammarCheck({
   const lastTextRef = useRef<string>('')
   const onIssuesRef = useRef(onIssues)
   onIssuesRef.current = onIssues
-
-  const plainText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 
   /** Check the given text and publish the issues. */
   const check = useCallback(async (value: string): Promise<void> => {
@@ -65,23 +85,28 @@ export function useGrammarCheck({
     }
   }, [])
 
+  // The text is read when the timer fires, not at render time: `text` can change a
+  // render before the editor's document does, so reading earlier would see stale blocks.
   useEffect(() => {
-    if (!enabled || loading || plainText.length < 5 || plainText === lastTextRef.current) return
+    if (!enabled || loading) return
     const timer = setTimeout(() => {
+      const current = readCheckText(editor, text)
+      if (current.length < 5 || current === lastTextRef.current) return
       const now = Date.now()
       if (now - lastAutoRef.current < cooldownMs) return
       lastAutoRef.current = now
-      lastTextRef.current = plainText
-      void check(plainText)
+      lastTextRef.current = current
+      void check(current)
     }, delayMs)
     return () => clearTimeout(timer)
-  }, [enabled, loading, plainText, delayMs, cooldownMs, check])
+  }, [enabled, loading, text, editor, delayMs, cooldownMs, check])
 
   const runCheck = useCallback(async (): Promise<void> => {
+    const current = readCheckText(editor, text)
     lastAutoRef.current = Date.now()
-    lastTextRef.current = plainText
-    await check(plainText)
-  }, [check, plainText])
+    lastTextRef.current = current
+    await check(current)
+  }, [check, editor, text])
 
   return { loading, error, lastCheckedAt, runCheck }
 }

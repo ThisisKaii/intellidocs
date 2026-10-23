@@ -1,6 +1,7 @@
-// @ts-nocheck
-import { useState, useCallback, type ReactNode } from 'react'
-import { Search, Plus, FileText, BookOpen, Globe, GraduationCap, FileCode, Trash2, Copy, Edit2, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import type { Editor } from '@tiptap/react'
+import type { LucideIcon } from 'lucide-react'
+import { Search, Plus, Loader2, FileText, BookOpen, Globe, GraduationCap, FileCode, Trash2, Copy, Edit2 } from 'lucide-react'
 import {
   panelStyle,
   tabsStyle,
@@ -44,32 +45,19 @@ import {
   cancelButtonStyle,
   saveButtonStyle,
 } from './CitationAssistantStyles'
+import { api } from '@/services/api'
+import {
+  CITATION_STYLE_LABELS,
+  formatBibliographyEntry,
+  formatInTextCitation,
+  generateCitationKey,
+  orderForBibliography,
+  sortReferences,
+  type CitationReference,
+  type CitationStyle,
+} from '@/lib/citationFormats'
 
-/** Citation Assistant - Core types and formatting utilities. */
-
-export type CitationStyle = 'ieee' | 'apa'
-
-export interface CitationReference {
-  id: string
-  type: 'journal' | 'book' | 'conference' | 'website' | 'thesis' | 'report' | 'other'
-  authors: string[]
-  title: string
-  year: number
-  venue?: string
-  volume?: string
-  issue?: string
-  pages?: string
-  doi?: string
-  url?: string
-  publisher?: string
-  edition?: string
-  isbn?: string
-  institution?: string
-  reportNumber?: string
-  customFields?: Record<string, string>
-  /** IEEE order: 1 for the first source cited in the text, 2 for the next, and so on. */
-  cited?: number
-}
+export type { CitationReference, CitationStyle } from '@/lib/citationFormats'
 
 const TYPE_LABELS: Record<CitationReference['type'], string> = {
   journal: 'Journal Article',
@@ -81,7 +69,7 @@ const TYPE_LABELS: Record<CitationReference['type'], string> = {
   other: 'Other',
 }
 
-const TYPE_ICONS: Record<CitationReference['type'], any> = {
+const TYPE_ICONS: Record<CitationReference['type'], LucideIcon> = {
   journal: FileText,
   book: BookOpen,
   conference: FileCode,
@@ -89,115 +77,6 @@ const TYPE_ICONS: Record<CitationReference['type'], any> = {
   thesis: GraduationCap,
   report: FileText,
   other: FileText,
-}
-
-/** Generate a unique citation key from reference data. */
-function generateCitationKey(ref: CitationReference): string {
-  const firstAuthor = ref.authors[0]?.split(' ').pop()?.toLowerCase() || 'anon'
-  const year = ref.year.toString()
-  const titleWord = ref.title.split(' ')[0]?.toLowerCase().replace(/[^a-z]/g, '') || 'work'
-  return `${firstAuthor}${year}${titleWord}`
-}
-
-/** Format author list for IEEE style: "J. Smith and A. Johnson" or "J. Smith et al." */
-function formatAuthorsIEEE(authors: string[], maxAuthors = 6): string {
-  if (authors.length === 0) return ''
-  if (authors.length === 1) return formatAuthorName(authors[0], 'ieee')
-  if (authors.length <= maxAuthors) {
-    const formatted = authors.map((a) => formatAuthorName(a, 'ieee'))
-    return formatted.slice(0, -1).join(', ') + ' and ' + formatted.slice(-1)[0]
-  }
-  return formatAuthorName(authors[0], 'ieee') + ' et al.'
-}
-
-/** Format author list for APA style: "Smith, J., & Johnson, A." or "Smith, J., et al." */
-function formatAuthorsAPA(authors: string[], maxAuthors = 20): string {
-  if (authors.length === 0) return ''
-  if (authors.length === 1) return formatAuthorName(authors[0], 'apa')
-  if (authors.length <= maxAuthors) {
-    const formatted = authors.map((a) => formatAuthorName(a, 'apa'))
-    return formatted.slice(0, -1).join(', ') + ', & ' + formatted.slice(-1)[0]
-  }
-  const first19 = authors.slice(0, 19).map((a) => formatAuthorName(a, 'apa'))
-  return first19.join(', ') + ', ..., ' + formatAuthorName(authors[authors.length - 1], 'apa')
-}
-
-/** Format a single author name. */
-function formatAuthorName(name: string, style: CitationStyle): string {
-  const parts = name.trim().split(/\s+/)
-  if (parts.length < 2) return name
-  const lastName = parts.pop()!
-  const initials = parts.map((p) => p[0].toUpperCase() + '.').join(' ')
-  return style === 'ieee' ? `${initials} ${lastName}` : `${lastName}, ${initials}`
-}
-
-/** Format an in-text citation. */
-function formatInTextCitation(
-  ref: CitationReference,
-  style: CitationStyle,
-  options?: { pageNumber?: string; prefix?: string; suffix?: string; ordinal?: number }
-): string {
-  const page = options?.pageNumber ? `:${options.pageNumber}` : ''
-  const prefix = options?.prefix || ''
-  const suffix = options?.suffix || ''
-
-  if (style === 'ieee') {
-    return `${prefix}[${options?.ordinal ?? ref.cited ?? '?'}]${suffix}${page}`
-  }
-  const firstAuthor = ref.authors[0]?.split(' ').pop() || 'Anonymous'
-  return `${prefix}(${firstAuthor}, ${ref.year}${page})${suffix}`
-}
-
-/** Format a full bibliography entry. */
-function formatBibliographyEntry(ref: CitationReference, style: CitationStyle, number?: number): string {
-  const authors = style === 'ieee' ? formatAuthorsIEEE(ref.authors) : formatAuthorsAPA(ref.authors)
-  const year = style === 'ieee' ? ref.year.toString() : `(${ref.year})`
-  const title = style === 'ieee' ? `"${ref.title},"` : `${ref.title}.`
-  const prefix = number != null && style === 'ieee' ? `[${number}] ` : ''
-
-  const parts: string[] = []
-
-  if (style === 'ieee') {
-    parts.push(`${prefix}${authors}, ${title}`)
-    if (ref.venue) parts.push(`<i>${ref.venue}</i>`)
-    if (ref.volume) parts.push(`vol. ${ref.volume}`)
-    if (ref.issue) parts.push(`no. ${ref.issue}`)
-    if (ref.pages) parts.push(`pp. ${ref.pages}`)
-    parts.push(year + '.')
-    if (ref.doi) parts.push(`doi: ${ref.doi}`)
-    else if (ref.url) parts.push(`Available: ${ref.url}`)
-  } else {
-    parts.push(`${authors} ${year}. ${title}`)
-    if (ref.venue) {
-      let venuePart = `<i>${ref.venue}</i>`
-      if (ref.volume) venuePart += `, <i>${ref.volume}</i>`
-      if (ref.issue) venuePart += `(${ref.issue})`
-      if (ref.pages) venuePart += `, ${ref.pages}.`
-      parts.push(venuePart)
-    }
-    if (ref.publisher) parts.push(ref.publisher + '.')
-    if (ref.doi) parts.push(`https://doi.org/${ref.doi}`)
-    else if (ref.url) parts.push(`Retrieved from ${ref.url}`)
-  }
-
-  return parts.join(' ')
-}
-
-/** Sort references alphabetically by first author last name, then year. */
-function sortReferences(references: CitationReference[]): CitationReference[] {
-  return [...references].sort((a, b) => {
-    const aLast = a.authors[0]?.split(' ').pop()?.toLowerCase() || ''
-    const bLast = b.authors[0]?.split(' ').pop()?.toLowerCase() || ''
-    if (aLast !== bLast) return aLast.localeCompare(bLast)
-    return a.year - b.year
-  })
-}
-
-/** References in bibliography order: IEEE lists cited sources by first citation, APA is alphabetical. */
-function orderForBibliography(references: CitationReference[], style: CitationStyle): CitationReference[] {
-  if (style !== 'ieee') return sortReferences(references)
-  const cited = references.filter((r) => r.cited != null).sort((a, b) => (a.cited ?? 0) - (b.cited ?? 0))
-  return [...cited, ...sortReferences(references.filter((r) => r.cited == null))]
 }
 
 /** Group references by type for organized bibliography. */
@@ -213,7 +92,7 @@ function groupReferencesByType(references: CitationReference[]): Record<string, 
 
 interface CitationAssistantProps {
   /** Editor instance for inserting citations. */
-  editor: any
+  editor: Editor | null
   /** Current citation style for the document. */
   citationStyle: CitationStyle
   /** Called when citation style changes. */
@@ -238,6 +117,8 @@ export function CitationAssistant({
   onInsertBibliography,
 }: CitationAssistantProps): ReactNode {
   const [searchQuery, setSearchQuery] = useState('')
+  const [lookupQuery, setLookupQuery] = useState('')
+  const [lookupState, setLookupState] = useState<{ busy: boolean; message: string | null }>({ busy: false, message: null })
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [editingRef, setEditingRef] = useState<CitationReference | null>(null)
   const [activeTab, setActiveTab] = useState<'insert' | 'manage' | 'bibliography'>('insert')
@@ -268,6 +149,23 @@ export function CitationAssistant({
     onReferencesChange?.(updated)
     setNewRef({ id: '', type: 'journal', authors: [''], title: '', year: new Date().getFullYear() })
     setShowAddDialog(false)
+  }
+
+  /** Fill the Add Reference form from a DOI, link or title found by the server. */
+  const handleLookup = async (): Promise<void> => {
+    const query = lookupQuery.trim()
+    if (query.length < 3) return
+    setLookupState({ busy: true, message: null })
+    try {
+      const found = await api.citations.lookup(query)
+      setEditingRef(null)
+      setNewRef({ ...found, id: '' })
+      setShowAddDialog(true)
+      setLookupQuery('')
+      setLookupState({ busy: false, message: null })
+    } catch (error) {
+      setLookupState({ busy: false, message: error instanceof Error ? error.message : 'Lookup failed.' })
+    }
   }
 
   const handleUpdateReference = () => {
@@ -355,8 +253,9 @@ export function CitationAssistant({
           onChange={(e) => onStyleChange?.(e.target.value as CitationStyle)}
           style={selectStyle}
         >
-          <option value="ieee">IEEE [1]</option>
-          <option value="apa">APA (Author, Year)</option>
+          {(Object.keys(CITATION_STYLE_LABELS) as CitationStyle[]).map((key) => (
+            <option key={key} value={key}>{CITATION_STYLE_LABELS[key]}</option>
+          ))}
         </select>
       </div>
 
@@ -417,6 +316,22 @@ export function CitationAssistant({
 
       {activeTab === 'manage' && (
         <div style={contentStyle}>
+          <div style={{ display: 'flex', gap: '0.375rem', marginBottom: '0.75rem' }}>
+            <input
+              type="text"
+              placeholder="Find by DOI, link or title…"
+              value={lookupQuery}
+              onChange={(e) => setLookupQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleLookup() }}
+              style={{ ...searchStyle, marginBottom: 0, flex: 1 }}
+            />
+            <button type="button" onClick={() => void handleLookup()} disabled={lookupState.busy || lookupQuery.trim().length < 3} style={addButtonStyle}>
+              {lookupState.busy ? <Loader2 style={{ width: '14px', height: '14px' }} className="animate-spin" /> : <Search style={{ width: '14px', height: '14px' }} />}
+            </button>
+          </div>
+          {lookupState.message ? (
+            <p style={{ fontSize: '0.75rem', color: 'var(--destructive)', margin: '-0.375rem 0 0.75rem' }}>{lookupState.message}</p>
+          ) : null}
           <div style={manageHeaderStyle}>
             <h3 style={manageTitleStyle}>References ({references.length})</h3>
             <button
@@ -433,7 +348,7 @@ export function CitationAssistant({
             </button>
           </div>
 
-          {Object.entries(groupedRefs).map(([type, refs]) => {
+          {(Object.entries(groupedRefs) as Array<[CitationReference['type'], CitationReference[]]>).map(([type, refs]) => {
             const TypeIcon = TYPE_ICONS[type]
             return (
               <div key={type} style={groupStyle}>
