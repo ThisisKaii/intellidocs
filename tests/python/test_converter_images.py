@@ -82,8 +82,12 @@ class TestGroupedPictures:
         assert 'width="294"' in first  # 2799080 EMU, the group's frame
 
     def test_the_group_no_longer_leaves_its_pictures_as_separate_images(self):
-        # The memo has 10 pictures in the file; the group's two become one.
-        assert len(_img_tags(self._html())) == 7
+        # The memo has 10 pictures in the file; the group's two become one. Pictures that hang
+        # beside their paragraph without wrapping text leave the flow as overlays.
+        result = convert_docx_bytes_to_html(MEMO.read_bytes())
+        overlays = sum(box["html"].count("<img") for box in result["page_art"]["overlays"].values())
+        # (a small badge set inside a line of text is dropped: the editor holds pictures as blocks)
+        assert len(_img_tags(result["html"])) + overlays == 6
 
     def test_the_flattened_group_keeps_the_aspect_ratio_of_its_frame(self):
         width, height = _decoded_size(_img_tags(self._html())[0])

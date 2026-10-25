@@ -380,11 +380,14 @@ def _group_image_html(group: Any, doc_parts: Dict[str, bytes]) -> str:
 
 # Page size and margins (px) of the section being converted, for pictures Word pins to the page.
 _PAGE_GEOMETRY: Dict[str, float] = {}
+# Numbers the boxes that follow a paragraph, so the editor can find their paragraph again.
+_OVERLAY_COUNTER = [0]
 
 
 def _set_page_geometry(doc: docx.Document) -> None:
     """Remember the first section's page size and margins for page-anchored pictures."""
     _PAGE_GEOMETRY.clear()
+    _OVERLAY_COUNTER[0] = 0
     try:
         section = doc.sections[0]
         _PAGE_GEOMETRY.update(
@@ -421,7 +424,11 @@ def _anchor_axis(position: Any, size: float, page: float, near: float, far: floa
 
 
 def _page_art_geometry(anchor: Any) -> Optional[Dict[str, float]]:
-    """Where a picture anchored to the page sits, in px from the page's top-left corner."""
+    """Where a drawing anchored to the page (or hung beside its paragraph) sits, in px.
+
+    "paragraph" is 1 when y is measured down from the top of the paragraph that holds
+    the anchor instead of from the page corner; such boxes must not wrap text.
+    """
     if anchor is None or not _PAGE_GEOMETRY:
         return None
     extent = anchor.find(f"{{{_NS_WP}}}extent")
@@ -430,68 +437,163 @@ def _page_art_geometry(anchor: Any) -> Optional[Dict[str, float]]:
         return None
     g = _PAGE_GEOMETRY
     x = _anchor_axis(anchor.find(f"{{{_NS_WP}}}positionH"), width, g["w"], g["l"], g["r"], "left", "right")
-    y = _anchor_axis(anchor.find(f"{{{_NS_WP}}}positionV"), height, g["h"], g["t"], g["b"], "top", "bottom")
+    vertical = anchor.find(f"{{{_NS_WP}}}positionV")
+    y = _anchor_axis(vertical, height, g["h"], g["t"], g["b"], "top", "bottom")
+    beside = 0.0
+    if y is None and vertical is not None and vertical.get("relativeFrom") == "paragraph":
+        offset = next(iter(vertical), None)
+        no_wrap = anchor.find(f"{{{_NS_WP}}}wrapNone") is not None
+        if offset is not None and offset.tag.endswith("}posOffset") and no_wrap:
+            y, beside = float(offset.text or 0) / EMU_PER_PX, 1.0
     if x is None or y is None:
         return None
-    return {"x": x, "y": y, "w": width, "h": height, "behind": 1.0 if anchor.get("behindDoc") == "1" else 0.0}
+    return {"x": x, "y": y, "w": width, "h": height, "behind": 1.0 if anchor.get("behindDoc") == "1" else 0.0, "paragraph": beside}
 
 
 def _as_page_art(piece: str, source: Any) -> str:
-    """Wrap a picture in a <page-art> marker when Word pins it to the page (not to the text)."""
+    """Wrap a drawing's HTML in a <page-art> marker when Word pins it to the page or hangs it beside its paragraph."""
     anchor = next(source.iterancestors(f"{{{_NS_WP}}}anchor"), None)
-    geometry = _page_art_geometry(anchor)
+    return _page_art_marker(piece, _page_art_geometry(anchor))
+
+
+def _page_art_marker(piece: str, geometry: Optional[Dict[str, float]]) -> str:
+    """The <page-art> marker for a drawing and its geometry (the drawing itself when it stays in the text)."""
     if geometry is None or not piece:
         return piece
-    attrs = " ".join(f'data-{key}="{round(value, 1):g}"' for key, value in geometry.items())
+    values = dict(geometry)
+    if values["paragraph"]:
+        _OVERLAY_COUNTER[0] += 1
+        values["id"] = float(_OVERLAY_COUNTER[0])
+    attrs = " ".join(f'data-{key}="{round(value, 1):g}"' for key, value in values.items())
     return f"<page-art {attrs}>{piece}</page-art>"
 
 
+def _box_style(shape: Any) -> str:
+    """CSS for a text box's fill and outline, read from its shape properties."""
+    properties = shape.find(f"./{{{_NS_WPS}}}spPr")
+    parts: List[str] = []
+    if properties is not None:
+        fill = properties.find(f"./{{{_NS_A}}}solidFill/{{{_NS_A}}}srgbClr")
+        if fill is not None and fill.get("val"):
+            parts.append(f"background:#{fill.get('val')}")
+        line = properties.find(f"./{{{_NS_A}}}ln")
+        if line is not None and line.find(f"./{{{_NS_A}}}noFill") is None:
+            color = line.find(f"./{{{_NS_A}}}solidFill/{{{_NS_A}}}srgbClr")
+            width = (_int_attr(line, "w") or 9525) / EMU_PER_POINT
+            if color is not None and color.get("val"):
+                parts.append(f"border:{max(width, 0.5):g}pt solid #{color.get('val')}")
+    return ";".join(parts)
+
+
+def _anchored_textboxes(run_element: Any, paragraph: Paragraph, images: Dict[str, bytes]) -> str:
+    """Markers for the text boxes in a run that Word pins to the page or hangs beside their paragraph."""
+    markers: List[str] = []
+    for anchor in run_element.iter(f"{{{_NS_WP}}}anchor"):
+        if any(a.tag == _MC_FALLBACK for a in anchor.iterancestors()):
+            continue
+        shape = anchor.find(f".//{{{_NS_WPS}}}wsp")
+        content = anchor.find(f".//{qn('w:txbxContent')}")
+        geometry = _page_art_geometry(anchor)
+        if shape is None or content is None or geometry is None:
+            continue
+        body = shape.find(f"./{{{_NS_WPS}}}bodyPr")
+        pad_l = (_int_attr(body, "lIns") if body is not None and body.get("lIns") else 91440) / EMU_PER_PX
+        pad_t = (_int_attr(body, "tIns") if body is not None and body.get("tIns") else 45720) / EMU_PER_PX
+        inner = "".join(
+            _paragraph_to_html(Paragraph(child, paragraph._parent), images)
+            for child in content if child.tag == qn("w:p")
+        )
+        style = f"box-sizing:border-box;width:100%;min-height:100%;padding:{pad_t:g}px {pad_l:g}px;overflow:hidden;{_box_style(shape)}"
+        markers.append(_page_art_marker(f'<div style="{style}">{inner}</div>', geometry))
+    return "".join(markers)
+
+
 _PAGE_ART = re.compile(r"<page-art ([^>]*)>(.*?)</page-art>", re.S)
+_BLOCK_START = re.compile(r"<(?:p|h[1-6])\b")
 
 
 def _extract_page_art(html: str) -> Tuple[str, List[Dict[str, Any]]]:
-    """Take the <page-art> markers out of HTML; each comes back with the page (1-based) it sits on."""
+    """Take the <page-art> markers out of HTML.
+
+    Each comes back with the page (1-based) it sits on and its content. A box hung
+    beside a paragraph also tags that paragraph with `data-overlay`, so the editor
+    can place the box from the paragraph wherever the text flows.
+    """
     art: List[Dict[str, Any]] = []
+    # Block start offsets (in the original string) of the paragraphs that own a box.
+    owners: Dict[int, List[int]] = {}
+    blocks = [m.start() for m in _BLOCK_START.finditer(html)]
 
     def take(match: "re.Match[str]") -> str:
-        values = {key: float(value) for key, value in re.findall(r'data-(\w+)="([-\d.]+)"', match.group(1))}
-        source = re.search(r'src="([^"]+)"', match.group(2))
-        if source:
-            values["src"] = source.group(1)
-            values["page"] = html.count('<hr class="page-break"', 0, match.start()) + 1
-            art.append(values)
+        values: Dict[str, Any] = {key: float(value) for key, value in re.findall(r'data-(\w+)="([-\d.]+)"', match.group(1))}
+        values["html"] = match.group(2)
+        values["page"] = html.count('<hr class="page-break"', 0, match.start()) + 1
+        if values.get("paragraph"):
+            before = [start for start in blocks if start < match.start()]
+            if before:
+                owners.setdefault(blocks.index(before[-1]), []).append(int(values["id"]))
+        art.append(values)
         return ""
 
-    return _PAGE_ART.sub(take, html), art
+    cleaned = _PAGE_ART.sub(take, html)
+    if owners:
+        # Block n of the original is block n of the cleaned string (markers sit inside blocks, never add or drop one).
+        starts = [m.end() for m in _BLOCK_START.finditer(cleaned)]
+        for index in sorted(owners, reverse=True):
+            if index < len(starts):
+                ids = " ".join(str(value) for value in owners[index])
+                cleaned = cleaned[: starts[index]] + f' data-overlay="{ids}"' + cleaned[starts[index]:]
+    return cleaned, art
+
+
+def _fill_box(html: str) -> str:
+    """Make a picture fill the box it sits in (its size is the box's, not its pixel size)."""
+    return re.sub(
+        r'<img ([^>]*?)style="[^"]*"',
+        r'<img \1style="display:block;width:100%;height:100%;max-width:none"',
+        html,
+    )
 
 
 def _art_html(item: Dict[str, Any]) -> str:
-    """One page-art picture as an absolutely positioned <img> measured from the page corner."""
+    """One page-art drawing as an absolutely positioned box measured from the page corner."""
     blend = "mix-blend-mode:multiply;" if item.get("behind") else ""
     return (
-        f'<img src="{item["src"]}" alt="" style="position:absolute;left:{item["x"]:g}px;top:{item["y"]:g}px;'
-        f'width:{item["w"]:g}px;height:{item["h"]:g}px;max-width:none;{blend}pointer-events:none" />'
+        f'<div style="position:absolute;left:{item["x"]:g}px;top:{item["y"]:g}px;width:{item["w"]:g}px;'
+        f'height:{item["h"]:g}px;{blend}pointer-events:none">{_fill_box(item["html"])}</div>'
     )
 
 
 def _group_page_art(art: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Split page art into what repeats on several pages (running art) and what belongs to one page."""
-    seen: Dict[Tuple[int, float, float, float, float], Set[int]] = {}
+    """Split page art into what repeats on several pages, what belongs to one page, and boxes beside paragraphs."""
+    overlays: Dict[str, Dict[str, Any]] = {}
+    pinned = [item for item in art if not item.get("paragraph")]
     for item in art:
-        key = (hash(item["src"]), round(item["x"]), round(item["y"]), round(item["w"]), round(item["h"]))
+        if item.get("paragraph"):
+            overlays[str(int(item["id"]))] = {
+                "x": item["x"], "y": item["y"], "w": item["w"], "h": item["h"],
+                "behind": bool(item.get("behind")), "html": _fill_box(item["html"]),
+            }
+    seen: Dict[Tuple[int, float, float, float, float], Set[int]] = {}
+    for item in pinned:
+        key = (hash(item["html"]), round(item["x"]), round(item["y"]), round(item["w"]), round(item["h"]))
         seen.setdefault(key, set()).add(int(item["page"]))
     repeat: List[str] = []
     pages: Dict[int, List[str]] = {}
     emitted: Set[Tuple[int, float, float, float, float]] = set()
-    for item in art:
-        key = (hash(item["src"]), round(item["x"]), round(item["y"]), round(item["w"]), round(item["h"]))
+    for item in pinned:
+        key = (hash(item["html"]), round(item["x"]), round(item["y"]), round(item["w"]), round(item["h"]))
         if len(seen[key]) >= 2:
             if key not in emitted:
                 emitted.add(key)
                 repeat.append(_art_html(item))
         else:
             pages.setdefault(int(item["page"]), []).append(_art_html(item))
-    return {"repeat": "".join(repeat), "pages": {str(page): "".join(items) for page, items in pages.items()}}
+    return {
+        "repeat": "".join(repeat),
+        "pages": {str(page): "".join(items) for page, items in pages.items()},
+        "overlays": overlays,
+    }
 
 
 def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes]) -> str:
@@ -655,7 +757,7 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
                         page_breaks += _PAGE_BREAK_HTML
                     else:
                         parts.append("<br/>")
-                parts.append(page_breaks + _run_or_image_html(run, doc_parts))
+                parts.append(page_breaks + _run_or_image_html(run, doc_parts) + _anchored_textboxes(child, p, doc_parts))
             elif tag == qn("w:hyperlink"):
                 parts.append(_hyperlink_html(child, p, doc_parts))
             elif tag == qn("w:br"):
@@ -1195,8 +1297,20 @@ def _paragraph_to_html(
     return "".join(pieces)
 
 
+def _drop_inline_icons(inner: str) -> str:
+    """Remove small pictures set inside a line of text (an ORCID badge after a name).
+
+    The editor holds pictures as blocks, so one inside a sentence would cut the
+    line in two; a badge that small carries no content the text lacks.
+    """
+    if not re.sub(r"<[^>]+>", "", inner).strip():
+        return inner
+    return re.sub(r'<img [^>]*?width="(\d+)"[^>]*/>', lambda m: "" if int(m.group(1)) <= 24 else m.group(0), inner)
+
+
 def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
     """The HTML of a (non-list) paragraph whose inner HTML has already been built."""
+    inner = _drop_inline_icons(inner)
     style_name = p.style.name.lower() if p.style else ""
 
     if not inner.strip():
@@ -1309,7 +1423,10 @@ def _textbox_paragraphs(paragraph_el: Any) -> List[Any]:
                 in_fallback = True
                 break
             ancestor = ancestor.getparent()
-        if not in_fallback:
+        # A box Word pins to the page or hangs beside its paragraph is drawn in place, not flowed after it.
+        anchor = next(content.iterancestors(f"{{{_NS_WP}}}anchor"), None)
+        pinned = anchor is not None and _page_art_geometry(anchor) is not None
+        if not in_fallback and not pinned:
             found.extend(child for child in content if child.tag == qn("w:p"))
     return found
 
@@ -1681,10 +1798,13 @@ def _body_to_html(
                 out.append(html)
 
     section_no = 0
+    first_section_end: Optional[int] = None
     previous_closed_section = False
     for element in _iter_block_elements(doc.element.body):
         if previous_closed_section:
             section_no += 1
+            if section_no == 1 and first_section_end is None:
+                first_section_end = len(out)
         previous_closed_section = element.tag == qn("w:p") and element.find(qn("w:pPr") + "/" + qn("w:sectPr")) is not None
         if page_break_after is not None:
             if pending_page_break:
@@ -1756,7 +1876,55 @@ def _body_to_html(
             out.append(_table_to_html(Table(element, doc), doc_parts, text_width))
 
     close_all_lists()
+    _shift_first_section(doc, out, first_section_end if first_section_end is not None else len(out))
     return _trim_page_ends("\n".join(out))
+
+
+def _shift_first_section(doc: docx.Document, out: List[str], end: int) -> None:
+    """Give the first section its own margins inside the document-wide page setup.
+
+    The editor has one page setup (the one most sections share), so a cover or
+    title section with different margins would reflow. Its blocks are moved by the
+    difference instead: left/right by their margin, and the first block up/down by
+    the top margin, which keeps page one where Word puts it.
+    """
+    try:
+        sections = list(doc.sections)
+        setup = _extract_page_setup(doc)["margins"]
+        first = sections[0]
+        deltas = {
+            "left": first.left_margin / EMU_PER_PX - setup["left"] * 96,
+            "right": first.right_margin / EMU_PER_PX - setup["right"] * 96,
+            "top": first.top_margin / EMU_PER_PX - setup["top"] * 96,
+        }
+    except Exception:
+        return
+    if len(sections) < 2 or all(abs(value) < 4 for value in deltas.values()):
+        return
+
+    def shifted(style: str, prop: str, delta: float) -> str:
+        found = re.search(rf"(?<![\w-]){prop}:\s*(-?[\d.]+)px", style)
+        if found:
+            return style.replace(found.group(0), f"{prop}:{round(float(found.group(1)) + delta, 1):g}px", 1)
+        return f"{prop}:{round(delta, 1):g}px; {style}"
+
+    first_block = True
+    for index in range(min(end, len(out))):
+        html = out[index]
+        match = re.match(r'<(p|h[1-6])\b([^>]*)>', html)
+        if not match or html.startswith("<p class=\"empty-spacer\""):
+            continue
+        attrs = match.group(2)
+        style_match = re.search(r'style="([^"]*)"', attrs)
+        style = style_match.group(1) if style_match else ""
+        for prop, delta in (("margin-left", deltas["left"]), ("margin-right", deltas["right"])):
+            if abs(delta) >= 4:
+                style = shifted(style, prop, delta)
+        if first_block and abs(deltas["top"]) >= 4:
+            style = shifted(style, "margin-top", deltas["top"])
+        first_block = False
+        new_attrs = attrs.replace(style_match.group(0), f'style="{style}"') if style_match else f' style="{style}"{attrs}'
+        out[index] = f"<{match.group(1)}{new_attrs}>" + html[match.end():]
 
 
 def _trim_page_ends(html: str) -> str:
@@ -1936,7 +2104,7 @@ def _springy_tabs(html: str) -> str:
     return re.sub(r"(<p\b[^>]*>)(.*?)</p>", line, html, flags=re.S)
 
 
-def _hf_part_html(part: Any, text_width: Optional[float]) -> Optional[Dict[str, str]]:
+def _hf_part_html(part: Any, text_width: Optional[float], origin_y: float = 0.0) -> Optional[Dict[str, str]]:
     """A header/footer part as HTML plus the pictures Word pins to the page, or None when plain text says it all."""
     import copy
 
@@ -1960,6 +2128,11 @@ def _hf_part_html(part: Any, text_width: Optional[float]) -> Optional[Dict[str, 
         elif child.tag == qn("w:tbl"):
             pieces.append(_table_to_html(Table(child, part), images, text_width))
     flow, art = _extract_page_art("".join(pieces))
+    # A box hung beside a header paragraph is measured from where the header starts.
+    for item in art:
+        if item.get("paragraph"):
+            item["y"] += origin_y
+    flow = re.sub(r' data-overlay="[^"]*"', "", flow)
     flow = _springy_tabs(flow)
     if not (art or "<img" in flow or re.sub(r"<[^>]+>", "", flow).strip()):
         return None
@@ -1975,6 +2148,9 @@ def _extract_sections(doc: docx.Document) -> Dict[str, Any]:
     """
     sections = list(doc.sections)
     text_width = _text_width_px(doc)
+    page_h = _PAGE_GEOMETRY.get("h", 1056.0)
+    header_origin = (sections[0].header_distance or 457200) / EMU_PER_PX if sections else 48.0
+    footer_origin = page_h - (sections[0].bottom_margin or 914400) / EMU_PER_PX if sections else page_h - 96
     keys: Dict[int, str] = {}
     parts: Dict[str, Dict[str, str]] = {}
 
@@ -1986,7 +2162,7 @@ def _extract_sections(doc: docx.Document) -> Dict[str, Any]:
                 continue
             part = holder.part
             if id(part) not in keys:
-                converted = _hf_part_html(part, text_width)
+                converted = _hf_part_html(part, text_width, header_origin if kind == "header" else footer_origin)
                 keys[id(part)] = f"p{len(keys)}"
                 if converted is not None:
                     parts[keys[id(part)]] = converted
@@ -2032,11 +2208,30 @@ def _page_size_key(short_in: float, long_in: float) -> str:
 
 
 def _extract_page_setup(doc: docx.Document) -> Dict[str, Any]:
-    """Extract page size, orientation, and margins (inches) from the first section."""
+    """Extract page size, orientation, and margins (inches) from the section most pages use.
+
+    A cover or title page often has its own tiny margins; the editor has one page
+    setup for the whole document, so the setup that most sections share wins
+    (the first one on a tie).
+    """
     try:
-        section = doc.sections[0] if doc.sections else None
-        if section is None:
+        sections = list(doc.sections)
+        if not sections:
             return dict(DEFAULT_PAGE_SETUP)
+
+        def signature(candidate: Any) -> Tuple[int, ...]:
+            return tuple(round((value or 0) / 9144) for value in (
+                candidate.page_width, candidate.page_height, candidate.top_margin,
+                candidate.bottom_margin, candidate.left_margin, candidate.right_margin,
+            ))
+
+        counts: Dict[Tuple[int, ...], int] = {}
+        for candidate in sections:
+            counts[signature(candidate)] = counts.get(signature(candidate), 0) + 1
+        section = max(sections, key=lambda candidate: (counts[signature(candidate)], -sections.index(candidate)))
+        # pdf2docx sets every page's margins from where that page's text happens to sit; page one is the reference.
+        if getattr(doc.part, "_is_pdf_import", False):
+            section = sections[0]
     except Exception:
         return dict(DEFAULT_PAGE_SETUP)
 

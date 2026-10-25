@@ -473,6 +473,50 @@ export function PagedEditor({
     }
   }, [editor, pageLayout, page.height])
 
+  // Boxes Word hangs beside a paragraph are placed from that paragraph's top, so they follow the text
+  // wherever it flows. Positions are re-measured whenever the layout settles.
+  const overlayLayerRef = useRef<HTMLDivElement | null>(null)
+  const [overlayPositions, setOverlayPositions] = useState<Array<{ id: string; left: number; top: number }>>([])
+  const overlays = pageLayout?.overlays
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !overlays || Object.keys(overlays).length === 0) {
+      setOverlayPositions((previous) => (previous.length === 0 ? previous : []))
+      return
+    }
+    const dom = editor.view.dom as HTMLElement
+    let frame = 0
+    const read = (): void => {
+      frame = 0
+      const layer = overlayLayerRef.current
+      if (!layer) return
+      const origin = layer.getBoundingClientRect()
+      const rect = dom.getBoundingClientRect()
+      const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
+      const next: Array<{ id: string; left: number; top: number }> = []
+      dom.querySelectorAll<HTMLElement>('[data-overlay]').forEach((el) => {
+        const top = (el.getBoundingClientRect().top - origin.top) / scale
+        for (const id of (el.dataset.overlay ?? '').split(' ')) {
+          if (overlays[id]) next.push({ id, left: (rect.left - origin.left) / scale, top })
+        }
+      })
+      const key = (list: typeof next): string => list.map((item) => `${item.id}:${Math.round(item.left)}:${Math.round(item.top)}`).join('|')
+      setOverlayPositions((previous) => (key(previous) === key(next) ? previous : next))
+    }
+    const schedule = (): void => {
+      if (!frame) frame = window.requestAnimationFrame(read)
+    }
+    const resize = new ResizeObserver(schedule)
+    resize.observe(dom)
+    const mutations = new MutationObserver(schedule)
+    mutations.observe(dom, { childList: true, subtree: true, characterData: true })
+    schedule()
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      resize.disconnect()
+      mutations.disconnect()
+    }
+  }, [editor, overlays])
+
   // Give every page the header and footer of its section: art, text and page numbers.
   useEffect(() => {
     if (!editor || editor.isDestroyed || !pageLayout) return
@@ -739,6 +783,27 @@ export function PagedEditor({
           ${pageLabel === null ? '' : '.intellidocs-page-editor--spread .rm-pages-wrapper { counter-reset: spread-page; }'}`}
       </style>
       <TiptapCanvas editor={editor} onFormatApplied={onFormatApplied} />
+      {overlays && Object.keys(overlays).length > 0 && (
+        <div ref={overlayLayerRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
+          {overlayPositions.map(({ id, left, top }) => {
+            const box = overlays[id]
+            return (
+              <div
+                key={id}
+                style={{
+                  position: 'absolute',
+                  left: left + box.x,
+                  top: top + box.y,
+                  width: box.w,
+                  height: box.h,
+                  mixBlendMode: box.behind ? 'multiply' : undefined,
+                }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHeaderHtml(box.html) }}
+              />
+            )
+          })}
+        </div>
+      )}
       {showGridlines && gridPageCount > 0 && (
         <div
           aria-hidden="true"

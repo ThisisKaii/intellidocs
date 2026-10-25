@@ -523,6 +523,12 @@ const CustomParagraph = Paragraph.extend({
         parseHTML: (el) => filterStyle(el.getAttribute('style')),
         renderHTML: (a) => (a.style ? { style: a.style } : {}),
       },
+      /** Ids of the boxes Word hangs beside this paragraph (imports); the page layout holds their content. */
+      overlay: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-overlay'),
+        renderHTML: (a) => (a.overlay ? { 'data-overlay': a.overlay } : {}),
+      },
       ...guideAttributes,
     }
   },
@@ -943,6 +949,12 @@ const CustomHeading = Heading.extend({
         default: null,
         parseHTML: (el) => filterStyle(el.getAttribute('style')),
         renderHTML: (a) => (a.style ? { style: a.style } : {}),
+      },
+      /** Ids of the boxes Word hangs beside this paragraph (imports); the page layout holds their content. */
+      overlay: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-overlay'),
+        renderHTML: (a) => (a.overlay ? { 'data-overlay': a.overlay } : {}),
       },
       ...guideAttributes,
     }

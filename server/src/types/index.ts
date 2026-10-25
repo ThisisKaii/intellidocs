@@ -162,6 +162,18 @@ export interface PageLayout {
   repeat_art: string
   /** Pictures that belong to one page, by 1-based page number. */
   page_art: Record<string, string>
+  /** Boxes hung beside a paragraph (`data-overlay` id): position from the paragraph, size and content. */
+  overlays?: Record<string, PageOverlay>
+}
+
+/** A picture or text box Word hangs beside a paragraph without wrapping text around it. */
+export interface PageOverlay {
+  x: number
+  y: number
+  w: number
+  h: number
+  behind: boolean
+  html: string
 }
 
 /** A document's citation style and saved references. */

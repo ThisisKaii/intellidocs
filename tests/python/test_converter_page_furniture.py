@@ -129,7 +129,7 @@ class TestPagePinnedPictures:
         _anchor(document, 1.0, 1.0, relative="paragraph")
         result = _docx_document_to_result(document)
         assert "<img" in result["html"]
-        assert result["page_art"] == {"repeat": "", "pages": {}}
+        assert result["page_art"] == {"repeat": "", "pages": {}, "overlays": {}}
 
 
 class TestTableRows:
@@ -198,3 +198,66 @@ class TestPdfFurniture:
         assert "{page}" in result["hf"]["parts"]["pdf_header"]["flow"]
         assert [section["header"] for section in result["hf"]["sections"]] == [None, "pdf_header", "pdf_header", "pdf_header"]
         assert [(s["number_start"], s["number_format"]) for s in result["hf"]["sections"][1:]] == [(1, "lowerRoman"), (None, "lowerRoman"), (1, "decimal")]
+
+
+def _hang_box(document: docx.Document, paragraph: "docx.text.paragraph.Paragraph", text: str) -> None:
+    """Hang a no-wrap text box beside a paragraph, 1in from the page's left edge and 0.5in down from the paragraph."""
+    wps = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+    wp = WP
+    xml = (
+        f'<w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:drawing>'
+        f'<wp:anchor xmlns:wp="{wp}" behindDoc="0"><wp:extent cx="1828800" cy="914400"/>'
+        f'<wp:positionH relativeFrom="page"><wp:posOffset>914400</wp:posOffset></wp:positionH>'
+        f'<wp:positionV relativeFrom="paragraph"><wp:posOffset>457200</wp:posOffset></wp:positionV><wp:wrapNone/>'
+        f'<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData>'
+        f'<wps:wsp xmlns:wps="{wps}"><wps:spPr><a:solidFill><a:srgbClr val="DDEEFF"/></a:solidFill></wps:spPr>'
+        f'<wps:txbx><w:txbxContent><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:txbxContent></wps:txbx></wps:wsp>'
+        f'</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>'
+    )
+    paragraph._p.append(etree.fromstring(xml))
+
+
+class TestBoxesBesideParagraphs:
+    def test_a_text_box_hung_beside_a_paragraph_becomes_an_overlay_tagged_on_that_paragraph(self):
+        document = docx.Document()
+        paragraph = document.add_paragraph("Body text")
+        _hang_box(document, paragraph, "Abstract box")
+        result = _docx_document_to_result(document)
+        overlays = result["page_art"]["overlays"]
+        assert len(overlays) == 1
+        box = next(iter(overlays.values()))
+        assert (box["x"], box["y"], box["w"], box["h"]) == (96, 48, 192, 96)
+        assert "Abstract box" in box["html"] and "background:#DDEEFF" in box["html"]
+        assert 'data-overlay="1"' in result["html"]
+        assert "Abstract box" not in result["html"]
+
+    def test_a_small_badge_inside_a_line_of_text_is_dropped(self):
+        document = docx.Document()
+        paragraph = document.add_paragraph("A. Author ")
+        paragraph.add_run().add_picture(io.BytesIO(_png()), width=Inches(0.17))
+        assert "<img" not in _docx_document_to_result(document)["html"]
+
+    def test_a_picture_alone_in_its_paragraph_stays(self):
+        document = docx.Document()
+        document.add_picture(io.BytesIO(_png()), width=Inches(0.17))
+        assert "<img" in _docx_document_to_result(document)["html"]
+
+
+class TestPageSetupAndFirstSection:
+    def test_the_margins_most_sections_share_win_over_a_cover_section(self):
+        document = docx.Document()
+        document.sections[0].top_margin = Inches(0.25)
+        for _ in range(2):
+            section = document.add_section()
+            section.top_margin = Inches(1.0)
+        assert _docx_document_to_result(document)["page_setup"]["margins"]["top"] == 1.0
+
+    def test_the_cover_section_keeps_its_own_top_margin_by_shifting_its_first_block(self):
+        document = docx.Document()
+        document.sections[0].top_margin = Inches(0.25)
+        document.add_paragraph("Cover title")
+        for _ in range(2):
+            document.add_section().top_margin = Inches(1.0)
+            document.add_paragraph("Body")
+        html = _docx_document_to_result(document)["html"]
+        assert "margin-top:-72px" in html.split("Body")[0]
