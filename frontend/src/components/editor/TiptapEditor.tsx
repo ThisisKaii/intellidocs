@@ -27,6 +27,7 @@ import { BlueprintGuideExtension } from './BlueprintGuideExtension'
 import { HarperLinterExtension } from './HarperLinterExtension'
 import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
+import { ListItem } from '@tiptap/extension-list'
 import { PageBreak } from './PageBreak'
 import { PageFlowExtension } from './PageFlow'
 import { TabStop } from './TabStop'
@@ -1042,12 +1043,32 @@ declare module '@tiptap/core' {
   }
 }
 
+/**
+ * List item that keeps an imported item's own text size. The number or bullet is
+ * drawn in the item's font, not its paragraph's, so without this an 11pt Word
+ * list shows small markers beside 11pt text at the editor's default size.
+ */
+const CustomListItem = ListItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      style: {
+        default: null,
+        parseHTML: (el) => filterStyle(el.getAttribute('style')),
+        renderHTML: (a) => (a.style ? { style: a.style } : {}),
+      },
+    }
+  },
+})
+
 export const editorExtensions = [
   StarterKit.configure({
     paragraph: false,
     heading: false,
     blockquote: false,
+    listItem: false,
   }),
+  CustomListItem,
   CustomParagraph,
   CustomHeading,
   CustomBlockquote,

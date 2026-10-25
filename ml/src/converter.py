@@ -1607,8 +1607,8 @@ def _table_cell_margins(table: Table) -> Dict[str, float]:
     return margins
 
 
-def _cell_padding_css(tc: Any, default: Dict[str, float]) -> str:
-    """CSS padding of one cell: its own tcMar over the table's default cell margins."""
+def _cell_padding_px(tc: Any, default: Dict[str, float]) -> Dict[str, float]:
+    """Padding of one cell in px per side: its own tcMar over the table's default cell margins."""
     margins = dict(default)
     mar = tc.find(qn("w:tcPr") + "/" + qn("w:tcMar"))
     if mar is not None:
@@ -1619,7 +1619,12 @@ def _cell_padding_css(tc: Any, default: Dict[str, float]) -> str:
                 margins[name] = float(width) * TWIPS_PER_PX
     if default.get("pdf") and margins["left"] == 0 and margins["right"] == 0:
         margins["left"] = margins["right"] = 9.6
-    # Longhands: the editor's style whitelist drops the "padding" shorthand.
+    return margins
+
+
+def _cell_padding_css(tc: Any, default: Dict[str, float]) -> str:
+    """CSS padding of one cell, as longhands (the editor's style whitelist drops the "padding" shorthand)."""
+    margins = _cell_padding_px(tc, default)
     return "; ".join(f"padding-{side}:{margins[side]:g}px" for side in _BORDER_EDGES)
 
 
@@ -1707,7 +1712,9 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
             style_parts = [_cell_edge_css(borders, tc, i, last_row, column, last_column), _cell_padding_css(tc, pad), f"vertical-align:{_cell_vertical_align(tc)}"]
             row_height = _row_height_px(tc)
             if row_height and row_height > 2:
-                style_parts.append(f"min-height:{row_height:g}px")
+                # Word measures a row's set height before its cell margins: the drawn row is that plus the top and bottom padding.
+                vertical = _cell_padding_px(tc, pad)
+                style_parts.append(f"min-height:{row_height + vertical['top'] + vertical['bottom']:g}px")
             if bg_color:
                 style_parts.append(bg_color.rstrip(";"))
             if text_color:
@@ -1827,6 +1834,9 @@ def _body_to_html(
                 continue
 
             kind = info["kind"]
+            # The item carries its text size: the marker is drawn in the item's font, not its paragraph's.
+            size_css = _paragraph_font_css(p)
+            item_open = f'<li style="{size_css}">' if size_css else "<li>"
             # A deeper level with no list open above it starts at the top: the
             # editor would otherwise invent an empty parent item (a stray "1.").
             target_depth = min(info["level"] + 1, len(stack) + 1)
@@ -1852,7 +1862,7 @@ def _body_to_html(
                 # Continuing an existing list at this depth -> new sibling item.
                 if open_li_depth == target_depth:
                     out.append("</li>")
-                out.append("<li>")
+                out.append(item_open)
                 open_li_depth = target_depth
             else:
                 # Open nested list(s) (inside the current open <li>) or a fresh list.
@@ -1865,7 +1875,7 @@ def _body_to_html(
                         list_type = _LIST_TYPES.get(info.get("fmt", ""))
                         type_attr = f' type="{list_type}"' if list_type else ""
                     out.append(f"<{kind}{start_attr}{type_attr}>")
-                out.append("<li>")
+                out.append(item_open)
                 open_li_depth = target_depth
 
             out.append(_paragraph_to_html(p, doc_parts, list_info=info))
