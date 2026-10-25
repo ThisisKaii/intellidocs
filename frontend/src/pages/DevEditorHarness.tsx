@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { PagedEditor } from '@/components/editor/PagedEditor'
 import { applyIeeeNumbering } from '@/components/editor/ieeeNumberingCommand'
 import { convertToIeee } from '@/components/editor/ieeeConvertCommand'
 import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
 import type { PageSizeKey } from '@/components/editor/TiptapEditor'
+import type { PageNumberFormat } from '@/services/api'
 import type { GrammarIssue } from '@/services/api'
 import { createDefaultHeaderFooterConfig } from '@/components/editor/HeaderFooterPlugin'
 
@@ -45,6 +46,27 @@ const FIXTURE = `
 <p>[1] A. Researcher, "On predictive formatting," in Proc. Sample Conf., 2025, pp. 1-9.</p>
 `
 
+/**
+ * What the import fidelity test hands the harness (set on `window.__FIDELITY__`
+ * before the page loads): one converter result, laid out exactly the way the
+ * Document page lays out an imported file.
+ */
+interface FidelityPayload {
+  html: string
+  pageSize: PageSizeKey
+  margins: { top: number; bottom: number; left: number; right: number }
+  orientation: 'portrait' | 'landscape'
+  header: string
+  footer: string
+  headerNumberFormat: PageNumberFormat
+  footerNumberFormat: PageNumberFormat
+}
+
+/** The payload the test injected, if any. */
+function readFidelityPayload(): FidelityPayload | null {
+  return (window as unknown as { __FIDELITY__?: FidelityPayload }).__FIDELITY__ ?? null
+}
+
 const IEEE_PAGE_SIZE: PageSizeKey = 'letter'
 const IEEE_MARGINS = { top: 0.75, bottom: 0.75, left: 0.75, right: 0.75 }
 
@@ -53,7 +75,18 @@ const IEEE_PRESET = ACADEMIC_PRESETS.find((preset) => preset.key === 'ieee')
 
 /** Dev-only harness that mounts PagedEditor with no auth and no backend. */
 export default function DevEditorHarness() {
-  const [content, setContent] = useState(FIXTURE)
+  const fidelity = useMemo(readFidelityPayload, [])
+  const headerFooterConfig = useMemo(() => {
+    const config = createDefaultHeaderFooterConfig()
+    if (fidelity) {
+      config.header.default.content = fidelity.header
+      config.header.default.numberFormat = fidelity.headerNumberFormat
+      config.footer.default.content = fidelity.footer
+      config.footer.default.numberFormat = fidelity.footerNumberFormat
+    }
+    return config
+  }, [fidelity])
+  const [content, setContent] = useState(fidelity?.html ?? FIXTURE)
   const [editor, setEditor] = useState<Editor | null>(null)
   const [spreadPreview, setSpreadPreview] = useState(false)
   const [html, setHtml] = useState('')
@@ -66,10 +99,10 @@ export default function DevEditorHarness() {
 
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
-      {IEEE_PRESET && <style>{IEEE_PRESET.css}</style>}
+      {IEEE_PRESET && !fidelity && <style>{IEEE_PRESET.css}</style>}
       <div
         id="dev-controls"
-        style={{ width: 220, padding: 12, borderRight: '1px solid #ccc', flexShrink: 0 }}
+        style={{ width: fidelity ? 0 : 220, padding: fidelity ? 0 : 12, overflow: 'hidden', borderRight: '1px solid #ccc', flexShrink: 0 }}
       >
         <button id="btn-numbering" onClick={() => editor && applyIeeeNumbering(editor)}>
           Renumber IEEE
@@ -103,10 +136,10 @@ export default function DevEditorHarness() {
           onGrammarClick={() => undefined}
           grammarIssues={[] as GrammarIssue[]}
           underlineStyle="wavy"
-          pageSize={IEEE_PAGE_SIZE}
-          margins={IEEE_MARGINS}
-          orientation="portrait"
-          headerFooterConfig={createDefaultHeaderFooterConfig()}
+          pageSize={fidelity?.pageSize ?? IEEE_PAGE_SIZE}
+          margins={fidelity?.margins ?? IEEE_MARGINS}
+          orientation={fidelity?.orientation ?? 'portrait'}
+          headerFooterConfig={headerFooterConfig}
           spreadPreview={spreadPreview}
         />
       </div>

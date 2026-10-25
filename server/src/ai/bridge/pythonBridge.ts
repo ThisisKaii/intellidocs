@@ -16,6 +16,7 @@ import {
   pythonSpellingCheckResponseSchema,
   type PythonConversionResponse,
   type PythonGrammarCheckResponse,
+  type TextBlock,
   type PythonPredictionResponse,
   type PythonSpellingCheckResponse,
 } from '../../../schemas/predictionSchemas'
@@ -149,16 +150,22 @@ export async function requestFormatPrediction(
   }
 }
 
+/** Text sent to a checker: per-block layout data, or plain text from older callers. */
+export interface CheckInput {
+  text?: string
+  blocks?: TextBlock[]
+}
+
 /** Send a grammar check request to the FastAPI service. */
 export async function requestGrammarCheck(
-  text: string
+  input: CheckInput
 ): Promise<GrammarCheckResponse> {
   const mlApiUrl = getMLApiUrl()
 
   try {
     const response = await axios.post<PythonGrammarCheckResponse>(
       `${mlApiUrl}/grammar/check`,
-      { text }
+      input
     )
 
     return pythonGrammarCheckResponseSchema.parse(response.data)
@@ -174,14 +181,14 @@ export async function requestGrammarCheck(
 
 /** Send a spelling check request to the FastAPI service. */
 export async function requestSpellingCheck(
-  text: string
+  input: CheckInput
 ): Promise<SpellingCheckResponse> {
   const mlApiUrl = getMLApiUrl()
 
   try {
     const response = await axios.post<PythonSpellingCheckResponse>(
       `${mlApiUrl}/spelling/check`,
-      { text }
+      input
     )
 
     return pythonSpellingCheckResponseSchema.parse(response.data)

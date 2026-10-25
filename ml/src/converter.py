@@ -76,6 +76,55 @@ def _highlight_css(run: Run) -> Optional[str]:
     return None
 
 
+_SANS_FAMILIES = (
+    "arial", "helvetica", "calibri", "verdana", "tahoma", "segoe", "open sans", "roboto", "lato",
+    "montserrat", "trebuchet", "gill sans", "franklin", "myriad", "century gothic", "candara", "corbel",
+)
+
+
+def _clean_font_name(name: str) -> str:
+    """A font family from a PDF-style name: drop the subset prefix and the ",Bold"/"-Italic" style suffix."""
+    cleaned = re.sub(r"^[A-Z]{6}\+", "", name.strip())
+    cleaned = re.split(r",", cleaned, maxsplit=1)[0]
+    cleaned = re.sub(r"[-_ ](Bold|Italic|Oblique|BoldItalic|Regular|Light|Medium|Semibold)$", "", cleaned, flags=re.I)
+    return cleaned.strip() or name
+
+
+def _generic_family(name: str) -> str:
+    """The CSS generic family a font falls back to when it is not installed."""
+    lowered = name.lower()
+    if "mono" in lowered or "courier" in lowered or "consolas" in lowered:
+        return "monospace"
+    return "sans-serif" if any(sans in lowered for sans in _SANS_FAMILIES) else "serif"
+
+
+def _inherited_run_flag(run: Run, attribute: str) -> bool:
+    """Bold/italic a run gets from its own, its character style's or its paragraph style's settings."""
+    direct = getattr(run, attribute)
+    if direct is not None:
+        return bool(direct)
+    styles: List[Any] = []
+    try:
+        styles.append(run.style)
+    except Exception:
+        pass
+    parent = run._parent
+    if isinstance(parent, Paragraph):
+        try:
+            styles.append(parent.style)
+        except Exception:
+            pass
+    for style in styles:
+        seen: Set[str] = set()
+        while style is not None and style.style_id not in seen:
+            seen.add(style.style_id)
+            value = getattr(style.font, attribute, None) if style.font is not None else None
+            if value is not None:
+                return bool(value)
+            style = style.base_style
+    return False
+
+
 def _run_to_html(run: Run) -> str:
     """Convert a single text run into styled HTML with font size, color, family, and styles."""
     text = run.text
@@ -105,17 +154,23 @@ def _run_to_html(run: Run) -> str:
     if hex_color:
         styles.append(f"color:{hex_color}")
 
-    if run.font.name:
-        styles.append(f"font-family:'{run.font.name}', serif")
+    # A run with no font of its own uses its paragraph's style chain, then the
+    # document defaults; without this an Arial document imports as serif.
+    font_name = run.font.name or _rfonts_name(run._element.rPr.find(qn("w:rFonts")) if run._element.rPr is not None else None, run.part)
+    if not font_name and isinstance(run._parent, Paragraph):
+        font_name = _inherited_font_name(run._parent)
+    if font_name:
+        family = _clean_font_name(font_name)
+        styles.append(f"font-family:'{family}', {_generic_family(family)}")
 
     res = escaped
     if styles:
         css_str = "; ".join(styles)
         res = f'<span style="{css_str}">{res}</span>'
 
-    if run.bold:
+    if _inherited_run_flag(run, "bold"):
         res = f"<strong>{res}</strong>"
-    if run.italic:
+    if _inherited_run_flag(run, "italic"):
         res = f"<em>{res}</em>"
     if run.underline:
         res = f"<u>{res}</u>"
@@ -133,51 +188,314 @@ def _run_to_html(run: Run) -> str:
     return res
 
 
+# DrawingML namespaces used to size and position pictures.
+_NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_NS_PIC = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+_NS_WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+_NS_WPG = "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+EMU_PER_PX = 9525
+EMU_PER_POINT = 12700
+# Grouped pictures are flattened to one image no wider than this many pixels.
+MAX_GROUP_IMAGE_PX = 1000
+
+
+def _image_mime(img_bytes: bytes) -> str:
+    """MIME type of image bytes, by signature."""
+    if img_bytes.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if img_bytes.startswith(b"GIF"):
+        return "image/gif"
+    return "image/png"
+
+
+def _int_attr(element: Any, name: str) -> Optional[int]:
+    """An integer attribute of an element (attributes like cx/cy carry no namespace), or None."""
+    if element is None:
+        return None
+    value = element.get(name)
+    try:
+        return int(value) if value is not None else None
+    except ValueError:
+        return None
+
+
+def _picture_display_size_emu(blip: Any) -> Optional[Tuple[int, int]]:
+    """How big Word draws a picture, in EMU.
+
+    A plain picture is as big as the extent of its drawing (inline or anchor). A
+    picture inside a group is positioned in the group's own coordinate space, so
+    its size is scaled by group extent / group child extent.
+    """
+    pic = blip.getparent().getparent() if blip.getparent() is not None else None
+    if pic is None:
+        return None
+    ext = pic.find(f"./{{{_NS_PIC}}}spPr/{{{_NS_A}}}xfrm/{{{_NS_A}}}ext")
+    own = (_int_attr(ext, "cx"), _int_attr(ext, "cy")) if ext is not None else None
+    container = next(blip.iterancestors(f"{{{_NS_WP}}}inline", f"{{{_NS_WP}}}anchor"), None)
+    group = next(blip.iterancestors(f"{{{_NS_WPG}}}wgp"), None)
+
+    if group is not None and own and own[0] and own[1] and container is not None:
+        frame = container.find(f"{{{_NS_WP}}}extent")
+        child_space = group.find(f"./{{{_NS_WPG}}}grpSpPr/{{{_NS_A}}}xfrm/{{{_NS_A}}}chExt")
+        if frame is not None and _int_attr(child_space, "cx") and _int_attr(child_space, "cy"):
+            scale_x = _int_attr(frame, "cx") / _int_attr(child_space, "cx")
+            scale_y = _int_attr(frame, "cy") / _int_attr(child_space, "cy")
+            return round(own[0] * scale_x), round(own[1] * scale_y)
+    if group is None and container is not None:
+        frame = container.find(f"{{{_NS_WP}}}extent")
+        if _int_attr(frame, "cx") and _int_attr(frame, "cy"):
+            return _int_attr(frame, "cx"), _int_attr(frame, "cy")
+    if own and own[0] and own[1]:
+        return own
+    return None
+
+
+def _crop_image(img_bytes: bytes, blip: Any) -> bytes:
+    """Apply the picture's source crop (a:srcRect, in 1/1000 of a percent), if it has one."""
+    fill = blip.getparent()
+    rect = fill.find(f"{{{_NS_A}}}srcRect") if fill is not None else None
+    if rect is None:
+        return img_bytes
+    left, top, right, bottom = (_int_attr(rect, k) or 0 for k in ("l", "t", "r", "b"))
+    if not any((left, top, right, bottom)) or min(left, top, right, bottom) < 0:
+        return img_bytes
+    try:
+        import pymupdf
+
+        pix = pymupdf.Pixmap(img_bytes)
+        x0, y0 = round(pix.width * left / 100000), round(pix.height * top / 100000)
+        x1, y1 = pix.width - round(pix.width * right / 100000), pix.height - round(pix.height * bottom / 100000)
+        if x1 - x0 < 2 or y1 - y0 < 2:
+            return img_bytes
+        clip = pymupdf.IRect(x0, y0, x1, y1)
+        cropped = pymupdf.Pixmap(pix.colorspace, pymupdf.IRect(0, 0, clip.width, clip.height), pix.alpha)
+        cropped.copy(pix, clip)
+        return cropped.tobytes("png" if cropped.alpha else "jpeg")
+    except Exception:
+        return img_bytes
+
+
+# A picture whose pixels are within this fraction of the drawn aspect is left as it is.
+ASPECT_TOLERANCE = 0.03
+
+
+def _match_drawn_aspect(img_bytes: bytes, width_px: int, height_px: int) -> bytes:
+    """Resample a picture whose pixel aspect differs from the aspect Word draws it at.
+
+    The editor shows pictures at a width with automatic height, so a thin rule
+    stored as a tiny image and stretched by Word (6.5in x 0.02in) would otherwise
+    grow to hundreds of pixels tall. Resampling to the drawn aspect makes any
+    viewer show the same height Word does.
+    """
+    try:
+        import pymupdf
+
+        pix = pymupdf.Pixmap(img_bytes)
+        if pix.width < 1 or pix.height < 1:
+            return img_bytes
+        natural, drawn = pix.width / pix.height, width_px / height_px
+        if abs(natural - drawn) / drawn <= ASPECT_TOLERANCE:
+            return img_bytes
+        target_w = min(pix.width, 2 * width_px) if pix.width > width_px else width_px
+        target_h = max(1, round(target_w * height_px / width_px))
+        resized = pymupdf.Pixmap(pix, target_w, target_h)
+        return resized.tobytes("png" if resized.alpha else "jpeg")
+    except Exception:
+        return img_bytes
+
+
+def _img_tag(img_bytes: bytes, width_px: Optional[int]) -> str:
+    """An <img> with the drawn width, so the editor shows it as big as Word does."""
+    src = base64.b64encode(img_bytes).decode("utf-8")
+    style = "max-width:100%; height:auto; display:block; border-radius:4px;"
+    width_attr = f' width="{width_px}"' if width_px else ""
+    return f'<img src="data:{_image_mime(img_bytes)};base64,{src}"{width_attr} style="{style}" />'
+
+
 def _image_html(blip: Any, doc_parts: Dict[str, bytes]) -> str:
-    """Render an embedded drawing (blip) as a base64 data-URI <img>, preserving size."""
+    """Render an embedded drawing (blip) as a base64 data-URI <img> at the size Word draws it."""
     embed_id = blip.get(qn("r:embed"))
     if not embed_id or embed_id not in doc_parts:
         return ""
 
-    img_bytes = doc_parts[embed_id]
-    b64_src = base64.b64encode(img_bytes).decode("utf-8")
+    img_bytes = _crop_image(doc_parts[embed_id], blip)
+    size = _picture_display_size_emu(blip)
+    if not size:
+        return _img_tag(img_bytes, None)
+    width = max(1, round(size[0] / EMU_PER_PX))
+    height = max(1, round(size[1] / EMU_PER_PX))
+    return _img_tag(_match_drawn_aspect(img_bytes, width, height), width)
 
-    mime = "image/png"
-    if img_bytes.startswith(b"\xff\xd8"):
-        mime = "image/jpeg"
-    elif img_bytes.startswith(b"GIF"):
-        mime = "image/gif"
 
-    width = None
+def _group_image_html(group: Any, doc_parts: Dict[str, bytes]) -> str:
+    """Flatten a group of pictures (a letterhead, a logo strip) into one image.
+
+    The group's pictures are laid out at their own offsets inside the group's
+    frame, on a transparent canvas the size of that frame; the editor can then
+    draw the group as the single picture it is in Word. Empty string when the
+    group can't be flattened (the caller falls back to the separate pictures).
+    """
+    container = next(group.iterancestors(f"{{{_NS_WP}}}inline", f"{{{_NS_WP}}}anchor"), None)
+    frame = container.find(f"{{{_NS_WP}}}extent") if container is not None else None
+    frame_w, frame_h = _int_attr(frame, "cx"), _int_attr(frame, "cy")
+    xfrm = group.find(f"./{{{_NS_WPG}}}grpSpPr/{{{_NS_A}}}xfrm")
+    child_off = xfrm.find(f"{{{_NS_A}}}chOff") if xfrm is not None else None
+    child_ext = xfrm.find(f"{{{_NS_A}}}chExt") if xfrm is not None else None
+    child_w, child_h = _int_attr(child_ext, "cx"), _int_attr(child_ext, "cy")
+    if not (frame_w and frame_h and child_w and child_h):
+        return ""
+
+    scale_x, scale_y = frame_w / child_w, frame_h / child_h
+    origin_x, origin_y = _int_attr(child_off, "x") or 0, _int_attr(child_off, "y") or 0
+    placed: List[Tuple[bytes, Tuple[float, float, float, float]]] = []
+    for pic in group.iter(f"{{{_NS_PIC}}}pic"):
+        blip = pic.find(f"./{{{_NS_PIC}}}blipFill/{{{_NS_A}}}blip")
+        off = pic.find(f"./{{{_NS_PIC}}}spPr/{{{_NS_A}}}xfrm/{{{_NS_A}}}off")
+        ext = pic.find(f"./{{{_NS_PIC}}}spPr/{{{_NS_A}}}xfrm/{{{_NS_A}}}ext")
+        embed_id = blip.get(qn("r:embed")) if blip is not None else None
+        if not embed_id or embed_id not in doc_parts or off is None or ext is None:
+            return ""
+        x = ((_int_attr(off, "x") or 0) - origin_x) * scale_x / EMU_PER_POINT
+        y = ((_int_attr(off, "y") or 0) - origin_y) * scale_y / EMU_PER_POINT
+        w = (_int_attr(ext, "cx") or 0) * scale_x / EMU_PER_POINT
+        h = (_int_attr(ext, "cy") or 0) * scale_y / EMU_PER_POINT
+        placed.append((_crop_image(doc_parts[embed_id], blip), (x, y, x + w, y + h)))
+    if not placed:
+        return ""
+
     try:
-        pic = blip.getparent().getparent()
-        xfrm = pic.find(".//" + qn("a:xfrm")) if pic is not None else None
-        ext = xfrm.find(qn("a:ext")) if xfrm is not None else None
-        if ext is not None:
-            cx = ext.get(qn("cx"))
-            if cx:
-                width = round(int(cx) / 9525)
+        import pymupdf
+
+        width_pt, height_pt = frame_w / EMU_PER_POINT, frame_h / EMU_PER_POINT
+        canvas = pymupdf.open()
+        page = canvas.new_page(width=width_pt, height=height_pt)
+        for data, (x0, y0, x1, y1) in placed:
+            page.insert_image(pymupdf.Rect(x0, y0, x1, y1), stream=data)
+        dpi = max(36, min(150, int(MAX_GROUP_IMAGE_PX / (width_pt / 72))))
+        pix = page.get_pixmap(dpi=dpi, alpha=True)
+        return _img_tag(pix.tobytes("png"), max(1, round(frame_w / EMU_PER_PX)))
     except Exception:
-        pass
-
-    if width:
-        style = "max-width:100%; height:auto; display:block; border-radius:4px;"
-        return f'<img src="data:{mime};base64,{b64_src}" width="{width}" style="{style}" />'
-    else:
-        style = "max-width:100%; height:auto; display:block; border-radius:4px;"
-
-    return f'<img src="data:{mime};base64,{b64_src}" style="{style}" />'
+        return ""
 
 
 def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes]) -> str:
     """Render a run as either its inline image (if it contains a drawing) or styled text."""
     try:
-        blips = run._element.findall(".//" + qn("a:blip"))
+        element = run._element
+        line_marks = _LINE_MARK * len(_line_shapes_in(element))
+        # mc:AlternateContent stores a drawing twice (the real shape and a fallback
+        # picture of it for old readers); only the real one is rendered.
+        blips = [
+            b for b in element.findall(".//" + qn("a:blip"))
+            if not any(a.tag == _MC_FALLBACK for a in b.iterancestors())
+        ]
         if blips:
-            return "".join(_image_html(b, doc_parts) for b in blips)
+            pieces: List[str] = []
+            grouped: Set[Any] = set()
+            for group in element.iter(f"{{{_NS_WPG}}}wgp"):
+                if next(group.iterancestors(f"{{{_NS_WPG}}}wgp"), None) is not None:
+                    continue  # a nested group is flattened with its outer group
+                flat = _group_image_html(group, doc_parts)
+                if flat:
+                    pieces.append(flat)
+                    grouped.update(group.iter(qn("a:blip")))
+            pieces.extend(_image_html(b, doc_parts) for b in blips if b not in grouped)
+            return line_marks + "".join(pieces)
+        if line_marks:
+            return line_marks
     except Exception:
         pass
     return _run_to_html(run)
+
+
+_NS_WPS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+_LINE_GEOMETRIES = {"line", "straightConnector1"}
+# Scheme colours Word uses for a default black/white line.
+_SCHEME_LINE_COLORS = {"dk1": "#000000", "tx1": "#000000", "dk2": "#44546A", "tx2": "#44546A", "bg1": "#FFFFFF", "lt1": "#FFFFFF"}
+
+
+# Marks where a drawn line sits in a paragraph's inner HTML (a private-use character).
+_LINE_MARK = "\ue000"
+
+
+def _line_shapes_in(element: Any) -> List[Tuple[int, int, str]]:
+    """Straight horizontal lines drawn inside an element: (length EMU, weight EMU, colour).
+
+    These are DrawingML line shapes (a "Straight Connector" with no height), the
+    rules Word documents use for signature lines and section dividers. They carry
+    no picture, so they would otherwise vanish from the import.
+    """
+    lines: List[Tuple[int, int, str]] = []
+    for shape in element.iter(f"{{{_NS_WPS}}}wsp"):
+        geometry = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}prstGeom")
+        extent = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}xfrm/{{{_NS_A}}}ext")
+        if geometry is None or geometry.get("prst") not in _LINE_GEOMETRIES or extent is None:
+            continue
+        length, height = _int_attr(extent, "cx") or 0, _int_attr(extent, "cy") or 0
+        if length <= 0 or height > 12700:  # taller than 1pt: a diagonal or a box, not a rule
+            continue
+        outline = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}ln")
+        weight = _int_attr(outline, "w") or 9525
+        color = "#000000"
+        if outline is not None:
+            rgb = outline.find(f"./{{{_NS_A}}}solidFill/{{{_NS_A}}}srgbClr")
+            scheme = outline.find(f"./{{{_NS_A}}}solidFill/{{{_NS_A}}}schemeClr")
+            if rgb is not None and rgb.get("val"):
+                color = f"#{rgb.get('val')}"
+            elif scheme is not None:
+                color = _SCHEME_LINE_COLORS.get(scheme.get("val") or "", "#000000")
+        lines.append((length, weight, color))
+    return lines
+
+
+def _line_paragraph_html(p: Paragraph, line: Tuple[int, int, str], space_before: bool) -> str:
+    """An empty paragraph with a bottom border: how a drawn horizontal line is shown."""
+    length, weight, color = line
+    pt = round(weight / EMU_PER_POINT, 2)
+    # An inline line sits on the baseline of a normal-height line: about 78% of
+    # that line is blank above the rule and the descent (22%) below it.
+    line_pt = (_resolve_font_size_pt(p) or 12.0) * _FONT_LINE_FACTORS.get((_resolve_font_name(p) or "").lower(), _DEFAULT_LINE_FACTOR)
+    parts = [
+        f"border-bottom:{pt:g}pt solid {color}",
+        "font-size:1pt",
+        "line-height:1pt",
+        f"padding-top:{round(line_pt * 0.78 - pt, 1):g}pt",
+        f"margin-bottom:{round(line_pt * 0.22, 1):g}pt",
+    ]
+    spacing = _paragraph_spacing_css(p)
+    before = next((part for part in spacing.split("; ") if part.startswith("margin-top")), None)
+    parts.append(before if (space_before and before) else "margin-top:0")
+    indent = _paragraph_indent_css(p)
+    match = re.search(r"margin-left:\s*([\d.]+)px", indent)
+    left_px = float(match.group(1)) if match else 0.0
+    if match:
+        parts.append(f"margin-left:{left_px:g}px")
+    try:
+        section = p.part.document.sections[0]
+        column_px = (section.page_width - section.left_margin - section.right_margin) / EMU_PER_PX
+        spare = column_px - left_px - length / EMU_PER_PX
+        if spare > 4:
+            if _get_paragraph_alignment(p) == "center" and not match:
+                parts.extend([f"margin-left:{round(spare / 2, 1)}px", f"margin-right:{round(spare / 2, 1)}px"])
+            else:
+                parts.append(f"margin-right:{round(spare, 1)}px")
+    except Exception:
+        pass
+    return f'<p class="rule-line" style="{"; ".join(parts)};"></p>'
+
+
+def _strip_leading_breaks(html: str) -> str:
+    """Remove the line breaks and empty spans Word puts right after an inline drawing.
+
+    A break can sit inside the first span of the text that follows, so breaks are
+    removed both at the very start and directly after opening span tags.
+    """
+    html = re.sub(r"^(?:\s|<br\s*/?>|<span[^>]*>\s*</span>)+", "", html)
+    previous = None
+    while previous != html:
+        previous = html
+        html = re.sub(r"^((?:<span[^>]*>)*)(?:\s|<br\s*/?>)+", r"\1", html)
+    return html
 
 
 def _is_dark_hex(hex_str: str) -> bool:
@@ -508,6 +826,11 @@ def _resolve_font_name(p: Paragraph) -> Optional[str]:
     mark_name = _rfonts_name(mark_rpr.find(qn("w:rFonts")) if mark_rpr is not None else None, p.part)
     if mark_name:
         return mark_name
+    return _inherited_font_name(p)
+
+
+def _inherited_font_name(p: Paragraph) -> Optional[str]:
+    """Font a paragraph's text gets from its style chain, then docDefaults (no run or mark overrides)."""
     try:
         style = p.style
     except Exception:
@@ -537,6 +860,25 @@ def _resolve_font_size_pt(p: Paragraph) -> Optional[float]:
         mark_sz = mark_rpr.find(qn("w:sz")) if mark_rpr is not None else None
         if mark_sz is not None and mark_sz.get(qn("w:val")):
             return round(int(mark_sz.get(qn("w:val"))) / 2.0, 1)
+    style_size = _style_font_size_pt(p)
+    # Word sizes a line from its largest run, and most paragraphs are one size
+    # throughout, so a paragraph whose text is mostly one explicit run size takes
+    # it as its base: line height and spacing then scale with the text it holds.
+    weights: Dict[float, int] = {}
+    for run in p.runs:
+        text = run.text.strip()
+        if not text:
+            continue
+        size = round(run.font.size.pt, 1) if run.font.size is not None else style_size
+        if size is not None:
+            weights[size] = weights.get(size, 0) + len(text)
+    if weights:
+        return max(weights.items(), key=lambda item: item[1])[0]
+    return style_size
+
+
+def _style_font_size_pt(p: Paragraph) -> Optional[float]:
+    """Font size (pt) a paragraph's style chain, then the document defaults, give its text."""
     try:
         style = p.style
     except Exception:
@@ -614,6 +956,15 @@ def _paragraph_spacing_css(p: Paragraph) -> str:
     return "; ".join(styles)
 
 
+# Word numbering formats the editor's ordered list can draw (its `type` attribute).
+_LIST_TYPES: Dict[str, str] = {
+    "lowerLetter": "a",
+    "upperLetter": "A",
+    "lowerRoman": "i",
+    "upperRoman": "I",
+}
+
+
 def _build_numbering_map(doc: docx.Document) -> Tuple[Dict[str, str], Dict[str, Dict[str, str]]]:
     """Return (numId->abstractNumId, abstractNumId->{ilvl: numFmt}) from numbering.xml."""
     try:
@@ -676,7 +1027,13 @@ def _paragraph_list_info(
         fmt = levels.get(str(ilvl), levels.get("0", "bullet"))
 
     kind = "ul" if fmt == "bullet" else "ol"
-    return {"kind": kind, "level": ilvl, "num_id": num_id}
+    return {"kind": kind, "level": ilvl, "num_id": num_id, "fmt": fmt}
+
+
+def _get_paragraph_alignment_css(p: Paragraph) -> str:
+    """text-align declaration for a paragraph, empty when left-aligned."""
+    alignment = _get_paragraph_alignment(p)
+    return f"text-align:{alignment}" if alignment != "left" else ""
 
 
 def _paragraph_to_html(
@@ -685,11 +1042,40 @@ def _paragraph_to_html(
     list_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Convert a paragraph to HTML; list paragraphs return only their inner content."""
-    style_name = p.style.name.lower() if p.style else ""
     inner = _paragraph_inner_html(p, doc_parts)
 
     if list_info is not None:
+        inner = inner.replace(_LINE_MARK, "")
+        # The item keeps its paragraph's spacing, size and alignment.
+        if inner.strip():
+            css_parts = [_get_paragraph_alignment_css(p), _paragraph_font_css(p), _paragraph_spacing_css(p)]
+            css = "; ".join(part.rstrip("; ") for part in css_parts if part)
+            return f'<p style="{css};">{inner}</p>' if css else f"<p>{inner}</p>"
         return inner
+    if _LINE_MARK not in inner:
+        return _paragraph_html_from_inner(p, inner)
+
+    # A drawn line in the paragraph becomes its own bordered paragraph; the text
+    # around it keeps the paragraph's formatting.
+    lines = _line_shapes_in(p._p)
+    chunks = inner.split(_LINE_MARK)
+    pieces: List[str] = []
+    for index, chunk in enumerate(chunks):
+        if index > 0:
+            line = lines[index - 1] if index - 1 < len(lines) else (5486400, 9525, "#000000")
+            pieces.append(_line_paragraph_html(p, line, space_before=not pieces))
+            chunk = _strip_leading_breaks(chunk)
+        if re.sub(r"<(?!img)[^>]+>", "", chunk).strip():
+            pieces.append(_paragraph_html_from_inner(p, chunk))
+        elif index == 0:
+            # Line breaks before a line are empty lines above it.
+            pieces.extend(_paragraph_html_from_inner(p, "") for _ in range(len(re.findall(r"<br\s*/?>", chunk))))
+    return "".join(pieces)
+
+
+def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
+    """The HTML of a (non-list) paragraph whose inner HTML has already been built."""
+    style_name = p.style.name.lower() if p.style else ""
 
     if not inner.strip():
         # Blank line: render it exactly as tall as Word does — the same
@@ -717,34 +1103,55 @@ def _paragraph_to_html(
     indent_style = _paragraph_indent_css(p)
 
     if "title" in style_name and "sub" not in style_name:
-        css = " ".join(
-            filter(None, [align_style, "font-size:20pt; font-weight:bold; margin:0.75em 0 0.35em;", indent_style])
-        )
+        css = _heading_css(p, align_style, indent_style, 20, "margin:0.75em 0 0.35em")
         return f'<h1 class="title" style="{css}">{inner}</h1>'
     if "subtitle" in style_name:
-        css = " ".join(
-            filter(None, [align_style, "font-size:14pt; font-weight:600; font-style:italic; margin:0.35em 0 0.5em;", indent_style])
-        )
+        css = _heading_css(p, align_style, indent_style, 14, "margin:0.35em 0 0.5em", weight="600", italic=True)
         return f'<h2 class="subtitle" style="{css}">{inner}</h2>'
-    if "heading 1" in style_name:
-        return f'<h1 style="{align_style} font-size:17pt; font-weight:bold; margin:0.85em 0 0.35em; {indent_style}">{inner}</h1>'
-    if "heading 2" in style_name:
-        return f'<h2 style="{align_style} font-size:14pt; font-weight:bold; margin:0.75em 0 0.3em; {indent_style}">{inner}</h2>'
-    if "heading 3" in style_name:
-        return f'<h3 style="{align_style} font-size:12.5pt; font-weight:bold; margin:0.65em 0 0.25em; {indent_style}">{inner}</h3>'
-    if "heading 4" in style_name:
-        return f'<h4 style="{align_style} font-size:11.5pt; font-weight:bold; margin:0.5em 0 0.25em; {indent_style}">{inner}</h4>'
-    if "heading 5" in style_name:
-        return f'<h5 style="{align_style} font-size:10.5pt; font-weight:bold; margin:0.5em 0 0.25em; {indent_style}">{inner}</h5>'
-    if "heading 6" in style_name:
-        return f'<h6 style="{align_style} font-size:9.5pt; font-weight:bold; margin:0.5em 0 0.25em; {indent_style}">{inner}</h6>'
+    for level, size, margin in _HEADING_DEFAULTS:
+        if f"heading {level}" in style_name:
+            return f'<h{level} style="{_heading_css(p, align_style, indent_style, size, margin)}">{inner}</h{level}>'
     if "heading" in style_name:
-        return f'<h4 style="{align_style} font-size:11.5pt; font-weight:bold; margin:0.5em 0 0.25em; {indent_style}">{inner}</h4>'
+        return f'<h4 style="{_heading_css(p, align_style, indent_style, 11.5, "margin:0.5em 0 0.25em")}">{inner}</h4>'
 
     css_parts = filter(None, [align_style, _paragraph_font_css(p), spacing_style, indent_style])
     css_combined = "; ".join(part.rstrip("; ") for part in css_parts).strip()
     style_attr = f' style="{css_combined};"' if css_combined else ""
     return f"<p{style_attr}{_tab_attributes(p, inner)}>{inner}</p>"
+
+
+# Heading level, fallback size (pt) and fallback margin, used only when the
+# source document defines no size or spacing for the paragraph.
+_HEADING_DEFAULTS: List[Tuple[int, float, str]] = [
+    (1, 17, "margin:0.85em 0 0.35em"),
+    (2, 14, "margin:0.75em 0 0.3em"),
+    (3, 12.5, "margin:0.65em 0 0.25em"),
+    (4, 11.5, "margin:0.5em 0 0.25em"),
+    (5, 10.5, "margin:0.5em 0 0.25em"),
+    (6, 9.5, "margin:0.5em 0 0.25em"),
+]
+
+
+def _heading_css(
+    p: Paragraph,
+    align_style: str,
+    indent_style: str,
+    default_size_pt: float,
+    default_margin: str,
+    weight: str = "bold",
+    italic: bool = False,
+) -> str:
+    """Inline style for a heading element.
+
+    The source paragraph's own size and spacing are authoritative (they carry the
+    vertical gaps of a title page and Word's heading spacing); the fixed defaults
+    apply only when the document defines none, so an imported heading is never
+    reshaped by the editor's heading rules.
+    """
+    size = _paragraph_font_css(p) or f"font-size:{default_size_pt:g}pt"
+    spacing = _paragraph_spacing_css(p) or default_margin
+    parts = [align_style.rstrip(";"), size, f"font-weight:{weight}", "font-style:italic" if italic else "", spacing, indent_style.rstrip(";")]
+    return "; ".join(part for part in parts if part) + ";"
 
 
 def _iter_block_elements(container: Any) -> Any:
@@ -793,7 +1200,8 @@ def _cell_paragraph_to_html(p: Paragraph, doc_parts: Dict[str, bytes], force_whi
     alignment = _get_paragraph_alignment(p)
     align_style = f"text-align:{alignment};" if alignment != "left" else ""
     color_style = "color:#ffffff;" if force_white else ""
-    css = " ".join(filter(None, [align_style, color_style, "margin:0; line-height:1.35; text-indent:0;"]))
+    pieces = [align_style, color_style, "margin:0", _paragraph_font_css(p), _paragraph_spacing_css(p), "text-indent:0"]
+    css = "; ".join(piece.rstrip("; ") for piece in pieces if piece) + ";"
     return f'<p style="{css}"{_tab_attributes(p, inner)}>{inner}</p>'
 
 
@@ -887,6 +1295,125 @@ def _column_size_attribute(rows: List[List[Dict[str, Any]]], col_px: List[float]
     return ' data-column-size="' + ",".join(f"{p:g}" for p in percents) + '"'
 
 
+_BORDER_EDGES = ("top", "left", "bottom", "right")
+
+
+def _style_chain_elements(table: Table) -> List[Any]:
+    """The table's style and the styles it is based on, nearest first (as XML elements)."""
+    chain: List[Any] = []
+    try:
+        style = table.style
+        while style is not None and len(chain) < 8:
+            chain.append(style.element)
+            style = style.base_style
+    except Exception:
+        pass
+    return chain
+
+
+def _border_set(container: Any) -> Dict[str, Optional[str]]:
+    """Borders under a w:tblBorders / w:tcBorders element as CSS ("1pt solid #000"), None for no border."""
+    found: Dict[str, Optional[str]] = {}
+    if container is None:
+        return found
+    for edge in container:
+        name = edge.tag.split("}")[-1]
+        if name == "start":
+            name = "left"
+        elif name == "end":
+            name = "right"
+        value = edge.get(qn("w:val"))
+        if value in (None, "nil", "none"):
+            found[name] = None
+            continue
+        size = float(edge.get(qn("w:sz")) or 4) / 8.0  # eighths of a point
+        color = edge.get(qn("w:color"))
+        color = "#000000" if color in (None, "auto") else f"#{color}"
+        found[name] = f"{max(size, 0.5):g}pt {'double' if value == 'double' else 'solid'} {color}"
+    return found
+
+
+def _table_borders(table: Table) -> Dict[str, Optional[str]]:
+    """Effective table-level borders: the table's own, else the nearest style that defines them."""
+    tbl = table._element
+    direct = _border_set(tbl.find(qn("w:tblPr") + "/" + qn("w:tblBorders")))
+    if direct:
+        return direct
+    for element in _style_chain_elements(table):
+        found = _border_set(element.find(qn("w:tblPr") + "/" + qn("w:tblBorders")))
+        if found:
+            return found
+    return {}
+
+
+def _table_cell_margins(table: Table) -> Dict[str, float]:
+    """Default cell padding in px per side: tblCellMar (direct, else style), else Word's 0.08in left/right."""
+    margins = {"top": 0.0, "left": 7.2 * 96 / 72, "bottom": 0.0, "right": 7.2 * 96 / 72}
+    sources = [table._element.find(qn("w:tblPr") + "/" + qn("w:tblCellMar"))]
+    sources += [el.find(qn("w:tblPr") + "/" + qn("w:tblCellMar")) for el in _style_chain_elements(table)]
+    for source in sources:
+        if source is None:
+            continue
+        for child in source:
+            name = {"start": "left", "end": "right"}.get(child.tag.split("}")[-1], child.tag.split("}")[-1])
+            width = child.get(qn("w:w"))
+            if name in margins and width and child.get(qn("w:type")) in (None, "dxa"):
+                margins[name] = float(width) * TWIPS_PER_PX
+        break
+    # A PDF has no cell padding to carry over; columns set flush against each other would run together.
+    if getattr(table.part, "_is_pdf_import", False):
+        margins["pdf"] = 1.0
+        if margins["left"] == 0 and margins["right"] == 0:
+            margins["left"] = margins["right"] = 9.6
+    return margins
+
+
+def _cell_padding_css(tc: Any, default: Dict[str, float]) -> str:
+    """CSS padding of one cell: its own tcMar over the table's default cell margins."""
+    margins = dict(default)
+    mar = tc.find(qn("w:tcPr") + "/" + qn("w:tcMar"))
+    if mar is not None:
+        for child in mar:
+            name = {"start": "left", "end": "right"}.get(child.tag.split("}")[-1], child.tag.split("}")[-1])
+            width = child.get(qn("w:w"))
+            if name in margins and width:
+                margins[name] = float(width) * TWIPS_PER_PX
+    if default.get("pdf") and margins["left"] == 0 and margins["right"] == 0:
+        margins["left"] = margins["right"] = 9.6
+    # Longhands: the editor's style whitelist drops the "padding" shorthand.
+    return "; ".join(f"padding-{side}:{margins[side]:g}px" for side in _BORDER_EDGES)
+
+
+def _cell_vertical_align(tc: Any) -> str:
+    """CSS vertical-align of a cell (Word's w:vAlign; top when unset)."""
+    value = tc.find(qn("w:tcPr") + "/" + qn("w:vAlign"))
+    return {"center": "middle", "bottom": "bottom"}.get(value.get(qn("w:val")) if value is not None else "", "top")
+
+
+def _row_height_px(tc: Any) -> Optional[float]:
+    """Height (px) Word gives the row holding this cell (w:trHeight), if any."""
+    row = tc.getparent()
+    height = row.find(qn("w:trPr") + "/" + qn("w:trHeight")) if row is not None else None
+    if height is None or not height.get(qn("w:val")):
+        return None
+    return round(float(height.get(qn("w:val"))) * TWIPS_PER_PX, 1)
+
+
+def _cell_edge_css(table_borders: Dict[str, Optional[str]], tc: Any, row: int, last_row: int, column: int, last_column: int) -> str:
+    """CSS borders of one cell: its own tcBorders over the table's outer/inside borders."""
+    own = _border_set(tc.find(qn("w:tcPr") + "/" + qn("w:tcBorders")))
+    outer = {"top": row == 0, "bottom": row == last_row, "left": column == 0, "right": column == last_column}
+    inside = {"top": "insideH", "bottom": "insideH", "left": "insideV", "right": "insideV"}
+    parts: List[str] = []
+    for edge in _BORDER_EDGES:
+        if edge in own:
+            value = own[edge]
+        else:
+            value = table_borders.get(edge if outer[edge] else inside[edge])
+        parts.append(f"border-{edge}:{value or 'none'}")
+    return "; ".join(parts)
+
+
 def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[float] = None) -> str:
     """Convert a Word table to HTML with real colspan/rowspan, per-cell column widths and nested tables.
 
@@ -896,19 +1423,23 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
     tbl = table._element
     rows = _table_rows(tbl)
     col_px = _table_column_px(tbl, rows, text_width_px)
+    borders = _table_borders(table)
+    pad = _table_cell_margins(table)
+    last_row = len(rows) - 1
 
     rows_html: List[str] = []
     for i, cells in enumerate(rows):
         cells_html: List[str] = []
-        tag = "th" if i == 0 else "td"
+        tag = "td"
+        last_column = len(cells) - 1
 
-        for cell in cells:
+        for column, cell in enumerate(cells):
             if cell["skip"]:
                 # Continuation of a vertical merge: an empty cell that hides the
                 # shared border, so the merged cell still reads as one block.
                 span_attr = f' colspan="{cell["span"]}"' if cell["span"] > 1 else ""
                 cells_html.append(
-                    f'<{tag} style="border:1px solid var(--border); border-top:none; padding:8px 12px; vertical-align:top;"{span_attr}>&nbsp;</{tag}>'
+                    f'<{tag} style="{_cell_edge_css(borders, cell["el"], i, last_row, column, last_column)}; border-top:none; {_cell_padding_css(cell["el"], pad)}; vertical-align:top;"{span_attr}>&nbsp;</{tag}>'
                 )
                 continue
             tc = cell["el"]
@@ -924,9 +1455,6 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
                         is_dark = True
                         text_color = "color:#ffffff; font-weight:600;"
 
-            if not bg_color and i == 0:
-                bg_color = "background-color:var(--secondary);"
-
             content_parts: List[str] = []
             for child in _iter_block_elements(tc):
                 if child.tag == qn("w:p"):
@@ -937,7 +1465,7 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
             if not cell_content.strip():
                 cell_content = "&nbsp;"
 
-            style_parts = ["border:1px solid var(--border)", "padding:8px 12px", "vertical-align:top"]
+            style_parts = [_cell_edge_css(borders, tc, i, last_row, column, last_column), _cell_padding_css(tc, pad), f"vertical-align:{_cell_vertical_align(tc)}"]
             if bg_color:
                 style_parts.append(bg_color.rstrip(";"))
             if text_color:
@@ -954,11 +1482,9 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
                 attrs.append(f'colspan="{cell["span"]}"')
             cells_html.append(f'<{tag} {" ".join(attrs)}>{cell_content}</{tag}>')
 
-        tr_style = "background-color:var(--secondary);" if i == 0 else ""
-        tr_attr = f' style="{tr_style}"' if tr_style else ""
-        rows_html.append(f"<tr{tr_attr}>{''.join(cells_html)}</tr>")
+        rows_html.append(f"<tr>{''.join(cells_html)}</tr>")
 
-    table_css = "border-collapse:collapse; width:100%; margin:1.25em 0; border:1px solid var(--border); table-layout:fixed;"
+    table_css = "border-collapse:collapse; width:100%; margin:0; table-layout:fixed;"
     return f'<table style="{table_css}"{_column_size_attribute(rows, col_px)}>{"".join(rows_html)}</table>'
 
 
@@ -1003,6 +1529,14 @@ def _body_to_html(
     def emit_page_break() -> None:
         """Start a new page unless the output already ends with a page break."""
         close_all_lists()
+        # Blank lines at the end of a page only pad it; left in, they spill onto a
+        # blank page when the text above runs a line long. A page that is blank on
+        # purpose (break, blank lines, break) keeps its lines.
+        trailing = 0
+        while trailing < len(out) and out[-1 - trailing].startswith('<p class="empty-spacer"'):
+            trailing += 1
+        if trailing and trailing < len(out) and out[-1 - trailing] != _PAGE_BREAK_HTML:
+            del out[len(out) - trailing:]
         if not out or out[-1] != _PAGE_BREAK_HTML:
             out.append(_PAGE_BREAK_HTML)
 
@@ -1036,7 +1570,9 @@ def _body_to_html(
                 continue
 
             kind = info["kind"]
-            target_depth = info["level"] + 1
+            # A deeper level with no list open above it starts at the top: the
+            # editor would otherwise invent an empty parent item (a stray "1.").
+            target_depth = min(info["level"] + 1, len(stack) + 1)
             count_key = (info["num_id"], info["level"])
             item_counts[count_key] = item_counts.get(count_key, 0) + 1
             # A new item at this level restarts the deeper levels of the same list.
@@ -1050,6 +1586,10 @@ def _body_to_html(
             # Same depth but different kind -> close and reopen as the new kind.
             if stack and len(stack) == target_depth and stack[-1]["kind"] != kind:
                 close_list()
+            # Another numbered list (a restart) at the same depth is a new <ol>.
+            if stack and len(stack) == target_depth and stack[-1].get("num_id") not in (None, info["num_id"]):
+                close_list()
+                ordinal = 1
 
             if len(stack) == target_depth and stack:
                 # Continuing an existing list at this depth -> new sibling item.
@@ -1060,10 +1600,14 @@ def _body_to_html(
             else:
                 # Open nested list(s) (inside the current open <li>) or a fresh list.
                 while len(stack) < target_depth:
-                    stack.append({"kind": kind})
-                    opens_this_item = len(stack) == target_depth
+                    opens_this_item = len(stack) + 1 == target_depth
+                    stack.append({"kind": kind, "num_id": info["num_id"] if opens_this_item else None})
                     start_attr = f' start="{ordinal}"' if kind == "ol" and opens_this_item and ordinal > 1 else ""
-                    out.append(f"<{kind}{start_attr}>")
+                    type_attr = ""
+                    if kind == "ol" and opens_this_item:
+                        list_type = _LIST_TYPES.get(info.get("fmt", ""))
+                        type_attr = f' type="{list_type}"' if list_type else ""
+                    out.append(f"<{kind}{start_attr}{type_attr}>")
                 out.append("<li>")
                 open_li_depth = target_depth
 
@@ -1075,7 +1619,27 @@ def _body_to_html(
             out.append(_table_to_html(Table(element, doc), doc_parts, text_width))
 
     close_all_lists()
-    return "\n".join(out)
+    return _trim_page_ends("\n".join(out))
+
+
+def _trim_page_ends(html: str) -> str:
+    """Drop the blank lines that only pad the end of a page before a page break.
+
+    Left in, they spill onto a blank page whenever the text above runs a line
+    long. A page that is blank on purpose (break, blank lines, break) is kept.
+    """
+    kept: List[str] = []
+    for line in html.split("\n"):
+        if line.startswith('<hr class="page-break"'):
+            trailing = 0
+            while trailing < len(kept) and kept[-1 - trailing].startswith('<p class="empty-spacer"'):
+                trailing += 1
+            # Only a page that has other content loses its padding lines.
+            if trailing and trailing < len(kept) and not kept[-1 - trailing].startswith('<hr class="page-break"'):
+                del kept[len(kept) - trailing:]
+        kept.append(line)
+    html = "\n".join(kept)
+    return re.sub(r'(?:<br\s*/?>\s*(?:<span[^>]*>\s*</span>)?)+(?=</p>\s*<hr class="page-break")', "", html)
 
 
 def _page_field_format(instruction: str) -> str:
@@ -1462,7 +2026,31 @@ def _paragraph_run_stats(p: Paragraph) -> Tuple[str, float, bool]:
     return text, (max(sizes) if sizes else 0.0), all_bold
 
 
-def _infer_heading_styles(doc: docx.Document) -> int:
+def _first_page_paragraphs(doc: docx.Document, page_break_after: Set[Any]) -> Set[Any]:
+    """The paragraph elements that come before the first page break (the cover/title page)."""
+    first: Set[Any] = set()
+    for element in doc.element.body:
+        if element.tag.endswith("}p"):
+            first.add(element)
+        if element in page_break_after:
+            break
+    return first
+
+
+def _is_title_page_line(p: Paragraph, first_page: Set[Any]) -> bool:
+    """A centred line on the first page that is not a CHAPTER/numbered/keyword heading.
+
+    Cover pages are made of large, bold, centred lines (university, title,
+    "Presented to…", names). Promoting them to headings would hand their layout
+    to the editor's heading rules and put them in the table of contents.
+    """
+    if p._p not in first_page or _get_paragraph_alignment(p) != "center":
+        return False
+    text = "".join(r.text for r in p.runs).strip()
+    return not any(rx.match(text) for rx in (_HEADING_NUMBERED, _HEADING_KEYWORD, _HEADING_ROMAN))
+
+
+def _infer_heading_styles(doc: docx.Document, page_break_after: Optional[Set[Any]] = None) -> int:
     """Give heading-shaped body paragraphs real Heading 1-3 styles.
 
     pdf2docx keeps only direct formatting, so the DOCX emitter would otherwise
@@ -1481,9 +2069,12 @@ def _infer_heading_styles(doc: docx.Document) -> int:
         return 0
     body_size = max(char_sizes, key=lambda k: char_sizes[k])
 
+    first_page = _first_page_paragraphs(doc, page_break_after) if page_break_after is not None else set()
     candidates: List[Tuple[Paragraph, float, str]] = []
     for p in doc.paragraphs:
         if p._p.find(".//" + qn("w:numPr")) is not None or p._p.find(".//" + qn("w:drawing")) is not None:
+            continue
+        if _is_title_page_line(p, first_page):
             continue
         text, size, all_bold = _paragraph_run_stats(p)
         if size and _heading_candidate(text, size, all_bold, body_size):
@@ -1516,6 +2107,31 @@ def _infer_heading_styles(doc: docx.Document) -> int:
     return len(candidates)
 
 
+def _snap_right_tabs(doc: docx.Document) -> None:
+    """Make a left tab stop that sits at the right margin a right-aligned one.
+
+    pdf2docx records where a page number STARTS (a left stop just inside the right
+    margin), so the number overflows the line and wraps in a table of contents.
+    The PDF drew it flush right.
+    """
+    try:
+        section = doc.sections[0]
+        width_twips = (section.page_width - section.left_margin - section.right_margin) / 635.0
+    except Exception:
+        return
+    if width_twips <= 0:
+        return
+    for tab in doc.element.body.iter(qn("w:tab")):
+        if tab.getparent() is None or tab.getparent().tag != qn("w:tabs"):
+            continue
+        position = tab.get(qn("w:pos"))
+        if tab.get(qn("w:val")) != "left" or not position:
+            continue
+        if 0.88 * width_twips <= float(position) <= 1.05 * width_twips:
+            tab.set(qn("w:val"), "right")
+            tab.set(qn("w:pos"), str(int(width_twips)))
+
+
 def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     """Convert a PDF by normalizing it to DOCX with pdf2docx, repairing what
     pdf2docx drops (page breaks, headings, running headers, image weight), then
@@ -1539,5 +2155,7 @@ def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
 
     page_break_after = _page_break_paragraphs(doc)
     _strip_running_furniture(doc, page_break_after)
-    _infer_heading_styles(doc)
+    _infer_heading_styles(doc, page_break_after)
+    _snap_right_tabs(doc)
+    doc.part._is_pdf_import = True  # pdf2docx leaves cell padding at zero; see _table_cell_margins
     return _docx_document_to_result(doc, page_break_after, compress_images=True)

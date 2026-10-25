@@ -1,22 +1,11 @@
-import { useRef, useState, useCallback, useEffect, type DragEvent, type ChangeEvent } from 'react'
-import { Upload, X, FileText, AlertCircle, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
-import { api } from '../services/api'
+import { useRef, useState, useCallback, type DragEvent, type ChangeEvent } from 'react'
+import { Upload, X, FileText, AlertCircle } from 'lucide-react'
 
 interface ImportFileModalProps {
-  /** Called when the modal should close (cancelled or after successful import). */
+  /** Called when the modal should close (cancelled or after the files were handed off). */
   onClose: () => void
-  /** Called with the new document after a successful import. */
-  onImported?: () => void
-  /** Streams batch import progress so a bottom-right toast can render. */
-  onProgress?: (progress: ImportProgress | null) => void
-  /** Reports a failed import after the modal has already closed. */
-  onError?: (message: string) => void
-}
-
-export interface ImportProgress {
-  done: number
-  total: number
-  currentName: string
+  /** Receives the chosen files; the app-level import queue uploads and converts them in the background. */
+  onImport: (files: File[]) => void
 }
 
 const ACCEPTED_EXTENSIONS = ['.docx', '.doc', '.txt', '.html', '.htm', '.pdf']
@@ -61,23 +50,18 @@ function filterFiles(files: FileList | File[]): File[] {
 /**
  * Modal dialog for importing local files (.docx, .txt, .html, .pdf).
  * Supports multi-file selection and drag-and-drop without size restrictions.
- * Import progress is streamed via onProgress so a bottom-right toast can show
- * a Google-Drive-style indicator while the batch processes.
+ * The files are handed to the app-level import queue and the dialog closes at
+ * once; progress shows in the global toast and survives navigation.
  */
-export default function ImportFileModal({ onClose, onImported, onProgress, onError }: ImportFileModalProps): JSX.Element {
+export default function ImportFileModal({ onClose, onImport }: ImportFileModalProps): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
-  const handedOffRef = useRef(false)
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
-  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
-  const [importedCount, setImportedCount] = useState(0)
 
   /** Append newly chosen files to the current selection. */
   function addFiles(files: FileList | File[]): void {
     setError(null)
-    setSuccess(false)
     const next = filterFiles(files)
     if (next.length === 0) {
       setError('No supported files selected. Please pick .docx, .doc, .txt, .html, or .pdf files.')
@@ -114,47 +98,12 @@ export default function ImportFileModal({ onClose, onImported, onProgress, onErr
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
-  async function handleImport(): Promise<void> {
+  /** Hand the batch to the import queue and close; the toast takes over. */
+  function handleImport(): void {
     if (selectedFiles.length === 0) return
-    setUploading(true)
-    setError(null)
-    setSuccess(false)
-    setImportedCount(0)
-
-    const total = selectedFiles.length
-    onProgress?.({ done: 0, total, currentName: selectedFiles[0].name })
-
-    // Progress is handed to the bottom-right toast the moment the batch
-    // starts, so the center dialog dismisses immediately — it has no job left.
-    handedOffRef.current = true
+    onImport(selectedFiles)
     onClose()
-
-    let done = 0
-
-    try {
-      for (const file of selectedFiles) {
-        onProgress?.({ done, total, currentName: file.name })
-        await api.documents.import(file)
-        done += 1
-        onProgress?.({ done, total, currentName: file.name })
-      }
-      onImported?.()
-      onProgress?.({ done: total, total, currentName: '' })
-    } catch (err) {
-      // The dialog is already gone; surface the failure via the toast reset
-      // and the page-level error banner instead.
-      onProgress?.(null)
-      onError?.(err instanceof Error ? err.message : 'Import failed. Please try again.')
-    }
   }
-
-  // Clear the global toast when the modal is closed before an import starts,
-  // but never when the batch was intentionally handed off to the toast.
-  useEffect(() => {
-    return () => {
-      if (!handedOffRef.current) onProgress?.(null)
-    }
-  }, [onProgress])
 
   return (
     <>
@@ -164,7 +113,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress, onErr
         aria-modal="true"
         aria-label="Import file dialog"
         className="animate-overlay"
-        onClick={(e) => { if (e.target === e.currentTarget && !uploading) onClose() }}
+        onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
         style={{
           position: 'fixed',
           inset: 0,
@@ -202,7 +151,6 @@ export default function ImportFileModal({ onClose, onImported, onProgress, onErr
             <button
               type="button"
               onClick={onClose}
-              disabled={uploading}
               aria-label="Close"
               style={{
                 display: 'flex',
@@ -214,7 +162,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress, onErr
                 border: 'none',
                 backgroundColor: 'transparent',
                 color: 'var(--muted-foreground)',
-                cursor: uploading ? 'not-allowed' : 'pointer',
+                cursor: 'pointer',
               }}
             >
               <X style={{ width: '16px', height: '16px' }} />
@@ -232,7 +180,7 @@ export default function ImportFileModal({ onClose, onImported, onProgress, onErr
               borderRadius: '0.75rem',
               padding: '2rem 1.5rem',
               textAlign: 'center',
-              cursor: uploading ? 'default' : 'pointer',
+              cursor: 'pointer',
               backgroundColor: dragging
                 ? 'color-mix(in srgb, var(--primary) 4%, transparent)'
                 : selectedFiles.length > 0
@@ -317,31 +265,26 @@ export default function ImportFileModal({ onClose, onImported, onProgress, onErr
                       {formatFileSize(file.size)}
                     </span>
                   </div>
-                  {index < importedCount && !uploading ? (
-                    <CheckCircle2 style={{ width: '14px', height: '14px', color: 'var(--success)', flexShrink: 0 }} />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      disabled={uploading}
-                      aria-label={`Remove ${file.name}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '22px',
-                        height: '22px',
-                        borderRadius: '0.375rem',
-                        border: 'none',
-                        backgroundColor: 'transparent',
-                        color: 'var(--muted-foreground)',
-                        cursor: uploading ? 'not-allowed' : 'pointer',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <X style={{ width: '13px', height: '13px' }} />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeFile(index)}
+                    aria-label={`Remove ${file.name}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '0.375rem',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      color: 'var(--muted-foreground)',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <X style={{ width: '13px', height: '13px' }} />
+                  </button>
                 </div>
               ))}
             </div>
@@ -366,198 +309,23 @@ export default function ImportFileModal({ onClose, onImported, onProgress, onErr
             </div>
           )}
 
-          {/* Success message */}
-          {success && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                backgroundColor: 'rgba(34,197,94,0.08)',
-                border: '1px solid rgba(34,197,94,0.25)',
-                borderRadius: '0.5rem',
-                padding: '0.625rem 0.875rem',
-                marginBottom: '1rem',
-              }}
-            >
-              <CheckCircle2 style={{ width: '15px', height: '15px', color: 'var(--success)' }} />
-              <p style={{ fontSize: '0.8125rem', color: 'var(--success)', margin: 0 }}>
-                Imported {importedCount} file{importedCount > 1 ? 's' : ''} successfully.
-              </p>
-            </div>
-          )}
-
           {/* Actions */}
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={uploading}
-              className="btn-ghost h-9 px-4"
-            >
+            <button type="button" onClick={onClose} className="btn-ghost h-9 px-4">
               Cancel
             </button>
             <button
               type="button"
-              onClick={() => { void handleImport() }}
-              disabled={selectedFiles.length === 0 || uploading || success}
+              onClick={handleImport}
+              disabled={selectedFiles.length === 0}
               className="btn-primary h-9 px-4"
             >
-              {uploading ? (
-                <>
-                  <Loader2 style={{ width: '14px', height: '14px', animation: 'spin 0.7s linear infinite' }} />
-                  Importing {importedCount}/{selectedFiles.length}…
-                </>
-              ) : (
-                <>
-                  <Upload style={{ width: '14px', height: '14px' }} />
-                  Import {selectedFiles.length > 1 ? `${selectedFiles.length} Files` : 'Document'}
-                </>
-              )}
+              <Upload style={{ width: '14px', height: '14px' }} />
+              Import {selectedFiles.length > 1 ? `${selectedFiles.length} Files` : 'Document'}
             </button>
           </div>
         </div>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
-  )
-}
-
-interface ImportProgressToastProps {
-  progress: ImportProgress
-  onDone: () => void
-  /**
-   * Byte-level progress for an async large-file import. When provided it
-   * replaces the batch `done/total` ratio, because a single 200MB download has
-   * no meaningful "1 of 1" progress to show.
-   */
-  percent?: number
-  /** Phase label for an async import, e.g. "Downloading from Drive…". */
-  phase?: string
-  /** Failure message; switches the toast into an error state. */
-  error?: string
-}
-
-/**
- * Google-Drive-style bottom-right import progress indicator.
- * Shows the active file name, a progress bar, and — when complete — a
- * persistent success state that stays until explicitly dismissed (point 13).
- */
-export function ImportProgressToast({
-  progress,
-  onDone,
-  percent,
-  phase,
-  error,
-}: ImportProgressToastProps): JSX.Element {
-  const { done, total, currentName } = progress
-  const failed = Boolean(error)
-  const finished = !failed && done >= total && total > 0
-  const batchPercent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0
-  // An explicit percent (async import) wins over the batch ratio.
-  const shownPercent = typeof percent === 'number' ? Math.min(100, Math.round(percent)) : batchPercent
-  const showDismiss = finished || failed
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="animate-slide-up"
-      style={{
-        position: 'fixed',
-        bottom: '1.5rem',
-        right: '1.5rem',
-        zIndex: 10050,
-        width: '280px',
-        borderRadius: '0.625rem',
-        backgroundColor: 'var(--popover)',
-        color: 'var(--popover-foreground)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.25)',
-        border: '1px solid var(--border)',
-        padding: '0.75rem 0.875rem',
-        fontFamily: 'inherit',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-        {finished ? (
-          <CheckCircle2 style={{ width: '16px', height: '16px', color: 'var(--success)', flexShrink: 0 }} />
-        ) : failed ? (
-          <AlertTriangle style={{ width: '16px', height: '16px', color: 'var(--error)', flexShrink: 0 }} />
-        ) : (
-          <Loader2 style={{ width: '16px', height: '16px', color: 'var(--primary)', flexShrink: 0, animation: 'spin 0.7s linear infinite' }} />
-        )}
-        <span
-          style={{
-            fontSize: '0.8125rem',
-            fontWeight: 600,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            flex: 1,
-          }}
-        >
-          {failed
-            ? `Import failed: ${currentName || 'document'}`
-            : finished
-              ? `Imported ${total} file${total > 1 ? 's' : ''}`
-              : phase || `Importing ${currentName || 'document'}…`}
-        </span>
-        {showDismiss && (
-          <button
-            type="button"
-            onClick={onDone}
-            aria-label="Dismiss import notification"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '22px',
-              height: '22px',
-              borderRadius: '0.375rem',
-              border: 'none',
-              backgroundColor: 'transparent',
-              color: 'var(--muted-foreground)',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <X style={{ width: '14px', height: '14px' }} />
-          </button>
-        )}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-        <div style={{ flex: 1, height: '5px', borderRadius: '999px', backgroundColor: 'var(--secondary)', overflow: 'hidden' }}>
-          <div
-            style={{
-              width: `${shownPercent}%`,
-              height: '100%',
-              borderRadius: '999px',
-              backgroundColor: failed ? 'var(--error)' : finished ? 'var(--success)' : 'var(--primary)',
-              transition: 'width 200ms ease',
-            }}
-          />
-        </div>
-        <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', flexShrink: 0 }}>
-          {shownPercent}%
-        </span>
-      </div>
-      {failed ? (
-        <p style={{ fontSize: '0.6875rem', color: 'var(--error)', margin: '0.375rem 0 0', lineHeight: 1.4 }}>
-          {error}
-        </p>
-      ) : !finished && phase ? (
-        <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0.375rem 0 0' }}>
-          {phase}
-        </p>
-      ) : !finished ? (
-        <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: '0.375rem 0 0' }}>
-          {done} of {total} complete
-        </p>
-      ) : (
-        <p style={{ fontSize: '0.6875rem', color: 'var(--success, var(--success))', margin: '0.375rem 0 0' }}>
-          Your documents are ready to edit.
-        </p>
-      )}
-    </div>
   )
 }

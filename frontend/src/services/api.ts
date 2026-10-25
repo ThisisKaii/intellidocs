@@ -4,6 +4,7 @@
 /// <reference types="vite/client" />
 
 import { supabase } from '../lib/supabase'
+import type { GrammarBlock } from '@/lib/grammarBlocks'
 import { generateCitationKey, type CitationData, type CitationReference } from '@/lib/citationFormats'
 import type { ComplianceReport } from '../components/ThesisChecklist'
 import type { CouncilMatchVerdict } from '../components/editor/plagiarismTypes'
@@ -490,6 +491,7 @@ export type ImportJobState =
 
 export interface ImportJob {
   id: string
+  source: 'drive' | 'local'
   fileId: string
   fileName: string
   /** 0-100. The server clamps the download phase at 99. */
@@ -499,6 +501,8 @@ export interface ImportJob {
   /** Converted document HTML; empty until the job reaches done. */
   html: string
   error: string
+  /** Id of the document the server created; empty until the job is done. */
+  documentId: string
   createdAt: number
   updatedAt: number
 }
@@ -994,14 +998,33 @@ export const api = {
         method: 'POST',
       })
     },
+    /** Import a file and wait for the created document (used by the editor's own import). */
     import: async (file: File): Promise<DocumentRecord> => {
       const formData = new FormData()
       formData.append('file', file)
       // Do NOT set Content-Type — browser sets the multipart boundary automatically
-      return fetchAPI<DocumentRecord>('documents/import', {
+      return fetchAPI<DocumentRecord>('documents/import?sync=1', {
         method: 'POST',
         body: formData,
       })
+    },
+    /** Hand a file to the server's background import queue; resolves once it is accepted. */
+    queueImport: async (file: File): Promise<{ jobId: string }> => {
+      const formData = new FormData()
+      formData.append('file', file)
+      return fetchAPI<{ jobId: string }>('documents/import', {
+        method: 'POST',
+        body: formData,
+      })
+    },
+    /** Fetch one background import job. */
+    getImportJob: async (jobId: string): Promise<ImportJob> => {
+      return fetchAPI<ImportJob>(`documents/imports/${jobId}`)
+    },
+    /** List the caller's recent background import jobs, newest first. */
+    listImportJobs: async (): Promise<ImportJob[]> => {
+      const res = await fetchAPI<{ jobs: ImportJob[] }>('documents/imports')
+      return res.jobs
     },
     /** Upload an editor image to storage and return its public URL. */
     uploadImage: async (file: File): Promise<string> => {
@@ -1156,18 +1179,18 @@ export const api = {
         body: JSON.stringify({ text, user_id: userId, isolationMode }),
       })
     },
-    grammarCheck: async (text: string): Promise<GrammarCheckResponse> => {
+    grammarCheck: async (input: string | GrammarBlock[]): Promise<GrammarCheckResponse> => {
       return fetchAPI<GrammarCheckResponse>('predictions/grammar-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(typeof input === 'string' ? { text: input } : { blocks: input }),
       })
     },
-    spellCheck: async (text: string): Promise<SpellCheckResponse> => {
+    spellCheck: async (input: string | GrammarBlock[]): Promise<SpellCheckResponse> => {
       return fetchAPI<SpellCheckResponse>('predictions/spelling-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(typeof input === 'string' ? { text: input } : { blocks: input }),
       })
     },
   },

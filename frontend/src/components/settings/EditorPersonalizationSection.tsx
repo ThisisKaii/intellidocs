@@ -6,6 +6,8 @@ import {
   type EditorPreferences,
 } from '@/lib/editorPreferences'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
+import LearningCard from '@/components/editor/LearningCard'
+import FormattingPanel from '@/components/editor/FormattingPanel'
 
 /** Persisted editor & AI preferences: underline style, sensitivity, highlight color. */
 export function EditorPersonalizationSection(): JSX.Element {
@@ -111,6 +113,20 @@ export function EditorPersonalizationSection(): JSX.Element {
             Used for in-canvas formatting suggestion highlights and the suggestion pulse.
           </p>
         </div>
+
+        <div className="border-t border-border pt-5">
+          <LearningCard />
+        </div>
+
+        <details className="border-t border-border pt-5">
+          <summary className="text-sm font-medium text-foreground cursor-pointer">
+            Advanced: custom formatting rules
+          </summary>
+          <p className="text-xs text-muted-foreground mt-2 mb-3">
+            Tell IntelliDocs that a short line on its own should always become a particular format.
+          </p>
+          <FormattingPanel rulesOnly />
+        </details>
 
         <div className="border-t border-border pt-5">
           <label className="text-sm font-medium text-foreground block mb-1">

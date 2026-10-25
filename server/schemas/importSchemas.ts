@@ -22,6 +22,7 @@ export const importJobStateSchema = z.enum([
 export const importJobSchema = z.object({
   id: z.string().uuid(),
   userId: z.string(),
+  source: z.enum(['drive', 'local']),
   fileId: z.string(),
   fileName: z.string(),
   progress: z.number().min(0).max(100),
@@ -29,6 +30,7 @@ export const importJobSchema = z.object({
   title: z.string(),
   html: z.string(),
   error: z.string(),
+  documentId: z.string(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })
@@ -38,3 +40,8 @@ export const importJobListSchema = z.array(importJobSchema)
 
 export type ImportJobDto = z.infer<typeof importJobSchema>
 export type ImportJobStateDto = z.infer<typeof importJobStateSchema>
+
+/** Query accepted by POST /documents/import: `sync=1` returns the document inline. */
+export const importQuerySchema = z.object({
+  sync: z.enum(['0', '1']).optional(),
+})

@@ -3,6 +3,8 @@ from typing import Any
 
 from spellchecker import SpellChecker
 
+from grammar.blocks import is_short_centered_line, normalize_blocks
+
 
 SPELL_PATTERN = re.compile(r"\b[a-zA-Z']+\b")
 SPELL_MAX_SUGGESTIONS = 5
@@ -245,9 +247,16 @@ def is_reliable_correction(word: str, suggestion: str | None) -> bool:
     return distance <= 2
 
 
-def check_spelling(text: str) -> dict[str, Any]:
-    """Return spelling issues and summary details for the given text."""
-    normalized = text.strip()
+def check_spelling(source: Any) -> dict[str, Any]:
+    """Return spelling issues and summary details for plain text or text blocks.
+
+    Short centred lines (title-page names, institutions) are not checked,
+    since proper nouns would otherwise be flagged.
+    """
+    blocks = normalize_blocks(source)
+    normalized = "\n".join(
+        block["text"] for block in blocks if not is_short_centered_line(block)
+    )
     if not normalized:
         return {
             "issues": [],

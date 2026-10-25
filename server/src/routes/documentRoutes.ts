@@ -2,11 +2,12 @@ import { Router } from 'express'
 import multer from 'multer'
 import * as documentController from '../controllers/documentController'
 import * as shareController from '../controllers/shareController'
-import { validateBody } from '../middleware/validate'
+import { validateBody, validateQuery } from '../middleware/validate'
 import {
   createDocumentSchema,
   updateDocumentSchema,
 } from '../../schemas/documentSchemas'
+import { importQuerySchema } from '../../schemas/importSchemas'
 
 const router = Router()
 
@@ -56,7 +57,11 @@ router.get('/trash', documentController.getTrashDocuments)
 router.post('/', validateBody(createDocumentSchema), documentController.createDocument)
 
 /** Import a local file and create a document from it. Must be before /:id */
-router.post('/import', upload.single('file'), documentController.importDocument)
+router.post('/import', validateQuery(importQuerySchema), upload.single('file'), documentController.importDocument)
+
+/** Background import jobs for the caller. Must be before /:id */
+router.get('/imports', documentController.listImportJobs)
+router.get('/imports/:jobId', documentController.getImportJobStatus)
 
 /** Upload an editor image and get back its public URL. Must be before /:id */
 router.post('/images', imageUpload.single('image'), documentController.uploadImage)

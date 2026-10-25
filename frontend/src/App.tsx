@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { ImportProvider } from './context/ImportContext'
 import { ProtectedRoute, AdminRoute, ApprovedProfessorRoute } from './components/ProtectedRoute'
 import { ErrorPage } from './components/ErrorPage'
 import Home from './pages/Home'
@@ -8,6 +9,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Document from './pages/Document'
 import Settings from './pages/Settings'
+import Originality from './pages/Originality'
 import AdminDashboard from './pages/AdminDashboard'
 import ProfessorDashboard from './pages/ProfessorDashboard'
 import AuthCallback from './pages/AuthCallback'
@@ -20,6 +22,7 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ImportProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -45,6 +48,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <Document />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/document/:id/originality"
+            element={
+              <ProtectedRoute>
+                <Originality />
               </ProtectedRoute>
             }
           />
@@ -89,6 +101,7 @@ function App() {
             }
           />
         </Routes>
+        </ImportProvider>
       </BrowserRouter>
     </AuthProvider>
   )

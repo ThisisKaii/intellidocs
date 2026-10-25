@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { predictFormat } from '../skills/predictFormat'
 import {
+  type CheckInput,
   requestGrammarCheck,
   requestSpellingCheck,
 } from '../ai/bridge/pythonBridge'
@@ -37,6 +38,15 @@ function getText(body: TextBody, res: Response): string | null {
   }
 
   return text
+}
+
+/** Read the grammar/spell payload (blocks or plain text) already validated by the route. */
+function getCheckInput(body: CheckInput): CheckInput {
+  const blocks = body.blocks?.filter((block) => block.text.trim().length > 0)
+  if (blocks && blocks.length > 0) {
+    return { blocks }
+  }
+  return { text: body.text?.trim() ?? '' }
 }
 
 /** Consume a per-user AI quota bucket and return false if the request is blocked. */
@@ -165,17 +175,14 @@ export async function grammarCheck(
       return
     }
 
-    const text = getText(req.body as TextBody, res)
-    if (!text) {
-      return
-    }
+    const input = getCheckInput(req.body as CheckInput)
 
     const allowed = await enforceQuota(userId, 'grammar-check', res)
     if (!allowed) {
       return
     }
 
-    const result = await requestGrammarCheck(text)
+    const result = await requestGrammarCheck(input)
     res.status(200).json(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Grammar check failed'
@@ -194,17 +201,14 @@ export async function spellingCheck(
       return
     }
 
-    const text = getText(req.body as TextBody, res)
-    if (!text) {
-      return
-    }
+    const input = getCheckInput(req.body as CheckInput)
 
     const allowed = await enforceQuota(userId, 'spelling-check', res)
     if (!allowed) {
       return
     }
 
-    const result = await requestSpellingCheck(text)
+    const result = await requestSpellingCheck(input)
     res.status(200).json(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Spelling check failed'
