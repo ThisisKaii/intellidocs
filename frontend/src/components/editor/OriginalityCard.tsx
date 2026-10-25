@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { ShieldCheck, Loader2 } from 'lucide-react'
-import { api, type OriginalityResult } from '../../services/api'
+import { api, type OriginalityPassageReview, type OriginalityResult, type OriginalityReview } from '../../services/api'
+
+/** Badge colours and wording for the AI judges' verdicts. */
+const VERDICT_STYLE: Record<OriginalityPassageReview['verdict'], { label: string; color: string }> = {
+  original: { label: 'Original', color: '#047857' },
+  paraphrased: { label: 'Paraphrased', color: '#b45309' },
+  reused: { label: 'Reused', color: '#b91c1c' },
+  inconclusive: { label: 'Unclear', color: 'var(--muted-foreground)' },
+}
 
 interface OriginalityCardProps {
   documentId: string
@@ -13,17 +21,33 @@ export default function OriginalityCard({ documentId, onJump }: OriginalityCardP
   const [result, setResult] = useState<OriginalityResult | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [review, setReview] = useState<OriginalityReview | null>(null)
+  const [reviewing, setReviewing] = useState<boolean>(false)
 
   /** Run the self-check on the server and store the result for display. */
   async function checkNow(): Promise<void> {
     setLoading(true)
     setError(null)
+    setReview(null)
     try {
       setResult(await api.plagiarism.selfCheck(documentId))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Originality check failed')
     } finally {
       setLoading(false)
+    }
+  }
+
+  /** Ask the AI judges to look at the flagged passages and explain what they found. */
+  async function getReview(): Promise<void> {
+    setReviewing(true)
+    setError(null)
+    try {
+      setReview(await api.plagiarism.selfCheckReview(documentId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI review failed')
+    } finally {
+      setReviewing(false)
     }
   }
 
@@ -120,6 +144,70 @@ export default function OriginalityCard({ documentId, onJump }: OriginalityCardP
                   </li>
                 ))}
               </ul>
+            )}
+            {result.passages.length > 0 && !review && (
+              <button
+                type="button"
+                onClick={() => void getReview()}
+                disabled={reviewing}
+                style={{
+                  alignSelf: 'flex-start',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  padding: '0.25rem 0.625rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  borderRadius: '0.375rem',
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'var(--background)',
+                  color: 'var(--foreground)',
+                  cursor: reviewing ? 'default' : 'pointer',
+                }}
+              >
+                {reviewing && <Loader2 style={{ width: '12px', height: '12px' }} className="animate-spin" />}
+                {reviewing ? 'Asking the AI judges…' : 'Get AI review'}
+              </button>
+            )}
+            {review && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
+                  AI review
+                </div>
+                {review.reviews.length === 0 && (
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)' }}>
+                    The judges could not review these passages right now. Try again in a moment.
+                  </div>
+                )}
+                {review.reviews.map((item) => {
+                  const style = VERDICT_STYLE[item.verdict]
+                  return (
+                    <div
+                      key={`${item.paragraph_index}-${item.peer_document_id}`}
+                      style={{ border: '1px solid var(--border)', borderRadius: '0.375rem', padding: '0.5rem' }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onJump(item.text)}
+                        title={item.text}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--foreground)', fontSize: '0.8125rem' }}
+                      >
+                        <span style={{ fontWeight: 700, color: style.color }}>{style.label}</span>
+                        {' · '}
+                        {item.peer_title || 'Untitled'} · {Math.round(item.similarity)}%
+                      </button>
+                      {item.reasoning && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>{item.reasoning}</div>
+                      )}
+                      {item.judges.length > 0 && (
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
+                          Judged by {Array.from(new Set(item.judges.map((j) => j.model || j.provider).filter(Boolean))).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </>
         )}

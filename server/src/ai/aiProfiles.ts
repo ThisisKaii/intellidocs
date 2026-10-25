@@ -79,7 +79,9 @@ export function resolveJudgeAssignments(
 ): Record<CouncilRole, number> {
   const assignments = {} as Record<CouncilRole, number>
   COUNCIL_ROLES.forEach((role, position) => {
-    const pinned = Number(env[`COUNCIL_${role.toUpperCase()}_PROFILE`])
+    // COUNCIL_ARBITER_PROFILE is the short name for the arbiter's pin.
+    const raw = env[`COUNCIL_${role.toUpperCase()}_PROFILE`] || (role === 'synthesizer_arbiter' ? env.COUNCIL_ARBITER_PROFILE : undefined)
+    const pinned = Number(raw)
     const isPinned = Number.isInteger(pinned) && pinned >= 1 && pinned <= profileCount
     const isArbiter = role === 'synthesizer_arbiter'
     assignments[role] = isPinned ? pinned - 1 : isArbiter ? 0 : position % Math.max(profileCount, 1)

@@ -11,6 +11,7 @@
     "test:flake": "jest --maxWorkers=2",
     "lint": "eslint src --ext ts",
     "dev:ml": "tsx watch src/index.ts",
+    "make-admin": "tsx scripts/makeAdmin.ts",
     "mock:db": "node mock-supabase/index.mjs",
     "dev:mock": "tsx watch --env-file=.env.mock src/index.ts"
   },

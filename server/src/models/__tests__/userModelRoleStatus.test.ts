@@ -48,6 +48,7 @@ describe('getOwnRoleStatus', () => {
     await expect(getOwnRoleStatus('user-1')).resolves.toEqual({
       role: 'professor',
       verificationStatus: 'pending',
+      requestedRole: null,
     })
   })
 
@@ -68,6 +69,7 @@ describe('getOwnRoleStatus', () => {
     await expect(getOwnRoleStatus('user-1')).resolves.toEqual({
       role: 'professor',
       verificationStatus: 'rejected',
+      requestedRole: null,
     })
   })
 
@@ -77,6 +79,7 @@ describe('getOwnRoleStatus', () => {
     await expect(getOwnRoleStatus('user-1')).resolves.toEqual({
       role: 'student',
       verificationStatus: 'approved',
+      requestedRole: null,
     })
   })
 
@@ -86,6 +89,7 @@ describe('getOwnRoleStatus', () => {
     await expect(getOwnRoleStatus('user-1')).resolves.toEqual({
       role: 'student',
       verificationStatus: 'pending',
+      requestedRole: null,
     })
   })
 

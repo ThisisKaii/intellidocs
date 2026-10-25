@@ -24,7 +24,7 @@ export async function verifyApplicant(req: AuthenticatedRequest, res: Response):
       return
     }
 
-    const result = await adminModel.verifyApplicant(targetUserId, payload.status, payload.role, payload.notes)
+    const result = await adminModel.verifyApplicant(targetUserId, payload.status, payload.role, payload.notes, req.user?.id)
     res.json({
       message: `Application ${payload.status} successfully`,
       newRole: payload.role ?? null,
@@ -44,34 +44,6 @@ export async function getAllDocuments(req: AuthenticatedRequest, res: Response):
     res.json(docs)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to fetch documents'
-    res.status(500).json({ error: message })
-  }
-}
-
-export async function getPendingProfessors(req: AuthenticatedRequest, res: Response): Promise<void> {
-  try {
-    const list = await adminModel.getPendingProfessorApplicants()
-    res.json(list)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch pending professor applications'
-    res.status(500).json({ error: message })
-  }
-}
-
-export async function verifyProfessor(req: AuthenticatedRequest, res: Response): Promise<void> {
-  try {
-    const targetUserId = req.params.userId
-    const { status, notes } = req.body
-
-    if (!targetUserId || !['approved', 'rejected'].includes(status)) {
-      res.status(400).json({ error: 'Invalid payload. status must be "approved" or "rejected"' })
-      return
-    }
-
-    const result = await adminModel.verifyProfessorApplicant(targetUserId, status, notes)
-    res.json({ message: `Professor application ${status} successfully`, profile: result })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update professor verification status'
     res.status(500).json({ error: message })
   }
 }
@@ -139,6 +111,18 @@ export async function exportEmpiricalData(req: AuthenticatedRequest, res: Respon
     res.status(200).send(csvData)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to export empirical data'
+    res.status(500).json({ error: message })
+  }
+}
+
+/** Weekly activity series for the admin charts; `weeks` is clamped to 4-52. */
+export async function getReportTimeseries(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const requested = Number(req.query.weeks)
+    const weeks = Number.isFinite(requested) ? Math.min(52, Math.max(4, Math.round(requested))) : 12
+    res.json(await adminModel.getReportTimeseries(weeks))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to build report series'
     res.status(500).json({ error: message })
   }
 }

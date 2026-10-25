@@ -251,3 +251,34 @@ export async function unenrollStudent(req: Request, res: Response): Promise<void
     res.status(500).json({ error: message })
   }
 }
+
+/** Join a class by its private code. */
+export async function joinClass(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+
+    const { code } = req.body as { code: string }
+    const result = await folderModel.joinClassByCode(userId, code)
+    res.status(result.alreadyEnrolled ? 200 : 201).json(result)
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status
+    const message = error instanceof Error ? error.message : 'Failed to join class'
+    res.status(status ?? 500).json({ error: message })
+  }
+}
+
+/** Replace a class folder's join code. */
+export async function regenerateJoinCode(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+
+    const folder = await folderModel.regenerateJoinCode(userId, req.params.id)
+    res.status(200).json(folder)
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status
+    const message = error instanceof Error ? error.message : 'Failed to regenerate join code'
+    res.status(status ?? 500).json({ error: message })
+  }
+}

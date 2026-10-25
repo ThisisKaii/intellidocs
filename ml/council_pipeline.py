@@ -67,10 +67,28 @@ _AI_CONTEXT: "contextvars.ContextVar[Optional[Dict[str, Any]]]" = contextvars.Co
 )
 _clients_cache: Dict[tuple, AsyncOpenAI] = {}
 _preferred_key_index: Dict[tuple, int] = {}
-_completion_semaphores: Dict[str, asyncio.Semaphore] = {}
-# Free tiers queue concurrent completions; at most two per provider at a time
-# keeps the parallel judges inside their per-call timeout on a single key.
-_COMPLETIONS_PER_PROVIDER = 2
+_completion_semaphores: Dict[tuple, asyncio.Semaphore] = {}
+# Free tiers queue concurrent completions, so each API key runs at most this
+# many calls at a time; every extra key adds that many parallel calls.
+# Override with COUNCIL_CONCURRENCY_PER_KEY.
+_DEFAULT_COMPLETIONS_PER_KEY = 2
+
+
+def _completions_per_key() -> int:
+    """How many calls one API key may run at once (COUNCIL_CONCURRENCY_PER_KEY, default 2)."""
+    try:
+        value = int(os.getenv('COUNCIL_CONCURRENCY_PER_KEY', ''))
+    except ValueError:
+        return _DEFAULT_COMPLETIONS_PER_KEY
+    return value if value > 0 else _DEFAULT_COMPLETIONS_PER_KEY
+
+
+def _key_semaphore(provider: str, api_key: str) -> asyncio.Semaphore:
+    """The concurrency gate for one (provider, key) pair."""
+    signature = (provider, api_key)
+    if signature not in _completion_semaphores:
+        _completion_semaphores[signature] = asyncio.Semaphore(_completions_per_key())
+    return _completion_semaphores[signature]
 
 
 def configure_ai(
@@ -159,29 +177,33 @@ async def _create_completion(profile: AIProfile, **kwargs):
     signature = (profile.provider, tuple(profile.api_keys))
     start = _preferred_key_index.get(signature, 0) % len(profile.api_keys)
     order = list(range(start, len(profile.api_keys))) + list(range(0, start))
-    semaphore = _completion_semaphores.setdefault(
-        profile.provider, asyncio.Semaphore(_COMPLETIONS_PER_PROVIDER)
-    )
     last_error: Optional[Exception] = None
 
-    async with semaphore:
-        for index in order:
-            try:
-                result = await _get_client(profile.provider, profile.api_keys[index]).chat.completions.create(**kwargs)
-                _preferred_key_index[signature] = index
-                return result
-            except Exception as error:
-                if not _is_key_rotation_error(error):
-                    raise
-                last_error = error
-                print(
-                    f"[Council] {profile.provider} key #{index + 1} rejected "
-                    f"({getattr(error, 'status_code', '?')}); trying next key"
-                )
+    for index in order:
+        key = profile.api_keys[index]
+        try:
+            # The gate is per key, so profiles on different keys run side by side.
+            async with _key_semaphore(profile.provider, key):
+                result = await _get_client(profile.provider, key).chat.completions.create(**kwargs)
+            _preferred_key_index[signature] = index
+            return result
+        except Exception as error:
+            if not _is_key_rotation_error(error):
+                raise
+            last_error = error
+            print(
+                f"[Council] {profile.provider} key #{index + 1} rejected "
+                f"({getattr(error, 'status_code', '?')}); trying next key"
+            )
 
     if last_error:
         raise last_error
     return None
+
+
+# Upper bound on a judge's reply. Verdicts are short JSON objects, but reasoning
+# models spend most of this on thinking first, so it leaves room for that.
+_JUDGE_MAX_TOKENS = 2500
 
 
 async def _complete_json(profile: AIProfile, model: str, system: str, user: str) -> Optional[str]:
@@ -190,15 +212,24 @@ async def _complete_json(profile: AIProfile, model: str, system: str, user: str)
     try:
         response = await _create_completion(
             profile, model=model, messages=messages, temperature=0.1,
-            response_format={"type": "json_object"},
+            max_tokens=_JUDGE_MAX_TOKENS, response_format={"type": "json_object"},
         )
     except Exception as error:
         if not _is_bad_request(error):
             raise
-        response = await _create_completion(profile, model=model, messages=messages, temperature=0.1)
+        response = await _create_completion(
+            profile, model=model, messages=messages, temperature=0.1, max_tokens=_JUDGE_MAX_TOKENS
+        )
     if response is None:
         return None
-    return response.choices[0].message.content
+    content = response.choices[0].message.content
+    if not content:
+        # Some reasoning models answer with empty content in JSON mode; ask again without it.
+        retry = await _create_completion(
+            profile, model=model, messages=messages, temperature=0.1, max_tokens=_JUDGE_MAX_TOKENS
+        )
+        content = retry.choices[0].message.content if retry else None
+    return content
 
 
 def _parse_json(text: Optional[str]) -> Dict[str, Any]:
@@ -236,7 +267,10 @@ def _assigned_index(role: "JudgeRole", count: int) -> int:
     if isinstance(requested, int) and 0 <= requested < count:
         return requested
     try:
-        pinned = int(os.getenv(f"COUNCIL_{role.value.upper()}_PROFILE", ""))
+        raw = os.getenv(f"COUNCIL_{role.value.upper()}_PROFILE")
+        if not raw and role == JudgeRole.SYNTHESIZER_ARBITER:
+            raw = os.getenv("COUNCIL_ARBITER_PROFILE")  # short name for the arbiter's pin
+        pinned = int(raw or "")
         if 1 <= pinned <= count:
             return pinned - 1
     except ValueError:
@@ -460,7 +494,7 @@ COMPOSITION TIMELINE:
 EXTERNAL SOURCES CHECKED:
 {json.dumps(match_data.get('external_sources', []), indent=2)}"""
         
-        return f"{self.prompt}\n\nEVALUATION CONTEXT:\n{context}\n\nReturn ONLY valid JSON."
+        return f"EVALUATION CONTEXT:\n{context}\n\nReturn ONLY valid JSON."
 
 
 class AICouncil:

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { api } from '../services/api'
-import { exportAdminReportPdf } from '../lib/reportExport'
+import { ReportsCharts } from '../components/admin/ReportsCharts'
+import { RejectDialog } from '../components/admin/RejectDialog'
 import {
   Shield,
   UserCheck,
@@ -26,6 +27,7 @@ import {
   AdminApplicant,
   AdminDocumentRecord,
   AdminUserRecord,
+  ReportTimeseries,
   RoleName,
   SystemReport,
 } from '../types/admin'
@@ -56,6 +58,8 @@ export default function AdminDashboard(): JSX.Element {
   const [applicants, setApplicants] = useState<AdminApplicant[]>([])
   const [users, setUsers] = useState<AdminUserRecord[]>([])
   const [reports, setReports] = useState<SystemReport | null>(null)
+  const [series, setSeries] = useState<ReportTimeseries | null>(null)
+  const [rejecting, setRejecting] = useState<AdminApplicant | null>(null)
   const [documents, setDocuments] = useState<AdminDocumentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -101,7 +105,9 @@ export default function AdminDashboard(): JSX.Element {
 
   async function loadReports() {
     try {
-      setReports(await api.admin.getSystemReports())
+      const [summary, weekly] = await Promise.all([api.admin.getSystemReports(), api.admin.getReportTimeseries(12)])
+      setReports(summary)
+      setSeries(weekly)
     } catch (err) {
       console.error('Failed to load reports', err)
     }
@@ -139,16 +145,21 @@ export default function AdminDashboard(): JSX.Element {
     }
   }
 
-  async function handleVerifyApplicant(applicant: AdminApplicant, status: 'approved' | 'rejected') {
-    let notes: string | undefined
+  /** Approve right away; a rejection first asks for the reason in a dialog. */
+  function handleVerifyApplicant(applicant: AdminApplicant, status: 'approved' | 'rejected') {
     if (status === 'rejected') {
-      notes = window.prompt('Rejection reason (shown to the applicant):', '') ?? undefined
-      if (notes === undefined) return
+      setRejecting(applicant)
+      return
     }
+    void submitVerification(applicant, status)
+  }
+
+  async function submitVerification(applicant: AdminApplicant, status: 'approved' | 'rejected', notes?: string) {
     setActionLoading(applicant.user_id)
     try {
       await api.admin.verifyApplicant(applicant.user_id, { status, role: applicant.applied_role, notes })
       showToast('success', `${roleLabels[applicant.applied_role]} application ${status === 'approved' ? 'approved' : 'rejected'} successfully.`)
+      setRejecting(null)
       await loadData()
     } catch (err) {
       showToast('error', err instanceof Error ? err.message : 'Verification action failed')
@@ -755,163 +766,17 @@ export default function AdminDashboard(): JSX.Element {
         {/* Tab 3: System Analytics & Reports */}
         {activeTab === 'reports' && (
           <div style={{ backgroundColor: 'var(--card)', borderRadius: '0.75rem', border: '1px solid var(--border)', padding: '1.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: 0 }}>
-                System analytics
-              </h2>
-              <button
-                type="button"
-                onClick={() => { if (reports) exportAdminReportPdf(reports, users) }}
-                disabled={!reports}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.375rem',
-                  height: '34px',
-                  padding: '0 0.875rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'var(--background)',
-                  color: 'var(--foreground)',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  cursor: reports ? 'pointer' : 'not-allowed',
-                  opacity: reports ? 1 : 0.65,
-                  fontFamily: 'inherit',
-                }}
-              >
-                <FileText style={{ width: '15px', height: '15px' }} />
-                Export PDF
-              </button>
-            </div>
-
-            {reports ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-                  <div style={{ padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>Students</p>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{reports.byRole.student}</p>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>Professors</p>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{reports.byRole.professor}</p>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>Administrators</p>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{reports.byRole.admin}</p>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>Pending Verifications</p>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: reports.pendingApplicants > 0 ? 'var(--warning)' : 'var(--foreground)' }}>
-                      {reports.pendingApplicants}
-                    </p>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-                  <div style={{ padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>Active Documents</p>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{reports.activeDocuments}</p>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>Soft-Deleted Documents</p>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{reports.softDeletedDocuments}</p>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>Formatting Action Events</p>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{reports.totalFormattingActions}</p>
-                  </div>
-                  <div style={{ padding: '1rem', borderRadius: '0.5rem', border: '1px solid var(--border)', backgroundColor: 'var(--background)' }}>
-                    <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.25rem' }}>AI Suggestion Feedback</p>
-                    <p style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
-                      {reports.feedback.accepted}
-                      <span style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', fontWeight: 500 }}>
-                        {' '}/ {reports.feedback.total} accepted
-                      </span>
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, margin: '0 0 0.5rem' }}>
-                    Acceptance by Feedback Channel
-                  </h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--muted-foreground)' }}>
-                          <th style={{ padding: '0.625rem' }}>Channel</th>
-                          <th style={{ padding: '0.625rem' }}>Total</th>
-                          <th style={{ padding: '0.625rem' }}>Accepted</th>
-                          <th style={{ padding: '0.625rem' }}>Rejected</th>
-                          <th style={{ padding: '0.625rem' }}>Acceptance Rate</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(reports.feedback.byType).map(([type, stats]) => (
-                          <tr key={type} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '0.625rem', fontWeight: 500 }}>{type}</td>
-                            <td style={{ padding: '0.625rem' }}>{stats.total}</td>
-                            <td style={{ padding: '0.625rem' }}>{stats.accepted}</td>
-                            <td style={{ padding: '0.625rem' }}>{stats.rejected}</td>
-                            <td style={{ padding: '0.625rem', fontWeight: 600 }}>{stats.acceptanceRate}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {Object.keys(reports.feedback.byType).length === 0 && (
-                      <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0.5rem 0 0' }}>
-                        No AI feedback recorded yet.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 style={{ fontSize: '0.9375rem', fontWeight: 600, margin: '0 0 0.5rem' }}>
-                    Users &amp; Roles
-                  </h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--muted-foreground)' }}>
-                          <th style={{ padding: '0.625rem' }}>Name</th>
-                          <th style={{ padding: '0.625rem' }}>Email</th>
-                          <th style={{ padding: '0.625rem' }}>Role</th>
-                          <th style={{ padding: '0.625rem' }}>Status</th>
-                          <th style={{ padding: '0.625rem' }}>Documents</th>
-                          <th style={{ padding: '0.625rem' }}>Joined</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {users.map((user) => (
-                          <tr key={user.user_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '0.625rem', fontWeight: 500 }}>{user.display_name || '—'}</td>
-                            <td style={{ padding: '0.625rem' }}>{user.email || '—'}</td>
-                            <td style={{ padding: '0.625rem' }}>{user.role_name ? roleLabels[user.role_name] : '—'}</td>
-                            <td style={{ padding: '0.625rem' }}>{user.verification_status}</td>
-                            <td style={{ padding: '0.625rem' }}>{user.document_count}</td>
-                            <td style={{ padding: '0.625rem' }}>{new Date(user.created_at).toLocaleDateString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {users.length === 0 && (
-                      <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0.5rem 0 0' }}>
-                        No user accounts loaded.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: 0 }}>
-                  Generated at {new Date(reports.generatedAt).toLocaleString()}
-                </p>
-              </div>
-            ) : (
-              <p style={{ color: 'var(--muted-foreground)' }}>No report data loaded.</p>
-            )}
+            <ReportsCharts report={reports} series={series} users={users} onError={(text) => showToast('error', text)} />
           </div>
+        )}
+
+        {rejecting && (
+          <RejectDialog
+            applicantName={rejecting.display_name || rejecting.email || 'this applicant'}
+            busy={actionLoading === rejecting.user_id}
+            onCancel={() => setRejecting(null)}
+            onConfirm={(reason) => { void submitVerification(rejecting, 'rejected', reason || undefined) }}
+          />
         )}
 
         {/* Tab 4: Document Moderation */}

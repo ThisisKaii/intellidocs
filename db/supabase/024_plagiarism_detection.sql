@@ -1,4 +1,4 @@
-ee-- IntelliDocs: Migration 024 — Multi-Agent AI Council & Forensic Plagiarism Detection
+-- IntelliDocs: Migration 024 — Multi-Agent AI Council & Forensic Plagiarism Detection
 -- Creates tables for document embeddings, plagiarism scans, and match tracking.
 -- Enables pgvector for similarity search across class folder documents.
 

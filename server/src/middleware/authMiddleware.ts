@@ -117,3 +117,16 @@ export async function requireApprovedProfessor(
     res.status(500).json({ error: 'Professor verification check failed' })
   }
 }
+
+/** Creating a class folder needs an approved professor; personal folders are open to everyone. */
+export async function requireProfessorForClassFolder(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  if (req.body?.folderType !== 'class') {
+    next()
+    return
+  }
+  await requireApprovedProfessor(req, res, next)
+}

@@ -38,6 +38,8 @@ interface DriveSidebarProps {
   selection: FolderSelection
   onCreate: () => void
   onCreateFolder: () => void
+  /** Opens the join-a-class dialog. */
+  onJoinClass?: () => void
   onSelectView: (sel: FolderSelection) => void
   onImportFromFile?: () => void
   onImportFromDrive?: () => void
@@ -79,6 +81,7 @@ function DriveSidebar({
   selection,
   onCreate,
   onCreateFolder,
+  onJoinClass,
   onSelectView,
   onImportFromFile,
   onImportFromDrive,
@@ -143,6 +146,11 @@ function DriveSidebar({
             <DropdownMenuItem onClick={() => { onClose(); onCreateFolder() }} className="gap-2 py-2 cursor-pointer">
               <FolderIcon className="size-4 text-primary" /> New folder
             </DropdownMenuItem>
+            {onJoinClass && (
+              <DropdownMenuItem onClick={() => { onClose(); onJoinClass() }} className="gap-2 py-2 cursor-pointer">
+                <GraduationCap className="size-4 text-primary" /> Join a class
+              </DropdownMenuItem>
+            )}
             {onImportFromFile && (
               <DropdownMenuItem onClick={() => { onClose(); onImportFromFile() }} className="gap-2 py-2 cursor-pointer">
                 <Upload className="size-4 text-primary" /> Import from file

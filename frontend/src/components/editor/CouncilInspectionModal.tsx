@@ -14,6 +14,8 @@ interface CouncilInspectionModalProps {
   isOpen: boolean
   onClose: () => void
   detail: PlagiarismScanDetail | null
+  /** Folder id to class name, so a match from another class can say which one. */
+  classNames?: Record<string, string>
 }
 
 /** Severity → visual treatment for match badges and borders. */
@@ -108,7 +110,8 @@ function TranscriptEntry({ entry }: { entry: DeliberationEntry }): JSX.Element {
 }
 
 /** Flagged-vs-source viewer for the active match. */
-function MatchViewer({ match }: { match: PlagiarismMatchRecord }): JSX.Element {
+function MatchViewer({ match, classNames }: { match: PlagiarismMatchRecord; classNames?: Record<string, string> }): JSX.Element {
+  const sourceClass = match.matched_folder_id ? classNames?.[match.matched_folder_id] : undefined
   const styles = SEVERITY_STYLES[match.match_severity] ?? SEVERITY_STYLES.medium
   const verdict: CouncilMatchVerdict | null = match.council_verdict
 
@@ -148,7 +151,7 @@ function MatchViewer({ match }: { match: PlagiarismMatchRecord }): JSX.Element {
       <div className="rounded-lg border border-border border-l-4 border-l-border bg-secondary/30 p-4">
         <div className="flex items-center gap-2 mb-2 text-sm font-medium text-foreground">
           <FileText className="size-4 text-muted-foreground" />
-          Source text (matched peer)
+          Source text (matched peer{sourceClass ? ` · ${sourceClass}` : ''})
         </div>
         <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
           {match.source_excerpt || 'No source excerpt recorded for this match.'}
@@ -162,7 +165,7 @@ function MatchViewer({ match }: { match: PlagiarismMatchRecord }): JSX.Element {
  * Read-only academic integrity inspection for one council scan: flagged
  * passages with their peer sources, the judge transcript, and forensic notes.
  */
-export function CouncilInspectionModal({ isOpen, onClose, detail }: CouncilInspectionModalProps): JSX.Element | null {
+export function CouncilInspectionModal({ isOpen, onClose, detail, classNames }: CouncilInspectionModalProps): JSX.Element | null {
   const [activeMatchIndex, setActiveMatchIndex] = useState<number>(0)
   const [tab, setTab] = useState<'transcript' | 'forensics'>('transcript')
 
@@ -271,7 +274,7 @@ export function CouncilInspectionModal({ isOpen, onClose, detail }: CouncilInspe
                     </button>
                   </div>
                 </div>
-                <MatchViewer match={activeMatch} />
+                <MatchViewer match={activeMatch} classNames={classNames} />
               </>
             )}
           </main>

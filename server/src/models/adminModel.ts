@@ -1,10 +1,12 @@
  import { createClient } from '@supabase/supabase-js'
+import { bucketByWeek } from '../utils/weeklyBuckets'
 import {
   AdminApplicant,
   AdminDocumentRecord,
   AdminUserRecord,
   ApplicantDetails,
   RoleName,
+  ReportTimeseries,
   SystemReport,
   VerificationStatus,
 } from '../types/index'
@@ -20,76 +22,6 @@ async function roleIdForName(roleName: RoleName): Promise<number | null> {
     .single()
 
   return data?.role_id ?? null
-}
-
-/** Fetch all users who applied as Professor and have verification_status = 'pending'. */
-export async function getPendingProfessorApplicants(): Promise<any[]> {
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select(`
-      id,
-      user_id,
-      display_name,
-      verification_status,
-      created_at,
-      roles!inner(role_name)
-    `)
-    .eq('roles.role_name', 'professor')
-    .eq('verification_status', 'pending')
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    console.error('Error fetching pending professors:', error)
-    throw new Error(error.message)
-  }
-
-  // Join auth email if available
-  return (data || []).map((p: any) => ({
-    profile_id: p.id,
-    user_id: p.user_id,
-    display_name: p.display_name,
-    role_name: p.roles?.role_name,
-    verification_status: p.verification_status,
-    applied_at: p.created_at,
-  }))
-}
-
-/** Approve or reject a professor applicant, updating verification_status and creating an in-app notification. */
-export async function verifyProfessorApplicant(
-  userId: string,
-  status: 'approved' | 'rejected',
-  notes?: string
-): Promise<any> {
-  const { data: updatedProfile, error: updateErr } = await supabase
-    .from('user_profiles')
-    .update({
-      verification_status: status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', userId)
-    .select()
-    .single()
-
-  if (updateErr) {
-    console.error('Error updating professor status:', updateErr)
-    throw new Error(updateErr.message)
-  }
-
-  // Send in-app notification to the applicant
-  const title = status === 'approved' ? 'Professor Application Approved!' : 'Professor Application Update'
-  const message = status === 'approved'
-    ? 'Congratulations! Your professor application has been approved by the Administrator. You now have access to review and grading features.'
-    : `Your professor application has been reviewed. Status: Rejected. ${notes ? `Notes: ${notes}` : ''}`
-
-  await supabase.from('notifications').insert({
-    user_id: userId,
-    type: 'professor_verification',
-    title,
-    message,
-    metadata: { status, notes: notes || null },
-  })
-
-  return updatedProfile
 }
 
 /** Fetch all registered users with roles, emails, and per-user document counts. */
@@ -174,6 +106,22 @@ export async function updateUserRole(userId: string, roleId: number): Promise<an
   return data
 }
 
+/**
+ * The role each user applied for. Read separately so the queue still loads on a
+ * database that has not had migration 030 yet (applicants then fall back to
+ * their current role, which is how applications used to be recorded).
+ */
+async function requestedRoles(userIds: string[]): Promise<Map<string, string>> {
+  const requested = new Map<string, string>()
+  if (userIds.length === 0) return requested
+  const { data, error } = await supabase.from('user_profiles').select('user_id, requested_role').in('user_id', userIds)
+  if (error) return requested
+  for (const row of data ?? []) {
+    if (row.requested_role) requested.set(row.user_id as string, row.requested_role as string)
+  }
+  return requested
+}
+
 /** Fetch all pending Student and Professor applicants with application metadata. */
 export async function getPendingApplicants(): Promise<AdminApplicant[]> {
   const { data, error } = await supabase
@@ -184,10 +132,9 @@ export async function getPendingApplicants(): Promise<AdminApplicant[]> {
       display_name,
       verification_status,
       created_at,
-      roles!inner(role_name)
+      roles(role_name)
     `)
     .eq('verification_status', 'pending')
-    .in('roles.role_name', ['student', 'professor'])
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -196,6 +143,7 @@ export async function getPendingApplicants(): Promise<AdminApplicant[]> {
   }
 
   const userIds = (data || []).map((p) => p.user_id)
+  const requestedByUser = await requestedRoles(userIds)
 
   // Map auth emails for the review cards.
   const emailMap: Record<string, string | null> = {}
@@ -221,7 +169,8 @@ export async function getPendingApplicants(): Promise<AdminApplicant[]> {
   }
 
   return (data || []).map((p) => {
-    const roleName = (p.roles as { role_name?: string } | null)?.role_name ?? 'student'
+    const currentRole = (p.roles as { role_name?: string } | null)?.role_name ?? 'student'
+    const roleName = requestedByUser.get(p.user_id) ?? currentRole
     const raw = notificationMap[p.user_id]?.metadata ?? {}
     const strValue = (value: unknown): string | null => (typeof value === 'string' ? value : null)
     const details: ApplicantDetails = {
@@ -256,10 +205,15 @@ export async function verifyApplicant(
   userId: string,
   status: 'approved' | 'rejected',
   roleName?: RoleName,
-  notes?: string
+  notes?: string,
+  decidedBy?: string
 ): Promise<Record<string, unknown> | null> {
   const updates: Record<string, unknown> = {
     verification_status: status,
+    requested_role: status === 'approved' ? null : roleName ?? undefined,
+    decision_note: notes ?? null,
+    decided_at: new Date().toISOString(),
+    decided_by: decidedBy ?? null,
     updated_at: new Date().toISOString(),
   }
 
@@ -284,7 +238,7 @@ export async function verifyApplicant(
 
   const approved = status === 'approved'
   const roleLabel = roleName ?? 'application'
-  await supabase.from('notifications').insert({
+  const { error: notifError } = await supabase.from('notifications').insert({
     user_id: userId,
     type: 'verification_decision',
     title: approved ? 'Application Approved' : 'Application Update',
@@ -293,6 +247,7 @@ export async function verifyApplicant(
       : `We're sorry, your ${roleLabel} application was not approved.${notes ? ` Reason: ${notes}` : ''}`,
     metadata: { status, role: roleName ?? null, notes: notes ?? null },
   })
+  if (notifError) console.error('verifyApplicant: notification insert failed:', notifError.message)
 
   return data as Record<string, unknown>
 }
@@ -305,6 +260,8 @@ async function lookUpAppliedRole(userId: string): Promise<RoleName | null> {
     .eq('user_id', userId)
     .single()
 
+  const requested = (await requestedRoles([userId])).get(userId)
+  if (requested === 'professor' || requested === 'student') return requested
   const roleName = (data?.roles as { role_name?: string } | null)?.role_name
   return roleName === 'professor' || roleName === 'admin' ? roleName : 'student'
 }
@@ -415,6 +372,43 @@ export async function getSystemReports(): Promise<SystemReport> {
       acceptanceRate: totalFb > 0 ? `${((acceptedFb / totalFb) * 100).toFixed(2)}%` : '0.00%',
       byType,
     },
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+/** Scans scoring below this originality percentage count as flagged in reports. */
+const FLAGGED_ORIGINALITY_BELOW = 70
+
+/** Weekly sign-ups, documents and plagiarism scans for the last `weeks` weeks, plus application counts. */
+export async function getReportTimeseries(weeks: number): Promise<ReportTimeseries> {
+  const since = new Date(Date.now() - weeks * 7 * 24 * 3600 * 1000).toISOString()
+
+  const [signups, documents, scans, statusRows] = await Promise.all([
+    supabase.from('user_profiles').select('created_at').gte('created_at', since),
+    supabase.from('documents').select('created_at').gte('created_at', since),
+    supabase.from('plagiarism_scans').select('created_at, overall_originality_score').gte('created_at', since),
+    supabase.from('user_profiles').select('verification_status'),
+  ])
+
+  for (const result of [signups, documents, scans, statusRows]) {
+    if (result.error) throw new Error(result.error.message)
+  }
+
+  const applicationsByStatus: Record<VerificationStatus, number> = { pending: 0, approved: 0, rejected: 0 }
+  for (const row of statusRows.data ?? []) {
+    const status = row.verification_status as VerificationStatus
+    if (status in applicationsByStatus) applicationsByStatus[status] += 1
+  }
+
+  const scanRows = scans.data ?? []
+  return {
+    weeks,
+    signups: bucketByWeek((signups.data ?? []).map((r) => r.created_at as string), weeks),
+    documents: bucketByWeek((documents.data ?? []).map((r) => r.created_at as string), weeks),
+    scans: bucketByWeek(scanRows.map((r) => r.created_at as string), weeks),
+    flaggedScans: scanRows.filter((r) => Number(r.overall_originality_score) < FLAGGED_ORIGINALITY_BELOW).length,
+    totalScans: scanRows.length,
+    applicationsByStatus,
     generatedAt: new Date().toISOString(),
   }
 }

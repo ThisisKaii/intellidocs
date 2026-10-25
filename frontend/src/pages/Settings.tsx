@@ -113,6 +113,7 @@ export default function SettingsPage(): JSX.Element {
           <FacultyApplicationSection
             role={role}
             verificationStatus={user?.verificationStatus}
+            requestedRole={user?.requestedRole ?? null}
           />
 
           {/* 3b. Student status Application (visible to regular users) */}
@@ -226,9 +227,11 @@ function ManageProfileSection({
 function FacultyApplicationSection({
   role,
   verificationStatus,
+  requestedRole,
 }: {
   role: string
   verificationStatus?: string
+  requestedRole: string | null
 }): JSX.Element {
   const [college, setCollege] = useState('')
   const [department, setDepartment] = useState('')
@@ -239,9 +242,17 @@ function FacultyApplicationSection({
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
   const { refreshRole } = useAuth()
 
-  const isPending = role === 'professor' && verificationStatus === 'pending'
+  const appliedForProfessor = requestedRole === 'professor' || role === 'professor'
+  const isPending = appliedForProfessor && verificationStatus === 'pending'
   const isApproved = role === 'professor' && verificationStatus === 'approved'
-  const isRejected = role === 'professor' && verificationStatus === 'rejected'
+  const isRejected = appliedForProfessor && verificationStatus === 'rejected'
+  const [decisionNote, setDecisionNote] = useState<string | null>(null)
+
+  // The administrator's note on a rejected application, so the applicant knows what to fix.
+  useEffect(() => {
+    if (!isRejected) return
+    api.auth.applicationStatus().then((status) => setDecisionNote(status.decisionNote)).catch(() => setDecisionNote(null))
+  }, [isRejected])
 
   if (isApproved) {
     return (
@@ -319,6 +330,7 @@ function FacultyApplicationSection({
           <p className="text-xs text-destructive">
             Your previous application was not approved. You may re-apply with updated credentials.
           </p>
+          {decisionNote && <p className="text-xs text-destructive mt-1">Administrator note: {decisionNote}</p>}
         </div>
       )}
 

@@ -57,7 +57,7 @@ export function AdminRoute({ children }: ProtectedRouteProps): JSX.Element {
   return <>{children}</>
 }
 
-/** Approved Professor route guard. Renders 403 ErrorPage if professor verification is pending or rejected. */
+/** Approved Professor route guard. Only approved professors and administrators get in; everyone else sees why. */
 export function ApprovedProfessorRoute({ children }: ProtectedRouteProps): JSX.Element {
   const { user, isAuthenticated, loading } = useAuth()
 
@@ -73,17 +73,34 @@ export function ApprovedProfessorRoute({ children }: ProtectedRouteProps): JSX.E
     return <Navigate to="/login" replace />
   }
 
-  if (user?.role === 'professor' && user?.verificationStatus === 'pending') {
+  if (user?.role === 'admin' || (user?.role === 'professor' && user?.verificationStatus === 'approved')) {
+    return <>{children}</>
+  }
+
+  const applied = user?.requestedRole === 'professor' || user?.role === 'professor'
+  if (applied && user?.verificationStatus === 'pending') {
     return (
       <ErrorPage
         statusCode={403}
         title="403 Forbidden: Verification Pending"
-        message="Your professor registration request is currently under review by an Administrator. Professor features will unlock upon approval."
+        message="Your professor application is under review by an Administrator. Professor features unlock once it is approved."
         redirectTo="/dashboard"
         redirectLabel="Return to Dashboard"
       />
     )
   }
 
-  return <>{children}</>
+  return (
+    <ErrorPage
+      statusCode={403}
+      title="403 Forbidden: Professor Access Required"
+      message={
+        applied && user?.verificationStatus === 'rejected'
+          ? 'Your professor application was not approved. You can apply again from Settings.'
+          : 'This page is for approved professors. You can apply for faculty access from Settings.'
+      }
+      redirectTo="/settings"
+      redirectLabel="Open Settings"
+    />
+  )
 }

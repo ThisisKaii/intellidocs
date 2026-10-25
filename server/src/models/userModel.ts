@@ -67,10 +67,22 @@ export async function getUserStorageSummary(userId: string): Promise<StorageSumm
   return { usedBytes, quotaBytes: STORAGE_QUOTA_BYTES[role], role }
 }
 
+/**
+ * The role a user applied for, or null. Read on its own so a database that has
+ * not had migration 030 yet still reports the user's real role and status.
+ */
+export async function getRequestedRole(userId: string): Promise<RoleName | null> {
+  const { data, error } = await supabase.from('user_profiles').select('requested_role').eq('user_id', userId).maybeSingle()
+  if (error) return null
+  return (data?.requested_role as RoleName | null | undefined) ?? null
+}
+
 /** A user's current role and verification status, read fresh from the database. */
 export interface RoleStatus {
   role: RoleName
   verificationStatus: VerificationStatus
+  /** The role the user applied for; stays set after a rejection so the UI can say which application it was. */
+  requestedRole: RoleName | null
 }
 
 /**
@@ -91,8 +103,145 @@ export async function getOwnRoleStatus(userId: string): Promise<RoleStatus> {
     .maybeSingle()
 
   return {
+    requestedRole: await getRequestedRole(userId),
     role: ((profile?.roles as { role_name?: RoleName } | null)?.role_name) ?? 'student',
     verificationStatus:
       (profile?.verification_status as VerificationStatus | undefined) ?? 'approved',
   }
+}
+
+/** Details a user submits when applying to become a professor. */
+export interface ProfessorApplicationInput {
+  email: string | null
+  college: string
+  department: string
+  institutionalEmail: string
+  facultyId: string
+  reason: string
+}
+
+/** The user's application state as shown on their settings page. */
+export interface ApplicationStatus {
+  requestedRole: string | null
+  verificationStatus: VerificationStatus
+  decisionNote: string | null
+  decidedAt: string | null
+}
+
+/** Look up a role id by name, or null when the role does not exist. */
+async function roleIdByName(roleName: RoleName): Promise<number | null> {
+  const { data } = await supabase.from('roles').select('role_id').eq('role_name', roleName).maybeSingle()
+  return data?.role_id ?? null
+}
+
+/**
+ * Record a professor application. The user keeps their current role while the
+ * application is pending; the admin's approval is what grants professor access.
+ * Returns 'already' when the user is already an approved professor or admin.
+ */
+export async function createProfessorApplication(
+  userId: string,
+  input: ProfessorApplicationInput,
+): Promise<'submitted' | 'already'> {
+  const { data: existing } = await supabase
+    .from('user_profiles')
+    .select('verification_status, roles(role_name)')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const currentRole = (existing?.roles as { role_name?: string } | null)?.role_name
+  if (currentRole === 'admin' || (currentRole === 'professor' && existing?.verification_status === 'approved')) {
+    return 'already'
+  }
+
+  const fields = {
+    verification_status: 'pending',
+    requested_role: 'professor',
+    faculty_id: input.facultyId,
+    decision_note: null,
+    decided_at: null,
+    decided_by: null,
+    updated_at: new Date().toISOString(),
+  }
+
+  if (existing) {
+    const { error } = await supabase.from('user_profiles').update(fields).eq('user_id', userId)
+    if (error) throw new Error(error.message)
+  } else {
+    const studentRole = await roleIdByName('student')
+    if (!studentRole) throw new Error('Student role not found in system')
+    const { error } = await supabase.from('user_profiles').insert({ user_id: userId, role_id: studentRole, ...fields })
+    if (error) throw new Error(error.message)
+  }
+
+  // The applicant's own notification carries the details the admin queue shows.
+  const { error: notifError } = await supabase.from('notifications').insert({
+    user_id: userId,
+    type: 'professor_application',
+    title: 'Professor Application Submitted',
+    message: `Application submitted by ${input.email ?? 'a user'}. College: ${input.college}, Department: ${input.department}, Faculty ID: ${input.facultyId}. Reason: ${input.reason}`,
+    metadata: {
+      college: input.college,
+      department: input.department,
+      institutionalEmail: input.institutionalEmail,
+      facultyId: input.facultyId,
+      reason: input.reason,
+      submittedAt: new Date().toISOString(),
+    },
+  })
+  if (notifError) throw new Error(notifError.message)
+
+  await notifyAdminsOfApplication(userId, input.email)
+  return 'submitted'
+}
+
+/** Tell every admin that a new professor application is waiting. Best effort. */
+async function notifyAdminsOfApplication(applicantId: string, email: string | null): Promise<void> {
+  const adminRole = await roleIdByName('admin')
+  if (!adminRole) return
+  const { data: admins } = await supabase.from('user_profiles').select('user_id').eq('role_id', adminRole)
+  const rows = (admins ?? []).map((admin) => ({
+    user_id: admin.user_id,
+    type: 'professor_application_review',
+    title: 'New professor application',
+    message: `${email ?? 'A user'} applied for professor access and is waiting for review.`,
+    metadata: { applicantId },
+  }))
+  if (rows.length === 0) return
+  const { error } = await supabase.from('notifications').insert(rows)
+  if (error) console.error('notifyAdminsOfApplication failed:', error.message)
+}
+
+/** The caller's latest application state, for the settings page. */
+export async function getOwnApplicationStatus(userId: string): Promise<ApplicationStatus> {
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('requested_role, verification_status, decision_note, decided_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  return {
+    requestedRole: data?.requested_role ?? null,
+    verificationStatus: (data?.verification_status as VerificationStatus | undefined) ?? 'approved',
+    decisionNote: data?.decision_note ?? null,
+    decidedAt: data?.decided_at ?? null,
+  }
+}
+
+/** Give a user the admin role and an approved status (used by the make-admin script). */
+export async function promoteToAdmin(userId: string): Promise<void> {
+  const adminRole = await roleIdByName('admin')
+  if (!adminRole) throw new Error('Admin role not found in system')
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert({ user_id: userId, role_id: adminRole, verification_status: 'approved' }, { onConflict: 'user_id' })
+  if (error) throw new Error(error.message)
+}
+
+/** Find a user's id by email, or null when no such account exists. */
+export async function findUserIdByEmail(email: string): Promise<string | null> {
+  const { data, error } = await supabase.auth.admin.listUsers({ perPage: 1000 })
+  if (error) throw new Error(error.message)
+  const match = data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase())
+  return match?.id ?? null
 }

@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useImportJob } from '@/hooks/useImportJob'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
-import { FileText, FolderIcon, HardDrive, Menu, Plus, Search, Upload } from 'lucide-react'
+import { FileText, FolderIcon, GraduationCap, HardDrive, Menu, Plus, Search, Upload } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,7 @@ import {
 import UserMenu from '@/components/UserMenu'
 import DriveImportDialog from '@/components/DriveImportDialog'
 import FolderCreateModal from '@/components/drive/FolderCreateModal'
+import JoinClassModal from '@/components/drive/JoinClassModal'
 import DocumentCreateModal from '@/components/DocumentCreateModal'
 import {
   buildBlueprintHtml,
@@ -89,6 +90,7 @@ export default function HomePage(): JSX.Element {
   const [trashDocuments, setTrashDocuments] = useState<DocumentRecord[]>([])
   const [folderDocuments, setFolderDocuments] = useState<DocumentRecord[]>([])
   const [folders, setFolders] = useState<FolderRecord[]>([])
+  const [joinClassOpen, setJoinClassOpen] = useState(false)
   const [currentFolderChildren, setCurrentFolderChildren] = useState<FolderRecord[]>([])
   const [storageSummary, setStorageSummary] = useState<StorageSummary | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
@@ -331,6 +333,11 @@ export default function HomePage(): JSX.Element {
     } finally {
       setCreateSubmitting(false)
     }
+  }
+
+  /** Reload the folder list after joining a class so the new class and workspace show up. */
+  function refreshFolders(): void {
+    api.folders.list().then(setFolders).catch(() => {})
   }
 
   function handleCreateFolder(): void {
@@ -731,6 +738,7 @@ export default function HomePage(): JSX.Element {
         selection={selection}
         onCreate={handleCreateDocument}
         onCreateFolder={handleCreateFolder}
+        onJoinClass={() => setJoinClassOpen(true)}
         onSelectView={handleSelectView}
         onImportFromFile={() => setImportFileOpen(true)}
         onImportFromDrive={() => setDriveOpen(true)}
@@ -806,7 +814,7 @@ export default function HomePage(): JSX.Element {
         </header>
 
         {/* Pending Professor Notification Banner */}
-        {user?.role === 'professor' && user?.verificationStatus === 'pending' && (
+        {user?.verificationStatus === 'pending' && (user?.requestedRole === 'professor' || user?.role === 'professor') && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -939,6 +947,14 @@ export default function HomePage(): JSX.Element {
         />
       )}
 
+      {joinClassOpen && (
+        <JoinClassModal
+          onClose={() => setJoinClassOpen(false)}
+          onJoined={refreshFolders}
+          onOpenClass={(classFolder) => handleSelectView({ type: 'folder', folderId: classFolder.folder_id })}
+        />
+      )}
+
       {/* New folder — personal workspace vs. student class folder */}
       {folderModalOpen && (
         <FolderCreateModal
@@ -1009,6 +1025,9 @@ export default function HomePage(): JSX.Element {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCreateFolder} className="gap-2 py-2.5 cursor-pointer">
               <FolderIcon className="size-4 text-primary" /> New folder
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setJoinClassOpen(true)} className="gap-2 py-2.5 cursor-pointer">
+              <GraduationCap className="size-4 text-primary" /> Join a class
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setImportFileOpen(true)} className="gap-2 py-2.5 cursor-pointer">
               <Upload className="size-4 text-primary" /> Import from file

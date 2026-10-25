@@ -449,7 +449,7 @@ Do NOT use:
   or all keys rejected); malformed requests (400/422) are not retried.
 - The plagiarism council runs a mixed panel: `server/src/skills/runCouncilScan.ts` sends all
   profiles plus a judge -> profile assignment to the ML service. Specialists are spread
-  round-robin, the arbiter uses profile 1; `COUNCIL_<ROLE>_PROFILE=<n>` pins a judge. Each
+  round-robin, the arbiter uses profile 1; `COUNCIL_<ROLE>_PROFILE=<n>` pins a judge (`COUNCIL_ARBITER_PROFILE` is a short name for the arbiter's pin; each API key runs `COUNCIL_CONCURRENCY_PER_KEY` calls at once, default 2). Each
   judge falls over to the other profiles, and transcript entries record `provider`/`model`.
   The council's request-scoped config lives in a ContextVar in `ml/council_pipeline.py`
   (never a module global).

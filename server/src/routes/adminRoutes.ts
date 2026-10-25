@@ -14,12 +14,10 @@ router.post('/applicants/:userId/verify', validateBody(verifyApplicantSchema), a
 router.get('/users', adminController.getAllUsers)
 router.patch('/users/:userId/role', validateBody(updateRoleSchema), adminController.updateUserRole)
 router.get('/reports', adminController.getSystemReports)
+router.get('/reports/timeseries', adminController.getReportTimeseries)
 router.get('/documents', adminController.getAllDocuments)
 router.delete('/documents/:documentId', adminController.deleteDocument)
 router.get('/export-empirical', adminController.exportEmpiricalData)
 
-// Legacy professor-only endpoints (kept for backwards compatibility)
-router.get('/professors/pending', adminController.getPendingProfessors)
-router.post('/professors/:userId/verify', adminController.verifyProfessor)
 
 export default router

@@ -4,6 +4,7 @@ import { z } from 'zod'
 export const runPlagiarismScanSchema = z.object({
   documentId: z.string().trim().min(1, 'documentId is required'),
   folderId: z.string().trim().min(1, 'folderId is required'),
+  scope: z.enum(['local', 'global']).default('local'),
 })
 
 /** Validate one judge/verdict entry in a council transcript. */

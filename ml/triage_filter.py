@@ -54,6 +54,8 @@ class TriageConfig:
     
     # Stage 3: Council
     council_timeout: int = 8
+    # Keep only the N strongest flagged paragraphs before the council (0 = no cap).
+    max_flagged_paragraphs: int = 0
     council_min_quorum: int = 3
 
 
@@ -237,6 +239,14 @@ class TriageFilter:
                 processing_time_ms=(time.time() - start_time) * 1000,
                 tokens_saved=0
             )
+
+        cap = self.config.max_flagged_paragraphs
+        if cap > 0 and len(flagged_paragraphs) > cap:
+            flagged_paragraphs = sorted(
+                flagged_paragraphs,
+                key=lambda p: float(p.get('similarity_score', 0.0)),
+                reverse=True,
+            )[:cap]
 
         print(f"[Triage] Stage 2: Context windowing for {len(flagged_paragraphs)} flagged paragraphs")
         clusters = await self._stage2_context_windowing(
