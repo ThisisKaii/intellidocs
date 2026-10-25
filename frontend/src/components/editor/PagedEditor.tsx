@@ -737,6 +737,14 @@ export function PagedEditor({
           .rm-with-pagination .rm-page-footer {
             display: flex;
           }
+          /* Word lays text out with device-independent widths; Chrome's come out a hair wider, so
+             a line Word fills to the margin wraps a word early here. A sub-pixel tightening
+             makes the same words fit the same lines. */
+          .ProseMirror.rm-with-pagination p,
+          .ProseMirror.rm-with-pagination li,
+          .ProseMirror.rm-with-pagination td {
+            letter-spacing: -0.1px;
+          }
           /* Imported header/footer art is positioned from the page corner and
              reaches outside the zone, so neither zone may clip it. */
           .rm-with-pagination .rm-page-header,
