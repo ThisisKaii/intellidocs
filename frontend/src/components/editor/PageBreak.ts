@@ -90,6 +90,16 @@ export const PageBreak = Node.create({
       height: {
         default: 0,
       },
+      // The Word section this page starts (imports): its header, footer and page
+      // numbering are looked up from it. Null for an ordinary page break.
+      section: {
+        default: null,
+        parseHTML: (element: HTMLElement) => {
+          const value = element.getAttribute('data-section')
+          return value === null || value === '' ? null : Number(value)
+        },
+        renderHTML: () => ({}),
+      },
     }
   },
 
@@ -104,16 +114,18 @@ export const PageBreak = Node.create({
   },
 
   renderHTML({ node }) {
-    return ['div', { class: 'intellidocs-page-break', style: `height:${node.attrs.height}px` }]
+    const section = typeof node.attrs.section === 'number' ? { 'data-section': String(node.attrs.section) } : {}
+    return ['div', { class: 'intellidocs-page-break', style: `height:${node.attrs.height}px`, ...section }]
   },
 
   // A node view keeps the same DOM element across paginator redraws, so the
   // runtime height written by layoutPageBreaks is not reset by ProseMirror.
   addNodeView() {
-    return () => {
+    return ({ node }) => {
       const dom = document.createElement('div')
       dom.className = 'intellidocs-page-break'
       dom.style.height = '0px'
+      if (typeof node.attrs.section === 'number') dom.dataset.section = String(node.attrs.section)
       return { dom }
     }
   },

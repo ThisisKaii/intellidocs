@@ -39,6 +39,7 @@ import { useGrammarCheck } from '@/hooks/useGrammarCheck'
 import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
+import type { PageLayoutData } from '@/lib/pageLayout'
 import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
 import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
 import type { TOCEntry } from '@/components/editor/TableOfContents'
@@ -238,6 +239,7 @@ export default function Document(): JSX.Element {
   const [headerMarginIn, setHeaderMarginIn] = useState<number>(0.5)
   const [footerMarginIn, setFooterMarginIn] = useState<number>(0.5)
   const [differentFirstPage, setDifferentFirstPage] = useState<boolean>(false)
+  const [pageLayout, setPageLayout] = useState<PageLayoutData | null>(null)
   const latestHeaderSettingsRef = useRef({
     showHeader: false,
     showFooter: false,
@@ -600,9 +602,9 @@ export default function Document(): JSX.Element {
    * DOM on that transaction, which used to wipe a DOM-attached CSS class and
    * caused the old two-click behaviour.
    */
-  function handleOutlineHeadingClick(entry: TOCEntry): void {
+  function handleOutlineHeadingClick(entry: TOCEntry, occurrence = 0): void {
     if (!editor || editor.isDestroyed) return
-    const pos = findHeadingPosition(editor, entry.text, entry.level)
+    const pos = findHeadingPosition(editor, entry.text, entry.level, occurrence)
     if (pos == null) return
 
     const container = editorCanvasRef.current
@@ -806,6 +808,7 @@ export default function Document(): JSX.Element {
     setIsIsolated(doc.is_isolated ?? false)
     setFormattingPreset(doc.formatting_preset ?? null)
     setDocOwnerId(doc.user_id ?? null)
+    setPageLayout(doc.page_layout ?? null)
     if (doc.citation_data) {
       setCitationStyle(doc.citation_data.style)
       setReferences(doc.citation_data.references)
@@ -1763,13 +1766,29 @@ export default function Document(): JSX.Element {
     scheduleSave()
   }
 
+  /**
+   * Editing the header or footer replaces what the import brought (art, per-section
+   * headers, restarting page numbers): the text the user types takes over.
+   */
+  function dropPageLayout(): void {
+    if (!pageLayout) return
+    setPageLayout(null)
+    if (id && !readOnly) {
+      api.documents
+        .update(id, { page_layout: null }, shareToken)
+        .catch((error) => console.error('Clearing the imported page layout failed', error))
+    }
+  }
+
   function handleHeaderChange(value: string): void {
+    dropPageLayout()
     latestHeaderRef.current = value
     setHeaderContent(value)
     scheduleSave()
   }
 
   function handleFooterChange(value: string): void {
+    dropPageLayout()
     latestFooterRef.current = value
     setFooterContent(value)
     scheduleSave()
@@ -1801,12 +1820,14 @@ export default function Document(): JSX.Element {
   }, [])
 
   function handleHeaderNumberFormatChange(value: PageNumberFormat): void {
+    dropPageLayout()
     latestHeaderSettingsRef.current.headerNumberFormat = value
     setHeaderNumberFormat(value)
     scheduleSave()
   }
 
   function handleFooterNumberFormatChange(value: PageNumberFormat): void {
+    dropPageLayout()
     latestHeaderSettingsRef.current.footerNumberFormat = value
     setFooterNumberFormat(value)
     scheduleSave()
@@ -1833,6 +1854,7 @@ export default function Document(): JSX.Element {
   }
 
   function handleDifferentFirstPageChange(value: boolean): void {
+    dropPageLayout()
     setDifferentFirstPage(value)
     scheduleSave()
   }
@@ -3006,6 +3028,7 @@ export default function Document(): JSX.Element {
               margins={margins}
               orientation={orientation}
               headerFooterConfig={headerFooterConfig}
+              pageLayout={pageLayout}
               spreadPreview={spreadPreview}
               zoomLevel={zoomLevel}
               showGridlines={showGridlines}

@@ -6,6 +6,8 @@ import type { drive_v3 } from 'googleapis/build/src/apis/drive'
 import * as driveModel from '../models/driveModel'
 import * as documentModel from '../models/documentModel'
 import { uploadImportImages } from './uploadImportImages'
+import { buildImportedLayout } from './buildImportedLayout'
+import type { PythonConversionResponse } from '../../schemas/predictionSchemas'
 import {
   createImportJob,
   failImportJob,
@@ -65,18 +67,22 @@ async function convertToHtml(args: {
   title: string
   mimeType: string
   buffer: Buffer | null
-}): Promise<{ html: string; converterError: string | null }> {
+}): Promise<{ html: string; converterError: string | null; conversion: PythonConversionResponse | null }> {
   const { filePath, title, mimeType, buffer } = args
   const readBuffered = async (): Promise<Buffer> =>
     buffer ? buffer : await createReadStream(filePath).toArray().then((chunks) => Buffer.concat(chunks))
 
   let converterError: string | null = null
   let html = ''
+  let conversion: PythonConversionResponse | null = null
   try {
     const pyResult = buffer
       ? await requestDocumentConversion(buffer, conversionFilename(title, mimeType))
       : await requestDocumentConversionFromPath(filePath, conversionFilename(title, mimeType))
-    if (pyResult?.html) html = pyResult.html
+    if (pyResult?.html) {
+      html = pyResult.html
+      conversion = pyResult
+    }
   } catch (error) {
     converterError = error instanceof Error ? error.message : String(error)
   }
@@ -115,7 +121,7 @@ async function convertToHtml(args: {
     html = textToHtml((await readBuffered()).toString('utf-8'))
   }
 
-  return { html, converterError }
+  return { html, converterError, conversion }
 }
 
 /**
@@ -147,15 +153,18 @@ export async function processImportJob(job: ImportJob): Promise<void> {
     })
 
     await updateImportJob(job.id, { state: 'converting', progress: CONVERT_START })
-    const { html } = await convertToHtml({ filePath: tempPath, title, mimeType, buffer: null })
+    const { html, conversion } = await convertToHtml({ filePath: tempPath, title, mimeType, buffer: null })
 
     // The server owns document creation so the import finishes even when the
     // user has navigated away from the page that started it.
     const content = sanitizeImportedHtml(await uploadImportImages(job.userId, html))
+    // Header/footer art, per-section headers and page setup travel with the file when the converter read them.
+    const layout = conversion ? await buildImportedLayout(job.userId, conversion) : {}
     const document = await documentModel.createDocument(job.userId, {
       title,
       unique_title: true,
       content,
+      ...layout,
     })
     await updateImportJob(job.id, {
       state: 'done',

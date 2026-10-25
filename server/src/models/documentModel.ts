@@ -349,14 +349,16 @@ export async function createDocument(
       ? { formatting_preset: req.formatting_preset }
       : {}),
   }
+  const layoutColumn = req.page_layout ? { page_layout: req.page_layout } : {}
 
   let { data, error } = await supabase
     .from('documents')
-    .insert({ ...row, preview_snippet: extractPreviewSnippet(req.content ?? '') })
+    .insert({ ...row, ...layoutColumn, preview_snippet: extractPreviewSnippet(req.content ?? '') })
     .select()
     .single()
 
   if (isUndefinedColumnError(error)) {
+    // A migration (026 snippet, 032 page layout) is missing: retry without those columns.
     ;({ data, error } = await supabase.from('documents').insert(row).select().single())
   }
 
@@ -369,6 +371,7 @@ function withoutPreviewSnippet(payload: Record<string, unknown>): Record<string,
   const clone: Record<string, unknown> = { ...payload }
   delete clone.preview_snippet
   delete clone.citation_data
+  delete clone.page_layout
   return clone
 }
 

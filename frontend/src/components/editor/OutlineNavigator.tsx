@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { PanelLeftClose, FileText, Heading1, Heading2, Heading3, ListTree } from 'lucide-react'
 import { TOCEntry, extractTOCFromHTML } from './TableOfContents'
+import { groupRepeatedHeadings, nextOccurrence } from '@/lib/outlineGroups'
 
 interface OutlineNavigatorProps {
   /** Full document HTML content. */
@@ -10,7 +11,7 @@ interface OutlineNavigatorProps {
   /** Editor instance for scrolling to headings. */
   editor: Editor | null
   /** Called when a heading is clicked. */
-  onHeadingClick?: (entry: TOCEntry) => void
+  onHeadingClick?: (entry: TOCEntry, occurrence: number) => void
   /** Current active heading ID (for highlighting). */
   activeHeadingId?: string | null
   /** Called when active heading changes (on scroll). */
@@ -51,6 +52,9 @@ export function OutlineNavigator({
   }, [content, maxDepth])
 
   const hasHeadings = headings.length > 0
+  const groups = useMemo(() => groupRepeatedHeadings(headings), [headings])
+  // Which occurrence of a repeated heading the last click went to, by outline key.
+  const lastOccurrence = useRef<Map<string, number>>(new Map())
 
   // Set up IntersectionObserver to track visible headings
   useEffect(() => {
@@ -105,10 +109,13 @@ export function OutlineNavigator({
   // jump and draws the confirmation flash. Jumping stays out of this component
   // because ProseMirror re-renders heading DOM on the selection transaction,
   // which would destroy any flash class attached here.
-  const handleHeadingClick = (e: React.MouseEvent, entry: TOCEntry): void => {
+  const handleHeadingClick = (e: React.MouseEvent, entry: TOCEntry, count: number): void => {
     e.preventDefault()
     e.stopPropagation()
-    onHeadingClick?.(entry)
+    const key = `${entry.level}|${entry.text.trim().toLowerCase()}`
+    const occurrence = nextOccurrence(lastOccurrence.current.get(key), count)
+    lastOccurrence.current.set(key, occurrence)
+    onHeadingClick?.(entry, occurrence)
   }
 
   return (
@@ -144,10 +151,11 @@ export function OutlineNavigator({
         <div style={contentStyle}>
           {hasHeadings ? (
             <ul style={listStyle}>
-              {headings.map((entry) => (
+              {groups.map(({ entry, count }) => (
                 <OutlineEntryItem
                   key={entry.id}
                   entry={{ ...entry, pageNumber: null }}
+                  count={count}
                   active={entry.id === activeHeadingId}
                   onClick={handleHeadingClick}
                 />
@@ -170,10 +178,12 @@ export function OutlineNavigator({
 interface OutlineEntryItemProps {
   entry: TOCEntry
   active: boolean
-  onClick: (e: React.MouseEvent, entry: TOCEntry) => void
+  /** How many headings share this row's text and level. */
+  count: number
+  onClick: (e: React.MouseEvent, entry: TOCEntry, count: number) => void
 }
 
-function OutlineEntryItem({ entry, active, onClick }: OutlineEntryItemProps): ReactNode {
+function OutlineEntryItem({ entry, active, count, onClick }: OutlineEntryItemProps): ReactNode {
   const indent = (entry.level - 1) * 0.75
   const Icon = ICONS[entry.level as 1 | 2 | 3] || Heading1
 
@@ -187,7 +197,7 @@ function OutlineEntryItem({ entry, active, onClick }: OutlineEntryItemProps): Re
         ...(active ? { backgroundColor: 'var(--accent-subtle)' } : {}),
         borderLeft: active ? '2px solid var(--accent-strong)' : 'none',
       }}
-      onClick={(e) => onClick(e, entry)}
+      onClick={(e) => onClick(e, entry, count)}
     >
       <div style={entryRowStyle}>
         <Icon style={{ ...iconStyle, color: active ? 'var(--accent-strong)' : 'var(--muted-foreground)' }} />
@@ -201,6 +211,7 @@ function OutlineEntryItem({ entry, active, onClick }: OutlineEntryItemProps): Re
         >
           {entry.text}
         </span>
+        {count > 1 && <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', flexShrink: 0 }}>×{count}</span>}
       </div>
     </li>
   )
@@ -213,18 +224,21 @@ function OutlineEntryItem({ entry, active, onClick }: OutlineEntryItemProps): Re
  * APPROVAL SHEET), the first paragraph with identical text is used instead.
  * Exported for the host page's coordinate-based jump handler.
  */
-export function findHeadingPosition(editor: Editor | null, text: string, level: number): number | null {
+export function findHeadingPosition(editor: Editor | null, text: string, level: number, occurrence = 0): number | null {
   if (!editor || editor.isDestroyed) return null
   const doc = editor.state.doc
   let foundPos: number | null = null
   let paragraphFallback: number | null = null
   const target = text.trim()
+  // Repeated headings (the same title on every annex page): take the n-th one.
+  let seen = 0
 
   doc.descendants((node: ProseMirrorNode, pos: number) => {
     if (foundPos !== null) return false
-    if (node.textContent.trim() !== target) return true
+    if (node.textContent.trim().toLowerCase() !== target.toLowerCase()) return true
     if (node.type.name === 'heading' && node.attrs.level === level) {
-      foundPos = pos
+      if (seen === occurrence) foundPos = pos
+      seen += 1
       return false
     }
     if (paragraphFallback === null && node.type.name === 'paragraph') {
@@ -233,7 +247,8 @@ export function findHeadingPosition(editor: Editor | null, text: string, level: 
     return true
   })
 
-  return foundPos ?? paragraphFallback
+  // An occurrence past the last heading wraps to the first.
+  return foundPos ?? (occurrence > 0 ? findHeadingPosition(editor, text, level, 0) : paragraphFallback)
 }
 
 const panelStyle: React.CSSProperties = {

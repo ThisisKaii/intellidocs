@@ -17,6 +17,8 @@ import type { UnderlineStyle } from '@/lib/editorPreferences'
 import { SlashCommandMenu } from './SlashCommandMenu'
 import type { BehaviorEventPayload } from './behaviorListener'
 import type { GrammarIssue } from './GrammarPanel'
+import { measureKey, numberingCss, pageZones, type PageLayoutData, type PageMeasure } from '@/lib/pageLayout'
+import { sanitizeHeaderHtml } from '@/lib/sanitizeHeaderHtml'
 
 /** Vertical gap between stacked page sheets, in px. */
 const PAGE_GAP = 40
@@ -146,6 +148,8 @@ interface PagedEditorProps {
   orientation: PageOrientation
   /** Header/footer configuration (replaces individual header/footer props). */
   headerFooterConfig: HeaderFooterConfig
+  /** Imported header/footer art, per-section headers and page numbering; wins over the plain header text. */
+  pageLayout?: PageLayoutData | null
   /**
    * Show two pages side by side as one continuous spread, as readers see an
    * open journal. Geometry and page breaks are untouched, so this is a view
@@ -186,6 +190,7 @@ export function PagedEditor({
   margins,
   orientation,
   headerFooterConfig,
+  pageLayout = null,
   spreadPreview = false,
   zoomLevel = 1,
   showGridlines = false,
@@ -428,6 +433,59 @@ export function PagedEditor({
     headerFooterConfig,
   ])
 
+  // Where each Word section starts and how many pages there are, read from the laid-out
+  // editor. Section breaks carry `data-section`; a page break at the top of a page
+  // starts that page, otherwise the section starts on the page after the break.
+  const [measure, setMeasure] = useState<PageMeasure>({ starts: [], pageCount: 1 })
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !pageLayout) return
+    const dom = editor.view.dom as HTMLElement
+    const pitch = page.height + PAGE_GAP
+    let frame = 0
+    const read = (): void => {
+      frame = 0
+      const rect = dom.getBoundingClientRect()
+      const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
+      const next: PageMeasure = {
+        pageCount: Math.max(1, Math.round((rect.height / scale + PAGE_GAP) / pitch)),
+        starts: [],
+      }
+      dom.querySelectorAll<HTMLElement>('.intellidocs-page-break[data-section]').forEach((el) => {
+        const bottom = (el.getBoundingClientRect().bottom - rect.top) / scale
+        const atTop = el.offsetHeight <= 1
+        const startPage = Math.floor(bottom / pitch) + (atTop ? 1 : 2)
+        next.starts.push({ section: Number(el.dataset.section), page: startPage })
+      })
+      setMeasure((previous) => (measureKey(previous) === measureKey(next) ? previous : next))
+    }
+    const schedule = (): void => {
+      if (!frame) frame = window.requestAnimationFrame(read)
+    }
+    const resize = new ResizeObserver(schedule)
+    resize.observe(dom)
+    const mutations = new MutationObserver(schedule)
+    mutations.observe(dom, { childList: true, subtree: true })
+    schedule()
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      resize.disconnect()
+      mutations.disconnect()
+    }
+  }, [editor, pageLayout, page.height])
+
+  // Give every page the header and footer of its section: art, text and page numbers.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !pageLayout) return
+    const chain = editor.chain()
+    for (let pageNumber = 1; pageNumber <= measure.pageCount; pageNumber += 1) {
+      const zones = pageZones(pageLayout, measure, pageNumber)
+      chain
+        .updateHeaderContent(sanitizeHeaderHtml(zones.header), '', pageNumber)
+        .updateFooterContent(sanitizeHeaderHtml(zones.footer), '', pageNumber)
+    }
+    chain.updateHeaderContent('', '').updateFooterContent('', '').run()
+  }, [editor, pageLayout, measure, page.width, page.height, topPx, bottomPx, leftPx, rightPx, headerFooterConfig])
+
   // Grammar underlines — rebuild when the issue set OR the underline style changes.
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
@@ -635,6 +693,13 @@ export function PagedEditor({
           .rm-with-pagination .rm-page-footer {
             display: flex;
           }
+          /* Imported header/footer art is positioned from the page corner and
+             reaches outside the zone, so neither zone may clip it. */
+          .rm-with-pagination .rm-page-header,
+          .rm-with-pagination .rm-page-footer {
+            overflow: visible !important;
+            max-height: none !important;
+          }
           /* The pagination library sets word-break: break-all on every table
              cell; with its shrink-to-fit tbody that collapsed imported tables
              to ~36px columns, broke words mid-word and inflated documents by
@@ -669,7 +734,7 @@ export function PagedEditor({
           .ProseMirror.ieee-columns-draft .ieee-front {
             column-span: all;
           }
-          ${romanStyle}
+          ${pageLayout ? numberingCss(pageLayout, measure) : romanStyle}
           ${spreadPreview ? spreadStyle : ''}
           ${pageLabel === null ? '' : '.intellidocs-page-editor--spread .rm-pages-wrapper { counter-reset: spread-page; }'}`}
       </style>

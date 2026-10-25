@@ -17,6 +17,33 @@ export const marginsSchema = z.object({
   right: z.number().min(0.1).max(4),
 })
 
+/** One section's header/footer choice and numbering (see PageLayout). */
+const pageLayoutSectionSchema = z.object({
+  index: z.number().int().min(0),
+  header: z.string().nullable(),
+  footer: z.string().nullable(),
+  first_header: z.string().nullable(),
+  first_footer: z.string().nullable(),
+  title_pg: z.boolean(),
+  number_start: z.number().int().nullable(),
+  number_format: z.string().max(40),
+  header_distance: z.number(),
+  footer_distance: z.number(),
+})
+
+/** Header/footer art, per-section headers and page numbering saved with a document. */
+export const pageLayoutBaseSchema = z.object({
+    sections: z.array(pageLayoutSectionSchema).max(500),
+    parts: z.record(z.string().max(20), z.object({ flow: z.string(), art: z.string() })),
+    repeat_art: z.string(),
+    page_art: z.record(z.string().max(10), z.string()),
+})
+
+export const pageLayoutSchema = pageLayoutBaseSchema.refine(
+  (layout) => JSON.stringify(layout).length <= 2_000_000,
+  { message: 'Page layout is too large' },
+)
+
 /** Validate document creation requests from HTTP clients. */
 export const createDocumentSchema = z.object({
   title: z
@@ -64,8 +91,8 @@ export const updateDocumentSchema = z
       .max(200, 'Title must be 200 characters or fewer')
       .optional(),
     content: z.string().max(8000000, 'Content is too large').optional(),
-    header_content: z.string().max(5000, 'Header is too large').optional(),
-    footer_content: z.string().max(5000, 'Footer is too large').optional(),
+    header_content: z.string().max(1_000_000, 'Header is too large').optional(),
+    footer_content: z.string().max(1_000_000, 'Footer is too large').optional(),
     show_header: z.boolean().optional(),
     show_footer: z.boolean().optional(),
     header_number_format: pageNumberFormatSchema.optional(),
@@ -77,6 +104,7 @@ export const updateDocumentSchema = z
     is_isolated: z.boolean().optional(),
     formatting_preset: z.string().max(100).nullable().optional(),
     citation_data: citationDataSchema.optional(),
+    page_layout: pageLayoutSchema.nullable().optional(),
   })
   .refine(
     (data) =>
@@ -94,7 +122,8 @@ export const updateDocumentSchema = z
       data.formatting_history !== undefined ||
       data.is_isolated !== undefined ||
       data.formatting_preset !== undefined ||
-      data.citation_data !== undefined,
+      data.citation_data !== undefined ||
+      data.page_layout !== undefined,
     {
       message: 'At least one field must be provided',
     }

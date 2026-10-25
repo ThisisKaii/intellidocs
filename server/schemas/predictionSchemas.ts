@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { pageNumberFormatSchema } from './documentSchemas'
+import { pageNumberFormatSchema, pageLayoutBaseSchema } from './documentSchemas'
 
 /** Validate incoming text payloads for prediction-related HTTP routes. */
 export const predictionTextSchema = z.object({
@@ -116,6 +116,14 @@ export const pythonConversionResponseSchema = z.object({
   /** Page-number format read from a PAGE field in the header/footer (absent from older ML builds). */
   header_number_format: pageNumberFormatSchema.optional(),
   footer_number_format: pageNumberFormatSchema.optional(),
+  /** Page furniture beyond text (absent from older ML builds). */
+  hf: z
+    .object({
+      sections: pageLayoutBaseSchema.shape.sections,
+      parts: pageLayoutBaseSchema.shape.parts,
+    })
+    .optional(),
+  page_art: z.object({ repeat: z.string(), pages: z.record(z.string(), z.string()) }).optional(),
 })
 
 export type PredictionTextInput = z.infer<typeof predictionTextSchema>

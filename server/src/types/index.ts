@@ -54,6 +54,8 @@ export interface Document {
   formatting_history: unknown[]
   is_isolated: boolean
   formatting_preset: string | null
+  /** Header/footer art, per-section headers and page numbering from an import (migration 032). */
+  page_layout?: PageLayout | null
   is_deleted: boolean
   deleted_at: string | null
   share_permission?: SharePermission
@@ -115,6 +117,7 @@ export interface CreateDocumentRequest {
   orientation?: PageOrientation
   /** Blueprint key to bind at creation, e.g. 'apa_7th' or a user preset key. */
   formatting_preset?: string
+  page_layout?: PageLayout
 }
 
 export interface UpdateDocumentRequest {
@@ -132,7 +135,33 @@ export interface UpdateDocumentRequest {
   formatting_history?: string[]
   is_isolated?: boolean
   formatting_preset?: string | null
+  page_layout?: PageLayout | null
   citation_data?: CitationData
+}
+
+/** One Word section's header/footer choice and page numbering. */
+export interface PageLayoutSection {
+  index: number
+  header: string | null
+  footer: string | null
+  first_header: string | null
+  first_footer: string | null
+  title_pg: boolean
+  number_start: number | null
+  number_format: string
+  header_distance: number
+  footer_distance: number
+}
+
+/** What an import keeps of a document's page furniture beyond header/footer text. */
+export interface PageLayout {
+  sections: PageLayoutSection[]
+  /** Distinct header/footer parts: flowing HTML plus pictures positioned from the page corner. */
+  parts: Record<string, { flow: string; art: string }>
+  /** Pictures repeated on several pages (running letterhead, footer logos). */
+  repeat_art: string
+  /** Pictures that belong to one page, by 1-based page number. */
+  page_art: Record<string, string>
 }
 
 /** A document's citation style and saved references. */

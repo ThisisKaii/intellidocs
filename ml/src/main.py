@@ -762,8 +762,9 @@ def convert_document(file: UploadFile = File(...)) -> dict[str, Any]:
     """Convert uploaded .docx or .pdf file into high-fidelity HTML.
 
     Returns {"html", "page_setup", "header", "footer", "header_number_format",
-    "footer_number_format"} so the server can persist page size/margins,
-    header/footer text and the page-number format read from a PAGE field.
+    "footer_number_format", "page_art", "hf"} so the server can persist page
+    size/margins, header/footer text, the page-number format read from a PAGE
+    field, pictures pinned to pages, and per-section headers/footers/numbering.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is missing.")
