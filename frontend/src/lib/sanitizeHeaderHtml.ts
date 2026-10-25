@@ -8,7 +8,7 @@ const REMOVED_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'S
 
 /** Inline style properties kept from imported header markup. */
 const ALLOWED_STYLE_PROPS = new Set([
-  'color', 'background-color', 'font-family', 'font-size', 'font-style', 'font-weight', 'line-height',
+  'color', 'background', 'background-color', 'box-sizing', 'overflow', 'font-family', 'font-size', 'font-style', 'font-weight', 'line-height',
   'text-align', 'text-decoration', 'text-indent', 'letter-spacing', 'vertical-align', 'white-space',
   'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
   'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',

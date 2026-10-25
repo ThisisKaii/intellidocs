@@ -18,6 +18,18 @@ export interface PageLayoutData {
   parts: Record<string, { flow: string; art: string }>
   repeat_art: string
   page_art: Record<string, string>
+  /** Boxes hung beside a paragraph (`data-overlay` id): x from the page, y from the paragraph's top. */
+  overlays?: Record<string, PageOverlay>
+}
+
+/** A picture or text box Word hangs beside a paragraph without wrapping text around it. */
+export interface PageOverlay {
+  x: number
+  y: number
+  w: number
+  h: number
+  behind: boolean
+  html: string
 }
 
 /** Where each section starts and how many pages the document has, measured from the laid-out editor. */

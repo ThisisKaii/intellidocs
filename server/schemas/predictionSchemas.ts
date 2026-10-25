@@ -123,7 +123,13 @@ export const pythonConversionResponseSchema = z.object({
       parts: pageLayoutBaseSchema.shape.parts,
     })
     .optional(),
-  page_art: z.object({ repeat: z.string(), pages: z.record(z.string(), z.string()) }).optional(),
+  page_art: z
+    .object({
+      repeat: z.string(),
+      pages: z.record(z.string(), z.string()),
+      overlays: pageLayoutBaseSchema.shape.overlays,
+    })
+    .optional(),
 })
 
 export type PredictionTextInput = z.infer<typeof predictionTextSchema>

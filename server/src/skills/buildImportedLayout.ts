@@ -33,10 +33,13 @@ export async function buildImportedLayout(
   const pageArt: PageLayout['page_art'] = {}
   for (const [page, html] of Object.entries(py.page_art?.pages ?? {})) pageArt[page] = await store(html)
 
+  const overlays: NonNullable<PageLayout['overlays']> = {}
+  for (const [id, box] of Object.entries(py.page_art?.overlays ?? {})) overlays[id] = { ...box, html: await store(box.html) }
+
   const hasParts = Object.keys(parts).length > 0
-  const hasArt = repeatArt !== '' || Object.keys(pageArt).length > 0
+  const hasArt = repeatArt !== '' || Object.keys(pageArt).length > 0 || Object.keys(overlays).length > 0
   const layout: PageLayout | undefined = needsLayout(py, hasParts, hasArt)
-    ? { sections: py.hf?.sections ?? [], parts, repeat_art: repeatArt, page_art: pageArt }
+    ? { sections: py.hf?.sections ?? [], parts, repeat_art: repeatArt, page_art: pageArt, overlays }
     : undefined
 
   return {

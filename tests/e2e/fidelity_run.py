@@ -82,7 +82,7 @@ def convert(path: Path) -> dict:
 def _page_layout(result: dict) -> dict | None:
     """The page furniture the server stores as `page_layout`, or None when the file has none."""
     hf, art = result.get("hf") or {}, result.get("page_art") or {}
-    if not (hf.get("parts") or art.get("repeat") or art.get("pages")):
+    if not (hf.get("parts") or art.get("repeat") or art.get("pages") or art.get("overlays")):
         numbered = any(s.get("number_start") is not None or s.get("number_format") != "decimal" or s.get("title_pg") for s in hf.get("sections", []))
         if not numbered:
             return None
@@ -91,6 +91,7 @@ def _page_layout(result: dict) -> dict | None:
         "parts": hf.get("parts", {}),
         "repeat_art": art.get("repeat", ""),
         "page_art": art.get("pages", {}),
+        "overlays": art.get("overlays", {}),
     }
 
 

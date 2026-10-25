@@ -37,6 +37,12 @@ export const pageLayoutBaseSchema = z.object({
     parts: z.record(z.string().max(20), z.object({ flow: z.string(), art: z.string() })),
     repeat_art: z.string(),
     page_art: z.record(z.string().max(10), z.string()),
+    overlays: z
+      .record(
+        z.string().max(10),
+        z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number(), behind: z.boolean(), html: z.string() }),
+      )
+      .optional(),
 })
 
 export const pageLayoutSchema = pageLayoutBaseSchema.refine(
