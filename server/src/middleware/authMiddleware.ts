@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import { createClient } from '@supabase/supabase-js'
+import { isMissingSecondFactor } from '../utils/tokenClaims'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
 
@@ -21,6 +22,12 @@ export async function authMiddleware(
 
     if (error || !data.user) {
       res.status(401).json({ error: '401 Unauthorized: Invalid or expired session token' })
+      return
+    }
+
+    // An account with 2FA on must present a token that passed the code step.
+    if (isMissingSecondFactor(data.user, token)) {
+      res.status(401).json({ error: '401 Unauthorized: Two-factor code required', code: 'mfa_required' })
       return
     }
 

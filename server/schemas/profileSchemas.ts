@@ -37,3 +37,14 @@ export const profileImportSchema = z.object({
 
 export type ProfileImportInput = z.infer<typeof profileImportSchema>
 export type PortableBinding = z.infer<typeof portableBindingSchema>
+/** The editor preferences a user keeps on their account (same fields as the browser copy). */
+export const editorPreferencesSchema = z.object({
+  underlineStyle: z.enum(['straight', 'wavy']),
+  sensitivity: z.enum(['low', 'medium', 'high']),
+  highlightColor: z.enum(['indigo', 'purple', 'emerald', 'amber']),
+  showStyleGuides: z.boolean(),
+  formattingSuggestions: z.boolean(),
+  grammarSuggestions: z.boolean(),
+})
+
+export type EditorPreferencesInput = z.infer<typeof editorPreferencesSchema>

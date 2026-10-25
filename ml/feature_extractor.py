@@ -4,6 +4,8 @@ from typing import List, Optional, Tuple
 
 import duckdb
 
+import duckdb_store
+
 
 FEATURE_TABLE = "formatting_features"
 
@@ -153,8 +155,7 @@ def overwrite_features(conn: duckdb.DuckDBPyConnection, rows: List[Tuple]) -> in
 
 
 def main() -> None:
-    duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
-    conn = duckdb.connect(duckdb_path)
+    conn = duckdb_store.connect_duckdb().conn
     ensure_feature_table(conn)
 
     rows = extract_features(conn)

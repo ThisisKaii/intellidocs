@@ -8,13 +8,14 @@ const supabase = createClient(
 )
 
 /**
- * Storage quota per role in bytes. Verified/qualified accounts (professor,
- * admin) get a higher cap than default student accounts.
+ * Storage quota per role in bytes, sized so a class of free-tier testers fits in
+ * the 500 MB database with room for versions and analytics. Verified accounts
+ * (professor, admin) get a higher cap than default student accounts.
  */
-const STORAGE_QUOTA_BYTES: Record<RoleName, number> = {
-  student: 500 * 1024 * 1024,
-  professor: 1024 * 1024 * 1024,
-  admin: 1024 * 1024 * 1024,
+export const STORAGE_QUOTA_BYTES: Record<RoleName, number> = {
+  student: 25 * 1024 * 1024,
+  professor: 50 * 1024 * 1024,
+  admin: 100 * 1024 * 1024,
 }
 
 /**
@@ -244,4 +245,48 @@ export async function findUserIdByEmail(email: string): Promise<string | null> {
   if (error) throw new Error(error.message)
   const match = data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase())
   return match?.id ?? null
+}
+
+/** How long a user's storage summary is reused, so frequent autosaves don't each run the size query. */
+const QUOTA_CACHE_MS = 30_000
+const quotaCache = new Map<string, { at: number; summary: StorageSummary }>()
+
+/** Forget a user's cached storage summary (after a delete or an emptied trash frees space). */
+export function clearStorageCache(userId: string): void {
+  quotaCache.delete(userId)
+}
+
+/**
+ * Error thrown when a save would push an account over its storage quota.
+ * Carries status 413 and a code the editor uses to show the "storage full" notice.
+ */
+export function storageQuotaError(): Error & { status: number; code: string } {
+  return Object.assign(new Error('Storage full. Delete documents or empty the trash to keep saving.'), {
+    status: 413,
+    code: 'storage_quota_exceeded',
+  })
+}
+
+/**
+ * Throw a 413 when adding `addedBytes` of content would exceed the user's quota.
+ * A save that shrinks or keeps the size (addedBytes <= 0) is always allowed, and
+ * so is any save when the size can't be read: a broken size query must never
+ * stop someone from saving their work.
+ */
+export async function assertWithinStorageQuota(userId: string, addedBytes: number): Promise<void> {
+  if (addedBytes <= 0) return
+  try {
+    const cached = quotaCache.get(userId)
+    let summary = cached && Date.now() - cached.at < QUOTA_CACHE_MS ? cached.summary : null
+    if (!summary) {
+      summary = await getUserStorageSummary(userId)
+      if (summary) quotaCache.set(userId, { at: Date.now(), summary })
+    }
+    if (summary && summary.usedBytes + addedBytes > summary.quotaBytes) throw storageQuotaError()
+    // Count this save in the cached size, so a quick run of saves can't all pass on a stale reading.
+    if (summary) quotaCache.set(userId, { at: cached?.at ?? Date.now(), summary: { ...summary, usedBytes: summary.usedBytes + addedBytes } })
+  } catch (error) {
+    if ((error as { code?: string }).code === 'storage_quota_exceeded') throw error
+    console.error('Storage quota check failed (allowing the save):', error)
+  }
 }

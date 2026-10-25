@@ -4,6 +4,9 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
+import { needsMfaChallenge } from '../lib/mfa'
+import { MfaChallenge } from '../components/MfaChallenge'
+import { AuthShell } from '../components/AuthShell'
 
 /**
  * Hand the Google provider token to Express so Google Drive can be connected
@@ -37,6 +40,39 @@ export default function AuthCallback(): JSX.Element {
   const navigate = useNavigate()
   const { login } = useAuth()
   const [error, setError] = useState<string | null>(null)
+  // Set when the Google account has 2FA on and the code has not been entered yet.
+  const [awaitingCode, setAwaitingCode] = useState(false)
+
+  /** Sync the profile and open the dashboard with the given session. */
+  async function finishSignIn(session: Session): Promise<void> {
+    try {
+      // Sync with Express backend to create/fetch user profile and get role
+      const result = await api.auth.googleSync(session.access_token)
+
+      // Supabase returns the Google provider token only when the sign-in
+      // requested offline access. Link it to this account so Google Drive
+      // works without a second consent prompt. Failure is non-fatal: the user
+      // can still connect Drive later, and a wrong drive.readonly scope simply
+      // means this step is skipped.
+      await linkGoogleDrive(session)
+
+      login(
+        {
+          id: result.user.id,
+          email: result.user.email,
+          role: result.role,
+          verificationStatus: result.verificationStatus,
+          requestedRole: result.requestedRole ?? null,
+        },
+        session.access_token,
+        session.refresh_token
+      )
+
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed')
+    }
+  }
 
   useEffect(() => {
     async function handleCallback(): Promise<void> {
@@ -48,36 +84,30 @@ export default function AuthCallback(): JSX.Element {
         const session = data.session
         if (!session) throw new Error('No session returned from OAuth provider.')
 
-        // Sync with Express backend to create/fetch user profile and get role
-        const result = await api.auth.googleSync(session.access_token)
-
-        // Supabase returns the Google provider token only when the sign-in
-        // requested offline access. Link it to this account so Google Drive
-        // works without a second consent prompt. Failure is non-fatal: the user
-        // can still connect Drive later, and a wrong drive.readonly scope simply
-        // means this step is skipped.
-        await linkGoogleDrive(session)
-
-        login(
-          {
-            id: result.user.id,
-            email: result.user.email,
-            role: result.role,
-            verificationStatus: result.verificationStatus,
-            requestedRole: result.requestedRole ?? null,
-          },
-          session.access_token,
-          session.refresh_token
-        )
-
-        navigate('/dashboard', { replace: true })
+        if (await needsMfaChallenge()) {
+          setAwaitingCode(true)
+          return
+        }
+        await finishSignIn(session)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Authentication failed')
       }
     }
 
-    handleCallback()
+    void handleCallback()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  if (awaitingCode) {
+    return (
+      <AuthShell>
+        <MfaChallenge
+          onVerified={(session) => { setAwaitingCode(false); void finishSignIn(session) }}
+          onCancel={() => { void supabase.auth.signOut().finally(() => navigate('/login', { replace: true })) }}
+        />
+      </AuthShell>
+    )
+  }
 
   if (error) {
     return (

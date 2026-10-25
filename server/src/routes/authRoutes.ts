@@ -1,9 +1,9 @@
 import { Router } from 'express'
-import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getApplicationStatus, getUserStorage, getMe } from '../controllers/authController'
+import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getApplicationStatus, changePassword, deleteAccount, getUserStorage, getMe } from '../controllers/authController'
 import { authMiddleware } from '../middleware/authMiddleware'
 import { authArcjet, signupArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
-import { authBodySchema, googleAuthSchema, updateProfileSchema, applyProfessorSchema, applyStudentSchema } from '../../schemas/authSchemas'
+import { authBodySchema, googleAuthSchema, updateProfileSchema, applyProfessorSchema, applyStudentSchema, changePasswordSchema, deleteAccountSchema } from '../../schemas/authSchemas'
 
 const router = Router()
 
@@ -28,6 +28,8 @@ router.get('/me', authMiddleware, getMe)
 
 /** Submit a faculty verification application (student → pending professor). */
 router.get('/application-status', authMiddleware, getApplicationStatus)
+router.post('/password', authMiddleware, validateBody(changePasswordSchema), changePassword)
+router.delete('/account', authMiddleware, validateBody(deleteAccountSchema), deleteAccount)
 router.post('/apply-professor', authMiddleware, validateBody(applyProfessorSchema), applyProfessor)
 
 /** Submit a student status application (regular user → pending student). */

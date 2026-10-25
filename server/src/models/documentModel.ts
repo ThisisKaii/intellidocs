@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion, FormatSnapshot, PageNumberFormat } from '../types/index'
 import { getRedisClient } from '../utils/redisClient'
 import { isDestructiveBlankOverwrite } from '../utils/documentGuards'
+import { assertWithinStorageQuota } from './userModel'
 import { isShareLinkExpired } from './shareModel'
 import { nextUniqueTitle } from '../utils/uniqueTitle'
 import { extractPreviewSnippet } from '../utils/previewSnippet'
@@ -329,6 +330,7 @@ export async function createDocument(
   userId: string,
   req: CreateDocumentRequest
 ): Promise<Document> {
+  await assertWithinStorageQuota(userId, Buffer.byteLength(req.content ?? ''))
   const row: Record<string, unknown> = {
     user_id: userId,
     title: req.unique_title ? await resolveUniqueTitle(userId, req.title) : req.title,
@@ -399,6 +401,11 @@ export async function updateDocument(
     const conflict = new Error('Refusing to replace a non-empty document with an empty, untitled one') as Error & { status: number }
     conflict.status = 409
     throw conflict
+  }
+
+  // Only growth counts toward the owner's quota; shrinking a document always saves.
+  if (req.content !== undefined) {
+    await assertWithinStorageQuota(doc.user_id, Buffer.byteLength(req.content) - Buffer.byteLength(doc.content ?? ''))
   }
 
   // Refresh the grid-preview snippet whenever the content changes.

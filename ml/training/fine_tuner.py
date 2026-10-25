@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import pickle
 from datetime import datetime, timezone
 from typing import List
@@ -7,6 +8,10 @@ from typing import List
 import duckdb
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+
+# The shared DuckDB connector lives one folder up; make it importable when run as a script.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import duckdb_store  # noqa: E402
 
 # NOTE: This module performs Supervised Fine-Tuning (SFT) based on labeled user feedback events.
 # Accepted suggestions provide positive formatting labels; rejected suggestions provide negative labels.
@@ -91,10 +96,9 @@ def save_user_model(
 def main() -> None:
     """Fine-tune a model for one user using DuckDB supervised features."""
     args = parse_args()
-    duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
     output_dir = os.getenv("USER_MODEL_DIR", "ml/models/user_models")
 
-    conn = duckdb.connect(duckdb_path)
+    conn = duckdb_store.connect_duckdb(read_only=True).conn
     frame = load_user_features(conn, args.user_id)
     conn.close()
 

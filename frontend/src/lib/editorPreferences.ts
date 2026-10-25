@@ -5,6 +5,8 @@
  * the owning React tree.
  */
 
+import { api } from '../services/api'
+
 export type UnderlineStyle = 'straight' | 'wavy'
 
 export type SuggestionSensitivity = 'low' | 'medium' | 'high'
@@ -76,12 +78,70 @@ export function getEditorPreferences(): EditorPreferences {
   }
 }
 
-/** Persist preferences and notify subscribers. Returns the new value. */
-export function setEditorPreferences(update: Partial<EditorPreferences>): EditorPreferences {
+/** How long after the last change the account copy is saved, so a burst of clicks makes one request. */
+const REMOTE_SAVE_DELAY_MS = 1500
+let remoteSaveTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Save the preferences on the account shortly after the last change (only while signed in). */
+function scheduleRemoteSave(): void {
+  try {
+    if (!localStorage.getItem('authToken')) return
+  } catch {
+    return
+  }
+  clearTimeout(remoteSaveTimer)
+  remoteSaveTimer = setTimeout(() => {
+    api.profile.saveEditorPreferences({ ...getEditorPreferences() }).catch(() => {
+      // The browser copy still works; the next change tries the account again.
+    })
+  }, REMOTE_SAVE_DELAY_MS)
+}
+
+/**
+ * Persist preferences and notify subscribers. Returns the new value. Changes are
+ * also saved to the account unless `remote` is false (used when applying the
+ * account's own copy, which must not be sent straight back).
+ */
+export function setEditorPreferences(
+  update: Partial<EditorPreferences>,
+  options: { remote?: boolean } = {},
+): EditorPreferences {
   const next = { ...getEditorPreferences(), ...update }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   window.dispatchEvent(new CustomEvent(PREFERENCES_CHANGE_EVENT, { detail: next }))
+  if (options.remote !== false) scheduleRemoteSave()
   return next
+}
+
+/** Keep only the fields of a stored copy that have a valid value, so a bad copy can't break the editor. */
+export function sanitizePreferences(value: unknown): Partial<EditorPreferences> {
+  if (!value || typeof value !== 'object') return {}
+  const raw = value as Record<string, unknown>
+  const result: Partial<EditorPreferences> = {}
+  if (raw.underlineStyle === 'straight' || raw.underlineStyle === 'wavy') result.underlineStyle = raw.underlineStyle
+  if (raw.sensitivity === 'low' || raw.sensitivity === 'medium' || raw.sensitivity === 'high') result.sensitivity = raw.sensitivity
+  if (['indigo', 'purple', 'emerald', 'amber'].includes(raw.highlightColor as string)) result.highlightColor = raw.highlightColor as HighlightColor
+  if (typeof raw.showStyleGuides === 'boolean') result.showStyleGuides = raw.showStyleGuides
+  if (typeof raw.formattingSuggestions === 'boolean') result.formattingSuggestions = raw.formattingSuggestions
+  if (typeof raw.grammarSuggestions === 'boolean') result.grammarSuggestions = raw.grammarSuggestions
+  return result
+}
+
+/**
+ * On sign-in, make the account's saved preferences the ones in use. An account
+ * that has none yet takes this browser's current choices, so nothing is lost.
+ */
+export async function loadAccountPreferences(): Promise<void> {
+  try {
+    const { preferences } = await api.profile.getEditorPreferences()
+    if (!preferences) {
+      scheduleRemoteSave()
+      return
+    }
+    setEditorPreferences(sanitizePreferences(preferences), { remote: false })
+  } catch {
+    // Offline or signed out: the browser copy keeps working.
+  }
 }
 
 /** Subscribe to preference changes. Returns an unsubscribe function. */

@@ -18,6 +18,17 @@ export const updateProfileSchema = z.object({
   display_name: z.string().trim().min(1, 'Display name is required').max(100, 'Display name must be at most 100 characters'),
 })
 
+/** Validate a password change. The current password is checked by the server for password accounts. */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().max(200).optional(),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters long').max(72, 'Password must be at most 72 characters long'),
+})
+
+/** Validate an account deletion request; the user retypes their email to confirm. */
+export const deleteAccountSchema = z.object({
+  confirmEmail: z.string().trim().min(3).max(320),
+})
+
 /** Validate a faculty/professor application request body. */
 export const applyProfessorSchema = z.object({
   college: z.string().trim().min(1, 'College is required').max(200),
@@ -36,6 +47,8 @@ export const applyStudentSchema = z.object({
 
 export type AuthBody = z.infer<typeof authBodySchema>
 export type GoogleAuthBody = z.infer<typeof googleAuthSchema>
+export type ChangePasswordBody = z.infer<typeof changePasswordSchema>
+export type DeleteAccountBody = z.infer<typeof deleteAccountSchema>
 export type UpdateProfileBody = z.infer<typeof updateProfileSchema>
 export type ApplyProfessorBody = z.infer<typeof applyProfessorSchema>
 export type ApplyStudentBody = z.infer<typeof applyStudentSchema>

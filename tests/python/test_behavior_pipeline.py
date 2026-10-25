@@ -233,6 +233,13 @@ class _FakeRedis:
     def delete(self, key):
         self.store.pop(key, None)
 
+    def ltrim(self, key, start, _stop):
+        remaining = self.store[key][start:]
+        if remaining:
+            self.store[key] = remaining
+        else:
+            self.store.pop(key, None)
+
 
 class TestAggregatorKeyFiltering:
     def test_learned_format_map_is_skipped_not_crashed_on(self, tmp_path, monkeypatch):

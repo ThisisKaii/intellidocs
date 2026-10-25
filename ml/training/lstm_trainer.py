@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import pickle
 from datetime import datetime, timezone
 from typing import List, Tuple
@@ -9,6 +10,10 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
+# The shared DuckDB connector lives one folder up; make it importable when run as a script.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import duckdb_store  # noqa: E402
 
 # Map format action names to integer indices for LSTM embedding
 ACTION_VOCAB = [
@@ -148,7 +153,7 @@ def main() -> None:
         print(f"❌ DuckDB database not found at {duckdb_path}")
         return
 
-    conn = duckdb.connect(duckdb_path)
+    conn = duckdb_store.connect_duckdb(read_only=True).conn
     x_data, y_data = load_user_action_sequences(conn, args.user_id, args.seq_len)
     conn.close()
 
