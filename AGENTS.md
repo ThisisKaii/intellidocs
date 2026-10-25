@@ -389,6 +389,30 @@ intellidocs/
   are computed at runtime with Word's rule (next custom stop, else next default
   multiple; right/center stops subtract the following text). Runs of spaces keep
   their width via alternating U+00A0.
+- Headings follow the same rule as paragraphs: the converter writes the source's
+  own size, weight, alignment and spacing inline (`_heading_css`) and `CustomHeading`
+  keeps that `style`. Title-page lines (centred lines before the first chapter) stay
+  paragraphs. Applying a style tile writes a combined look onto the block
+  (`combinedLook`, `styleCommands.ts`); the heading level is only a hidden structure
+  tag, and a preset never overwrites a block that carries its own look.
+- Tables are rebuilt from the source, not styled by the editor: borders come from
+  tblBorders/tcBorders (style chain included), padding from tblCellMar/tcMar, shading
+  only from `w:shd`, vertical alignment from `w:vAlign`. Cell style props must be in the
+  editor whitelist as LONGHANDS (`padding-top`, not `padding`). Do not re-add the
+  `!important` line-height/margin on `td p`; it flattened every cell's spacing.
+- Drawn lines (`wps:wsp` straight connectors) become bordered empty paragraphs
+  (`rule-line`); `mc:Fallback` copies of drawings are never rendered. Blank lines and a
+  trailing `<br>` right before a page break are dropped (`_trim_page_ends`) so a page
+  that runs a line long cannot spill onto a blank page.
+- The library's 1px border on the page stack (border-box) made the text column 2px
+  narrower than the page margins and re-wrapped lines Word fits; PagedEditor removes it.
+  Keep the text column exactly page width minus margins.
+- Fidelity is measured, not eyeballed: `tests/e2e/fidelity_run.py` converts every
+  fixture and compares each page with its reference image (page count, words per page,
+  blurred layout correlation). Run it after any converter or page-layout change.
+- Production builds must set `VITE_API_URL` to the backend's full URL; `vite.config.ts`
+  fails the build otherwise (a relative `/api` only works behind the dev proxy and
+  returns 405 on a static host).
 - Never use the opencode helper `start-stack.ps1` (in the Temp\opencode folder):
   it starts mock-supabase, which this project no longer uses.
 

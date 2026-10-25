@@ -1,13 +1,18 @@
 import crypto from 'crypto'
 import { getRedisClient } from '../utils/redisClient'
 
-/** Lifecycle of a large-file Drive import. */
+/** Lifecycle of a background import (Drive large file or local upload). */
 export type ImportJobState = 'queued' | 'downloading' | 'converting' | 'done' | 'failed'
 
-/** A tracked large-file import, stored in Redis and polled by the client. */
+/** Where an import's bytes come from. */
+export type ImportJobSource = 'drive' | 'local'
+
+/** A tracked import, stored in Redis and polled by the client. */
 export interface ImportJob {
   id: string
   userId: string
+  source: ImportJobSource
+  /** Drive file id; empty for a local upload. */
   fileId: string
   fileName: string
   /** 0-100; meaningful while queued/downloading/converting. */
@@ -16,6 +21,8 @@ export interface ImportJob {
   title: string
   html: string
   error: string
+  /** Id of the document created when the job finished; empty until then. */
+  documentId: string
   createdAt: number
   updatedAt: number
 }
@@ -51,12 +58,14 @@ async function trimIndex(client: Awaited<ReturnType<typeof getRedisClient>>, use
 export async function createImportJob(
   userId: string,
   fileId: string,
-  fileName: string
+  fileName: string,
+  source: ImportJobSource = 'drive'
 ): Promise<ImportJob> {
   const client = await getRedisClient()
   const job: ImportJob = {
     id: crypto.randomUUID(),
     userId,
+    source,
     fileId,
     fileName,
     progress: 0,
@@ -64,6 +73,7 @@ export async function createImportJob(
     title: '',
     html: '',
     error: '',
+    documentId: '',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   }
@@ -96,7 +106,7 @@ export async function getImportJob(jobId: string): Promise<ImportJob | null> {
  */
 export async function updateImportJob(
   jobId: string,
-  patch: Partial<Pick<ImportJob, 'state' | 'progress' | 'error' | 'title' | 'html'>>
+  patch: Partial<Pick<ImportJob, 'state' | 'progress' | 'error' | 'title' | 'html' | 'documentId'>>
 ): Promise<void> {
   const client = await getRedisClient()
   const existing = await getImportJob(jobId)
@@ -149,4 +159,15 @@ export async function listUserImportJobs(userId: string): Promise<ImportJob[]> {
 export function isStaleJob(job: ImportJob, ttlSeconds = JOB_TTL_SECONDS): boolean {
   if (job.state === 'done' || job.state === 'failed') return false
   return Date.now() - job.updatedAt > ttlSeconds * 1000
+}
+
+/** Report an unfinished job that outlived the TTL as failed so clients stop polling it. */
+export function settleStaleJob(job: ImportJob): ImportJob {
+  if (!isStaleJob(job)) return job
+  return {
+    ...job,
+    state: 'failed',
+    progress: 0,
+    error: 'The import did not finish. The server may have restarted during processing. Please try again.',
+  }
 }

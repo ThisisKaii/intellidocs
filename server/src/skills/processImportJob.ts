@@ -4,6 +4,8 @@ import os from 'os'
 import path from 'path'
 import type { drive_v3 } from 'googleapis/build/src/apis/drive'
 import * as driveModel from '../models/driveModel'
+import * as documentModel from '../models/documentModel'
+import { uploadImportImages } from './uploadImportImages'
 import {
   createImportJob,
   failImportJob,
@@ -147,11 +149,19 @@ export async function processImportJob(job: ImportJob): Promise<void> {
     await updateImportJob(job.id, { state: 'converting', progress: CONVERT_START })
     const { html } = await convertToHtml({ filePath: tempPath, title, mimeType, buffer: null })
 
+    // The server owns document creation so the import finishes even when the
+    // user has navigated away from the page that started it.
+    const content = sanitizeImportedHtml(await uploadImportImages(job.userId, html))
+    const document = await documentModel.createDocument(job.userId, {
+      title,
+      unique_title: true,
+      content,
+    })
     await updateImportJob(job.id, {
       state: 'done',
       progress: 100,
-      title,
-      html: sanitizeImportedHtml(html),
+      title: document.title,
+      documentId: document.id,
     })
   } catch (error) {
     await failImportJob(

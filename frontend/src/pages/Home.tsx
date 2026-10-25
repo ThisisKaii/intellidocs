@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type DocumentRecord, type DriveFile, type FolderRecord, type FolderType, type StorageSummary, type UserPreset } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
-import { useImportJob } from '@/hooks/useImportJob'
+import { useImports } from '@/context/ImportContext'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
 import { FileText, FolderIcon, GraduationCap, HardDrive, Menu, Plus, Search, Upload } from 'lucide-react'
@@ -21,7 +21,7 @@ import {
   buildBlueprintHtml,
   type DocumentBlueprint,
 } from '@/components/editor/documentBlueprints'
-import ImportFileModal, { type ImportProgress, ImportProgressToast } from '@/components/ImportFileModal'
+import ImportFileModal from '@/components/ImportFileModal'
 import ShareModal from '@/components/ShareModal'
 import { supabase } from '@/lib/supabase'
 import { useDriveCache } from '@/hooks/useDriveCache'
@@ -124,12 +124,7 @@ export default function HomePage(): JSX.Element {
   const [folderSubmitting, setFolderSubmitting] = useState<boolean>(false)
   const [folderModalError, setFolderModalError] = useState<string>('')
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false)
-  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null)
-  /** Job id for an async Drive import over the 15MB threshold, if any. */
-  const [driveImportJobId, setDriveImportJobId] = useState<string | null>(null)
-  /** Guards against importing the same finished job twice across re-renders. */
-  const handledJobRef = useRef<string | null>(null)
-  const driveImport = useImportJob(driveImportJobId)
+  const { importFiles, trackJob } = useImports()
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null)
   const [shareDocId, setShareDocId] = useState<string | null>(null)
 
@@ -392,60 +387,29 @@ export default function HomePage(): JSX.Element {
   }
 
   /**
-   * Import a Google Drive file. The dialog hands the file over and closes
-   * immediately, so the download/conversion runs here and reports through the
-   * bottom-right progress toast instead of blocking the dialog.
-   *
-   * Files over 15MB come back as 202 with a job id: the server keeps working
-   * after the response, so this switches to polling instead of awaiting HTML.
+   * Import a Google Drive file. Small files come back as HTML and open at once.
+   * Files over 15MB come back as 202 with a job id: the server converts and
+   * saves them in the background and the global import toast follows the job,
+   * so the user can leave this page meanwhile.
    */
   async function handleDriveImport(file: DriveFile): Promise<void> {
     setError('')
-    setImportProgress({ done: 0, total: 1, currentName: file.name })
-
     try {
       const res = await api.drive.exportFile(file.id)
 
       // A 202 body carries jobId and no html field at all, so discriminate on
       // the presence of html rather than on an optional jobId.
       if (!('html' in res)) {
-        setDriveImportJobId(res.jobId)
+        trackJob(res.jobId, file.name)
         return
       }
 
-      setImportProgress({ done: 1, total: 1, currentName: '' })
       await api.documents.list().then(setAllDocuments).catch(() => undefined)
       await handleImportDoc(res.title, res.html)
     } catch (err) {
-      setImportProgress(null)
       setError(err instanceof Error ? err.message : `Failed to import "${file.name}".`)
     }
   }
-
-  /** Adopt a finished async import: create the document, then clear the toast. */
-  useEffect(() => {
-    const job = driveImport.job
-    if (!driveImport.done || !job) return
-    if (handledJobRef.current === job.id) return
-    handledJobRef.current = job.id
-
-    void (async () => {
-      try {
-        setImportProgress({ done: 1, total: 1, currentName: '' })
-        await api.documents.list().then(setAllDocuments).catch(() => undefined)
-        if (job.html) {
-          await handleImportDoc(job.title || job.fileName, job.html)
-        }
-        setDriveImportJobId(null)
-      } catch (err) {
-        setImportProgress(null)
-        setError(err instanceof Error ? err.message : 'Failed to finish the import.')
-      }
-    })()
-    // Intentionally keyed on the job id only: the object identity changes on
-    // every poll tick and would re-trigger the import.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driveImport.done, driveImport.job])
 
   /** Sidebar navigation. */
   function handleSelectView(sel: FolderSelection): void {
@@ -938,12 +902,7 @@ export default function HomePage(): JSX.Element {
       {importFileOpen && (
         <ImportFileModal
           onClose={() => setImportFileOpen(false)}
-          onProgress={setImportProgress}
-          onError={(message) => setError(message)}
-          onImported={() => {
-            // Refresh document list after successful import
-            api.documents.list().then(setAllDocuments).catch(() => {})
-          }}
+          onImport={importFiles}
         />
       )}
 
@@ -981,20 +940,6 @@ export default function HomePage(): JSX.Element {
           userPresets={userPresets}
           submitting={createSubmitting}
           error={createModalError}
-        />
-      )}
-
-      {/* Google-Drive-style import progress toast (bottom right) */}
-      {importProgress && (
-        <ImportProgressToast
-          progress={importProgress}
-          onDone={() => {
-            setImportProgress(null)
-            setDriveImportJobId(null)
-          }}
-          percent={driveImportJobId ? driveImport.progress : undefined}
-          phase={driveImportJobId ? driveImport.phase : undefined}
-          error={driveImportJobId ? driveImport.error : undefined}
         />
       )}
 

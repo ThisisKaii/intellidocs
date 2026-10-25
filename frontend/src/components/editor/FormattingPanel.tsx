@@ -13,9 +13,11 @@ import { setEditorPreferences } from '@/lib/editorPreferences'
 const FORMAT_OPTIONS = Object.keys(FORMAT_LABELS)
 
 interface FormattingPanelProps {
-  documentId: string | undefined
-  activePreset: string | null
-  onPresetChange: (preset: string | null) => void
+  documentId?: string | undefined
+  activePreset?: string | null
+  onPresetChange?: (preset: string | null) => void
+  /** Show only the custom rules (Settings); the preset picker belongs to a document. */
+  rulesOnly?: boolean
 }
 
 interface BindingForm {
@@ -38,8 +40,9 @@ const EMPTY_FORM: BindingForm = {
  */
 export default function FormattingPanel({
   documentId,
-  activePreset,
+  activePreset = null,
   onPresetChange,
+  rulesOnly = false,
 }: FormattingPanelProps): JSX.Element {
   const prefs = useEditorPreferences()
   const [presets, setPresets] = useState<FormatPreset[]>([])
@@ -76,7 +79,7 @@ export default function FormattingPanel({
     if (!documentId) return
     try {
       await api.formatting.setDocumentPreset(documentId, key)
-      onPresetChange(key)
+      onPresetChange?.(key)
     } catch (err) {
       console.error('Failed to apply preset', err)
     }
@@ -122,6 +125,8 @@ export default function FormattingPanel({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {!rulesOnly && (
+        <>
       {/* ── Preset overlays switch ── */}
       <div
         style={{
@@ -202,6 +207,9 @@ export default function FormattingPanel({
             'Start with an empty profile and let your custom bindings define formatting.'}
         </p>
       </div>
+
+        </>
+      )}
 
       {/* ── Tier 2: Custom bindings ── */}
       <div>

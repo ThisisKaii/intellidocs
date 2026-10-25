@@ -12,6 +12,35 @@ export const predictionTextSchema = z.object({
   isolationMode: z.enum(['baseline', 'isolated', 'hybrid']).optional(),
 })
 
+/** One editor text block sent to the grammar and spelling checkers. */
+export const textBlockSchema = z.object({
+  text: z.string().max(50000),
+  kind: z.enum(['paragraph', 'heading', 'listItem']).default('paragraph'),
+  align: z.string().max(20).default('left'),
+  centered: z.boolean().default(false),
+})
+
+/**
+ * Validate grammar/spell payloads: per-block text with layout metadata, or the
+ * older plain string. At least one non-empty source is required.
+ */
+export const grammarCheckSchema = z
+  .object({
+    text: z.string().trim().max(50000, 'Text is too long').optional(),
+    blocks: z.array(textBlockSchema).max(5000).optional(),
+  })
+  .refine(
+    (body) =>
+      Boolean(body.text) ||
+      (body.blocks ?? []).some((block) => block.text.trim().length > 0),
+    { message: 'Text is required' }
+  )
+  .refine(
+    (body) =>
+      (body.blocks ?? []).reduce((sum, block) => sum + block.text.length, 0) <= 50000,
+    { message: 'Text is too long' }
+  )
+
 /** Validate structured grammar issues returned by the Python service. */
 export const pythonGrammarIssueSchema = z.object({
   type: z.string().min(1),
@@ -90,6 +119,8 @@ export const pythonConversionResponseSchema = z.object({
 })
 
 export type PredictionTextInput = z.infer<typeof predictionTextSchema>
+export type TextBlock = z.infer<typeof textBlockSchema>
+export type GrammarCheckInput = z.infer<typeof grammarCheckSchema>
 export type FormatLabel = z.infer<typeof formatLabelSchema>
 export type PythonGrammarIssue = z.infer<typeof pythonGrammarIssueSchema>
 export type PythonGrammarCheckResponse = z.infer<

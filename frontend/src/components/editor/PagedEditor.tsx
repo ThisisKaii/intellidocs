@@ -573,6 +573,10 @@ export function PagedEditor({
     <div className={containerClassName} style={containerStyle}>
       <style>
         {`.ProseMirror.rm-with-pagination {
+            /* The library draws a 1px border on the page stack (border-box), which
+               left every text column 2px narrower than the page's margins say and
+               re-wrapped lines Word fits. */
+            border: 0 !important;
             background: var(--page-bg);
             border-radius: 4px;
             box-shadow: var(--page-shadow);

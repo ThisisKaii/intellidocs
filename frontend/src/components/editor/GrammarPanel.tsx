@@ -8,6 +8,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { api } from '@/services/api'
+import { grammarBlocksKey, textToGrammarBlocks } from '@/lib/grammarBlocks'
 
 export interface GrammarIssue {
   type: string
@@ -119,10 +120,10 @@ export default function GrammarPanel({
   const lastAutoCheckAtRef = useRef<number>(0)
   const lastCheckedTextRef = useRef<string>('')
 
-  // Strip HTML tags so the panel works whether it receives plain text or raw HTML
-  const plainText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-  // The prediction API rejects payloads over 50k chars — check the head only.
-  const checkText = plainText.slice(0, 50000)
+  // One block per line so the panel works whether it receives plain text or raw HTML
+  // and, like the editor hook, never reads separate lines as one run-on sentence.
+  const blocks = textToGrammarBlocks(text)
+  const plainText = grammarBlocksKey(blocks)
   const displayedIssues = activeIssues ?? issues?.issues ?? []
   const overallMessage =
     issues && activeIssues !== undefined && activeIssues.length === 0
@@ -141,8 +142,8 @@ export default function GrammarPanel({
 
     try {
       const [grammarResult, spellingResult] = await Promise.all([
-        api.predictions.grammarCheck(checkText),
-        api.predictions.spellCheck(checkText),
+        api.predictions.grammarCheck(blocks),
+        api.predictions.spellCheck(blocks),
       ])
 
       const result = buildGrammarResult(grammarResult, spellingResult)

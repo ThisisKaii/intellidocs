@@ -7,7 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 # Ensure the src/ directory is on sys.path so sibling modules (converter, grammar) resolve
 _SRC_DIR = str(Path(__file__).resolve().parent)
@@ -137,8 +137,20 @@ class PredictResponse(BaseModel):
     lstm_adjusted: bool = False
 
 
-class TextCheckRequest(BaseModel):
+class TextBlock(BaseModel):
+    """One editor text block with the layout hints the grammar rules need."""
+
     text: str
+    kind: Literal["paragraph", "heading", "listItem"] = "paragraph"
+    align: str = "left"
+    centered: bool = False
+
+
+class TextCheckRequest(BaseModel):
+    """Plain text, or per-block text with layout metadata (blocks win when present)."""
+
+    text: str = ""
+    blocks: list[TextBlock] | None = None
 
 
 def load_model_payload() -> dict[str, Any]:
@@ -657,7 +669,9 @@ async def grammar_check(request: TextCheckRequest) -> dict[str, Any]:
     try:
         from grammar.grammar_checker import evaluate_text
 
-        return evaluate_text(request.text)
+        return evaluate_text(
+            request.blocks if request.blocks is not None else request.text
+        )
     except Exception as error:
         raise HTTPException(
             status_code=500,
@@ -669,7 +683,9 @@ async def grammar_check(request: TextCheckRequest) -> dict[str, Any]:
 async def spelling_check(request: TextCheckRequest) -> dict[str, Any]:
     """Run the spelling checker on the given text."""
     try:
-        return check_spelling(request.text)
+        return check_spelling(
+            request.blocks if request.blocks is not None else request.text
+        )
     except Exception as error:
         raise HTTPException(
             status_code=500,

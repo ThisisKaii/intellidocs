@@ -59,3 +59,8 @@ export function useDriveCache(): {
 export async function clearDriveCache(): Promise<void> {
   await mutate(KEY, undefined, { revalidate: false })
 }
+
+/** Re-fetch the shared document listing from outside a component (for example when a background import finishes). */
+export async function refreshDriveCache(): Promise<void> {
+  await mutate(KEY)
+}

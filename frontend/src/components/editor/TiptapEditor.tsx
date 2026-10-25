@@ -257,8 +257,11 @@ const ALLOWED_STYLE_PROPS = new Set([
   'text-indent',
 ])
 
+/** Table cells also keep Word's row height (a minimum; text can still grow the row). */
+const CELL_STYLE_PROPS: ReadonlySet<string> = new Set(['height'])
+
 /** Extract only whitelisted CSS properties from an inline style string. */
-function filterStyle(raw: string | null): string | null {
+function filterStyle(raw: string | null, extra: ReadonlySet<string> = new Set()): string | null {
   if (!raw) return null
   const kept: string[] = []
   for (const decl of raw.split(';')) {
@@ -267,7 +270,7 @@ function filterStyle(raw: string | null): string | null {
     const colon = trimmed.indexOf(':')
     if (colon < 1) continue
     const prop = trimmed.slice(0, colon).trim().toLowerCase()
-    if (ALLOWED_STYLE_PROPS.has(prop)) kept.push(trimmed)
+    if (ALLOWED_STYLE_PROPS.has(prop) || extra.has(prop)) kept.push(trimmed)
   }
   return kept.length > 0 ? kept.join('; ') : null
 }
@@ -393,7 +396,7 @@ export const CustomTableCell = TableCellPlus.extend({
       },
       style: {
         default: null,
-        parseHTML: (el) => filterStyle(el.getAttribute('style')),
+        parseHTML: (el) => filterStyle(el.getAttribute('style'), CELL_STYLE_PROPS),
         renderHTML: (a) => (a.style ? { style: a.style } : {}),
       },
     }
@@ -419,7 +422,7 @@ export const CustomTableHeader = TableHeaderPlus.extend({
       },
       style: {
         default: null,
-        parseHTML: (el) => filterStyle(el.getAttribute('style')),
+        parseHTML: (el) => filterStyle(el.getAttribute('style'), CELL_STYLE_PROPS),
         renderHTML: (a) => (a.style ? { style: a.style } : {}),
       },
     }
@@ -929,6 +932,17 @@ const CustomHeading = Heading.extend({
         parseHTML: (el) => el.getAttribute('data-doc-role'),
         renderHTML: (a) => (a.docRole ? { 'data-doc-role': a.docRole } : {}),
       },
+      /**
+       * Inline style carried by an imported heading: its own size, vertical
+       * spacing, alignment and indent. Without it a title page's big gaps and
+       * sizes collapse into the editor's fixed heading rules. Choosing a style
+       * from the toolbar clears it (see applyStyleCommand).
+       */
+      style: {
+        default: null,
+        parseHTML: (el) => filterStyle(el.getAttribute('style')),
+        renderHTML: (a) => (a.style ? { style: a.style } : {}),
+      },
       ...guideAttributes,
     }
   },
@@ -1306,9 +1320,9 @@ interface StyleGalleryItem {
 /** Style-tile gallery: formats mapped to block tags for active highlighting. */
 const STYLE_GALLERY: StyleGalleryItem[] = [
   { format: 'normal',     tag: 'p',          label: 'Normal',      preview: {} },
-  { format: 'h1',         tag: 'h1',         label: 'Heading 1',   preview: { fontSize: '14px', fontWeight: 700 } },
-  { format: 'h2',         tag: 'h2',         label: 'Heading 2',   preview: { fontSize: '13px', fontWeight: 700 } },
-  { format: 'h3',         tag: 'h3',         label: 'Heading 3',   preview: { fontSize: '12px', fontWeight: 600 } },
+  { format: 'h1',         tag: 'h1',         label: 'Chapter heading', preview: { fontSize: '14px', fontWeight: 700 } },
+  { format: 'h2',         tag: 'h2',         label: 'Section heading', preview: { fontSize: '13px', fontWeight: 700 } },
+  { format: 'h3',         tag: 'h3',         label: 'Subsection heading', preview: { fontSize: '12px', fontWeight: 600 } },
   { format: 'title',      tag: 'h1',         label: 'Title',       preview: { fontSize: '15px', fontWeight: 700 } },
   { format: 'blockquote', tag: 'blockquote', label: 'Quote',       preview: { fontSize: '11px', fontStyle: 'italic' } },
   { format: 'caption',    tag: 'p',          label: 'Caption',     preview: { fontSize: '11px', fontStyle: 'italic' } },
@@ -3899,8 +3913,8 @@ const PROSE_STYLES = `
     color: #ffffff !important;
   }
   .ProseMirror th p, .ProseMirror td p {
-    margin: 0 !important;
-    line-height: 1.35 !important;
+    margin: 0;
+    line-height: 1.35;
   }
   /* Anchor the prosemirror-tables resize handle to the cell it resizes. */
   .ProseMirror td, .ProseMirror th { position: relative; }

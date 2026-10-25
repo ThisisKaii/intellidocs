@@ -21,6 +21,7 @@ function makeJob(overrides: Partial<ImportJob> = {}): ImportJob {
   return {
     id: 'job-1',
     userId: 'user-1',
+    source: 'drive',
     fileId: 'file-1',
     fileName: 'thesis.docx',
     progress: 0,
@@ -28,6 +29,7 @@ function makeJob(overrides: Partial<ImportJob> = {}): ImportJob {
     title: '',
     html: '',
     error: '',
+    documentId: '',
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,

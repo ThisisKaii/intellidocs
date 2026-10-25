@@ -10,6 +10,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 import nltk
 
+from grammar.blocks import (
+    continues_previous,
+    is_prose_block,
+    normalize_blocks,
+)
+
 
 MODEL_PATH = os.getenv("GRAMMAR_MODEL_PATH", "models/grammar_model.pkl")
 DATASET_PATH = os.getenv(
@@ -546,23 +552,8 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
     return issues
 
 
-def detect_issues(text: str) -> list[dict[str, str]]:
-    """Run the baseline rule-based grammar checks.
-
-    Academic structural blocks (chapter headings, numbered sections, etc.)
-    bypass sentence boundary and fragment checks while retaining spelling
-    and genuine typo detection.
-    """
-    issues: list[dict[str, str]] = []
-    issues.extend(detect_repeated_words(text))
-    issues.extend(detect_article_mismatch(text))
-    issues.extend(detect_subject_verb_mismatch(text))
-    issues.extend(detect_pos_syntax_issues(text))
-
-    # Bypass sentence boundary issues for academic structural blocks
-    if not is_academic_structural_block(text):
-        issues.extend(detect_sentence_boundary_issues(text))
-
+def dedupe_issues(issues: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Drop repeated issues that share a type, original text and suggestion."""
     deduped: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
     for issue in issues:
@@ -571,8 +562,47 @@ def detect_issues(text: str) -> list[dict[str, str]]:
             continue
         seen.add(key)
         deduped.append(issue)
-
     return deduped
+
+
+def detect_issues(text: str, check_boundaries: bool = True) -> list[dict[str, str]]:
+    """Run the baseline rule-based grammar checks on one block of text.
+
+    Academic structural blocks (chapter headings, numbered sections, etc.)
+    bypass sentence boundary and fragment checks. Callers pass
+    check_boundaries=False for lines that continue the block above.
+    """
+    issues: list[dict[str, str]] = []
+    issues.extend(detect_repeated_words(text))
+    issues.extend(detect_article_mismatch(text))
+    issues.extend(detect_subject_verb_mismatch(text))
+    issues.extend(detect_pos_syntax_issues(text))
+
+    if check_boundaries and not is_academic_structural_block(text):
+        issues.extend(detect_sentence_boundary_issues(text))
+
+    return dedupe_issues(issues)
+
+
+def detect_block_issues(blocks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Run the grammar rules block by block so nothing crosses a block boundary.
+
+    Headings, list items and short centred lines are skipped, and a centred
+    line that continues an unfinished centred line above it (staircase title
+    pages) is exempt from capitalisation and punctuation checks.
+    """
+    issues: list[dict[str, str]] = []
+    previous: dict[str, Any] | None = None
+    for block in blocks:
+        if is_prose_block(block):
+            issues.extend(
+                detect_issues(
+                    block["text"],
+                    check_boundaries=not continues_previous(block, previous),
+                )
+            )
+        previous = block
+    return dedupe_issues(issues)
 
 
 def calibrate_score(raw_score: float, issue_count: int) -> float:
@@ -596,9 +626,14 @@ def calibrate_score(raw_score: float, issue_count: int) -> float:
     return round(stretched, 4)
 
 
-def evaluate_text(text: str, model_path: str = MODEL_PATH) -> dict[str, Any]:
-    """Return a grammar assessment payload with structured issues."""
-    normalized = text.strip()
+def evaluate_text(source: Any, model_path: str = MODEL_PATH) -> dict[str, Any]:
+    """Return a grammar assessment payload with structured issues.
+
+    The source is either plain text (one block per line) or a list of
+    {text, kind, align, centered} blocks.
+    """
+    blocks = normalize_blocks(source)
+    normalized = "\n".join(block["text"] for block in blocks)
     if not normalized:
         return {
             "score": 0.0,
@@ -607,7 +642,7 @@ def evaluate_text(text: str, model_path: str = MODEL_PATH) -> dict[str, Any]:
             "issues": [],
         }
 
-    issues = detect_issues(normalized)
+    issues = detect_block_issues(blocks)
 
     try:
         raw_score = score_text(normalized, model_path)

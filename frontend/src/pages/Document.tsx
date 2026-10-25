@@ -28,25 +28,23 @@ import { ACADEMIC_PRESETS, basePresetKey } from '@/components/editor/academicPre
 import { hasDriftedFromPreset } from '@/components/editor/documentBlueprints'
 import PresetForkPrompt from '@/components/PresetForkPrompt'
 import { applyStyleCommand } from '@/components/editor/styleCommands'
-import FormattingPanel from '@/components/editor/FormattingPanel'
 import WordProgress from '@/components/editor/WordProgress'
 import DocumentZoomWidget, { clampZoom, ZOOM_STEP } from '@/components/editor/DocumentZoomWidget'
 import { PAGE_SIZES } from '@/components/editor/HeaderFooterPlugin'
 import { useAuth } from '@/hooks/useAuth'
 import ShareModal from '@/components/ShareModal'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
-import { ArrowLeft, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose } from 'lucide-react'
+import { ArrowLeft, ShieldCheck, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { useGrammarCheck } from '@/hooks/useGrammarCheck'
 import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
-import DocumentTypePrompt from '@/components/editor/DocumentTypePrompt'
+import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
+import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
 import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
 import type { TOCEntry } from '@/components/editor/TableOfContents'
 import { OutlineNavigator } from '@/components/editor/OutlineNavigator'
 import { CitationAssistant } from '@/components/editor/CitationAssistant'
 import HelpSheet from '@/components/editor/HelpSheet'
-import OriginalityCard from '@/components/editor/OriginalityCard'
-import LearningCard from '@/components/editor/LearningCard'
 import { CITATION_STYLE_LABELS, type CitationData, type CitationNumberMap, type CitationReference, type CitationStyle } from '@/lib/citationFormats'
 import DocumentPartsPanel from '@/components/editor/DocumentPartsPanel'
 import { buildReferenceNodes, insertOrUpdateGenerated, pageNumberAt, referencesHeadingEnd } from '@/components/editor/DocumentParts'
@@ -425,6 +423,7 @@ export default function Document(): JSX.Element {
     enabled: !!editor && !readOnly && !isHydrating && prefs.formattingSuggestions,
     minConfidence: confidenceThreshold(prefs),
     presetKey: formattingPreset,
+    documentId: id,
   })
 
   // Grammar + spelling auto-check runs whatever side-panel tab is open, so the
@@ -439,34 +438,6 @@ export default function Document(): JSX.Element {
   useEffect(() => {
     if (!prefs.grammarSuggestions) setGrammarIssues([])
   }, [prefs.grammarSuggestions])
-
-  // ── Document structure inference ─────────────────────────────────────
-  // An unformatted document with no preset bound gets one offer to adopt the
-  // standard format that matches its inferred archetype. Checked once per
-  // document per session.
-  const structureInferenceForRef = useRef<string | null>(null)
-  const [structurePrompt, setStructurePrompt] = useState<{ typeLabel: string; presetKey: string } | null>(null)
-
-  useEffect(() => {
-    if (!editor || editor.isDestroyed || !id || readOnly) return
-    if (formattingPreset) return
-    if (structureInferenceForRef.current === id) return
-
-    const text = editor.getText().slice(0, 3000).trim()
-    if (text.length < 150) return
-
-    // No headings check here: imported DOCX/PDF docs carry dirty <h2> tags
-    // that used to suppress this prompt permanently. The marker scan below is
-    // specific enough on its own, and bound presets still skip the offer.
-    structureInferenceForRef.current = id
-    api.formatting
-      .inferStructure(text)
-      .then((result) => {
-        if (result.type === 'unknown' || !result.presetKey) return
-        setStructurePrompt({ typeLabel: result.typeLabel, presetKey: result.presetKey })
-      })
-      .catch((error) => console.error('Structure inference failed', error))
-  }, [editor, id, formattingPreset, content, readOnly])
 
   /** Ctrl+\ keyboard shortcut toggles the docked side panel. */
   useEffect(() => {
@@ -899,12 +870,12 @@ export default function Document(): JSX.Element {
       bold: 'Bold',
       italic: 'Italic',
       underline: 'Underline',
-      heading1: 'Heading 1',
-      heading2: 'Heading 2',
-      heading3: 'Heading 3',
-      h1: 'Heading 1',
-      h2: 'Heading 2',
-      h3: 'Heading 3',
+      heading1: 'Chapter heading',
+      heading2: 'Section heading',
+      heading3: 'Subsection heading',
+      h1: 'Chapter heading',
+      h2: 'Section heading',
+      h3: 'Subsection heading',
       blockquote: 'Blockquote',
       unordered_list: 'Bullet List',
       ordered_list: 'Numbered List',
@@ -1105,19 +1076,49 @@ export default function Document(): JSX.Element {
       case 'heading1': case 'h1': editor.chain().focus().setHeading({ level: 1 }).run(); break
       case 'heading2': case 'h2': editor.chain().focus().setHeading({ level: 2 }).run(); break
       case 'heading3': case 'h3': editor.chain().focus().setHeading({ level: 3 }).run(); break
-      case 'title': applyStyleCommand(editor, 'title'); break
+      case 'title': applyStyleCommand(editor, 'title', undefined, undefined, formattingPreset); break
       case 'unordered_list': case 'ul': if (!editor.isActive('bulletList')) editor.chain().focus().toggleBulletList().run(); break
-      case 'ordered_list': case 'ol': if (!editor.isActive('orderedList')) editor.chain().focus().toggleOrderedList().run(); break
+      case 'ordered_list': case 'ol': case 'orderedList': if (!editor.isActive('orderedList')) editor.chain().focus().toggleOrderedList().run(); break
+      case 'bulletList': if (!editor.isActive('bulletList')) editor.chain().focus().toggleBulletList().run(); break
       case 'blockquote':    editor.chain().focus().setBlockquote().run(); break
       default: break
     }
+  }
+
+  /**
+   * Length of the markdown marker ("## ", "> ", "- ", "1. ") the author typed at
+   * the start of the block that begins at `from`, when it belongs to `format`.
+   */
+  function markdownMarkerLength(format: string, from: number): number {
+    if (!editor || editor.isDestroyed) return 0
+    const $pos = editor.state.doc.resolve(Math.min(from + 1, editor.state.doc.content.size))
+    const patterns: Record<string, RegExp> = {
+      heading1: /^#\s+/, heading2: /^##\s+/, heading3: /^###\s+/,
+      blockquote: /^>\s+/, bulletList: /^[-*]\s+/, orderedList: /^\d+[.)]\s+/,
+    }
+    const match = patterns[format]?.exec($pos.parent.textContent)
+    return match ? match[0].length : 0
   }
 
   /** Apply one prompt format directly over an explicit document range. */
   function applyFormatToRange(format: string, from: number, to: number): void {
     if (!editor || !editor.isEditable) return
     if (format === 'title') {
-      applyStyleCommand(editor, 'title', from, to)
+      applyStyleCommand(editor, 'title', from, to, formattingPreset)
+      return
+    }
+    // A markdown marker the author typed is replaced by the real format.
+    const marker = markdownMarkerLength(format, from)
+    if (marker > 0) {
+      editor.chain().deleteRange({ from: from + 1, to: from + 1 + marker }).run()
+      to -= marker
+    }
+    if (format === 'orderedList' || format === 'ordered_list' || format === 'ol') {
+      editor.chain().focus().setTextSelection(from + 1).toggleOrderedList().run()
+      return
+    }
+    if (format === 'bulletList' || format === 'unordered_list' || format === 'ul') {
+      editor.chain().focus().setTextSelection(from + 1).toggleBulletList().run()
       return
     }
     const chain = editor.chain().focus().setTextSelection({ from, to })
@@ -1337,6 +1338,37 @@ export default function Document(): JSX.Element {
         setSuggestions([])
         setShowSuggestions(false)
         return
+      }
+
+      // Never propose what the block already is (a numbered line inside a numbered
+      // list, a heading that is already that heading) or a title far from the top.
+      if (result.format && editor && !editor.isDestroyed) {
+        const caret = editor.state.selection.from
+        const satisfied = isFormatSatisfied(describeBlock(editor.state.doc, caret), result.format)
+        const strayTitle = result.format === 'title' && !isTitleCandidate(editor.state.doc, caret)
+        if (satisfied || strayTitle) {
+          setSuggestions([])
+          setShowSuggestions(false)
+          setPendingLearnedFormat(null)
+          return
+        }
+        // The document's own habits come first: what the user usually does elsewhere
+        // never overrides a style this document has clearly settled on.
+        if (result.tier === 'learned' || result.tier === 'ml') {
+          const profile = buildStyleProfile(editor.state.doc)
+          const proposed = {
+            ...(result.bold !== undefined ? { bold: result.bold } : {}),
+            ...(result.italic !== undefined ? { italic: result.italic } : {}),
+            ...(typeof result.fontSize === 'number' ? { fontSize: result.fontSize } : {}),
+            ...(result.textAlign ? { textAlign: result.textAlign } : {}),
+          }
+          if (documentStyleOverrides(profile, editor.state.doc, caret, proposed)) {
+            setSuggestions([])
+            setShowSuggestions(false)
+            setPendingLearnedFormat(null)
+            return
+          }
+        }
       }
 
       // With formatting suggestions turned off, learned and ML tiers stay silent.
@@ -1924,6 +1956,9 @@ export default function Document(): JSX.Element {
       // Group chips apply over their range instead of the caret — the user's
       // cursor stays exactly where they left it (focus-preservation rule).
       applyFormatToRangePreservingSelection(applied, suggestionRange.from, suggestionRange.to)
+    } else if (suggestionRange && scannerActive && suggestionRange.from === scannerActive.from) {
+      // A scanner suggestion formats its own block, wherever the caret is.
+      applyFormatToRangePreservingSelection(applied, suggestionRange.from, suggestionRange.to)
     } else {
       applyPromptFormat(applied)
     }
@@ -2099,14 +2134,6 @@ export default function Document(): JSX.Element {
     editor.view.dispatch(tr)
   }
 
-  /** Jump to an overlapping passage reported by the originality check. */
-  function jumpToPassage(passageText: string): void {
-    const range = locateIssue({ type: 'passage', original: passageText.slice(0, 160), suggestion: '', explanation: '' })
-    if (!range || !editor || editor.isDestroyed) return
-    editor.chain().focus().setTextSelection(range).run()
-    scrollToDocPos(range.from)
-  }
-
   /** Panel click on a grammar/spelling issue: jump to the word and open its fix popover there. */
   function openGrammarInDocument(issue: GrammarIssue): void {
     const range = locateIssue(issue)
@@ -2172,7 +2199,7 @@ export default function Document(): JSX.Element {
   /** Apply a ribbon style tile at the current selection (click-to-apply). */
   function handleApplyRibbonStyle(format: string): void {
     if (!editor || !editor.isEditable) return
-    applyStyleCommand(editor, format)
+    applyStyleCommand(editor, format, undefined, undefined, formattingPreset)
     handleFormat(format)
     maybeSuggestSiblingPropagation(format)
   }
@@ -2198,9 +2225,9 @@ export default function Document(): JSX.Element {
   const ROLE_PROPAGATION_LABELS: Record<string, string> = {
     title: 'Title',
     byline: 'Author / Byline',
-    heading_1: 'Heading 1',
-    heading_2: 'Heading 2',
-    heading_3: 'Heading 3',
+    heading_1: 'Chapter heading',
+    heading_2: 'Section heading',
+    heading_3: 'Subsection heading',
   }
 
   /** True when the node already carries the given ribbon format. */
@@ -2377,13 +2404,6 @@ export default function Document(): JSX.Element {
     }
     // Persist the preset's page geometry and log a snapshot with the format state.
     scheduleSave()
-  }
-
-  /** Adopt the inferred standard preset and dismiss the structure prompt. */
-  function handleApplyDetectedPreset(): void {
-    if (!structurePrompt) return
-    void handleApplyAcademicPreset(structurePrompt.presetKey)
-    setStructurePrompt(null)
   }
 
   /** Grammar underline click — open the anchored fix popover. */
@@ -2707,6 +2727,17 @@ export default function Document(): JSX.Element {
             >
               {isIsolated ? <ShieldOff className="size-4" strokeWidth={1.75} /> : <Shield className="size-4" strokeWidth={1.75} />}
             </button>
+
+            {/* Originality check opens its own view-only page */}
+            {id && !readOnly && (
+              <Link
+                to={`/document/${id}/originality`}
+                title="Check originality against your other documents"
+                className="inline-flex items-center justify-center size-8 rounded-lg border border-transparent bg-transparent text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <ShieldCheck className="size-4" strokeWidth={1.75} />
+              </Link>
+            )}
 
             {/* Share action */}
             {!readOnly && docOwnerId && user?.id === docOwnerId && (
@@ -3069,30 +3100,6 @@ export default function Document(): JSX.Element {
             </div>
           )}
 
-          {/* Inferred document archetype — offer the matching standard format */}
-          {structurePrompt && !formattingPreset && !readOnly && (
-            <div
-              style={{
-                // Floats above the status bar and the zoom widget so it never covers them.
-                position: 'fixed',
-                bottom: '7.5rem',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: 'min(32rem, calc(100vw - 2rem))',
-                zIndex: 40,
-              }}
-            >
-              <DocumentTypePrompt
-                typeLabel={structurePrompt.typeLabel}
-                presetName={
-                  ACADEMIC_PRESETS.find((p) => p.key === structurePrompt.presetKey)?.name ??
-                  structurePrompt.presetKey
-                }
-                onApply={handleApplyDetectedPreset}
-                onDismiss={() => setStructurePrompt(null)}
-              />
-            </div>
-          )}
         </main>
 
         {/* Right panel — docked editor assistant with suggestions queue */}
@@ -3167,16 +3174,6 @@ export default function Document(): JSX.Element {
             <>
               <DocumentPartsPanel editor={editor} readOnly={readOnly} />
 
-              {id && !readOnly && <OriginalityCard documentId={id} onJump={jumpToPassage} />}
-
-              {!readOnly && <LearningCard />}
-
-              {/* Formatting preset + custom rules (Tier 1 & 2) */}
-              <FormattingPanel
-                documentId={id}
-                activePreset={formattingPreset}
-                onPresetChange={setFormattingPreset}
-              />
 
               <CitationAssistant
                 editor={editor}

@@ -23,3 +23,15 @@ export function validateBody<T>(schema: ZodSchema<T>): RequestHandler {
     }
   }
 }
+
+/** Validate the query string against a Zod schema before the controller runs. */
+export function validateQuery<T>(schema: ZodSchema<T>): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const parsed = schema.safeParse(req.query)
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid query' })
+      return
+    }
+    next()
+  }
+}

@@ -2,11 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { api } from '@/services/api'
 import { buildGrammarResult, type GrammarIssue } from '@/components/editor/GrammarPanel'
+import {
+  buildGrammarBlocks,
+  grammarBlocksKey,
+  grammarBlocksLength,
+  textToGrammarBlocks,
+  type GrammarBlock,
+} from '@/lib/grammarBlocks'
 
 interface UseGrammarCheckOptions {
   /** Changes whenever the document does; re-reads the editor's text. */
   text: string
-  /** The editor whose text blocks are checked, one line per block. */
+  /** The editor whose text blocks are checked, one block per text block. */
   editor: Editor | null
   enabled: boolean
   delayMs?: number
@@ -23,25 +30,13 @@ interface UseGrammarCheckResult {
   runCheck: () => Promise<void>
 }
 
-/** The grammar API rejects payloads over 50k characters, so only the head is checked. */
-const MAX_CHECK_CHARS = 50000
-
 /**
- * The text to check: one line per text block, so separate headings, table cells and
- * paragraphs are never read as one run-on sentence by the checker.
+ * The blocks to check: one per text block with its kind and alignment, so separate
+ * headings, title-page lines and paragraphs are never read as one run-on sentence.
  */
-function readCheckText(editor: Editor | null, html: string): string {
-  if (editor && !editor.isDestroyed) {
-    const lines: string[] = []
-    editor.state.doc.descendants((node) => {
-      if (!node.isTextblock) return true
-      const line = node.textContent.replace(/\s+/g, ' ').trim()
-      if (line) lines.push(line)
-      return false
-    })
-    return lines.join('\n')
-  }
-  return html.replace(/<[^>]*>/g, ' ').replace(/[ \t]+/g, ' ').trim()
+function readCheckBlocks(editor: Editor | null, html: string): GrammarBlock[] {
+  if (editor && !editor.isDestroyed) return buildGrammarBlocks(editor.state.doc)
+  return textToGrammarBlocks(html)
 }
 
 /**
@@ -60,20 +55,19 @@ export function useGrammarCheck({
   const [error, setError] = useState<string | null>(null)
   const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null)
   const lastAutoRef = useRef<number>(0)
-  const lastTextRef = useRef<string>('')
+  const lastKeyRef = useRef<string>('')
   const onIssuesRef = useRef(onIssues)
   onIssuesRef.current = onIssues
 
-  /** Check the given text and publish the issues. */
-  const check = useCallback(async (value: string): Promise<void> => {
-    if (value.length < 5) return
+  /** Check the given blocks and publish the issues. */
+  const check = useCallback(async (blocks: GrammarBlock[]): Promise<void> => {
+    if (grammarBlocksLength(blocks) < 5) return
     setLoading(true)
     setError(null)
     try {
-      const body = value.slice(0, MAX_CHECK_CHARS)
       const [grammar, spelling] = await Promise.all([
-        api.predictions.grammarCheck(body),
-        api.predictions.spellCheck(body),
+        api.predictions.grammarCheck(blocks),
+        api.predictions.spellCheck(blocks),
       ])
       onIssuesRef.current(buildGrammarResult(grammar, spelling).issues)
       setLastCheckedAt(Date.now())
@@ -90,21 +84,22 @@ export function useGrammarCheck({
   useEffect(() => {
     if (!enabled || loading) return
     const timer = setTimeout(() => {
-      const current = readCheckText(editor, text)
-      if (current.length < 5 || current === lastTextRef.current) return
+      const current = readCheckBlocks(editor, text)
+      const key = grammarBlocksKey(current)
+      if (grammarBlocksLength(current) < 5 || key === lastKeyRef.current) return
       const now = Date.now()
       if (now - lastAutoRef.current < cooldownMs) return
       lastAutoRef.current = now
-      lastTextRef.current = current
+      lastKeyRef.current = key
       void check(current)
     }, delayMs)
     return () => clearTimeout(timer)
   }, [enabled, loading, text, editor, delayMs, cooldownMs, check])
 
   const runCheck = useCallback(async (): Promise<void> => {
-    const current = readCheckText(editor, text)
+    const current = readCheckBlocks(editor, text)
     lastAutoRef.current = Date.now()
-    lastTextRef.current = current
+    lastKeyRef.current = grammarBlocksKey(current)
     await check(current)
   }, [check, editor, text])
 
