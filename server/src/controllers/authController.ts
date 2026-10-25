@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
 import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, getOwnApplicationStatus, getRequestedRole } from '../models/userModel'
 import { resolvePendingShares } from '../models/shareModel'
+import * as accountModel from '../models/accountModel'
+import type { ChangePasswordBody, DeleteAccountBody } from '../../schemas/authSchemas'
 import { AuthenticatedRequest } from '../types/express'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
@@ -199,6 +201,40 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
     })
   } catch {
     res.status(500).json({ error: 'Failed to update profile' })
+  }
+}
+
+/** Change the signed-in user's password (current password required for password accounts). */
+export async function changePassword(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: '401 Unauthorized: Session required' })
+      return
+    }
+    const { currentPassword, newPassword } = req.body as ChangePasswordBody
+    await accountModel.changePassword(userId, req.user?.email ?? '', currentPassword, newPassword)
+    res.status(200).json({ message: 'Password updated' })
+  } catch (err) {
+    const status = (err as { status?: number }).status
+    res.status(status ?? 500).json({ error: err instanceof Error ? err.message : 'Failed to change password' })
+  }
+}
+
+/** Permanently delete the signed-in user's account after they retype their email. */
+export async function deleteAccount(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: '401 Unauthorized: Session required' })
+      return
+    }
+    const { confirmEmail } = req.body as DeleteAccountBody
+    await accountModel.deleteAccount(userId, req.user?.email ?? '', confirmEmail)
+    res.status(204).send()
+  } catch (err) {
+    const status = (err as { status?: number }).status
+    res.status(status ?? 500).json({ error: err instanceof Error ? err.message : 'Failed to delete the account' })
   }
 }
 

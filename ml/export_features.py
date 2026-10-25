@@ -1,6 +1,8 @@
 import os
 import duckdb
 
+import duckdb_store
+
 
 def ensure_export_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
@@ -43,12 +45,11 @@ def export_features(conn: duckdb.DuckDBPyConnection, export_dir: str) -> None:
 
 
 def main() -> None:
-    duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
     export_dir = os.getenv("FEATURE_EXPORT_DIR", "db/duckdb/exports")
 
     ensure_export_dir(export_dir)
 
-    conn = duckdb.connect(duckdb_path)
+    conn = duckdb_store.connect_duckdb(read_only=True).conn
     if not table_exists(conn, "formatting_features"):
         conn.close()
         raise RuntimeError("formatting_features table does not exist.")

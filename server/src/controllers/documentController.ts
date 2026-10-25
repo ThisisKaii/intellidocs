@@ -266,7 +266,11 @@ export async function createDocument(req: Request, res: Response): Promise<void>
 
     const document = await documentModel.createDocument(userId, body)
     res.status(201).json(document)
-  } catch {
+  } catch (error) {
+    if ((error as { status?: number }).status === 413) {
+      res.status(413).json({ error: (error as Error).message, code: 'storage_quota_exceeded' })
+      return
+    }
     res.status(500).json({ error: 'Internal server error' })
   }
 }
@@ -297,6 +301,10 @@ export async function updateDocument(req: Request, res: Response): Promise<void>
     const status = (error as { status?: number }).status
     if (status === 403 || status === 409) {
       res.status(status).json({ error: (error as Error).message })
+      return
+    }
+    if (status === 413) {
+      res.status(413).json({ error: (error as Error).message, code: 'storage_quota_exceeded' })
       return
     }
     res.status(500).json({ error: 'Internal server error' })
@@ -544,6 +552,10 @@ export async function importDocument(req: Request, res: Response): Promise<void>
     res.status(201).json(document)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Import failed'
+    if ((error as { status?: number }).status === 413) {
+      res.status(413).json({ error: message, code: 'storage_quota_exceeded' })
+      return
+    }
     res.status(500).json({ error: message })
   }
 }

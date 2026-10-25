@@ -850,6 +850,22 @@ export const api = {
         body: JSON.stringify({ display_name: displayName }),
       })
     },
+    /** Change the password. Password accounts must send the current one. */
+    changePassword: async (newPassword: string, currentPassword?: string): Promise<{ message: string }> => {
+      return fetchAPI<{ message: string }>('auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+    },
+    /** Permanently delete the account; the email must be retyped to confirm. */
+    deleteAccount: async (confirmEmail: string): Promise<null> => {
+      return fetchAPI<null>('auth/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmEmail }),
+      })
+    },
     /** Return the signed-in user's storage usage vs their account quota. */
     storage: async (): Promise<StorageSummary> => {
       return fetchAPI<StorageSummary>('auth/storage')
@@ -1101,6 +1117,22 @@ export const api = {
     /** Download the current user's .idocprofile bundle for a scope. */
     export: async (scope: ProfileScope = 'both'): Promise<IdocProfile> => {
       return fetchAPI<IdocProfile>(`profile/export?scope=${scope}`)
+    },
+    /** The editor preferences saved on the account (null when none were saved). */
+    getEditorPreferences: async (): Promise<{ preferences: Record<string, unknown> | null }> => {
+      return fetchAPI<{ preferences: Record<string, unknown> | null }>('profile/editor-preferences')
+    },
+    /** Save the editor preferences on the account. */
+    saveEditorPreferences: async (preferences: Record<string, unknown>): Promise<void> => {
+      await fetchAPI<unknown>('profile/editor-preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(preferences),
+      })
+    },
+    /** Everything the account holds (profile, documents, folders, preferences) as one object. */
+    exportData: async (): Promise<unknown> => {
+      return fetchAPI<unknown>('profile/export-data')
     },
     /** Import and merge an .idocprofile bundle into the current user's profile. */
     import: async (profile: IdocProfile): Promise<ProfileImportResult> => {

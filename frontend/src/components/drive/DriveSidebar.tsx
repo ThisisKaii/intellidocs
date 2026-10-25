@@ -272,6 +272,11 @@ function DriveSidebar({
             style={{ width: storage ? `${Math.min(100, Math.round((storage.usedBytes / storage.quotaBytes) * 100))}%` : '0%' }}
           />
         </div>
+        {storage && storage.usedBytes / storage.quotaBytes >= 0.8 && (
+          <p className="m-0 mt-2 text-xs text-destructive">
+            {storage.usedBytes >= storage.quotaBytes ? 'Storage full.' : 'Almost full.'} Delete documents or empty the Trash to free space.
+          </p>
+        )}
         <div className="flex items-center justify-between mt-2 text-xs">
           <span className="font-semibold text-primary">{storage ? `${capitalize(storage.role)} Tier` : 'Student Tier'}</span>
           <span className="text-muted-foreground">UCLM Capstone</span>

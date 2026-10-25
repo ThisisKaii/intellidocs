@@ -1,6 +1,7 @@
 import { createContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { api, type RoleStatusResponse } from '../services/api'
+import { loadAccountPreferences } from '../lib/editorPreferences'
 import { clearDocumentCache } from '../hooks/useDocumentCache'
 import { clearDriveCache } from '../hooks/useDriveCache'
 
@@ -50,6 +51,8 @@ interface AuthContextType {
   refreshRole: () => Promise<void>
   /** Redirects to Google OAuth consent screen via Supabase. */
   loginWithGoogle: () => Promise<void>
+  /** Store the Supabase client's current tokens (after 2FA changes the session level). */
+  adoptCurrentSession: () => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -204,6 +207,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token, refreshRole, user?.role, user?.verificationStatus])
 
+  // Once signed in, make the account's saved editor preferences the ones in use on this device.
+  const signedInUserId = user?.id
+  useEffect(() => {
+    if (signedInUserId && token) void loadAccountPreferences()
+    // Re-run only when a different user signs in, not on every token refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedInUserId])
+
   /**
    * Initiates Google OAuth via Supabase.
    * The user is redirected to Google, then back to /auth/callback.
@@ -231,6 +242,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(error.message)
   }
 
+  const adoptCurrentSession = useCallback(async (): Promise<void> => {
+    const { data } = await supabase.auth.getSession()
+    const session = data.session
+    if (!session) return
+    localStorage.setItem('authToken', session.access_token)
+    if (session.refresh_token) localStorage.setItem('authRefreshToken', session.refresh_token)
+    setToken(session.access_token)
+  }, [])
+
   const value: AuthContextType = {
     user,
     token,
@@ -241,6 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateUser,
     refreshRole,
     loginWithGoogle,
+    adoptCurrentSession,
   }
 
   return (

@@ -8,6 +8,8 @@ import duckdb
 import redis
 import requests
 
+import duckdb_store
+
 
 def parse_timestamp(ts: str) -> Optional[datetime]:
     try:
@@ -68,6 +70,9 @@ class UpstashRedis:
         if keys:
             self._call("DEL", *keys)
 
+    def ltrim(self, key: str, start: int, stop: int) -> None:
+        self._call("LTRIM", key, start, stop)
+
 
 def connect_redis() -> Any:
     """Upstash REST when configured (the app's Redis), else a plain REDIS_URL connection."""
@@ -76,6 +81,16 @@ def connect_redis() -> Any:
     if upstash_url and upstash_token and not os.getenv("REDIS_URL"):
         return UpstashRedis(upstash_url, upstash_token)
     return redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
+
+
+def connect_redis_all() -> List[Any]:
+    """The app's Redis plus the optional second Upstash, so events written there still reach DuckDB."""
+    clients: List[Any] = [connect_redis()]
+    secondary_url = os.getenv("UPSTASH_REDIS_REST_URL_2")
+    secondary_token = os.getenv("UPSTASH_REDIS_REST_TOKEN_2")
+    if secondary_url and secondary_token:
+        clients.append(UpstashRedis(secondary_url, secondary_token))
+    return clients
 
 
 def is_event_list_key(r: redis.Redis, key: str) -> bool:
@@ -87,13 +102,7 @@ def is_event_list_key(r: redis.Redis, key: str) -> bool:
 
 def collect_events(r: redis.Redis, key: str) -> List[Dict[str, Any]]:
     """Read (without deleting) every parseable event in one list key."""
-    events: List[Dict[str, Any]] = []
-    for raw in r.lrange(key, 0, -1):
-        try:
-            events.append(json.loads(raw))
-        except Exception:
-            continue
-    return events
+    return read_event_list(r, key)[1]
 
 
 def event_row(event: Dict[str, Any], key: str) -> Optional[tuple]:
@@ -117,43 +126,71 @@ def event_row(event: Dict[str, Any], key: str) -> Optional[tuple]:
     )
 
 
+def read_event_list(r: redis.Redis, key: str) -> tuple:
+    """Read (without deleting) a list key: (how many items it held, the parseable events)."""
+    raw_items = r.lrange(key, 0, -1)
+    events: List[Dict[str, Any]] = []
+    for raw in raw_items:
+        try:
+            events.append(json.loads(raw))
+        except Exception:
+            continue
+    return len(raw_items), events
+
+
+def drain_redis(r: Any, conn: Any) -> int:
+    """Move every behavior event from one Redis into DuckDB; returns how many rows were stored."""
+    keys = [key for key in r.keys("behavior:*") if is_event_list_key(r, key)]
+    rows: List[tuple] = []
+    read_counts: Dict[str, int] = {}
+
+    for key in keys:
+        raw_count, events = read_event_list(r, key)
+        if not raw_count:
+            continue
+        read_counts[key] = raw_count
+        rows.extend(row for row in (event_row(e, key) for e in events) if row is not None)
+
+    # One batched insert; then each list is trimmed by exactly the events that
+    # were read, so events pushed while this ran stay for the next run.
+    if rows:
+        conn.executemany(
+            """
+            INSERT INTO behavior_events
+              (user_id, document_id, action, event_ts, event_ts_raw, source_key,
+               payload, block_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+    for key, count in read_counts.items():
+        r.ltrim(key, count, -1)
+    return len(rows)
+
+
 def run_once() -> int:
-    duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
+    """One aggregation pass over every configured Redis; returns events stored.
 
-    if not duckdb_path.startswith("md:") and os.path.dirname(duckdb_path):
-        os.makedirs(os.path.dirname(duckdb_path), exist_ok=True)
-
-    r = connect_redis()
-    conn = duckdb.connect(duckdb_path)
+    A Redis that can't be reached is logged and skipped, so one dead backend
+    never blocks the others or loses their events.
+    """
+    clients = connect_redis_all()
+    store = duckdb_store.connect_duckdb()
+    conn = store.conn
     try:
         ensure_schema(conn)
+        if store.kind == "primary":
+            moved = duckdb_store.sync_fallback_to_primary(conn)
+            if moved:
+                print(f"✅ Synced {moved} events from the DuckDB fallback into the primary.")
 
-        keys = [key for key in r.keys("behavior:*") if is_event_list_key(r, key)]
-        rows: List[tuple] = []
-        read_keys: List[str] = []
-
-        for key in keys:
-            events = collect_events(r, key)
-            if not events:
-                continue
-            read_keys.append(key)
-            rows.extend(row for row in (event_row(e, key) for e in events) if row is not None)
-
-        # One batched insert, then one batched delete: keys are only removed once
-        # their events are safely in DuckDB.
-        if rows:
-            conn.executemany(
-                """
-                INSERT INTO behavior_events
-                  (user_id, document_id, action, event_ts, event_ts_raw, source_key,
-                   payload, block_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                rows,
-            )
-        for start in range(0, len(read_keys), DELETE_BATCH_SIZE):
-            r.delete(*read_keys[start:start + DELETE_BATCH_SIZE])
-        return len(rows)
+        total = 0
+        for client in clients:
+            try:
+                total += drain_redis(client, conn)
+            except Exception as error:
+                print(f"⚠️ Skipping a Redis backend this run: {error}")
+        return total
     finally:
         conn.close()
 
@@ -169,9 +206,13 @@ def main() -> None:
     print(f"✅ Aggregator running every {interval}s")
 
     while True:
-        count = run_once()
-        if count:
-            print(f"✅ Aggregation complete: {count} events inserted.")
+        try:
+            count = run_once()
+            if count:
+                print(f"✅ Aggregation complete: {count} events inserted.")
+        except Exception as error:
+            # Events stay in Redis, so the next interval simply tries again.
+            print(f"⚠️ Aggregation run failed, retrying in {interval}s: {error}")
         time.sleep(interval)
 
 

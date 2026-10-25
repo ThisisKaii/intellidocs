@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
-import { getRedisClient } from '../utils/redisClient'
+import { getRedisClient, getRedisStatus } from '../utils/redisClient'
 
 /** Verdict plus timing for a single dependency probe. */
 export interface DependencyProbe {
@@ -56,6 +56,8 @@ export async function probeSupabase(): Promise<DependencyProbe> {
 export async function probeRedis(): Promise<DependencyProbe> {
   return timed(async () => {
     const client = await getRedisClient()
-    return client.ping()
+    const reply = await client.ping()
+    // Name the backend that answered, so a failover is visible on /health/ready.
+    return `${reply} (${getRedisStatus().active})`
   })
 }

@@ -247,6 +247,8 @@ export default function Document(): JSX.Element {
     footerNumberFormat: 'none' as PageNumberFormat,
   })
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved')
+  // True while the server refuses saves because the account is out of storage.
+  const [storageFull, setStorageFull] = useState(false)
   /** Unsaved edits from an earlier session that are newer than the server copy. */
   const [recoveredDraft, setRecoveredDraft] = useState<LocalDraft | null>(null)
   const [helpOpen, setHelpOpen] = useState<boolean>(false)
@@ -1554,6 +1556,7 @@ export default function Document(): JSX.Element {
       setContent(nextContent)
       saveRetryCountRef.current = 0
       setSaveStatus('saved')
+      setStorageFull(false)
       clearLocalDraft(id)
       if (id) void evictCachedDocument(id)
 
@@ -1579,6 +1582,14 @@ export default function Document(): JSX.Element {
       console.error('Autosave failed', error)
       // Keep the unsaved edits in this browser so a closed tab or a long outage loses nothing.
       writeLocalDraft(id, { title: nextTitle, content: nextContent })
+      if ((error as { status?: number }).status === 413) {
+        // Out of storage: retrying can't help. The draft above keeps the edits until space is freed.
+        pendingSaveRef.current = false
+        saveRetryCountRef.current = 0
+        setStorageFull(true)
+        setSaveStatus('error')
+        return
+      }
       // Give up after a few consecutive failures instead of retrying forever.
       saveRetryCountRef.current += 1
       if (saveRetryCountRef.current >= MAX_SAVE_RETRIES) {
@@ -2649,6 +2660,7 @@ export default function Document(): JSX.Element {
 
             {/* Save status pill */}
             <div
+              title={storageFull ? 'Your storage is full. Delete documents or empty the Trash to keep saving; your edits are kept on this device.' : undefined}
               className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all ${
                 saveStatus === 'saving'
                   ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
@@ -2667,7 +2679,7 @@ export default function Document(): JSX.Element {
                 }`}
               />
               <span className="text-[11px]">
-                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : saveStatus === 'error' ? 'Save failed' : 'Saved'}
+                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : saveStatus === 'error' ? (storageFull ? 'Storage full' : 'Save failed') : 'Saved'}
               </span>
             </div>
 

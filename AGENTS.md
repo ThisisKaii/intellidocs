@@ -78,8 +78,19 @@ behavior and predicts it automatically.
   Realtime for auto-save functionality
   Never commit Supabase URL or anon key
 - Redis — behavior buffer, suggestion cache, debounced auto-save dirty flags,
-  per-user AI quota tracking, and NLP command deduplication
-- DuckDB — analytical store for ML training data
+  per-user AI quota tracking, and NLP command deduplication.
+  Failover chain (`server/src/utils/redisClient.ts`): Upstash
+  (`UPSTASH_REDIS_REST_URL/TOKEN`), an optional second Upstash
+  (`UPSTASH_REDIS_REST_URL_2/TOKEN_2`), an optional local `REDIS_URL`, then an
+  in-process memory store. A failing backend is skipped for 30s; `/health/ready`
+  names the one in use. The aggregator also drains the second Upstash.
+- DuckDB — analytical store for ML training data. All ML code opens it through
+  `ml/duckdb_store.py`: lock errors are retried, then `DUCKDB_FALLBACK_PATH`
+  (default `db/duckdb/behavior_fallback.duckdb`) is used, and its rows are copied
+  back into `DUCKDB_PATH` by the aggregator once the primary is reachable.
+- Storage quotas (`userModel.STORAGE_QUOTA_BYTES`): student 25 MB, professor
+  50 MB, admin 100 MB of document content, enforced on create/update/import
+  (413 `storage_quota_exceeded`). Sized for the 500 MB Supabase free tier.
 
 ### AI / ML
 - Python 3 + FastAPI — ML prediction microservice

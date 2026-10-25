@@ -191,13 +191,9 @@ def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> flo
             return 0.0
 
         # Query recent sequence from DuckDB
-        duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
-        if not duckdb_path.startswith("md:") and not os.path.exists(duckdb_path):
-            return 0.0
+        import duckdb_store
 
-        import duckdb
-
-        conn = duckdb.connect(duckdb_path)
+        conn = duckdb_store.connect_duckdb(read_only=True).conn
         df = conn.execute(
             "SELECT action FROM behavior_events WHERE user_id = ? ORDER BY event_ts DESC LIMIT 5",
             [user_id],
@@ -253,13 +249,9 @@ def predict_with_user_lstm(user_id: str, request: PredictRequest) -> Optional[tu
         model.load_state_dict(payload["state_dict"])
         model.eval()
 
-        duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
-        if not duckdb_path.startswith("md:") and not os.path.exists(duckdb_path):
-            return None
+        import duckdb_store
 
-        import duckdb
-
-        conn = duckdb.connect(duckdb_path)
+        conn = duckdb_store.connect_duckdb(read_only=True).conn
         df = conn.execute(
             "SELECT action FROM behavior_events WHERE user_id = ? ORDER BY event_ts DESC LIMIT 5",
             [user_id],
@@ -468,6 +460,8 @@ async def health_check() -> dict[str, str]:
         "status": "OK",
         "message": "IntelliDocs ML API is running",
         "timestamp": __import__("datetime").datetime.now().isoformat(),
+        # 'primary' normally; 'fallback' while the main DuckDB is locked or unreachable.
+        "duckdb": __import__("duckdb_store").active_store(),
     }
 
 
@@ -793,12 +787,11 @@ async def trigger_aggregation() -> dict[str, str | int]:
 async def trigger_feature_extraction() -> dict[str, str | int]:
     """Run feature extraction on DuckDB behavior_events table."""
     try:
-        import duckdb
+        import duckdb_store
 
         from feature_extractor import ensure_feature_table, extract_features, overwrite_features
 
-        duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
-        conn = duckdb.connect(duckdb_path)
+        conn = duckdb_store.connect_duckdb().conn
         ensure_feature_table(conn)
         rows = extract_features(conn)
         count = overwrite_features(conn, rows)
@@ -815,15 +808,14 @@ async def trigger_feature_extraction() -> dict[str, str | int]:
 async def trigger_feature_export() -> dict[str, str]:
     """Export formatting_features table to CSV and Parquet."""
     try:
-        import duckdb
+        import duckdb_store
 
         from export_features import ensure_export_dir, export_features, table_exists
 
-        duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
         export_dir = os.getenv("FEATURE_EXPORT_DIR", "db/duckdb/exports")
 
         ensure_export_dir(export_dir)
-        conn = duckdb.connect(duckdb_path)
+        conn = duckdb_store.connect_duckdb(read_only=True).conn
 
         if not table_exists(conn, "formatting_features"):
             conn.close()

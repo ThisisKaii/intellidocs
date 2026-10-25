@@ -6,6 +6,12 @@ import { LogoMark } from '../components/Logo'
 import { AuthShell } from '../components/AuthShell'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
+import { supabase } from '../lib/supabase'
+import { needsMfaChallenge } from '../lib/mfa'
+import { MfaChallenge } from '../components/MfaChallenge'
+import type { Session } from '@supabase/supabase-js'
+
+type LoginResult = Awaited<ReturnType<typeof api.auth.login>>
 
 function Login(): JSX.Element {
   const navigate = useNavigate()
@@ -16,6 +22,37 @@ function Login(): JSX.Element {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // Set after the password step when the account still needs its authenticator code.
+  const [pendingLogin, setPendingLogin] = useState<LoginResult | null>(null)
+
+  /** Finish signing in with the given session tokens and open the dashboard. */
+  function completeLogin(response: LoginResult, accessToken: string, refreshToken: string): void {
+    login(
+      {
+        id: response.user.id,
+        email: response.user.email,
+        role: response.user.role,
+        verificationStatus: response.user.verificationStatus,
+        requestedRole: response.user.requestedRole ?? null,
+        displayName: response.user.displayName ?? null,
+      },
+      accessToken,
+      refreshToken
+    )
+    navigate('/dashboard')
+  }
+
+  /** The code was accepted: sign in with the upgraded session. */
+  function handleMfaVerified(session: Session): void {
+    if (pendingLogin) completeLogin(pendingLogin, session.access_token, session.refresh_token)
+  }
+
+  /** The user backed out of the code step: drop the half-finished session. */
+  async function handleMfaCancel(): Promise<void> {
+    await supabase.auth.signOut()
+    setPendingLogin(null)
+    setPassword('')
+  }
 
   async function handleGoogleSignIn() {
     setError('')
@@ -50,19 +87,16 @@ function Login(): JSX.Element {
 
     try {
       const response = await api.auth.login(email, password)
-      login(
-        {
-          id: response.user.id,
-          email: response.user.email,
-          role: response.user.role,
-          verificationStatus: response.user.verificationStatus,
-          requestedRole: response.user.requestedRole ?? null,
-          displayName: response.user.displayName ?? null,
-        },
-        response.session.access_token,
-        response.session.refresh_token
-      )
-      navigate('/dashboard')
+      // Give the Supabase client this session so it can check for, and answer, a 2FA challenge.
+      await supabase.auth.setSession({
+        access_token: response.session.access_token,
+        refresh_token: response.session.refresh_token,
+      })
+      if (await needsMfaChallenge()) {
+        setPendingLogin(response)
+        return
+      }
+      completeLogin(response, response.session.access_token, response.session.refresh_token)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
@@ -76,6 +110,14 @@ function Login(): JSX.Element {
 
   function handlePasswordChange(event: ChangeEvent<HTMLInputElement>) {
     setPassword(event.target.value)
+  }
+
+  if (pendingLogin) {
+    return (
+      <AuthShell>
+        <MfaChallenge onVerified={handleMfaVerified} onCancel={() => { void handleMfaCancel() }} />
+      </AuthShell>
+    )
   }
 
   return (

@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { profileImportSchema, type ProfileScope } from '../../schemas/profileSchemas'
 import * as formattingModel from '../models/formattingModel'
 import * as personalizationModel from '../models/personalizationModel'
+import * as accountModel from '../models/accountModel'
 
 /** Read and validate the current user id from the authenticated request. */
 function getUserId(req: Request, res: Response): string | null {
@@ -134,5 +135,42 @@ export async function importProfile(req: Request, res: Response): Promise<void> 
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Profile import failed'
     res.status(500).json({ error: message })
+  }
+}
+
+/** Read the editor preferences saved on the account (null when none were saved). */
+export async function getEditorPreferences(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+    res.status(200).json({ preferences: await accountModel.getEditorPreferences(userId) })
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load preferences' })
+  }
+}
+
+/** Save the editor preferences on the account. */
+export async function saveEditorPreferences(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+    await accountModel.setEditorPreferences(userId, req.body as Record<string, unknown>)
+    res.status(200).json({ preferences: req.body })
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to save preferences' })
+  }
+}
+
+/** Download everything the account holds as one JSON file. */
+export async function exportAccountData(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+    const data = await accountModel.exportAccountData(userId, req.user?.email ?? '')
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Content-Disposition', 'attachment; filename="intellidocs-account-data.json"')
+    res.status(200).send(JSON.stringify(data, null, 2))
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to export your data' })
   }
 }
