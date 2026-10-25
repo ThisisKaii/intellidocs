@@ -2,6 +2,7 @@ import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
 import * as documentModel from '../models/documentModel'
 import { PageNumberFormat, Document } from '../types/index'
 import { uploadImportImages } from './uploadImportImages'
+import { buildImportedLayout } from './buildImportedLayout'
 import { sanitizeImportedHtml } from './sanitizeImportedHtml'
 import { validateImportUpload, type ImportUpload } from './validateImportUpload'
 
@@ -80,6 +81,7 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
       orientation: 'portrait' | 'landscape'
       margins: { top: number; bottom: number; left: number; right: number }
     } | undefined
+    let importedLayout: Awaited<ReturnType<typeof buildImportedLayout>> | undefined
 
     // Try Python microservice for high-fidelity conversion (tables, images, typography, layout)
     if (effectiveExt === '.docx' || effectiveExt === '.pdf') {
@@ -92,6 +94,7 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
           headerNumberFormat = pyResult.header_number_format ?? 'none'
           footerNumberFormat = pyResult.footer_number_format ?? 'none'
           pageSetup = pyResult.page_setup
+          importedLayout = await buildImportedLayout(userId, pyResult)
         }
       } catch (pyError) {
         console.warn('Python converter service unavailable, falling back to local converter:', pyError)
@@ -236,6 +239,8 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
       page_size: pageSetup?.page_size,
       margins: pageSetup?.margins,
       orientation: pageSetup?.orientation,
+      // Header/footer art, per-section headers and numbering from the converter win over the plain fields.
+      ...(importedLayout ?? {}),
     })
   return document
 }

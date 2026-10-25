@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { PagedEditor } from '@/components/editor/PagedEditor'
+import type { PageLayoutData } from '@/lib/pageLayout'
 import { applyIeeeNumbering } from '@/components/editor/ieeeNumberingCommand'
 import { convertToIeee } from '@/components/editor/ieeeConvertCommand'
 import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
@@ -60,6 +61,7 @@ interface FidelityPayload {
   footer: string
   headerNumberFormat: PageNumberFormat
   footerNumberFormat: PageNumberFormat
+  pageLayout?: PageLayoutData | null
 }
 
 /** The payload the test injected, if any. */
@@ -140,6 +142,7 @@ export default function DevEditorHarness() {
           margins={fidelity?.margins ?? IEEE_MARGINS}
           orientation={fidelity?.orientation ?? 'portrait'}
           headerFooterConfig={headerFooterConfig}
+          pageLayout={fidelity?.pageLayout ?? null}
           spreadPreview={spreadPreview}
         />
       </div>

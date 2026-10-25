@@ -3,6 +3,7 @@
 // ???
 /// <reference types="vite/client" />
 
+import type { PageLayoutData } from '@/lib/pageLayout'
 import { supabase } from '../lib/supabase'
 import type { GrammarBlock } from '@/lib/grammarBlocks'
 import { generateCitationKey, type CitationData, type CitationReference } from '@/lib/citationFormats'
@@ -63,6 +64,8 @@ export interface DocumentRecord {
   formatting_preset: string | null
   /** Citation style and references saved with the document (migration 029). */
   citation_data?: CitationData | null
+  /** Header/footer art, per-section headers and page numbering from an import (migration 032). */
+  page_layout?: PageLayoutData | null
   is_deleted: boolean
   deleted_at: string | null
   share_permission?: SharePermission
@@ -226,6 +229,7 @@ interface UpdateDocumentRequest {
   is_isolated?: boolean
   formatting_preset?: string | null
   citation_data?: CitationData
+  page_layout?: PageLayoutData | null
 }
 
 // ── Three-tier formatting control system types ──────────────────────────────

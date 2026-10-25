@@ -79,6 +79,21 @@ def convert(path: Path) -> dict:
     return convert_pdf_bytes_to_html(data) if path.suffix.lower() == ".pdf" else convert_docx_bytes_to_html(data)
 
 
+def _page_layout(result: dict) -> dict | None:
+    """The page furniture the server stores as `page_layout`, or None when the file has none."""
+    hf, art = result.get("hf") or {}, result.get("page_art") or {}
+    if not (hf.get("parts") or art.get("repeat") or art.get("pages")):
+        numbered = any(s.get("number_start") is not None or s.get("number_format") != "decimal" or s.get("title_pg") for s in hf.get("sections", []))
+        if not numbered:
+            return None
+    return {
+        "sections": hf.get("sections", []),
+        "parts": hf.get("parts", {}),
+        "repeat_art": art.get("repeat", ""),
+        "page_art": art.get("pages", {}),
+    }
+
+
 def to_payload(result: dict) -> dict:
     """The converter result as the harness (and the Document page) lay it out."""
     setup = result.get("page_setup") or {}
@@ -91,6 +106,7 @@ def to_payload(result: dict) -> dict:
         "footer": result.get("footer", ""),
         "headerNumberFormat": result.get("header_number_format", "none"),
         "footerNumberFormat": result.get("footer_number_format", "none"),
+        "pageLayout": _page_layout(result),
     }
 
 

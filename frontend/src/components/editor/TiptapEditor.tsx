@@ -28,6 +28,7 @@ import { HarperLinterExtension } from './HarperLinterExtension'
 import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { PageBreak } from './PageBreak'
+import { PageFlowExtension } from './PageFlow'
 import { TabStop } from './TabStop'
 import {
   HeaderFooterExtension,
@@ -257,8 +258,8 @@ const ALLOWED_STYLE_PROPS = new Set([
   'text-indent',
 ])
 
-/** Table cells also keep Word's row height (a minimum; text can still grow the row). */
-const CELL_STYLE_PROPS: ReadonlySet<string> = new Set(['height'])
+/** Table cells also keep Word's row height as a minimum (text can still grow the row). */
+const CELL_STYLE_PROPS: ReadonlySet<string> = new Set(['min-height'])
 
 /** Extract only whitelisted CSS properties from an inline style string. */
 function filterStyle(raw: string | null, extra: ReadonlySet<string> = new Set()): string | null {
@@ -1039,6 +1040,7 @@ export const editorExtensions = [
   CustomHeading,
   CustomBlockquote,
   PageBreak,
+  PageFlowExtension,
   TabStop,
   HeaderFooterExtension,
   AcademicObjectsExtension,

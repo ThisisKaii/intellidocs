@@ -378,6 +378,122 @@ def _group_image_html(group: Any, doc_parts: Dict[str, bytes]) -> str:
         return ""
 
 
+# Page size and margins (px) of the section being converted, for pictures Word pins to the page.
+_PAGE_GEOMETRY: Dict[str, float] = {}
+
+
+def _set_page_geometry(doc: docx.Document) -> None:
+    """Remember the first section's page size and margins for page-anchored pictures."""
+    _PAGE_GEOMETRY.clear()
+    try:
+        section = doc.sections[0]
+        _PAGE_GEOMETRY.update(
+            w=section.page_width / EMU_PER_PX, h=section.page_height / EMU_PER_PX,
+            l=(section.left_margin or 0) / EMU_PER_PX, r=(section.right_margin or 0) / EMU_PER_PX,
+            t=(section.top_margin or 0) / EMU_PER_PX, b=(section.bottom_margin or 0) / EMU_PER_PX,
+        )
+    except Exception:
+        pass
+
+
+def _anchor_axis(position: Any, size: float, page: float, near: float, far: float, align_start: str, align_end: str) -> Optional[float]:
+    """Pixel offset of an anchored picture along one axis from the page edge, or None when it follows the text."""
+    if position is None:
+        return None
+    relative = position.get("relativeFrom") or ""
+    if relative in ("page", "leftMargin", "topMargin"):
+        origin, span = 0.0, page
+    elif relative in ("margin", "column", "insideMargin", "outsideMargin"):
+        origin, span = near, page - near - far
+    else:
+        return None  # paragraph / line / character: the picture moves with the text
+    child = next(iter(position), None)
+    if child is None:
+        return None
+    if child.tag.endswith("}posOffset"):
+        return origin + float(child.text or 0) / EMU_PER_PX
+    alignment = child.text or ""
+    if alignment == align_start:
+        return origin
+    if alignment == align_end:
+        return origin + span - size
+    return origin + (span - size) / 2.0
+
+
+def _page_art_geometry(anchor: Any) -> Optional[Dict[str, float]]:
+    """Where a picture anchored to the page sits, in px from the page's top-left corner."""
+    if anchor is None or not _PAGE_GEOMETRY:
+        return None
+    extent = anchor.find(f"{{{_NS_WP}}}extent")
+    width, height = (_int_attr(extent, "cx") or 0) / EMU_PER_PX, (_int_attr(extent, "cy") or 0) / EMU_PER_PX
+    if width <= 0 or height <= 0:
+        return None
+    g = _PAGE_GEOMETRY
+    x = _anchor_axis(anchor.find(f"{{{_NS_WP}}}positionH"), width, g["w"], g["l"], g["r"], "left", "right")
+    y = _anchor_axis(anchor.find(f"{{{_NS_WP}}}positionV"), height, g["h"], g["t"], g["b"], "top", "bottom")
+    if x is None or y is None:
+        return None
+    return {"x": x, "y": y, "w": width, "h": height, "behind": 1.0 if anchor.get("behindDoc") == "1" else 0.0}
+
+
+def _as_page_art(piece: str, source: Any) -> str:
+    """Wrap a picture in a <page-art> marker when Word pins it to the page (not to the text)."""
+    anchor = next(source.iterancestors(f"{{{_NS_WP}}}anchor"), None)
+    geometry = _page_art_geometry(anchor)
+    if geometry is None or not piece:
+        return piece
+    attrs = " ".join(f'data-{key}="{round(value, 1):g}"' for key, value in geometry.items())
+    return f"<page-art {attrs}>{piece}</page-art>"
+
+
+_PAGE_ART = re.compile(r"<page-art ([^>]*)>(.*?)</page-art>", re.S)
+
+
+def _extract_page_art(html: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """Take the <page-art> markers out of HTML; each comes back with the page (1-based) it sits on."""
+    art: List[Dict[str, Any]] = []
+
+    def take(match: "re.Match[str]") -> str:
+        values = {key: float(value) for key, value in re.findall(r'data-(\w+)="([-\d.]+)"', match.group(1))}
+        source = re.search(r'src="([^"]+)"', match.group(2))
+        if source:
+            values["src"] = source.group(1)
+            values["page"] = html.count('<hr class="page-break"', 0, match.start()) + 1
+            art.append(values)
+        return ""
+
+    return _PAGE_ART.sub(take, html), art
+
+
+def _art_html(item: Dict[str, Any]) -> str:
+    """One page-art picture as an absolutely positioned <img> measured from the page corner."""
+    blend = "mix-blend-mode:multiply;" if item.get("behind") else ""
+    return (
+        f'<img src="{item["src"]}" alt="" style="position:absolute;left:{item["x"]:g}px;top:{item["y"]:g}px;'
+        f'width:{item["w"]:g}px;height:{item["h"]:g}px;max-width:none;{blend}pointer-events:none" />'
+    )
+
+
+def _group_page_art(art: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Split page art into what repeats on several pages (running art) and what belongs to one page."""
+    seen: Dict[Tuple[int, float, float, float, float], Set[int]] = {}
+    for item in art:
+        key = (hash(item["src"]), round(item["x"]), round(item["y"]), round(item["w"]), round(item["h"]))
+        seen.setdefault(key, set()).add(int(item["page"]))
+    repeat: List[str] = []
+    pages: Dict[int, List[str]] = {}
+    emitted: Set[Tuple[int, float, float, float, float]] = set()
+    for item in art:
+        key = (hash(item["src"]), round(item["x"]), round(item["y"]), round(item["w"]), round(item["h"]))
+        if len(seen[key]) >= 2:
+            if key not in emitted:
+                emitted.add(key)
+                repeat.append(_art_html(item))
+        else:
+            pages.setdefault(int(item["page"]), []).append(_art_html(item))
+    return {"repeat": "".join(repeat), "pages": {str(page): "".join(items) for page, items in pages.items()}}
+
+
 def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes]) -> str:
     """Render a run as either its inline image (if it contains a drawing) or styled text."""
     try:
@@ -397,9 +513,9 @@ def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes]) -> str:
                     continue  # a nested group is flattened with its outer group
                 flat = _group_image_html(group, doc_parts)
                 if flat:
-                    pieces.append(flat)
+                    pieces.append(_as_page_art(flat, group))
                     grouped.update(group.iter(qn("a:blip")))
-            pieces.extend(_image_html(b, doc_parts) for b in blips if b not in grouped)
+            pieces.extend(_as_page_art(_image_html(b, doc_parts), b) for b in blips if b not in grouped)
             return line_marks + "".join(pieces)
         if line_marks:
             return line_marks
@@ -965,8 +1081,8 @@ _LIST_TYPES: Dict[str, str] = {
 }
 
 
-def _build_numbering_map(doc: docx.Document) -> Tuple[Dict[str, str], Dict[str, Dict[str, str]]]:
-    """Return (numId->abstractNumId, abstractNumId->{ilvl: numFmt}) from numbering.xml."""
+def _build_numbering_map(doc: docx.Document) -> Tuple[Dict[str, str], Dict[str, Dict[str, Tuple[str, float]]]]:
+    """Return (numId->abstractNumId, abstractNumId->{ilvl: (numFmt, text indent px)}) from numbering.xml."""
     try:
         numbering_part = doc.part.numbering_part
     except Exception:
@@ -982,17 +1098,19 @@ def _build_numbering_map(doc: docx.Document) -> Tuple[Dict[str, str], Dict[str, 
         if num_id and abstract is not None:
             num_to_abstract[num_id] = abstract.get(qn("w:val")) or ""
 
-    abstract_levels: Dict[str, Dict[str, str]] = {}
+    abstract_levels: Dict[str, Dict[str, Tuple[str, float]]] = {}
     for abstract in root.findall(qn("w:abstractNum")):
         abstract_id = abstract.get(qn("w:abstractNumId"))
         if abstract_id is None:
             continue
-        levels: Dict[str, str] = {}
+        levels: Dict[str, Tuple[str, float]] = {}
         for lvl in abstract.findall(qn("w:lvl")):
             ilvl = lvl.get(qn("w:ilvl"), "0")
             fmt_el = lvl.find(qn("w:numFmt"))
             fmt = fmt_el.get(qn("w:val")) if fmt_el is not None else "bullet"
-            levels[ilvl] = fmt
+            indent = lvl.find(qn("w:pPr") + "/" + qn("w:ind"))
+            left = indent.get(qn("w:left")) or indent.get(qn("w:start")) if indent is not None else None
+            levels[ilvl] = (fmt, float(left) * TWIPS_PER_PX if left else 0.0)
         abstract_levels[abstract_id] = levels
 
     return num_to_abstract, abstract_levels
@@ -1001,7 +1119,7 @@ def _build_numbering_map(doc: docx.Document) -> Tuple[Dict[str, str], Dict[str, 
 def _paragraph_list_info(
     p: Paragraph,
     num_to_abstract: Dict[str, str],
-    abstract_levels: Dict[str, Dict[str, str]],
+    abstract_levels: Dict[str, Dict[str, Tuple[str, float]]],
 ) -> Optional[Dict[str, Any]]:
     """Return list kind + level for a numbered/bulleted paragraph, or None."""
     pPr = p._element.pPr
@@ -1020,14 +1138,14 @@ def _paragraph_list_info(
     ilvl_el = num_pr.find(qn("w:ilvl"))
     ilvl = int(ilvl_el.get(qn("w:val")) or "0") if ilvl_el is not None else 0
 
-    fmt = "bullet"
+    fmt, level_left = "bullet", 0.0
     abstract_id = num_to_abstract.get(num_id)
     if abstract_id:
         levels = abstract_levels.get(abstract_id, {})
-        fmt = levels.get(str(ilvl), levels.get("0", "bullet"))
+        fmt, level_left = levels.get(str(ilvl), levels.get("0", ("bullet", 0.0)))
 
     kind = "ul" if fmt == "bullet" else "ol"
-    return {"kind": kind, "level": ilvl, "num_id": num_id, "fmt": fmt}
+    return {"kind": kind, "level": ilvl, "num_id": num_id, "fmt": fmt, "left_px": level_left}
 
 
 def _get_paragraph_alignment_css(p: Paragraph) -> str:
@@ -1048,7 +1166,11 @@ def _paragraph_to_html(
         inner = inner.replace(_LINE_MARK, "")
         # The item keeps its paragraph's spacing, size and alignment.
         if inner.strip():
-            css_parts = [_get_paragraph_alignment_css(p), _paragraph_font_css(p), _paragraph_spacing_css(p)]
+            # The editor's list already indents text 24px; the rest of Word's indent goes on the item.
+            direct_left = re.search(r"margin-left:\s*([\d.]+)px", _paragraph_indent_css(p))
+            left_px = float(direct_left.group(1)) if direct_left else float(list_info.get("left_px") or 0.0)
+            extra = f"margin-left:{round(left_px - 24, 1):g}px" if left_px - 24 > 2 else ""
+            css_parts = [_get_paragraph_alignment_css(p), _paragraph_font_css(p), _paragraph_spacing_css(p), extra]
             css = "; ".join(part.rstrip("; ") for part in css_parts if part)
             return f'<p style="{css};">{inner}</p>' if css else f"<p>{inner}</p>"
         return inner
@@ -1466,6 +1588,9 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
                 cell_content = "&nbsp;"
 
             style_parts = [_cell_edge_css(borders, tc, i, last_row, column, last_column), _cell_padding_css(tc, pad), f"vertical-align:{_cell_vertical_align(tc)}"]
+            row_height = _row_height_px(tc)
+            if row_height and row_height > 2:
+                style_parts.append(f"min-height:{row_height:g}px")
             if bg_color:
                 style_parts.append(bg_color.rstrip(";"))
             if text_color:
@@ -1526,8 +1651,12 @@ def _body_to_html(
         while stack:
             close_list()
 
-    def emit_page_break() -> None:
-        """Start a new page unless the output already ends with a page break."""
+    def emit_page_break(section: Optional[int] = None) -> None:
+        """Start a new page unless the output already ends with a page break.
+
+        A page that opens a new Word section carries the section's number, so the
+        editor can give it that section's header, footer and page numbering.
+        """
         close_all_lists()
         # Blank lines at the end of a page only pad it; left in, they spill onto a
         # blank page when the text above runs a line long. A page that is blank on
@@ -1537,8 +1666,11 @@ def _body_to_html(
             trailing += 1
         if trailing and trailing < len(out) and out[-1 - trailing] != _PAGE_BREAK_HTML:
             del out[len(out) - trailing:]
-        if not out or out[-1] != _PAGE_BREAK_HTML:
-            out.append(_PAGE_BREAK_HTML)
+        marked = _PAGE_BREAK_HTML if section is None else _PAGE_BREAK_HTML.replace(" />", f' data-section="{section}" />')
+        if out and out[-1] == _PAGE_BREAK_HTML and section is not None:
+            out[-1] = marked
+        elif not out or out[-1] not in (_PAGE_BREAK_HTML, marked):
+            out.append(marked)
 
     def emit_textboxes(element: Any) -> None:
         """Text-box paragraphs anchored to a paragraph, as ordinary paragraphs after it."""
@@ -1548,10 +1680,15 @@ def _body_to_html(
                 close_all_lists()
                 out.append(html)
 
+    section_no = 0
+    previous_closed_section = False
     for element in _iter_block_elements(doc.element.body):
+        if previous_closed_section:
+            section_no += 1
+        previous_closed_section = element.tag == qn("w:p") and element.find(qn("w:pPr") + "/" + qn("w:sectPr")) is not None
         if page_break_after is not None:
             if pending_page_break:
-                emit_page_break()
+                emit_page_break(section_no)
             pending_page_break = element in page_break_after
 
         if element.tag == qn("w:p"):
@@ -1742,6 +1879,140 @@ def _extract_header_footer(doc: docx.Document) -> Tuple[str, str, str, str]:
     return header, footer, header_format, footer_format
 
 
+def _part_images(part: Any) -> Dict[str, bytes]:
+    """The pictures a header or footer part owns, by its own relationship ids (these differ from the body's)."""
+    images: Dict[str, bytes] = {}
+    for rel_id, rel in part.rels.items():
+        if "image" in rel.reltype:
+            try:
+                images[rel_id] = rel.target_part.blob
+            except Exception:
+                continue
+    return images
+
+
+def _mark_page_fields(element: Any) -> None:
+    """Replace the cached result of every PAGE field with the editor's {page} token."""
+    for field in element.iter(qn("w:fldSimple")):
+        if (field.get(qn("w:instr")) or "").strip().upper().startswith("PAGE"):
+            texts = list(field.iter(qn("w:t")))
+            for index, node in enumerate(texts):
+                node.text = "{page}" if index == 0 else ""
+    stack: List[Dict[str, Any]] = []
+    for run in element.iter(qn("w:r")):
+        chars = run.findall(qn("w:fldChar"))
+        if chars:
+            kind = chars[0].get(qn("w:fldCharType"))
+            if kind == "begin":
+                stack.append({"instr": "", "separated": False, "results": []})
+            elif kind == "separate" and stack:
+                stack[-1]["separated"] = True
+            elif kind == "end" and stack:
+                field = stack.pop()
+                if field["instr"].strip().upper().startswith("PAGE"):
+                    for index, node in enumerate(field["results"]):
+                        node.text = "{page}" if index == 0 else ""
+            continue
+        if not stack:
+            continue
+        for node in run.findall(qn("w:instrText")):
+            stack[-1]["instr"] += node.text or ""
+        if stack[-1]["separated"]:
+            stack[-1]["results"].extend(run.findall(qn("w:t")))
+
+
+def _springy_tabs(html: str) -> str:
+    """Header/footer text is not edited by ProseMirror, so a tab becomes a flexible gap in a flex line."""
+    def line(match: "re.Match[str]") -> str:
+        tag, body = match.group(1), match.group(2)
+        if "data-tab" not in body:
+            return match.group(0)
+        body = re.sub(r"<span[^>]*><span data-tab></span></span>", "<span data-tab></span>", body)
+        body = body.replace("<span data-tab></span>", '<span style="flex:1 1 0"></span>')
+        tag = re.sub(r' data-tab-stops="[^"]*"| data-default-tab="[^"]*"', "", tag)
+        tag = tag.replace('style="', 'style="display:flex; align-items:baseline; ', 1) if 'style="' in tag else tag.replace("<p", '<p style="display:flex;"', 1)
+        return f"{tag}{body}</p>"
+
+    return re.sub(r"(<p\b[^>]*>)(.*?)</p>", line, html, flags=re.S)
+
+
+def _hf_part_html(part: Any, text_width: Optional[float]) -> Optional[Dict[str, str]]:
+    """A header/footer part as HTML plus the pictures Word pins to the page, or None when plain text says it all."""
+    import copy
+
+    element = copy.deepcopy(part.element)
+    drawn = element.find(".//" + qn("w:drawing")) is not None or element.find(".//" + qn("w:pict")) is not None
+    tables = element.find(qn("w:tbl")) is not None
+    has_tab = element.find(".//" + qn("w:tab")) is not None
+    if not (drawn or tables or has_tab):
+        return None
+    _mark_page_fields(element)
+    images = _part_images(part)
+    pieces: List[str] = []
+    for child in element:
+        if child.tag == qn("w:p"):
+            pieces.append(_paragraph_to_html(Paragraph(child, part), images))
+            # Header text often lives in a text box beside the logos.
+            for box in _textbox_paragraphs(child):
+                html = _paragraph_to_html(Paragraph(box, part), images)
+                if html and not html.startswith('<p class="empty-spacer"'):
+                    pieces.append(html)
+        elif child.tag == qn("w:tbl"):
+            pieces.append(_table_to_html(Table(child, part), images, text_width))
+    flow, art = _extract_page_art("".join(pieces))
+    flow = _springy_tabs(flow)
+    if not (art or "<img" in flow or re.sub(r"<[^>]+>", "", flow).strip()):
+        return None
+    return {"flow": flow, "art": "".join(_art_html(item) for item in art)}
+
+
+def _extract_sections(doc: docx.Document) -> Dict[str, Any]:
+    """Per-section headers, footers and page numbering, with each distinct part converted once.
+
+    Returns {"parts": {key: {"flow", "art"}}, "sections": [...]}; a section lists the
+    part used for its default and first-page header/footer (None = nothing), whether
+    its first page differs, and how its pages are numbered.
+    """
+    sections = list(doc.sections)
+    text_width = _text_width_px(doc)
+    keys: Dict[int, str] = {}
+    parts: Dict[str, Dict[str, str]] = {}
+
+    def effective(index: int, kind: str, first: bool) -> Optional[str]:
+        attribute = ("first_page_" if first else "") + kind
+        for back in range(index, -1, -1):
+            holder = getattr(sections[back], attribute)
+            if holder.is_linked_to_previous:
+                continue
+            part = holder.part
+            if id(part) not in keys:
+                converted = _hf_part_html(part, text_width)
+                keys[id(part)] = f"p{len(keys)}"
+                if converted is not None:
+                    parts[keys[id(part)]] = converted
+            return keys[id(part)] if keys[id(part)] in parts else None
+        return None
+
+    described: List[Dict[str, Any]] = []
+    for index, section in enumerate(sections):
+        number = section._sectPr.find(qn("w:pgNumType"))
+        start = number.get(qn("w:start")) if number is not None else None
+        fmt = number.get(qn("w:fmt")) if number is not None else None
+        described.append({
+            "index": index,
+            "header": effective(index, "header", False),
+            "footer": effective(index, "footer", False),
+            "first_header": effective(index, "header", True),
+            "first_footer": effective(index, "footer", True),
+            "title_pg": bool(section.different_first_page_header_footer),
+            "number_start": int(start) if start and start.lstrip("-").isdigit() else None,
+            "number_format": fmt or "decimal",
+            "header_distance": round((section.header_distance or 457200) / EMU_PER_PX, 1),
+            "footer_distance": round((section.footer_distance or 457200) / EMU_PER_PX, 1),
+        })
+    return {"parts": parts, "sections": described}
+
+
 def _page_size_key(short_in: float, long_in: float) -> str:
     """Map a section's short/long side (inches) to the closest editor page preset."""
     candidates = [
@@ -1819,12 +2090,16 @@ def _docx_document_to_result(
 
     if page_break_after is None:
         page_break_after = _page_break_paragraphs(doc)
+    _set_page_geometry(doc)
     html = _body_to_html(doc, doc_parts, page_break_after)
+    html, body_art = _extract_page_art(html)
     header, footer, header_number_format, footer_number_format = _extract_header_footer(doc)
     page_setup = _extract_page_setup(doc)
 
     return {
         "html": html,
+        "page_art": _group_page_art(body_art),
+        "hf": _extract_sections(doc),
         "page_setup": page_setup,
         "header": header,
         "footer": footer,
@@ -1856,7 +2131,8 @@ _HEADING_KEYWORD = re.compile(r"^(chapter|section|article|appendix)\b", re.IGNOR
 _HEADING_ROMAN = re.compile(r"^[IVX]+[.)]\s+\S")
 _HEADING_LETTERED = re.compile(r"^[A-Z][.)]\s+\S")
 _PAGE_PHRASE = re.compile(r"\bpage\s*\d+(\s*(of|/)\s*\d+)?")
-_PAGE_NUMBER = re.compile(r"(page\s*)?[-–—\s]*\d+[-–—\s]*(of\s*\d+|/\s*\d+)?")
+_ROMAN = r"m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})"
+_PAGE_NUMBER = re.compile(rf"(page\s*)?[-–—\s]*(?:\d+|(?=[ivxlcdm])(?:{_ROMAN}))[-–—\s]*(of\s*\d+|/\s*\d+)?")
 # "Table 2" / "Figure 3" captions are labels, never headings.
 _CAPTION = re.compile(r"^(table|figure|fig\.?|chart|plate)\s*\d", re.IGNORECASE)
 _HEADING_CONNECTORS = {
@@ -1925,6 +2201,74 @@ def _split_pages(doc: docx.Document, page_break_after: Set[Any]) -> List[List[An
     return [page for page in pages if page]
 
 
+def _realign_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Re-read the alignment of short single-line paragraphs from the PDF itself.
+
+    pdf2docx guesses alignment and often calls a centred title right-aligned.
+    The PDF knows where each line was drawn: a line whose left and right gaps to
+    the text area match is centred, one that ends at the right margin is right
+    aligned. Returns how many paragraphs were changed.
+    """
+    try:
+        import pymupdf
+    except ImportError:  # pragma: no cover - PyMuPDF ships with pdf2docx
+        import fitz as pymupdf
+    try:
+        section = doc.sections[0]
+        left_margin = section.left_margin / 12700.0
+        right_margin = section.right_margin / 12700.0
+        pdf = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        return 0
+
+    def normal(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip().lower()
+
+    # Lines of every PDF page: normalized text -> (x0, x1), with the page width.
+    pages: List[Tuple[float, Dict[str, Tuple[float, float]]]] = []
+    for page in pdf:
+        lines: Dict[str, Tuple[float, float]] = {}
+        for block in page.get_text("dict").get("blocks", []):
+            for line in block.get("lines", []):
+                text = normal("".join(span.get("text", "") for span in line.get("spans", [])))
+                if text:
+                    lines.setdefault(text, (line["bbox"][0], line["bbox"][2]))
+        pages.append((page.rect.width, lines))
+    pdf.close()
+
+    changed, page_index = 0, 0
+    for element in doc.element.body:
+        if element.tag == qn("w:p") and page_index < len(pages):
+            text = normal("".join(node.text or "" for node in element.iter(qn("w:t"))))
+            if 2 <= len(text) <= 80 and not any(True for _ in element.iter(qn("w:tab"))):
+                width, lines = pages[page_index]
+                box = lines.get(text)
+                if box is not None:
+                    left_gap = box[0] - left_margin
+                    right_gap = (width - right_margin) - box[1]
+                    wanted = None
+                    if abs(left_gap - right_gap) <= 8 and left_gap >= 24:
+                        wanted = "center"
+                    elif right_gap <= 6 and left_gap >= 48:
+                        wanted = "right"
+                    elif left_gap <= 6 and right_gap >= 24:
+                        wanted = "left"
+                    if wanted:
+                        paragraph_properties = element.get_or_add_pPr() if hasattr(element, "get_or_add_pPr") else element.pPr
+                        if paragraph_properties is not None:
+                            jc = paragraph_properties.find(qn("w:jc"))
+                            current = jc.get(qn("w:val")) if jc is not None else "left"
+                            if current != wanted:
+                                if jc is None:
+                                    jc = paragraph_properties.makeelement(qn("w:jc"), {})
+                                    paragraph_properties.append(jc)
+                                jc.set(qn("w:val"), wanted)
+                                changed += 1
+        if element in page_break_after:
+            page_index += 1
+    return changed
+
+
 def _furniture_key(element: Any, doc: docx.Document) -> str:
     """Identity of an element for repeat detection: its digit-normalized text
     plus the hashes of its images. Empty when the element carries neither."""
@@ -1947,7 +2291,7 @@ def _furniture_key(element: Any, doc: docx.Document) -> str:
     return f"{text}|{','.join(sorted(hashes))}"
 
 
-def _strip_running_furniture(doc: docx.Document, page_break_after: Set[Any]) -> int:
+def _strip_running_furniture(doc: docx.Document, page_break_after: Set[Any], report: Optional[Dict[str, Any]] = None) -> int:
     """Remove running headers/footers (repeated top/bottom elements) from the body.
 
     An element counts as furniture when the same text (page numbers normalized)
@@ -1961,10 +2305,16 @@ def _strip_running_furniture(doc: docx.Document, page_break_after: Set[Any]) -> 
         return 0
 
     edges: List[List[Tuple[Any, str]]] = []
+    sides: Dict[Any, str] = {}
     for page in pages:
         keyed = [(el, _furniture_key(el, doc)) for el in page]
         keyed = [(el, key) for el, key in keyed if key]
-        edges.append(keyed[:_FURNITURE_EDGE_ELEMENTS] + keyed[-_FURNITURE_EDGE_ELEMENTS:])
+        head, tail = keyed[:_FURNITURE_EDGE_ELEMENTS], keyed[-_FURNITURE_EDGE_ELEMENTS:]
+        for el, _ in head:
+            sides[el] = "header"
+        for el, _ in tail:
+            sides.setdefault(el, "footer")
+        edges.append(head + [item for item in tail if item not in head])
 
     page_counts: Dict[str, int] = {}
     for edge in edges:
@@ -1975,10 +2325,20 @@ def _strip_running_furniture(doc: docx.Document, page_break_after: Set[Any]) -> 
     furniture = {key for key, count in page_counts.items() if count >= min_pages}
 
     removed = 0
-    for edge in edges:
+    for page_index, edge in enumerate(edges):
         for element, key in edge:
             if key not in furniture or element.getparent() is None:
                 continue
+            if report is not None:
+                jc = element.find(qn("w:pPr") + "/" + qn("w:jc"))
+                report.setdefault("items", []).append({
+                    "page": page_index,
+                    "side": sides.get(element, "footer"),
+                    "key": key,
+                    "text": "".join(node.text or "" for node in element.iter(qn("w:t"))).strip(),
+                    "jc": jc.get(qn("w:val")) if jc is not None else None,
+                    "has_image": element.find(".//" + qn("a:blip")) is not None,
+                })
             if element in page_break_after:
                 for child in list(element):
                     if not child.tag.endswith("}pPr"):
@@ -2107,6 +2467,95 @@ def _infer_heading_styles(doc: docx.Document, page_break_after: Optional[Set[Any
     return len(candidates)
 
 
+_ROMAN_VALUES = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
+
+
+def _printed_page_number(text: str) -> Optional[Tuple[int, str]]:
+    """The value and style of a printed page number ("12" or "iv"), or None when the text is not one."""
+    cleaned = re.sub(r"(?i)\bpage\b|\bof\s*\d+|/\s*\d+|[-–—\s]", "", text)
+    if not cleaned:
+        return None
+    if cleaned.isdigit():
+        return int(cleaned), "decimal"
+    lowered = cleaned.lower()
+    if all(ch in _ROMAN_VALUES for ch in lowered):
+        total = 0
+        for index, ch in enumerate(lowered):
+            value = _ROMAN_VALUES[ch]
+            total += -value if index + 1 < len(lowered) and _ROMAN_VALUES[lowered[index + 1]] > value else value
+        return total, "lowerRoman" if cleaned == lowered else "upperRoman"
+    return None
+
+
+def _furniture_alignment(item: Dict[str, Any]) -> str:
+    """CSS alignment of a removed header/footer line (centred when the PDF paragraph says so, else right for numbers)."""
+    return {"center": "center", "right": "right", "left": "left", "both": "left"}.get(item.get("jc") or "", "right" if item["key"].startswith("<page-number>") else "left")
+
+
+def _furniture_to_layout(result: Dict[str, Any], report: Dict[str, Any], page_count: int) -> None:
+    """Put the running headers/footers and page numbers stripped from a PDF back as real ones.
+
+    A PDF prints a page number or running title on every page, which was removed
+    from the body as repeated furniture. They return as header/footer parts, with
+    the printed numbers read per page so a roman front matter and a restart at 1
+    survive.
+    """
+    items = report.get("items") or []
+    hf = result.get("hf") or {}
+    all_sections = hf.get("sections") or []
+    # The section that opens each page: the first one, then the one each page break announces.
+    breaks = [
+        (re.search(r'data-section="(\d+)"', tag) or [None, ""])[1]
+        for tag in re.findall(r'<hr class="page-break"[^>]*/>', result["html"])
+    ]
+    if not items or not breaks or any(value == "" for value in breaks) or len(breaks) + 1 != page_count:
+        return
+    by_index = {section["index"]: section for section in all_sections}
+    sections = [by_index.get(index) for index in [0] + [int(value) for value in breaks]]
+    if any(section is None for section in sections):
+        return
+    parts: Dict[str, Dict[str, str]] = result["hf"]["parts"]
+    lines: Dict[str, List[Dict[str, Any]]] = {"header": [], "footer": []}
+    seen: Set[Tuple[str, str]] = set()
+    for item in items:
+        if item["has_image"] or not item["text"]:
+            continue
+        signature = (item["side"], item["key"])
+        if signature not in seen:
+            seen.add(signature)
+            lines[item["side"]].append(item)
+
+    for side in ("header", "footer"):
+        if not lines[side]:
+            continue
+        html = ""
+        for item in lines[side]:
+            is_number = item["key"].startswith("<page-number>")
+            body = "{page}" if is_number else _html_escape(item["text"])
+            html += f'<p style="margin:0;text-align:{_furniture_alignment(item)};font-size:11pt">{body}</p>'
+        parts[f"pdf_{side}"] = {"flow": html, "art": ""}
+        pages_with = {item["page"] for item in items if item["side"] == side}
+        for page_index, section in enumerate(sections):
+            section[side] = f"pdf_{side}" if page_index in pages_with else None
+
+    # Printed numbers per page: start values and number styles where the sequence changes.
+    printed: Dict[int, Tuple[int, str]] = {}
+    for item in items:
+        number = _printed_page_number(item["text"]) if item["key"].startswith("<page-number>") else None
+        if number is not None:
+            printed.setdefault(item["page"], number)
+    previous: Optional[Tuple[int, str]] = None
+    for page_index, section in enumerate(sections):
+        number = printed.get(page_index)
+        if number is None:
+            continue
+        value, style = number
+        if previous is None or style != previous[1] or value != previous[0] + 1:
+            section["number_start"] = value
+        section["number_format"] = style
+        previous = number
+
+
 def _snap_right_tabs(doc: docx.Document) -> None:
     """Make a left tab stop that sits at the right margin a right-aligned one.
 
@@ -2154,8 +2603,13 @@ def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
         doc = docx.Document(docx_path)
 
     page_break_after = _page_break_paragraphs(doc)
-    _strip_running_furniture(doc, page_break_after)
+    furniture: Dict[str, Any] = {}
+    page_count = len(_split_pages(doc, page_break_after))
+    _strip_running_furniture(doc, page_break_after, furniture)
     _infer_heading_styles(doc, page_break_after)
     _snap_right_tabs(doc)
+    _realign_from_pdf(doc, file_bytes, page_break_after)
     doc.part._is_pdf_import = True  # pdf2docx leaves cell padding at zero; see _table_cell_margins
-    return _docx_document_to_result(doc, page_break_after, compress_images=True)
+    result = _docx_document_to_result(doc, page_break_after, compress_images=True)
+    _furniture_to_layout(result, furniture, page_count)
+    return result
