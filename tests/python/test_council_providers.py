@@ -201,3 +201,126 @@ class TestMixedPanel:
         verdict = run(go())
         assert verdict.quorum_reached
         assert {entry["provider"] for entry in verdict.deliberation_transcript} == {"nvidia"}
+
+
+class TestJudgeRequestShape:
+    def test_every_completion_is_capped_in_length(self, monkeypatch):
+        seen = []
+
+        async def fake_create(profile, **kwargs):
+            seen.append(kwargs)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))])
+
+        monkeypatch.setattr(cp, "_create_completion", fake_create)
+        profile = cp.AIProfile("nvidia", "m", ["k"])
+        run(cp._complete_json(profile, "m", "sys", "user"))
+        assert seen[0]["max_tokens"] == cp._JUDGE_MAX_TOKENS
+
+    def test_judge_persona_is_sent_once_not_twice(self):
+        judge = cp.CouncilJudge(JudgeRole.FORENSIC_HISTORIAN)
+        prompt = judge._build_prompt(MATCH)
+        assert judge.prompt not in prompt
+        assert "SUSPECT TEXT" in prompt
+
+
+class TestTriageCap:
+    def test_only_the_strongest_flagged_paragraphs_reach_the_council(self, monkeypatch):
+        from triage_filter import TriageConfig, TriageFilter
+
+        flagged = [{"similarity_score": s, "text": f"p{i}"} for i, s in enumerate([0.5, 0.99, 0.8, 0.9])]
+        seen = {}
+
+        triage = TriageFilter(TriageConfig(max_flagged_paragraphs=2))
+        monkeypatch.setattr(triage, "_stage1_peer_pre_filter", lambda *a, **k: list(flagged))
+
+        async def fake_windowing(paragraphs, html):
+            seen["paragraphs"] = paragraphs
+            return []
+
+        async def fake_council(clusters, timeline):
+            return []
+
+        monkeypatch.setattr(triage, "_stage2_context_windowing", fake_windowing)
+        monkeypatch.setattr(triage, "_stage3_council_review", fake_council)
+
+        run(triage.process_document_with_peers("d", "<p>x</p>", "u", "f", []))
+        assert [p["similarity_score"] for p in seen["paragraphs"]] == [0.99, 0.9]
+
+
+class TestPerKeyConcurrency:
+    """Each API key has its own concurrency gate, so more keys mean more parallel calls."""
+
+    def _fake_clients(self, monkeypatch):
+        state = {"active": 0, "peak": 0, "per_key": {}, "peak_per_key": {}}
+
+        def make_client(provider, key):
+            async def create(**kwargs):
+                state["active"] += 1
+                state["per_key"][key] = state["per_key"].get(key, 0) + 1
+                state["peak"] = max(state["peak"], state["active"])
+                state["peak_per_key"][key] = max(state["peak_per_key"].get(key, 0), state["per_key"][key])
+                await asyncio.sleep(0.05)
+                state["active"] -= 1
+                state["per_key"][key] -= 1
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))])
+            return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+        monkeypatch.setattr(cp, "_get_client", make_client)
+        monkeypatch.setattr(cp, "_completion_semaphores", {})
+        return state
+
+    def test_two_keys_run_twice_as_many_calls_at_once(self, monkeypatch):
+        state = self._fake_clients(monkeypatch)
+        one = cp.AIProfile("nvidia", "m", ["key-a"])
+        two = cp.AIProfile("nvidia", "m", ["key-b"])
+
+        async def go():
+            await asyncio.gather(*[cp._create_completion(p, model="m") for p in [one, two] * 4])
+
+        run(go())
+        assert state["peak"] == 4
+        assert state["peak_per_key"] == {"key-a": 2, "key-b": 2}
+
+    def test_limit_per_key_is_configurable(self, monkeypatch):
+        monkeypatch.setenv("COUNCIL_CONCURRENCY_PER_KEY", "3")
+        state = self._fake_clients(monkeypatch)
+        profile = cp.AIProfile("nvidia", "m", ["key-a"])
+
+        async def go():
+            await asyncio.gather(*[cp._create_completion(profile, model="m") for _ in range(6)])
+
+        run(go())
+        assert state["peak"] == 3
+
+    def test_bad_setting_falls_back_to_two(self, monkeypatch):
+        monkeypatch.setenv("COUNCIL_CONCURRENCY_PER_KEY", "lots")
+        assert cp._completions_per_key() == 2
+
+
+class TestArbiterAlias:
+    """COUNCIL_ARBITER_PROFILE is the short name for COUNCIL_SYNTHESIZER_ARBITER_PROFILE."""
+
+    def _arbiter_model(self):
+        async def go():
+            cp.configure_ai(profiles=PROFILES)
+            return cp._profile_order(JudgeRole.SYNTHESIZER_ARBITER)[0].model
+
+        return run(go())
+
+    def test_short_name_pins_the_arbiter(self, monkeypatch):
+        monkeypatch.setenv("COUNCIL_ARBITER_PROFILE", "3")
+        assert self._arbiter_model() == "meta/llama-3.2-11b-vision-instruct"
+
+    def test_full_name_wins_when_both_are_set(self, monkeypatch):
+        monkeypatch.setenv("COUNCIL_ARBITER_PROFILE", "3")
+        monkeypatch.setenv("COUNCIL_SYNTHESIZER_ARBITER_PROFILE", "2")
+        assert self._arbiter_model() == "deepseek-ai/deepseek-r1"
+
+    def test_short_name_does_not_move_a_specialist(self, monkeypatch):
+        monkeypatch.setenv("COUNCIL_ARBITER_PROFILE", "3")
+
+        async def go():
+            cp.configure_ai(profiles=PROFILES)
+            return cp._profile_order(JudgeRole.STYLOMETRIC_LINGUIST)[0].model
+
+        assert run(go()) == "gemini-2.5-flash"

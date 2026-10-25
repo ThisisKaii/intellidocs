@@ -6,12 +6,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!,
 )
 
+/** Whether a scan compares inside one class or across all of a professor's classes. */
+export type PlagiarismScope = 'local' | 'global'
+
 /** A student taking part in the class similarity comparison. */
 export interface ClassSimilarityStudent {
   studentId: string
   studentName: string
   /** Document ids this student submitted to the folder. */
   documentIds: string[]
+  /** Set for students from the professor's other classes (global view only). */
+  className?: string
 }
 
 /** Highest passage similarity found between two students' submissions. */
@@ -60,6 +65,7 @@ async function resolveStudentName(studentId: string): Promise<string> {
  */
 export async function getClassSimilarity(
   folderId: string,
+  scope: PlagiarismScope = 'local',
 ): Promise<ClassSimilarityMatrix> {
   const { data: links, error: linkError } = await supabase
     .from('folder_documents')
@@ -109,12 +115,14 @@ export async function getClassSimilarity(
   }
 
   const pairs = new Map<string, ClassSimilarityPair>()
+  const ownerIds = new Set(studentIds)
+  const externals = new Map<string, { folderId: string; documentIds: string[] }>()
   const scanIds = Array.from(studentByScan.keys())
 
   if (scanIds.length > 0) {
     const { data: matches, error: matchError } = await supabase
       .from('plagiarism_matches')
-      .select('scan_id,matched_document_id,matched_student_id,similarity_score')
+      .select('scan_id,matched_document_id,matched_student_id,matched_folder_id,similarity_score')
       .in('scan_id', scanIds)
 
     if (matchError) {
@@ -122,6 +130,8 @@ export async function getClassSimilarity(
     }
 
     for (const match of matches ?? []) {
+      // The local view ignores matches found in the professor's other classes.
+      if (scope === 'local' && match.matched_folder_id && match.matched_folder_id !== folderId) continue
       const studentA = studentByScan.get(match.scan_id)
       const studentB =
         match.matched_student_id ??
@@ -129,6 +139,11 @@ export async function getClassSimilarity(
           ? ownerByDocument.get(match.matched_document_id) ?? null
           : null)
       if (!studentA || !studentB || studentA === studentB) continue
+      if (!ownerIds.has(studentB) && match.matched_folder_id) {
+        const external = externals.get(studentB) ?? { folderId: match.matched_folder_id as string, documentIds: [] }
+        if (match.matched_document_id) external.documentIds.push(match.matched_document_id as string)
+        externals.set(studentB, external)
+      }
 
       const score = clampPercent(Number(match.similarity_score ?? 0))
       const [first, second] =
@@ -148,7 +163,27 @@ export async function getClassSimilarity(
     documentIds: documentsByStudent.get(studentId) ?? [],
   }))
 
+  const classNames = await folderNames(Array.from(new Set(Array.from(externals.values()).map((e) => e.folderId))))
+  const externalIds = Array.from(externals.keys())
+  const externalNames = await Promise.all(externalIds.map((id) => resolveStudentName(id)))
+  externalIds.forEach((studentId, index) => {
+    const external = externals.get(studentId)!
+    students.push({
+      studentId,
+      studentName: externalNames[index],
+      documentIds: external.documentIds,
+      className: classNames.get(external.folderId) ?? 'Another class',
+    })
+  })
+
   return { students, pairs: Array.from(pairs.values()) }
+}
+
+/** Map folder ids to their display names. */
+async function folderNames(folderIds: string[]): Promise<Map<string, string>> {
+  if (folderIds.length === 0) return new Map()
+  const { data } = await supabase.from('folders').select('folder_id,name').in('folder_id', folderIds)
+  return new Map((data ?? []).map((row) => [row.folder_id as string, row.name as string]))
 }
 
 /** A document row used by the council scan pipeline. */
@@ -172,6 +207,7 @@ export interface PlagiarismScanRecord {
   quorum_reached: boolean
   council_transcript: unknown
   scan_status: string
+  scope?: PlagiarismScope
   created_at: string
   updated_at: string
 }
@@ -185,6 +221,7 @@ export interface PlagiarismMatchRecord {
   char_end: number
   matched_document_id: string | null
   matched_student_id: string | null
+  matched_folder_id?: string | null
   similarity_score: number
   match_type: string
   match_severity: string
@@ -252,6 +289,58 @@ export async function getFolderPeerDocuments(
   return (docs ?? []) as ScanDocument[]
 }
 
+/** A peer document plus the class folder it was submitted to. */
+export interface FolderPeerDocument extends ScanDocument {
+  folder_id: string
+}
+
+/** Most peers a global scan compares against, newest submissions first. */
+export const GLOBAL_PEER_LIMIT = 200
+
+/**
+ * Every document submitted to any class folder this professor owns (except the
+ * one being scanned), newest first and capped, for a global scan.
+ */
+export async function getProfessorPeerDocuments(
+  professorId: string,
+  excludeDocumentId: string,
+): Promise<FolderPeerDocument[]> {
+  const { data: folders, error: folderError } = await supabase
+    .from('folders')
+    .select('folder_id')
+    .eq('user_id', professorId)
+    .eq('folder_type', 'class')
+
+  if (folderError) throw new Error(`Failed to load your classes: ${folderError.message}`)
+  const folderIds = (folders ?? []).map((row) => row.folder_id as string)
+  if (folderIds.length === 0) return []
+
+  const { data: links, error: linkError } = await supabase
+    .from('folder_documents')
+    .select('document_id,folder_id')
+    .in('folder_id', folderIds)
+
+  if (linkError) throw new Error(`Failed to load class submissions: ${linkError.message}`)
+
+  const folderByDocument = new Map<string, string>()
+  for (const row of links ?? []) {
+    if (row.document_id !== excludeDocumentId && !folderByDocument.has(row.document_id as string)) {
+      folderByDocument.set(row.document_id as string, row.folder_id as string)
+    }
+  }
+  if (folderByDocument.size === 0) return []
+
+  const { data: docs, error: docError } = await supabase
+    .from('documents')
+    .select('id,user_id,title,content')
+    .in('id', Array.from(folderByDocument.keys()))
+    .order('updated_at', { ascending: false })
+    .limit(GLOBAL_PEER_LIMIT)
+
+  if (docError) throw new Error(`Failed to load peer documents: ${docError.message}`)
+  return (docs ?? []).map((doc) => ({ ...(doc as ScanDocument), folder_id: folderByDocument.get(doc.id as string)! }))
+}
+
 /** The student's other live documents (latest 30, content only) for self-check. */
 export async function getOwnOtherDocuments(
   userId: string,
@@ -270,6 +359,24 @@ export async function getOwnOtherDocuments(
   return (data ?? []) as { id: string; title: string; content: string }[]
 }
 
+/** The student's other live documents as scan peers (latest 30). */
+export async function getOwnOtherScanDocuments(
+  userId: string,
+  excludeDocumentId: string,
+): Promise<ScanDocument[]> {
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id,user_id,title,content')
+    .eq('user_id', userId)
+    .eq('is_deleted', false)
+    .neq('id', excludeDocumentId)
+    .order('updated_at', { ascending: false })
+    .limit(30)
+
+  if (error) throw new Error(`Failed to load your documents: ${error.message}`)
+  return (data ?? []) as ScanDocument[]
+}
+
 /** Persist a completed scan and return the stored row. */
 export async function createScan(input: {
   documentId: string
@@ -282,6 +389,7 @@ export async function createScan(input: {
   quorumReached: boolean
   councilTranscript: unknown
   status: string
+  scope?: PlagiarismScope
 }): Promise<PlagiarismScanRecord> {
   const { data, error } = await supabase
     .from('plagiarism_scans')
@@ -296,6 +404,7 @@ export async function createScan(input: {
       quorum_reached: input.quorumReached,
       council_transcript: input.councilTranscript,
       scan_status: input.status,
+      scope: input.scope ?? 'local',
     })
     .select()
     .single()
@@ -313,6 +422,7 @@ export async function createMatches(
     charEnd: number
     matchedDocumentId: string | null
     matchedStudentId: string | null
+    matchedFolderId?: string | null
     similarityScore: number
     matchType: string
     matchSeverity: string
@@ -335,6 +445,7 @@ export async function createMatches(
         char_end: match.charEnd,
         matched_document_id: match.matchedDocumentId,
         matched_student_id: match.matchedStudentId,
+        matched_folder_id: match.matchedFolderId ?? null,
         similarity_score: match.similarityScore,
         match_type: match.matchType,
         match_severity: match.matchSeverity,

@@ -77,6 +77,8 @@ export interface Folder {
   class_code?: string | null
   /** Term the class folder was created for (e.g. '2026-T1'). */
   academic_term?: string | null
+  /** Private code students type to join a class folder; only returned to the folder owner. */
+  join_code?: string | null
   /** Number of documents enrolled students have submitted into a class folder. */
   submission_count?: number
   /** Number of students enrolled in a class folder. */
@@ -333,6 +335,19 @@ export interface SystemReport {
     acceptanceRate: string
     byType: Record<string, { total: number; accepted: number; rejected: number; acceptanceRate: string }>
   }
+  generatedAt: string
+}
+
+/** Weekly activity series and breakdowns shown as charts on the admin reports tab. */
+export interface ReportTimeseries {
+  weeks: number
+  signups: Array<{ week: string; count: number }>
+  documents: Array<{ week: string; count: number }>
+  scans: Array<{ week: string; count: number }>
+  /** Share of scans in the window that scored below the originality threshold. */
+  flaggedScans: number
+  totalScans: number
+  applicationsByStatus: Record<VerificationStatus, number>
   generatedAt: string
 }
 

@@ -41,6 +41,20 @@ describe('resolveJudgeAssignments', () => {
     expect(Object.values(resolveJudgeAssignments(1, {}))).toEqual([0, 0, 0, 0, 0])
   })
 
+  it('accepts COUNCIL_ARBITER_PROFILE as the short name for the arbiter pin', () => {
+    expect(resolveJudgeAssignments(3, { COUNCIL_ARBITER_PROFILE: '3' }).synthesizer_arbiter).toBe(2)
+  })
+
+  it('prefers the full arbiter variable when both are set', () => {
+    const env = { COUNCIL_SYNTHESIZER_ARBITER_PROFILE: '2', COUNCIL_ARBITER_PROFILE: '3' }
+    expect(resolveJudgeAssignments(3, env).synthesizer_arbiter).toBe(1)
+  })
+
+  it('does not let COUNCIL_ARBITER_PROFILE pin the specialists', () => {
+    const result = resolveJudgeAssignments(3, { COUNCIL_ARBITER_PROFILE: '3' })
+    expect(result.stylometric_linguist).toBe(0)
+  })
+
   it('spreads specialists round-robin and keeps the arbiter on profile 1', () => {
     expect(resolveJudgeAssignments(3, {})).toEqual({
       stylometric_linguist: 0,

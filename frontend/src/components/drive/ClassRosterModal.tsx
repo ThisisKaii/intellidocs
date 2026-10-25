@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Trash2, UserPlus, Users, X } from 'lucide-react'
 import { api, type ClassEnrollmentRecord, type FolderRecord } from '@/services/api'
+import JoinCodeBadge from './JoinCodeBadge'
 
 interface ClassRosterModalProps {
   folder: FolderRecord
@@ -164,6 +165,7 @@ export function ClassRosterModal({
           </button>
         </div>
 
+        <div style={{ marginBottom: '1rem' }}><JoinCodeBadge folder={folder} /></div>
         <form onSubmit={handleEnroll} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
           <input
             ref={emailRef}

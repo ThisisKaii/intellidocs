@@ -24,6 +24,7 @@ jest.mock('../../middleware/authMiddleware', () => ({
   },
   requireAdmin: (_req: Request, _res: Response, next: NextFunction): void => next(),
   requireApprovedProfessor: (_req: Request, _res: Response, next: NextFunction): void => next(),
+  requireProfessorForClassFolder: (_req: Request, _res: Response, next: NextFunction): void => next(),
 }))
 
 jest.mock('../../models/driveModel', () => ({

@@ -51,6 +51,11 @@ export const enrollStudentSchema = z.object({
   email: z.string().trim().email('A valid student email is required').max(320),
 })
 
+/** Validate the request to join a class with its private code. */
+export const joinClassSchema = z.object({
+  code: z.string().trim().min(4, 'Enter the class code').max(12, 'That code is too long'),
+})
+
 export type CreateFolderInput = z.infer<typeof createFolderSchema>
 export type UpdateFolderInput = z.infer<typeof updateFolderSchema>
 export type FolderDocumentInput = z.infer<typeof folderDocumentSchema>

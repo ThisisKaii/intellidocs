@@ -77,3 +77,20 @@ export interface SystemReport {
   }
   generatedAt: string
 }
+/** One week of a time series; `week` is the Monday's date (YYYY-MM-DD). */
+export interface WeeklyCount {
+  week: string
+  count: number
+}
+
+/** Weekly activity and breakdowns behind the admin charts. */
+export interface ReportTimeseries {
+  weeks: number
+  signups: WeeklyCount[]
+  documents: WeeklyCount[]
+  scans: WeeklyCount[]
+  flaggedScans: number
+  totalScans: number
+  applicationsByStatus: Record<VerificationStatus, number>
+  generatedAt: string
+}

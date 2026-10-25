@@ -56,6 +56,7 @@ function Login(): JSX.Element {
           email: response.user.email,
           role: response.user.role,
           verificationStatus: response.user.verificationStatus,
+          requestedRole: response.user.requestedRole ?? null,
           displayName: response.user.displayName ?? null,
         },
         response.session.access_token,

@@ -29,6 +29,7 @@ export interface UserAuthData {
   email: string
   role?: 'student' | 'professor' | 'admin'
   verificationStatus?: 'pending' | 'approved' | 'rejected'
+  requestedRole?: 'student' | 'professor' | 'admin' | null
   displayName?: string | null
 }
 
@@ -148,13 +149,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const applyRoleStatus = useCallback((status: RoleStatusResponse): void => {
     setUser((prev) => {
       if (!prev) return prev
-      if (prev.role === status.role && prev.verificationStatus === status.verificationStatus) {
+      if (
+        prev.role === status.role &&
+        prev.verificationStatus === status.verificationStatus &&
+        (prev.requestedRole ?? null) === (status.requestedRole ?? null)
+      ) {
         return prev
       }
       const next = {
         ...prev,
         role: status.role,
         verificationStatus: status.verificationStatus,
+        requestedRole: status.requestedRole ?? null,
       }
       localStorage.setItem('authUser', JSON.stringify(next))
       return next
@@ -186,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Poll only while an application is unresolved, so an approved or rejected
     // account makes no background requests at all.
-    const awaitingDecision = user?.role === 'professor' && user?.verificationStatus === 'pending'
+    const awaitingDecision = user?.verificationStatus === 'pending'
     const intervalId = awaitingDecision
       ? window.setInterval(() => void refreshRole(), PENDING_POLL_MS)
       : null

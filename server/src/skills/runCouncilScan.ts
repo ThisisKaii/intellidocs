@@ -36,6 +36,8 @@ export async function runCouncilScan(input: {
   peers: ScanDocument[]
   /** Raw behavior events for the timeline forensics engine. */
   timeline: unknown[]
+  /** Review only the N strongest flagged passages with the AI judges. */
+  maxMatches?: number
 }): Promise<PythonCouncilScanResponse> {
   const peerPayload: CouncilScanPeer[] = input.peers.map((peer) => ({
     documentId: peer.id,
@@ -50,6 +52,7 @@ export async function runCouncilScan(input: {
     text: input.document.content,
     peers: peerPayload,
     timeline: input.timeline,
+    maxMatches: input.maxMatches,
     ai: councilAIConfig(),
   })
 }

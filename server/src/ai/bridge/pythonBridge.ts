@@ -447,6 +447,8 @@ export async function requestCouncilScan(payload: {
   /** Raw behavior events used by the timeline forensics engine. */
   timeline: unknown[]
   ai: CouncilAIConfig
+  /** Review only the N strongest flagged passages with the AI judges. */
+  maxMatches?: number
 }): Promise<PythonCouncilScanResponse> {
   const mlApiUrl = getMLApiUrl()
 
@@ -464,6 +466,7 @@ export async function requestCouncilScan(payload: {
           text: peer.text,
         })),
         timeline: payload.timeline,
+        max_matches: payload.maxMatches ?? 0,
         ai:
           payload.ai.profiles.length > 0
             ? {

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type ClassSimilarityMatrix } from '@/services/api'
+import { api, type ClassSimilarityMatrix, type PlagiarismScope } from '@/services/api'
 
 interface SimilarityMatrixProps {
   classFolderId: string
+  /** 'global' also compares with the professor's other classes. */
+  scope?: PlagiarismScope
   onStudentSelect?: (studentId: string) => void
 }
 
@@ -10,6 +12,8 @@ interface SimilarityMatrixProps {
 interface MatrixRow {
   studentId: string
   studentName: string
+  /** Set for students from the professor's other classes. */
+  className?: string
   avatarColor: string
   similarities: Record<string, number>
 }
@@ -41,7 +45,7 @@ function getColorForSimilarity(sim: number): string {
  * Data comes from the Express API (the council's plagiarism matches); the
  * matrix is built here purely for display.
  */
-export function SimilarityMatrix({ classFolderId, onStudentSelect }: SimilarityMatrixProps): JSX.Element {
+export function SimilarityMatrix({ classFolderId, scope = 'local', onStudentSelect }: SimilarityMatrixProps): JSX.Element {
   const [data, setData] = useState<ClassSimilarityMatrix | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
@@ -59,7 +63,7 @@ export function SimilarityMatrix({ classFolderId, onStudentSelect }: SimilarityM
     setError('')
 
     api.professor
-      .folderSimilarity(classFolderId)
+      .folderSimilarity(classFolderId, scope)
       .then((result) => {
         if (!cancelled) setData(result)
       })
@@ -75,7 +79,7 @@ export function SimilarityMatrix({ classFolderId, onStudentSelect }: SimilarityM
     return () => {
       cancelled = true
     }
-  }, [classFolderId])
+  }, [classFolderId, scope])
 
   const rows: MatrixRow[] = useMemo(() => {
     if (!data) return []
@@ -100,6 +104,7 @@ export function SimilarityMatrix({ classFolderId, onStudentSelect }: SimilarityM
       return {
         studentId: student.studentId,
         studentName: student.studentName,
+        className: student.className,
         avatarColor: getAvatarColor(student.studentId),
         similarities,
       }
@@ -163,7 +168,7 @@ export function SimilarityMatrix({ classFolderId, onStudentSelect }: SimilarityM
                     </span>
                     <button
                       type="button"
-                      title={student.studentName}
+                      title={student.className ? `${student.studentName} (${student.className})` : student.studentName}
                       onClick={() => onStudentSelect?.(student.studentId)}
                       className="hidden sm:inline max-w-[80px] truncate bg-transparent border-none cursor-pointer text-muted-foreground hover:text-foreground font-medium text-xs p-0"
                     >
@@ -192,6 +197,11 @@ export function SimilarityMatrix({ classFolderId, onStudentSelect }: SimilarityM
                     >
                       {student.studentName}
                     </button>
+                    {student.className && (
+                      <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[0.625rem] font-medium text-muted-foreground">
+                        {student.className}
+                      </span>
+                    )}
                   </div>
                 </td>
                 {rows.map((otherStudent) => {

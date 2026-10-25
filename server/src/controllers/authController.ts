@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
-import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus } from '../models/userModel'
+import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, getOwnApplicationStatus, getRequestedRole } from '../models/userModel'
 import { resolvePendingShares } from '../models/shareModel'
 import { AuthenticatedRequest } from '../types/express'
 
@@ -91,6 +91,7 @@ export async function login(req: Request, res: Response): Promise<void> {
         ...data.user,
         role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'student',
         verificationStatus: profile?.verification_status ?? 'approved',
+        requestedRole: await getRequestedRole(data.user.id),
         displayName: data.user.user_metadata?.display_name ?? null,
       },
       session: data.session,
@@ -159,6 +160,7 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
       },
       role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'student',
       verificationStatus: profile?.verification_status ?? 'approved',
+      requestedRole: await getRequestedRole(user.id),
       message: 'Google authentication successful',
     })
   } catch {
@@ -260,8 +262,8 @@ export async function getMe(req: AuthenticatedRequest, res: Response): Promise<v
 }
 
 /**
- * Submit a faculty verification application.
- * Changes the user's role to 'professor' with verification_status = 'pending'.
+ * Submit a faculty verification application. The user keeps their current role
+ * until an administrator approves the application.
  */
 export async function applyProfessor(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -271,62 +273,15 @@ export async function applyProfessor(req: AuthenticatedRequest, res: Response): 
       return
     }
 
-    const { college, department, institutionalEmail, facultyId, reason } = req.body as ApplyProfessorBody
-
-    if (!college || !department || !institutionalEmail || !facultyId || !reason) {
+    const body = req.body as ApplyProfessorBody
+    if (!body.college || !body.department || !body.institutionalEmail || !body.facultyId || !body.reason) {
       res.status(400).json({ error: 'All fields are required' })
       return
     }
 
-    // Fetch the professor role_id
-    const { data: roleRow } = await supabase
-      .from('roles')
-      .select('role_id')
-      .eq('role_name', 'professor')
-      .single()
-
-    if (!roleRow) {
-      res.status(500).json({ error: 'Professor role not found in system' })
-      return
-    }
-
-    // Upsert the user profile to professor with pending verification
-    const { error: upsertError } = await supabase
-      .from('user_profiles')
-      .upsert({
-        user_id: userId,
-        role_id: roleRow.role_id,
-        verification_status: 'pending',
-        phone: facultyId,
-      }, { onConflict: 'user_id' })
-
-    if (upsertError) {
-      console.error('applyProfessor: user_profiles upsert failed:', upsertError.message)
-      res.status(500).json({ error: `Failed to submit application: ${upsertError.message}` })
-      return
-    }
-
-    // Store application details in notification for admin review.
-    // A failed insert means the queue would never see this application, so it
-    // must be treated as a submission failure, not swallowed.
-    const { error: notifError } = await supabase.from('notifications').insert({
-      user_id: userId,
-      type: 'professor_application',
-      title: 'Professor Application Submitted',
-      message: `Application submitted by ${req.user?.email}. College: ${college}, Department: ${department}, Faculty ID: ${facultyId}. Reason: ${reason}`,
-      metadata: {
-        college,
-        department,
-        institutionalEmail,
-        facultyId,
-        reason,
-        submittedAt: new Date().toISOString(),
-      },
-    })
-
-    if (notifError) {
-      console.error('applyProfessor: notification insert failed:', notifError.message)
-      res.status(500).json({ error: `Failed to submit application: ${notifError.message}` })
+    const outcome = await createProfessorApplication(userId, { ...body, email: req.user?.email ?? null })
+    if (outcome === 'already') {
+      res.status(409).json({ error: 'You already have professor access' })
       return
     }
 
@@ -337,6 +292,21 @@ export async function applyProfessor(req: AuthenticatedRequest, res: Response): 
   } catch (err) {
     console.error('applyProfessor: unexpected error:', err instanceof Error ? err.message : err)
     res.status(500).json({ error: 'Failed to submit application' })
+  }
+}
+
+/** The caller's application state (requested role, status, admin decision note). */
+export async function getApplicationStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: '401 Unauthorized: Session required' })
+      return
+    }
+    res.status(200).json(await getOwnApplicationStatus(userId))
+  } catch (err) {
+    console.error('getApplicationStatus failed:', err instanceof Error ? err.message : err)
+    res.status(500).json({ error: 'Failed to load application status' })
   }
 }
 
@@ -379,6 +349,7 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
         user_id: userId,
         role_id: roleRow.role_id,
         verification_status: 'pending',
+        requested_role: 'student',
         phone: studentId,
       }, { onConflict: 'user_id' })
 

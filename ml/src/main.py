@@ -935,6 +935,8 @@ class CouncilScanRequest(BaseModel):
     # the timeline forensics engine.
     timeline: list[dict] = []
     ai: Optional[CouncilAIConfig] = None
+    # Review only the N strongest flagged paragraphs with the AI judges (0 = all).
+    max_matches: int = 0
 
 
 class CouncilScanMatch(BaseModel):
@@ -1041,7 +1043,7 @@ async def council_scan(request: CouncilScanRequest) -> CouncilScanResponse:
     try:
         from council_pipeline import configure_ai
         from timeline_forensics import TimelineForensics, build_composition_events
-        from triage_filter import run_full_triage_with_peers
+        from triage_filter import TriageConfig, run_full_triage_with_peers
 
         if request.ai and request.ai.profiles:
             configure_ai(
@@ -1056,12 +1058,14 @@ async def council_scan(request: CouncilScanRequest) -> CouncilScanResponse:
             )
 
         peers = [peer.model_dump() for peer in request.peers]
+        triage_config = TriageConfig(max_flagged_paragraphs=request.max_matches) if request.max_matches > 0 else None
         result = await run_full_triage_with_peers(
             document_id=request.document_id,
             html_content=request.text,
             user_id=request.user_id,
             folder_id=request.folder_id,
             peers=peers,
+            config=triage_config,
         )
 
         # Timeline forensics: resolve a concrete authorship verdict per match

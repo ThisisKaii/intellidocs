@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getUserStorage, getMe } from '../controllers/authController'
+import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getApplicationStatus, getUserStorage, getMe } from '../controllers/authController'
 import { authMiddleware } from '../middleware/authMiddleware'
 import { authArcjet, signupArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
@@ -27,6 +27,7 @@ router.get('/storage', authMiddleware, getUserStorage)
 router.get('/me', authMiddleware, getMe)
 
 /** Submit a faculty verification application (student → pending professor). */
+router.get('/application-status', authMiddleware, getApplicationStatus)
 router.post('/apply-professor', authMiddleware, validateBody(applyProfessorSchema), applyProfessor)
 
 /** Submit a student status application (regular user → pending student). */

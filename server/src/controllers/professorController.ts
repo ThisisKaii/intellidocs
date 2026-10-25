@@ -162,7 +162,8 @@ export async function getFolderSimilarity(
       return
     }
 
-    const matrix = await plagiarismModel.getClassSimilarity(folderId)
+    const scope = req.query.scope === 'global' ? 'global' : 'local'
+    const matrix = await plagiarismModel.getClassSimilarity(folderId, scope)
     res.json(matrix)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load similarity matrix'

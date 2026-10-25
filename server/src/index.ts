@@ -20,7 +20,7 @@ import healthRoutes from './routes/healthRoutes'
 import plagiarismRoutes from './routes/plagiarismRoutes'
 import citationRoutes from './routes/citationRoutes'
 import mcpRouter from './mcp/mcpServer'
-import { authMiddleware } from './middleware/authMiddleware'
+import { authMiddleware, requireApprovedProfessor } from './middleware/authMiddleware'
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -55,7 +55,7 @@ app.use('/predictions', authMiddleware, predictionRoutes)
 app.use('/ai', authMiddleware, aiRoutes)
 app.use('/folders', authMiddleware, folderRoutes)
 app.use('/drive', driveRoutes)
-app.use('/professor', authMiddleware, professorRoutes)
+app.use('/professor', authMiddleware, requireApprovedProfessor, professorRoutes)
 app.use('/notifications', authMiddleware, notificationRoutes)
 app.use('/admin', adminRoutes)
 app.use('/formatting', authMiddleware, formattingRoutes)

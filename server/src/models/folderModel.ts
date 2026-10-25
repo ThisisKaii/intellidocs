@@ -197,7 +197,7 @@ export async function getFolders(userId: string): Promise<Folder[]> {
     throw new Error(`Failed to get folders: ${error.message}`)
   }
 
-  const folders = data ?? []
+  const folders = await backfillJoinCodes(userId, data ?? [])
   const classFolderIds = folders
     .filter((folder) => folder.folder_type === 'class')
     .map((folder) => folder.folder_id)
@@ -242,6 +242,7 @@ export async function createFolder(
       folder_type: folderType,
       class_code: folderType === 'class' ? options.classCode ?? null : null,
       academic_term: folderType === 'class' ? options.academicTerm ?? null : null,
+      ...(folderType === 'class' ? { join_code: await generateJoinCode() } : {}),
     })
     .select()
     .single()
@@ -310,7 +311,7 @@ export async function enrollStudent(
     throw new Error(`Failed to enroll student: ${error.message}`)
   }
 
-  await provisionStudentWorkspaceFolder(studentId, folder, student.displayName)
+  await provisionStudentWorkspaceFolder(studentId, folder, student.displayName, student.email)
 
   return {
     folder_id: folderId,
@@ -329,7 +330,8 @@ export async function enrollStudent(
 async function provisionStudentWorkspaceFolder(
   studentId: string,
   classFolder: Folder,
-  displayName: string | null
+  displayName: string | null,
+  email: string | null = null
 ): Promise<void> {
   const { data: existing } = await supabase
     .from('folders')
@@ -343,7 +345,7 @@ async function provisionStudentWorkspaceFolder(
 
   const { error } = await supabase.from('folders').insert({
     user_id: studentId,
-    name: displayName?.trim() || 'Student Workspace',
+    name: displayName?.trim() || email?.split('@')[0]?.trim() || 'Student Workspace',
     parent_id: classFolder.folder_id,
     folder_type: 'personal',
     class_code: null,
@@ -557,4 +559,103 @@ export async function getDocumentsForFolder(
   }
 
   return (data || []).map((row) => ({ ...row, content: '' }))
+}
+
+/** Characters used in join codes; no 0/O/1/I so a code is easy to read aloud. */
+const JOIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+/** A random 6-character join code that no class folder uses yet. */
+async function generateJoinCode(): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    let code = ''
+    for (let i = 0; i < 6; i += 1) {
+      code += JOIN_CODE_ALPHABET[Math.floor(Math.random() * JOIN_CODE_ALPHABET.length)]
+    }
+    const { data } = await supabase.from('folders').select('folder_id').ilike('join_code', code).limit(1)
+    if (!data || data.length === 0) return code
+  }
+  throw new Error('Could not generate a unique class join code')
+}
+
+/**
+ * Give the owner's class folders a join code when they have none (classes made
+ * before join codes existed) and hide the code from everyone but the owner.
+ */
+async function backfillJoinCodes(userId: string, folders: Folder[]): Promise<Folder[]> {
+  const result: Folder[] = []
+  for (const folder of folders) {
+    if (folder.folder_type !== 'class') {
+      result.push(folder)
+    } else if (folder.user_id !== userId) {
+      result.push({ ...folder, join_code: null })
+    } else if (folder.join_code) {
+      result.push(folder)
+    } else {
+      const joinCode = await generateJoinCode()
+      await supabase.from('folders').update({ join_code: joinCode }).eq('folder_id', folder.folder_id)
+      result.push({ ...folder, join_code: joinCode })
+    }
+  }
+  return result
+}
+
+/** Replace a class folder's join code with a new one (owner only). */
+export async function regenerateJoinCode(userId: string, folderId: string): Promise<Folder> {
+  const folder = await requireFolder(userId, folderId)
+  if (folder.folder_type !== 'class') {
+    throw Object.assign(new Error('Only class folders have a join code'), { status: 400 })
+  }
+  const joinCode = await generateJoinCode()
+  const { data, error } = await supabase
+    .from('folders')
+    .update({ join_code: joinCode })
+    .eq('folder_id', folderId)
+    .eq('user_id', userId)
+    .select()
+    .single()
+  if (error) throw new Error(`Failed to regenerate join code: ${error.message}`)
+  return { ...data, enrolled_count: folder.enrolled_count, submission_count: folder.submission_count }
+}
+
+/**
+ * Enroll the caller into the class that owns this join code and make sure they
+ * have their workspace folder. Safe to call again: an enrolled student gets
+ * the same class back.
+ */
+export async function joinClassByCode(userId: string, rawCode: string): Promise<{ classFolder: Folder; alreadyEnrolled: boolean }> {
+  const code = rawCode.trim()
+  const { data: found } = await supabase
+    .from('folders')
+    .select('*')
+    .eq('folder_type', 'class')
+    .ilike('join_code', code)
+    .limit(1)
+    .maybeSingle()
+
+  if (!found) {
+    throw Object.assign(new Error('No class matches that code'), { status: 404 })
+  }
+  if (found.user_id === userId) {
+    throw Object.assign(new Error('This is your own class'), { status: 400 })
+  }
+
+  const { data: existing } = await supabase
+    .from('class_enrollments')
+    .select('student_id')
+    .eq('folder_id', found.folder_id)
+    .eq('student_id', userId)
+    .maybeSingle()
+
+  if (!existing) {
+    const { error } = await supabase
+      .from('class_enrollments')
+      .insert({ folder_id: found.folder_id, student_id: userId })
+    if (error) throw new Error(`Failed to join class: ${error.message}`)
+  }
+
+  const { data: authUser } = await supabase.auth.admin.getUserById(userId)
+  const displayName = (authUser?.user?.user_metadata?.display_name as string | undefined) ?? null
+  await provisionStudentWorkspaceFolder(userId, found, displayName, authUser?.user?.email ?? null)
+
+  return { classFolder: { ...found, join_code: null }, alreadyEnrolled: Boolean(existing) }
 }

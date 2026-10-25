@@ -14,6 +14,7 @@ import {
   RoleName,
   SystemReport,
   VerifyApplicantBody,
+  ReportTimeseries,
 } from '../types/admin'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
@@ -24,6 +25,7 @@ interface User {
   displayName?: string | null
   role?: 'student' | 'professor' | 'admin'
   verificationStatus?: 'pending' | 'approved' | 'rejected'
+  requestedRole?: 'student' | 'professor' | 'admin' | null
 }
 
 export type PageNumberFormat = 'none' | 'number' | 'roman'
@@ -96,6 +98,8 @@ export interface FolderRecord {
   folder_type?: FolderType
   class_code?: string | null
   academic_term?: string | null
+  /** Private code students type to join the class; only sent to the class owner. */
+  join_code?: string | null
   submission_count?: number
   enrolled_count?: number
 }
@@ -174,6 +178,7 @@ interface GoogleSyncResponse {
   user: User
   role: 'student' | 'professor' | 'admin'
   verificationStatus: 'pending' | 'approved' | 'rejected'
+  requestedRole?: 'student' | 'professor' | 'admin' | null
   message: string
 }
 
@@ -188,6 +193,15 @@ export interface StorageSummary {
 export interface RoleStatusResponse {
   role: 'student' | 'professor' | 'admin'
   verificationStatus: 'pending' | 'approved' | 'rejected'
+  requestedRole?: 'student' | 'professor' | 'admin' | null
+}
+
+/** The signed-in user's latest application and the administrator's decision on it. */
+export interface ApplicationStatusResponse {
+  requestedRole: string | null
+  verificationStatus: 'pending' | 'approved' | 'rejected'
+  decisionNote: string | null
+  decidedAt: string | null
 }
 
 interface RegisterResponse {
@@ -509,12 +523,17 @@ export interface DocumentReview {
   reviewed_at: string
 }
 
+/** Whether a scan compares inside one class or across all of a professor's classes. */
+export type PlagiarismScope = 'local' | 'global'
+
 /** A student taking part in the class similarity comparison. */
 export interface ClassSimilarityStudent {
   studentId: string
   studentName: string
   /** Document ids this student submitted to the folder. */
   documentIds: string[]
+  /** Set for students from the professor's other classes (global view only). */
+  className?: string
 }
 
 /** Highest passage similarity found between two students' submissions. */
@@ -548,6 +567,33 @@ export interface OriginalityResult {
   passages: OriginalityPassage[]
 }
 
+/** One judge's answer on a passage, so the student sees which model said what. */
+export interface OriginalityJudgeAnswer {
+  judge: string
+  provider: string
+  model: string
+  verdict: string
+}
+
+/** The AI council's review of one overlapping passage. */
+export interface OriginalityPassageReview {
+  paragraph_index: number
+  text: string
+  peer_document_id: string | null
+  peer_title: string | null
+  similarity: number
+  verdict: 'original' | 'paraphrased' | 'reused' | 'inconclusive'
+  confidence: number
+  reasoning: string
+  judges: OriginalityJudgeAnswer[]
+}
+
+/** Result of asking the AI judges to review the flagged passages. */
+export interface OriginalityReview {
+  reviews: OriginalityPassageReview[]
+  activeJudges: number
+}
+
 /** A persisted plagiarism scan row. */
 export interface PlagiarismScanRecord {
   scan_id: string
@@ -561,6 +607,7 @@ export interface PlagiarismScanRecord {
   quorum_reached: boolean
   council_transcript: unknown
   scan_status: string
+  scope?: PlagiarismScope
   created_at: string
   updated_at: string
 }
@@ -574,6 +621,7 @@ export interface PlagiarismMatchRecord {
   char_end: number
   matched_document_id: string | null
   matched_student_id: string | null
+  matched_folder_id?: string | null
   similarity_score: number
   match_type: string
   match_severity: string
@@ -756,7 +804,11 @@ export const api = {
         body: JSON.stringify({ email, password }),
       })
     },
-    /** Submit a faculty verification application (promotes student to pending professor). */
+    /** The caller's application state and any admin decision note. */
+    applicationStatus: async (): Promise<ApplicationStatusResponse> => {
+      return fetchAPI<ApplicationStatusResponse>('auth/application-status')
+    },
+    /** Submit a faculty verification application; the role changes only once an administrator approves it. */
     applyProfessor: async (payload: {
       college: string
       department: string
@@ -1187,6 +1239,18 @@ export const api = {
         body: JSON.stringify({ documentId }),
       })
     },
+    /** Join a class with its private code; also creates the student's workspace folder. */
+    join: async (code: string): Promise<{ classFolder: FolderRecord; alreadyEnrolled: boolean }> => {
+      return fetchAPI<{ classFolder: FolderRecord; alreadyEnrolled: boolean }>('folders/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+    },
+    /** Replace a class folder's join code (owner only). */
+    regenerateJoinCode: async (folderId: string): Promise<FolderRecord> => {
+      return fetchAPI<FolderRecord>(`folders/${folderId}/join-code`, { method: 'POST' })
+    },
     roster: async (folderId: string): Promise<ClassEnrollmentRecord[]> => {
       return fetchAPI<ClassEnrollmentRecord[]>(`folders/${folderId}/enrollments`)
     },
@@ -1294,8 +1358,8 @@ export const api = {
       })
     },
     /** Class similarity matrix for one of the professor's class folders. */
-    folderSimilarity: async (folderId: string): Promise<ClassSimilarityMatrix> => {
-      return fetchAPI<ClassSimilarityMatrix>(`professor/folders/${folderId}/similarity`)
+    folderSimilarity: async (folderId: string, scope: PlagiarismScope = 'local'): Promise<ClassSimilarityMatrix> => {
+      return fetchAPI<ClassSimilarityMatrix>(`professor/folders/${folderId}/similarity?scope=${scope}`)
     },
   },
 
@@ -1313,16 +1377,24 @@ export const api = {
 
   plagiarism: {
     /** Run a council scan for one submission in a class folder. */
-    runScan: async (folderId: string, documentId: string): Promise<PlagiarismScanDetail> => {
+    runScan: async (folderId: string, documentId: string, scope: PlagiarismScope = 'local'): Promise<PlagiarismScanDetail> => {
       return fetchAPI<PlagiarismScanDetail>('plagiarism/scans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId, folderId }),
+        body: JSON.stringify({ documentId, folderId, scope }),
       })
     },
     /** Compare a document with the student's own other documents (nothing stored). */
     selfCheck: async (documentId: string): Promise<OriginalityResult> => {
       return fetchAPI<OriginalityResult>('plagiarism/self-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId }),
+      })
+    },
+    /** Ask the AI judges to review this document's overlapping passages (nothing stored). */
+    selfCheckReview: async (documentId: string): Promise<OriginalityReview> => {
+      return fetchAPI<OriginalityReview>('plagiarism/self-check/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documentId }),
@@ -1372,6 +1444,10 @@ export const api = {
     },
     getSystemReports: async (): Promise<SystemReport> => {
       return fetchAPI<SystemReport>('admin/reports')
+    },
+    /** Weekly sign-ups, documents and scans for the report charts. */
+    getReportTimeseries: async (weeks = 12): Promise<ReportTimeseries> => {
+      return fetchAPI<ReportTimeseries>(`admin/reports/timeseries?weeks=${weeks}`)
     },
     getAllDocuments: async (query?: string): Promise<AdminDocumentRecord[]> => {
       const qs = query && query.trim().length > 0 ? `?q=${encodeURIComponent(query.trim())}` : ''
