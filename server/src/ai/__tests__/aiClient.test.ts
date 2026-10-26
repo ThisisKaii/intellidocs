@@ -39,6 +39,23 @@ describe('aiClient key rotation', () => {
     expect(seenAuth).toEqual(['Bearer key-one', 'Bearer key-two'])
   })
 
+  it('sends omniroute requests to its configured base URL with the profile key', async () => {
+    process.env.AI_PROVIDER = 'omniroute'
+    process.env.AI_MODEL = 'free-combo'
+    process.env.AI_API_KEY = 'sk-local'
+    process.env.OMNIROUTE_BASE_URL = 'http://localhost:20128/v1/'
+
+    const seen: Array<{ url: string; auth: string }> = []
+    global.fetch = jest.fn(async (url: unknown, init?: RequestInit) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>
+      seen.push({ url: String(url), auth: headers.Authorization })
+      return fakeResponse(200, { choices: [{ message: { content: 'routed' } }] })
+    }) as unknown as typeof fetch
+
+    expect(await aiClient.chat([{ role: 'user', content: 'hi' }])).toBe('routed')
+    expect(seen).toEqual([{ url: 'http://localhost:20128/v1/chat/completions', auth: 'Bearer sk-local' }])
+  })
+
   it('does not rotate on a genuine provider error', async () => {
     process.env.AI_PROVIDER = 'nvidia'
     process.env.AI_MODEL = 'meta/llama-3.3-70b-instruct'

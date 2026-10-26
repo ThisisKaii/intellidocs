@@ -1,4 +1,4 @@
-export type AIProvider = 'gemini' | 'groq' | 'openrouter' | 'mistral' | 'nvidia'
+export type AIProvider = 'gemini' | 'groq' | 'openrouter' | 'mistral' | 'nvidia' | 'omniroute'
 
 /** One configured AI backend: a provider, a model, and one or more API keys. */
 export interface AIProfile {
@@ -18,7 +18,7 @@ export const COUNCIL_ROLES = [
 
 export type CouncilRole = (typeof COUNCIL_ROLES)[number]
 
-const KNOWN_PROVIDERS: AIProvider[] = ['gemini', 'groq', 'openrouter', 'mistral', 'nvidia']
+const KNOWN_PROVIDERS: AIProvider[] = ['gemini', 'groq', 'openrouter', 'mistral', 'nvidia', 'omniroute']
 const MAX_PROFILES = 9
 
 /** Split a comma-separated key list ("key1,key2") into trimmed, non-empty keys. */
