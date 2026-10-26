@@ -29,6 +29,11 @@ export interface AIProviderSummary {
   model: string
 }
 
+/** OmniRoute's OpenAI-compatible base URL: a self-hosted gateway, so it comes from the environment. */
+function omnirouteBaseUrl(): string {
+  return (process.env.OMNIROUTE_BASE_URL?.trim() || 'http://localhost:20128/v1').replace(/\/+$/, '')
+}
+
 /** Request URL for a profile (Gemini's native REST API, everyone else OpenAI-compatible). */
 function buildUrl(profile: AIProfile): string {
   if (profile.provider === 'gemini') {
@@ -40,6 +45,7 @@ function buildUrl(profile: AIProfile): string {
     openrouter: 'https://openrouter.ai/api/v1/chat/completions',
     mistral: 'https://api.mistral.ai/v1/chat/completions',
     nvidia: 'https://integrate.api.nvidia.com/v1/chat/completions',
+    omniroute: `${omnirouteBaseUrl()}/chat/completions`,
   }
   return urlMap[profile.provider]
 }

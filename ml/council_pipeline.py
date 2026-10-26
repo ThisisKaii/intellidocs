@@ -43,6 +43,8 @@ AI_BASE_URLS: Dict[str, Optional[str]] = {
     'openrouter': 'https://openrouter.ai/api/v1',
     'mistral': 'https://api.mistral.ai/v1',
     'nvidia': 'https://integrate.api.nvidia.com/v1',
+    # Self-hosted OmniRoute gateway (OpenAI-compatible); the address comes from the environment.
+    'omniroute': os.getenv('OMNIROUTE_BASE_URL', 'http://localhost:20128/v1').rstrip('/'),
 }
 
 

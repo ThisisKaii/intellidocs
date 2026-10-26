@@ -31,6 +31,11 @@ describe('getAIProfiles', () => {
     expect(() => getAIProfiles({ ...BASE, AI_API_KEY: '' })).toThrow('AI_API_KEY is not set')
   })
 
+  it('accepts omniroute as a provider', () => {
+    const profiles = getAIProfiles({ ...BASE, AI_PROVIDER_2: 'omniroute', AI_MODEL_2: 'free-combo', AI_API_KEY_2: 'sk-or' })
+    expect(profiles[1]).toEqual({ provider: 'omniroute', model: 'free-combo', apiKeys: ['sk-or'] })
+  })
+
   it('rejects an unknown primary provider', () => {
     expect(() => getAIProfiles({ ...BASE, AI_PROVIDER: 'cohere' })).toThrow('AI_PROVIDER must be one of')
   })
