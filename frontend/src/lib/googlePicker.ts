@@ -28,7 +28,7 @@ interface PickerBuilder {
   setDeveloperKey(key: string): PickerBuilder
   setAppId(appId: string): PickerBuilder
   setCallback(callback: (response: PickerResponse) => void): PickerBuilder
-  build(): { setVisible(visible: boolean): void }
+  build(): { setVisible(visible: boolean): void; dispose(): void }
 }
 
 interface PickerApi {
@@ -111,16 +111,50 @@ export async function openDrivePicker(config: PickerConfig): Promise<DriveFile |
     const view = new picker.DocsView(picker.ViewId.DOCS)
     view.setMimeTypes(IMPORTABLE_MIME_TYPES)
     view.setIncludeFolders(true)
-    new picker.PickerBuilder()
+
+    // Google's dialog cannot be closed when it shows an error or a sign-in prompt, so a
+    // Cancel button (and Escape) of our own sits above it for as long as it is open.
+    const cancel = document.createElement('button')
+    cancel.type = 'button'
+    cancel.textContent = 'Cancel'
+    cancel.setAttribute('aria-label', 'Close Google Drive picker')
+    cancel.style.cssText =
+      'position:fixed;top:16px;right:16px;z-index:2147483647;padding:8px 16px;border-radius:8px;' +
+      'border:1px solid rgba(0,0,0,.2);background:#fff;color:#111;font:500 14px system-ui,sans-serif;cursor:pointer;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,.25)'
+
+    let built: { setVisible(visible: boolean): void; dispose(): void } | null = null
+    let finished = false
+    const finish = (file: DriveFile | null): void => {
+      if (finished) return
+      finished = true
+      document.removeEventListener('keydown', onKey, true)
+      cancel.remove()
+      try {
+        built?.setVisible(false)
+        built?.dispose()
+      } catch {
+        // The dialog is already gone.
+      }
+      resolve(file)
+    }
+    function onKey(event: KeyboardEvent): void {
+      if (event.key === 'Escape') finish(null)
+    }
+    cancel.addEventListener('click', () => finish(null))
+    document.addEventListener('keydown', onKey, true)
+    document.body.appendChild(cancel)
+
+    built = new picker.PickerBuilder()
       .addView(view)
       .setOAuthToken(config.accessToken)
       .setDeveloperKey(config.apiKey)
       .setAppId(config.appId)
       .setCallback((response) => {
-        if (response.action === picker.Action.PICKED && response.docs?.[0]) resolve(toDriveFile(response.docs[0]))
-        else if (response.action === picker.Action.CANCEL) resolve(null)
+        if (response.action === picker.Action.PICKED && response.docs?.[0]) finish(toDriveFile(response.docs[0]))
+        else if (response.action === picker.Action.CANCEL) finish(null)
       })
       .build()
-      .setVisible(true)
+    built.setVisible(true)
   })
 }

@@ -219,17 +219,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Initiates Google OAuth via Supabase.
    * The user is redirected to Google, then back to /auth/callback.
    *
-   * Identity scopes only: asking for Drive here would show Google's "unverified app"
-   * warning to every new person. Drive is connected separately, with the narrow
-   * drive.file scope, when someone chooses to import from it.
+   * Asks for identity plus drive.file in one consent, so Google Drive import works right
+   * after signing in with no second Google login. drive.file is non-sensitive (no
+   * "unverified app" warning): the app only ever sees files the person picks.
+   * `access_type=offline` makes Google return a refresh token the first time someone
+   * grants it, which AuthCallback hands to the server to keep Drive connected. There is
+   * no forced re-consent: returning users sign in without seeing a consent screen.
    */
   const loginWithGoogle = async (): Promise<void> => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        scopes: 'openid email profile',
+        scopes: 'openid email profile https://www.googleapis.com/auth/drive.file',
         queryParams: {
+          access_type: 'offline',
           prompt: 'select_account',
         },
       },
