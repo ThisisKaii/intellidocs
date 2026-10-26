@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api, type DriveFile } from '@/services/api'
 import { openDrivePicker } from '@/lib/googlePicker'
-import { HardDrive, ExternalLink, FolderOpen, X, Loader2, Unplug, RefreshCw } from 'lucide-react'
+import { HardDrive, ExternalLink, FolderOpen, X, Loader2, Unplug, RefreshCw, Upload } from 'lucide-react'
 
 interface DriveImportDialogProps {
   open: boolean
   onClose: () => void
   /** Hands the chosen file to the parent, which owns the import + progress UI. */
   onImport: (file: DriveFile) => void
+  /** Opens the upload-from-computer dialog, for people whose browser blocks Google's picker. */
+  onUploadInstead?: () => void
 }
 
 /** Floating dialog to connect to Google Drive and import documents. */
@@ -15,6 +17,7 @@ export default function DriveImportDialog({
   open,
   onClose,
   onImport,
+  onUploadInstead,
 }: DriveImportDialogProps): JSX.Element | null {
   const [connected, setConnected] = useState<boolean>(false)
   const [loading, setLoading] = useState<boolean>(true)
@@ -336,6 +339,36 @@ export default function DriveImportDialog({
                   )}
                   {needsReconnect ? 'Reconnect Google Drive' : 'Choose a file from Google Drive'}
                 </button>
+
+                {/* Google's picker runs in a frame that needs the browser's Google cookies. */}
+                <p style={{ fontSize: '0.75rem', lineHeight: 1.5, color: 'var(--muted-foreground)', margin: '1rem auto 0', maxWidth: '24rem' }}>
+                  If Google asks you to sign in again, or nothing happens after you choose a file, accept cookies for this
+                  website in your browser and try again.
+                </p>
+                {onUploadInstead && (
+                  <button
+                    type="button"
+                    onClick={onUploadInstead}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.375rem',
+                      marginTop: '0.625rem',
+                      padding: '0.375rem 0.75rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'transparent',
+                      color: 'var(--foreground)',
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <Upload style={{ width: '12px', height: '12px' }} />
+                    Upload from computer instead
+                  </button>
+                )}
               </div>
             </div>
           )}

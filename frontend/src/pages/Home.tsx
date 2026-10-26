@@ -897,6 +897,7 @@ export default function HomePage(): JSX.Element {
         open={driveOpen}
         onClose={() => setDriveOpen(false)}
         onImport={(file) => { void handleDriveImport(file) }}
+        onUploadInstead={() => { setDriveOpen(false); setImportFileOpen(true) }}
       />
 
       {importFileOpen && (
