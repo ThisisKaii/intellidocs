@@ -13,7 +13,7 @@ describe('decidePushes', () => {
   it('moves a paragraph whose first line is alone at the bottom of a page (orphan)', () => {
     // Page 1 text area ends at y = 960; the first line sits at 940, the rest on page 2.
     const pushes = decidePushes(grid, [paragraph(940, 1192, 1212, 1232)])
-    expect(pushes).toEqual([{ block: 0, line: 0, height: 1192 - 940, reason: 'orphan' }])
+    expect(pushes).toEqual([{ block: 0, line: 0, height: 960 - 940 + 1, reason: 'orphan' }])
   })
 
   it('moves the line before a lone last line (widow)', () => {
@@ -28,7 +28,7 @@ describe('decidePushes', () => {
 
   it('moves a heading that ends a page with its text on the next', () => {
     const pushes = decidePushes(grid, [heading(940), paragraph(1192, 1212, 1232)])
-    expect(pushes).toEqual([{ block: 0, line: 0, height: 1192 - 940, reason: 'keep-with-next' }])
+    expect(pushes).toEqual([{ block: 0, line: 0, height: 960 - 940 + 1, reason: 'keep-with-next' }])
   })
 
   it('does not push a block that already starts a page', () => {

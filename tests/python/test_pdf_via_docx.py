@@ -132,7 +132,7 @@ class TestFixtureConversion:
         html = result["html"]
         assert set(result) == {
             "html", "page_setup", "header", "footer", "header_number_format", "footer_number_format",
-            "page_art", "hf",
+            "page_art", "hf", "flow_rules",
         }
         assert result["page_setup"]["page_size"] and result["page_setup"]["margins"]
         assert "<p><br/></p>" not in html

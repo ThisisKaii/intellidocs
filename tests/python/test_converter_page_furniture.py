@@ -261,3 +261,43 @@ class TestPageSetupAndFirstSection:
             document.add_paragraph("Body")
         html = _docx_document_to_result(document)["html"]
         assert "margin-top:-72px" in html.split("Body")[0]
+
+
+class TestListLevels:
+    def _numbered(self, document, text: str, level: int, num_id: str):
+        paragraph = document.add_paragraph(text)
+        num_pr = etree.SubElement(paragraph._p.get_or_add_pPr(), qn("w:numPr"))
+        etree.SubElement(num_pr, qn("w:ilvl")).set(qn("w:val"), str(level))
+        etree.SubElement(num_pr, qn("w:numId")).set(qn("w:val"), num_id)
+
+    def _numbering(self, document):
+        numbering = document.part.numbering_part.element
+        abstract = etree.SubElement(numbering, qn("w:abstractNum"))
+        abstract.set(qn("w:abstractNumId"), "70")
+        for index, fmt in enumerate(("decimal", "lowerLetter")):
+            level = etree.SubElement(abstract, qn("w:lvl"))
+            level.set(qn("w:ilvl"), str(index))
+            etree.SubElement(level, qn("w:numFmt")).set(qn("w:val"), fmt)
+        num = etree.SubElement(numbering, qn("w:num"))
+        num.set(qn("w:numId"), "70")
+        etree.SubElement(num, qn("w:abstractNumId")).set(qn("w:val"), "70")
+
+    def test_items_of_a_sublist_with_no_parent_item_stay_siblings(self):
+        document = docx.Document()
+        self._numbering(document)
+        for text in ("a one", "a two", "a three"):
+            self._numbered(document, text, 1, "70")
+        html = _docx_document_to_result(document)["html"]
+        assert html.count("<ol") == 1 and html.count("<li") == 3
+        assert '<ol type="a">' in html
+
+    def test_a_sublist_nests_inside_its_parent_item_and_returns_to_it(self):
+        document = docx.Document()
+        self._numbering(document)
+        self._numbered(document, "first", 0, "70")
+        self._numbered(document, "sub one", 1, "70")
+        self._numbered(document, "sub two", 1, "70")
+        self._numbered(document, "second", 0, "70")
+        html = _docx_document_to_result(document)["html"]
+        assert html.count("<ol") == 2
+        assert html.index("sub two") < html.index("second") and html.count("</ol>") == 2

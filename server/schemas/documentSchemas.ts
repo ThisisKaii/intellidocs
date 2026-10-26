@@ -43,6 +43,7 @@ export const pageLayoutBaseSchema = z.object({
         z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number(), behind: z.boolean(), html: z.string() }),
       )
       .optional(),
+    flow_rules: z.boolean().optional(),
 })
 
 export const pageLayoutSchema = pageLayoutBaseSchema.refine(

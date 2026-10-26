@@ -123,9 +123,9 @@ class TestFonts:
         assert _clean_font_name(raw) == clean
 
     def test_unavailable_sans_fonts_fall_back_to_sans(self):
-        assert _generic_family("Arial") == "sans-serif"
-        assert _generic_family("Times New Roman") == "serif"
-        assert _generic_family("Courier New") == "monospace"
+        assert _generic_family("Arial") == "Arimo, sans-serif"
+        assert _generic_family("Times New Roman") == "Tinos, serif"
+        assert _generic_family("Courier New") == "Cousine, monospace"
 
     def test_a_run_without_a_font_uses_the_document_default(self):
         document = docx.Document()

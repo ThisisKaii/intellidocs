@@ -25,6 +25,14 @@ export interface FlowPush {
   reason: 'orphan' | 'widow' | 'keep-with-next'
 }
 
+/**
+ * Space to the end of a page's text area. A spacer this tall pushes what follows past the
+ * bottom margin, so the paginator (not the spacer) supplies the margins and the gap.
+ */
+function toPageEnd(grid: PageGrid, page: number, y: number): number {
+  return page * grid.pitch + grid.pageHeight - grid.marginBottom - y + 1
+}
+
 /** Page index (0-based) a vertical position falls on. */
 function pageOf(grid: PageGrid, y: number): number {
   return Math.max(0, Math.floor(y / grid.pitch))
@@ -61,7 +69,7 @@ export function decidePushes(grid: PageGrid, blocks: FlowBlock[]): FlowPush[] {
       if (next && next.lineTops.length > 0 && !atPageTop) {
         const nextPage = pageOf(grid, next.lineTops[0] + next.lineHeight / 2)
         if (nextPage > pages[lines - 1]) {
-          pushes.push({ block: index, line: 0, height: bodyTop(grid, first + 1) - block.lineTops[0], reason: 'keep-with-next' })
+          pushes.push({ block: index, line: 0, height: toPageEnd(grid, first, block.lineTops[0]), reason: 'keep-with-next' })
         }
       }
       return
@@ -70,13 +78,13 @@ export function decidePushes(grid: PageGrid, blocks: FlowBlock[]): FlowPush[] {
     if (lines < 2) return
     const onFirstPage = pages.filter((page) => page === first).length
     if (onFirstPage === 1 && pages[1] > first && !atPageTop) {
-      pushes.push({ block: index, line: 0, height: bodyTop(grid, first + 1) - block.lineTops[0], reason: 'orphan' })
+      pushes.push({ block: index, line: 0, height: toPageEnd(grid, first, block.lineTops[0]), reason: 'orphan' })
       return
     }
     const last = pages[lines - 1]
     const onLastPage = pages.filter((page) => page === last).length
     if (lines >= 3 && onLastPage === 1 && pages[lines - 2] < last) {
-      pushes.push({ block: index, line: lines - 2, height: bodyTop(grid, last) - block.lineTops[lines - 2], reason: 'widow' })
+      pushes.push({ block: index, line: lines - 2, height: toPageEnd(grid, pages[lines - 2], block.lineTops[lines - 2]), reason: 'widow' })
     }
   })
   return pushes.filter((push) => push.height > 1 && push.height < grid.pageHeight)

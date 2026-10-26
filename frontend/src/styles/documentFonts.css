@@ -1,0 +1,23 @@
+/* Free fonts with exactly the same character widths as the Word fonts documents use, so text wraps
+   the same on every computer: Tinos = Times New Roman, Arimo = Arial, Carlito = Calibri,
+   Caladea = Cambria, Cousine = Courier New. The converter lists them after the Word font. */
+@import '@fontsource/tinos/latin-400.css';
+@import '@fontsource/tinos/latin-700.css';
+@import '@fontsource/tinos/latin-400-italic.css';
+@import '@fontsource/tinos/latin-700-italic.css';
+@import '@fontsource/arimo/latin-400.css';
+@import '@fontsource/arimo/latin-700.css';
+@import '@fontsource/arimo/latin-400-italic.css';
+@import '@fontsource/arimo/latin-700-italic.css';
+@import '@fontsource/carlito/latin-400.css';
+@import '@fontsource/carlito/latin-700.css';
+@import '@fontsource/carlito/latin-400-italic.css';
+@import '@fontsource/carlito/latin-700-italic.css';
+@import '@fontsource/caladea/latin-400.css';
+@import '@fontsource/caladea/latin-700.css';
+@import '@fontsource/caladea/latin-400-italic.css';
+@import '@fontsource/caladea/latin-700-italic.css';
+@import '@fontsource/cousine/latin-400.css';
+@import '@fontsource/cousine/latin-700.css';
+@import '@fontsource/cousine/latin-400-italic.css';
+@import '@fontsource/cousine/latin-700-italic.css';

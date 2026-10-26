@@ -15,6 +15,17 @@ interface FlowPush {
   from: number
   to: number
   height: number
+  /** A widow: a spacer inside the paragraph, at the start of its second-to-last line. */
+  inline?: boolean
+}
+
+/** An inline spacer as wide as the line: it takes a line of its own and moves the text after it down. */
+function inlineSpacer(height: number): HTMLElement {
+  const el = document.createElement('span')
+  el.className = 'intellidocs-flow-spacer'
+  el.setAttribute('contenteditable', 'false')
+  el.style.cssText = `display:inline-block;width:100%;height:${Math.round(height)}px;vertical-align:top;pointer-events:none`
+  return el
 }
 
 /** One measured line box of a text block. */
@@ -65,8 +76,14 @@ export const PageFlowExtension = Extension.create<{ enabled: boolean }>({
     return { enabled: false }
   },
 
+  // The host page turns the rules on per document (not for PDF imports, which are laid out page by page).
+  addStorage() {
+    return { enabled: false }
+  },
+
   addProseMirrorPlugins() {
     if (!this.options.enabled) return []
+    const storage = this.storage
     return [
       new Plugin<DecorationSet>({
         key: pageFlowKey,
@@ -77,10 +94,12 @@ export const PageFlowExtension = Extension.create<{ enabled: boolean }>({
             if (meta?.clear) return DecorationSet.empty
             if (meta?.pushes) {
               const added = meta.pushes.map((push) =>
-                Decoration.node(push.from, push.to, {
-                  class: 'intellidocs-flow-push',
-                  style: `padding-top:${Math.round(push.height)}px`,
-                }),
+                push.inline
+                  ? Decoration.widget(push.from, () => inlineSpacer(push.height), { side: -1, key: `flow-${push.from}` })
+                  : Decoration.node(push.from, push.to, {
+                      class: 'intellidocs-flow-push',
+                      style: `padding-top:${Math.round(push.height)}px`,
+                    }),
               )
               return previous.add(tr.doc, added)
             }
@@ -88,14 +107,14 @@ export const PageFlowExtension = Extension.create<{ enabled: boolean }>({
           },
         },
         props: { decorations: (state) => pageFlowKey.getState(state) },
-        view: (view) => watchPageFlow(view),
+        view: (view) => watchPageFlow(view, () => storage.enabled),
       }),
     ]
   },
 })
 
 /** Run the flow pass after the paginator has settled and after edits go quiet. */
-function watchPageFlow(view: EditorView): { update: (view: EditorView, previous: EditorState) => void; destroy: () => void } {
+function watchPageFlow(view: EditorView, isEnabled: () => boolean): { update: (view: EditorView, previous: EditorState) => void; destroy: () => void } {
   let frame = 0
   let idleTimer = 0
   let passes = 0
@@ -123,7 +142,7 @@ function watchPageFlow(view: EditorView): { update: (view: EditorView, previous:
 
   const run = (): void => {
     frame = 0
-    if (destroyed || working || view.composing) return
+    if (destroyed || working || view.composing || !isEnabled()) return
     const measured = measure()
     if (!measured) return
     const pushes = decidePushes(measured.grid, measured.blocks)
@@ -131,10 +150,18 @@ function watchPageFlow(view: EditorView): { update: (view: EditorView, previous:
     passes += 1
     const added: FlowPush[] = []
     for (const push of pushes) {
-      // Orphans and headings move whole; a widow would need a split inside the paragraph, which only a spacer
-      // element can make, and the paginator does not tolerate those.
-      if (push.line !== 0) continue
       const el = measured.elements[push.block]
+      if (push.line !== 0) {
+        // Widow: an inline spacer where the second-to-last line starts (a block one makes the paginator loop).
+        const line = measured.lines[push.block][push.line]
+        const rect = (view.dom as HTMLElement).getBoundingClientRect()
+        const scale = (view.dom as HTMLElement).offsetWidth > 0 ? rect.width / (view.dom as HTMLElement).offsetWidth : 1
+        const found = view.posAtCoords({ left: line.left + 2, top: rect.top + line.top * scale + 2 })
+        if (!found) continue
+        const present = pageFlowKey.getState(view.state)?.find(found.pos, found.pos).length ?? 0
+        if (present === 0) added.push({ from: found.pos, to: found.pos, height: push.height, inline: true })
+        continue
+      }
       const inside = view.posAtDOM(el, 0)
       const from = inside - 1
       const node = from >= 0 ? view.state.doc.nodeAt(from) : null

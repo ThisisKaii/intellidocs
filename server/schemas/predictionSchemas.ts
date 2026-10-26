@@ -117,6 +117,7 @@ export const pythonConversionResponseSchema = z.object({
   header_number_format: pageNumberFormatSchema.optional(),
   footer_number_format: pageNumberFormatSchema.optional(),
   /** Page furniture beyond text (absent from older ML builds). */
+  flow_rules: z.boolean().optional(),
   hf: z
     .object({
       sections: pageLayoutBaseSchema.shape.sections,
