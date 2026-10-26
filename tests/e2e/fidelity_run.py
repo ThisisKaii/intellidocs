@@ -229,6 +229,9 @@ def run_one(browser, source: str, pdf_name: str, args: Args) -> fl.DocumentResul
     page.goto(f"{args.web}/dev/editor-harness", wait_until="domcontentloaded")
     page.wait_for_selector(".rm-pages-wrapper", state="attached", timeout=90000)
     layout = wait_for_layout(page)
+    # Fonts load on first use; measure again once they have, as a person's browser would.
+    page.evaluate("document.fonts.ready.then(() => true)")
+    layout = wait_for_layout(page)
     editor_pages = layout["pages"]
     pitch = layout["pageH"] + 40
     words_by_page = page.evaluate(JS_PAGE_WORDS, pitch)

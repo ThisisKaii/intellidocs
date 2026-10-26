@@ -2,6 +2,7 @@ import base64
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import tempfile
@@ -27,6 +28,8 @@ HIGHLIGHT_COLORS: Dict[str, str] = {
 EMU_PER_INCH = 914400
 TWIPS_PER_PX = 96.0 / 1440.0
 
+# Marks a column break inside a paragraph until the section's columns are built.
+_COLUMN_MARK = ""
 _PAGE_BREAK_HTML = '<hr class="page-break" data-page-break="true" />'
 
 DEFAULT_PAGE_SETUP: Dict[str, Any] = {
@@ -96,6 +99,8 @@ _METRIC_TWINS = {
     "arial": "Arimo", "helvetica": "Arimo",
     "calibri": "Carlito", "cambria": "Caladea",
     "courier new": "Cousine", "courier": "Cousine",
+    # Not an exact twin (TeX Gyre Bonum follows ITC Bookman), but the closest free font.
+    "bookman old style": "'TeX Gyre Bonum'", "bookman": "'TeX Gyre Bonum'",
 }
 
 
@@ -155,6 +160,9 @@ def _run_to_html(run: Run) -> str:
     # "&nbsp;" entity form leaves them alone.
     escaped = escaped.replace("\t", "<span data-tab></span>")
     escaped = re.sub(r" {2,}", lambda m: " " + "\u00a0" * (len(m.group(0)) - 1), escaped)
+    # An underlined run of only spaces is a fill-in blank: it keeps its whole width, even beside another space.
+    if run.underline and not text.strip(" "):
+        escaped = "\u00a0" * len(text)
 
     styles: List[str] = []
 
@@ -653,6 +661,14 @@ _SCHEME_LINE_COLORS = {"dk1": "#000000", "tx1": "#000000", "dk2": "#44546A", "tx
 _LINE_MARK = "\ue000"
 
 
+def _is_flat_path(shape: Any) -> bool:
+    """Whether a shape is drawn as a custom path that is one flat stroke (PDF-to-Word letterhead rules)."""
+    path = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}custGeom/{{{_NS_A}}}pathLst/{{{_NS_A}}}path")
+    if path is None or path.get("h") not in (None, "0"):
+        return False
+    return len(path.findall(f"{{{_NS_A}}}lnTo")) == 1 and path.find(f"{{{_NS_A}}}close") is None
+
+
 def _line_shapes_in(element: Any) -> List[Tuple[int, int, str]]:
     """Straight horizontal lines drawn inside an element: (length EMU, weight EMU, colour).
 
@@ -664,7 +680,9 @@ def _line_shapes_in(element: Any) -> List[Tuple[int, int, str]]:
     for shape in element.iter(f"{{{_NS_WPS}}}wsp"):
         geometry = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}prstGeom")
         extent = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}xfrm/{{{_NS_A}}}ext")
-        if geometry is None or geometry.get("prst") not in _LINE_GEOMETRIES or extent is None:
+        if extent is None or not (
+            (geometry is not None and geometry.get("prst") in _LINE_GEOMETRIES) or _is_flat_path(shape)
+        ):
             continue
         length, height = _int_attr(extent, "cx") or 0, _int_attr(extent, "cy") or 0
         if length <= 0 or height > 12700:  # taller than 1pt: a diagonal or a box, not a rule
@@ -772,6 +790,8 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
                 for br in brs:
                     if br.get(qn("w:type")) == "page":
                         page_breaks += _PAGE_BREAK_HTML
+                    elif br.get(qn("w:type")) == "column":
+                        parts.append(_COLUMN_MARK)
                     else:
                         parts.append("<br/>")
                 parts.append(page_breaks + _run_or_image_html(run, doc_parts) + _anchored_textboxes(child, p, doc_parts))
@@ -780,6 +800,8 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
             elif tag == qn("w:br"):
                 if child.get(qn("w:type")) == "page":
                     parts.append(_PAGE_BREAK_HTML)
+                elif child.get(qn("w:type")) == "column":
+                    parts.append(_COLUMN_MARK)
                 else:
                     parts.append("<br/>")
             elif tag == qn("w:sdt"):
@@ -1238,6 +1260,90 @@ def _build_numbering_map(doc: docx.Document) -> Tuple[Dict[str, str], Dict[str, 
     return num_to_abstract, abstract_levels
 
 
+_GEOMETRY_CACHE: Dict[int, Dict[Tuple[str, str], Dict[str, Any]]] = {}
+
+
+def _numbering_geometry(part: Any) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    """(numId, ilvl) -> marker text, suffix and indent (twips) of every numbered level, read once."""
+    try:
+        root = part.numbering_part.element
+    except Exception:
+        return {}
+    if id(root) in _GEOMETRY_CACHE:
+        return _GEOMETRY_CACHE[id(root)]
+    abstract_levels: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for abstract in root.findall(qn("w:abstractNum")):
+        levels: Dict[str, Dict[str, Any]] = {}
+        for lvl in abstract.findall(qn("w:lvl")):
+            text = lvl.find(qn("w:lvlText"))
+            suff = lvl.find(qn("w:suff"))
+            ind = lvl.find(qn("w:pPr") + "/" + qn("w:ind"))
+            left = ind.get(qn("w:left")) or ind.get(qn("w:start")) if ind is not None else None
+            first = ind.get(qn("w:firstLine")) if ind is not None else None
+            hanging = ind.get(qn("w:hanging")) if ind is not None else None
+            levels[lvl.get(qn("w:ilvl"), "0")] = {
+                "text": text.get(qn("w:val")) if text is not None else "%1.",
+                "suff": suff.get(qn("w:val")) if suff is not None else "tab",
+                "left": int(left) if left else 0,
+                "first": int(first) if first else (-int(hanging) if hanging else 0),
+            }
+        abstract_levels[abstract.get(qn("w:abstractNumId"), "")] = levels
+    table: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for num in root.findall(qn("w:num")):
+        abstract_id = num.find(qn("w:abstractNumId"))
+        for ilvl, value in abstract_levels.get(abstract_id.get(qn("w:val")) if abstract_id is not None else "", {}).items():
+            table[(num.get(qn("w:numId"), ""), ilvl)] = value
+    _GEOMETRY_CACHE[id(root)] = table
+    return table
+
+
+def _list_item_geometry(p: Paragraph, info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Where Word puts a numbered item's marker and text, in px from the text column's left edge.
+
+    Word draws the marker at ``left + firstLine`` (or ``left - hanging``), follows it with a tab
+    to the next stop and wraps later lines at ``left``. None when the level is not a plain
+    single-counter number ("1.", "a)", "(i)") that the editor can draw from the list's counter.
+    """
+    if info.get("kind") != "ol":
+        return None
+    level = _numbering_geometry(p.part).get((info["num_id"], str(info["level"])))
+    if level is None or level["suff"] != "tab":
+        return None
+    match = re.fullmatch(r"([^%]*)%(\d)([^%]*)", level["text"])
+    if not match or int(match.group(2)) != int(info["level"]) + 1:
+        return None
+    # The affixes go into a CSS string, so only plain text qualifies.
+    if re.search(r"[\\\"'\n-]", match.group(1) + match.group(3)):
+        return None
+    pre, post = match.group(1), match.group(3)
+
+    pPr = p._element.pPr
+    direct = pPr.find(qn("w:ind")) if pPr is not None else None
+    left = level["left"]
+    first = level["first"]
+    if direct is not None:
+        own_left = direct.get(qn("w:left")) or direct.get(qn("w:start"))
+        if own_left is not None:
+            left = int(own_left)
+        if direct.get(qn("w:firstLine")) is not None or direct.get(qn("w:hanging")) is not None:
+            first = int(direct.get(qn("w:firstLine")) or 0) - int(direct.get(qn("w:hanging")) or 0)
+    wrap_x = left * TWIPS_PER_PX
+    marker_x = (left + first) * TWIPS_PER_PX
+
+    size_pt = _resolve_font_size_pt(p) or 11.0
+    marker_end = marker_x + (len(pre) + len(post) + 1) * 0.5 * size_pt * 96 / 72
+    stops = [pos for kind, pos, _leader in _paragraph_tab_stops(p) if kind in ("left", "num")]
+    if first < 0:
+        stops.append(wrap_x)
+    ahead = sorted(pos for pos in stops if pos > marker_end)
+    if ahead:
+        text_x = ahead[0]
+    else:
+        step = _default_tab_px(p) or 48.0
+        text_x = (math.floor(marker_end / step) + 1) * step
+    return {"marker_x": round(marker_x, 1), "wrap_x": round(wrap_x, 1), "text_x": round(text_x, 1), "pre": pre, "post": post}
+
+
 def _paragraph_list_info(
     p: Paragraph,
     num_to_abstract: Dict[str, str],
@@ -1292,6 +1398,20 @@ def _paragraph_to_html(
             direct_left = re.search(r"margin-left:\s*([\d.]+)px", _paragraph_indent_css(p))
             left_px = float(direct_left.group(1)) if direct_left else float(list_info.get("left_px") or 0.0)
             extra = f"margin-left:{round(left_px - 24, 1):g}px" if left_px - 24 > 2 else ""
+            geometry = _list_item_geometry(p, list_info)
+            if geometry:
+                # The editor draws the marker at its own x; the paragraph wraps at the indent and
+                # starts its first line at the tab stop after the marker, as in Word.
+                right = re.search(r"margin-right:\s*[\d.]+px", _paragraph_indent_css(p))
+                extra = "; ".join(
+                    part
+                    for part in (
+                        f"margin-left:{geometry['wrap_x']:g}px",
+                        f"text-indent:{round(geometry['text_x'] - geometry['wrap_x'], 1):g}px",
+                        right.group(0).replace(" ", "") if right else "",
+                    )
+                    if part
+                )
             css_parts = [_get_paragraph_alignment_css(p), _paragraph_font_css(p), _paragraph_spacing_css(p), extra]
             css = "; ".join(part.rstrip("; ") for part in css_parts if part)
             return f'<p style="{css};">{inner}</p>' if css else f"<p>{inner}</p>"
@@ -1901,11 +2021,14 @@ def _body_to_html(
                 out.append(html)
 
     section_no = 0
+    section_starts: Dict[int, int] = {0: 0}
     first_section_end: Optional[int] = None
     previous_closed_section = False
     for element in _iter_block_elements(doc.element.body):
         if previous_closed_section:
             section_no += 1
+            close_all_lists()
+            section_starts[section_no] = len(out)
             if section_no == 1 and first_section_end is None:
                 first_section_end = len(out)
         previous_closed_section = element.tag == qn("w:p") and element.find(qn("w:pPr") + "/" + qn("w:sectPr")) is not None
@@ -1932,7 +2055,29 @@ def _body_to_html(
             kind = info["kind"]
             # The item carries its text size: the marker is drawn in the item's font, not its paragraph's.
             size_css = _paragraph_font_css(p)
+            item_html = _paragraph_to_html(p, doc_parts, list_info=info)
             item_open = f'<li style="{size_css}">' if size_css else "<li>"
+            geometry = _list_item_geometry(p, info)
+            if geometry:
+                # The marker is drawn by the editor at Word's x, in the item's own font and line box.
+                spacing = _paragraph_spacing_css(p)
+                top = re.search(r"margin-top:\s*([\d.]+)px", spacing)
+                line = re.search(r"line-height:\s*([\d.]+(?:px|pt)?)", spacing)
+                family = re.search(r"font-family:\s*([^\";]+)", item_html)
+                style = "; ".join(
+                    part
+                    for part in (
+                        size_css,
+                        f"line-height:{line.group(1)}" if line else "",
+                        f"font-family:{family.group(1).strip()}" if family else "",
+                    )
+                    if part
+                )
+                attrs = (
+                    f' data-mx="{geometry["marker_x"]:g}" data-mt="{top.group(1) if top else 0}"'
+                    f' data-pre="{_html_escape(geometry["pre"], quote=True)}" data-post="{_html_escape(geometry["post"], quote=True)}"'
+                )
+                item_open = f'<li{attrs} style="{style}">' if style else f"<li{attrs}>"
             # Lists open one nesting level at a time and remember the Word level they hold: a lettered
             # sublist whose first item has no numbered parent starts at the top (no stray empty "1."),
             # and its later items stay siblings instead of nesting deeper.
@@ -1974,7 +2119,7 @@ def _body_to_html(
                 out.append(item_open)
                 open_li_depth = target_depth
 
-            out.append(_paragraph_to_html(p, doc_parts, list_info=info))
+            out.append(item_html)
             emit_textboxes(element)
 
         elif element.tag == qn("w:tbl"):
@@ -1982,8 +2127,69 @@ def _body_to_html(
             out.append(_table_to_html(Table(element, doc), doc_parts, text_width))
 
     close_all_lists()
+    section_starts[section_no + 1] = len(out)
+    first_section_end = section_starts.get(1, len(out)) if first_section_end is None else first_section_end
+    _wrap_columns(doc, out, section_starts)
     _shift_first_section(doc, out, first_section_end if first_section_end is not None else len(out))
-    return _trim_page_ends("\n".join(out))
+    return _trim_page_ends("\n".join(out).replace(_COLUMN_MARK, ""))
+
+
+# A multi-column section longer than this stays single-column: the paginator cannot split a column block.
+_MAX_COLUMN_ENTRIES = 40
+_MAX_COLUMN_TEXT = 3000
+
+
+def _column_widths(sect_pr: Any) -> List[float]:
+    """Column widths (percent) of a section's w:cols, equal unless it lists its own widths; [] for one column."""
+    cols = sect_pr.find(qn("w:cols"))
+    if cols is None:
+        return []
+    count = int(cols.get(qn("w:num")) or 1)
+    if count < 2:
+        return []
+    listed = [float(c.get(qn("w:w"))) for c in cols.findall(qn("w:col")) if c.get(qn("w:w"))]
+    if cols.get(qn("w:equalWidth")) == "0" and len(listed) == count:
+        total = sum(listed)
+        return [round(width * 100 / total, 1) for width in listed]
+    return [round(100.0 / count, 1)] * count
+
+
+def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int]) -> None:
+    """Put each short multi-column section's blocks into a column block, split at its column breaks.
+
+    The editor lays the block out as side-by-side columns, so a header line with a
+    right-hand date (two columns and a column break in Word) keeps its layout. Long
+    sections, ones holding a page break and ones without a column break stay single-column.
+    """
+    sections = list(doc.sections)
+    for index in sorted(starts, reverse=True):
+        if index >= len(sections) or index + 1 not in starts:
+            continue
+        widths = _column_widths(sections[index]._sectPr)
+        begin, end = starts[index], starts[index + 1]
+        segment = out[begin:end]
+        text = re.sub(r"<[^>]+>", "", "".join(segment))
+        if not widths or not segment or len(segment) > _MAX_COLUMN_ENTRIES or len(text) > _MAX_COLUMN_TEXT:
+            continue
+        if any('<hr class="page-break"' in item for item in segment):
+            continue
+        # Only sections with a real column break (a header line and its date): pdf2docx marks every
+        # multi-column page as columns, and wrapping those would make unsplittable blocks.
+        if not any(_COLUMN_MARK in item for item in segment):
+            continue
+        columns: List[List[str]] = [[]]
+        for item in segment:
+            if _COLUMN_MARK in item:
+                columns.append([])
+                item = item.replace(_COLUMN_MARK, "")
+            columns[-1].append(item)
+        body = "".join('<div class="intellidocs-column">' + "\n".join(column) + "</div>" for column in columns if column)
+        out[begin:end] = [f'<div class="intellidocs-columns" data-widths="{",".join(f"{w:g}" for w in widths)}">{body}</div>']
+        # Later sections' offsets move with the replaced range.
+        shift = len(segment) - 1
+        for later in starts:
+            if later > index:
+                starts[later] -= shift
 
 
 def _shift_first_section(doc: docx.Document, out: List[str], end: int) -> None:

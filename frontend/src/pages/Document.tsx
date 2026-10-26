@@ -40,6 +40,7 @@ import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } 
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import type { PageLayoutData } from '@/lib/pageLayout'
+import { dismissFontNotice, fontFamiliesIn, fontNoticeDismissed, missingFonts } from '@/lib/fontAvailability'
 import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
 import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
 import type { TOCEntry } from '@/components/editor/TableOfContents'
@@ -240,6 +241,8 @@ export default function Document(): JSX.Element {
   const [footerMarginIn, setFooterMarginIn] = useState<number>(0.5)
   const [differentFirstPage, setDifferentFirstPage] = useState<boolean>(false)
   const [pageLayout, setPageLayout] = useState<PageLayoutData | null>(null)
+  // Fonts the document names that this computer lacks (the notice is dismissed per document).
+  const [missingDocFonts, setMissingDocFonts] = useState<string[]>([])
   const latestHeaderSettingsRef = useRef({
     showHeader: false,
     showFooter: false,
@@ -809,6 +812,7 @@ export default function Document(): JSX.Element {
     setFormattingPreset(doc.formatting_preset ?? null)
     setDocOwnerId(doc.user_id ?? null)
     setPageLayout(doc.page_layout ?? null)
+    setMissingDocFonts(fontNoticeDismissed(doc.id) ? [] : missingFonts(fontFamiliesIn(nextContent)))
     if (doc.citation_data) {
       setCitationStyle(doc.citation_data.style)
       setReferences(doc.citation_data.references)
@@ -3097,6 +3101,46 @@ export default function Document(): JSX.Element {
                   Keep saved version
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* The document names fonts this computer does not have */}
+          {missingDocFonts.length > 0 && (
+            <div
+              role="status"
+              style={{
+                position: 'fixed',
+                top: '4.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(34rem, calc(100vw - 2rem))',
+                zIndex: 41,
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.75rem',
+                padding: '0.625rem 0.875rem',
+                borderRadius: '0.625rem',
+                border: '1px solid var(--border)',
+                borderLeft: '3px solid var(--primary)',
+                backgroundColor: 'var(--card)',
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.12)',
+              }}
+            >
+              <p style={{ margin: 0, flex: 1, fontSize: '0.75rem', lineHeight: 1.45, color: 'var(--foreground)' }}>
+                This document uses {missingDocFonts.slice(0, 3).join(', ')}
+                {missingDocFonts.length > 3 ? ` and ${missingDocFonts.length - 3} more` : ''}, which {missingDocFonts.length === 1 ? "isn't" : "aren't"} on this
+                computer. A similar font is shown, so line breaks and page breaks may differ from the original.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  dismissFontNotice(id)
+                  setMissingDocFonts([])
+                }}
+                style={{ height: '1.625rem', padding: '0 0.625rem', borderRadius: '0.4375rem', border: '1px solid var(--border)', background: 'transparent', color: 'var(--foreground)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Dismiss
+              </button>
             </div>
           )}
 
