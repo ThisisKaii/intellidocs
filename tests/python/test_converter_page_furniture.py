@@ -6,6 +6,8 @@ from pathlib import Path
 import docx
 import pymupdf
 import pytest
+from docx.enum.section import WD_SECTION
+from docx.enum.text import WD_BREAK
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt
 from lxml import etree
@@ -301,3 +303,128 @@ class TestListLevels:
         html = _docx_document_to_result(document)["html"]
         assert html.count("<ol") == 2
         assert html.index("sub two") < html.index("second") and html.count("</ol>") == 2
+
+
+class TestColumnSections:
+    def _columns(self, document, widths=None):
+        """Close the first section as two columns (optionally unequal) with a column break in its last paragraph."""
+        document.add_paragraph("Office line")
+        last = document.add_paragraph()
+        last.add_run().add_break(WD_BREAK.COLUMN)
+        last.add_run("The date")
+        section = document.sections[-1]._sectPr
+        cols = section.find(qn("w:cols"))
+        if cols is None:
+            cols = etree.SubElement(section, qn("w:cols"))
+        cols.set(qn("w:num"), "2")
+        if widths:
+            cols.set(qn("w:equalWidth"), "0")
+            for width in widths:
+                etree.SubElement(cols, qn("w:col")).set(qn("w:w"), str(width))
+        document.add_section(WD_SECTION.CONTINUOUS)
+        # add_section copies the column setup; the section after the columns is single-column.
+        document.sections[-1]._sectPr.find(qn("w:cols")).attrib.clear()
+        document.sections[-1]._sectPr.find(qn("w:cols")).set(qn("w:space"), "720")
+        for extra in document.sections[-1]._sectPr.findall(qn("w:cols"))[1:]:
+            document.sections[-1]._sectPr.remove(extra)
+        document.add_paragraph("After the columns")
+
+    def test_a_short_two_column_section_becomes_side_by_side_columns(self):
+        document = docx.Document()
+        self._columns(document, widths=(6000, 2000))
+        html = _docx_document_to_result(document)["html"]
+        assert 'data-widths="75,25"' in html
+        assert html.count('class="intellidocs-column"') == 2
+        assert html.index("Office line") < html.index("The date") < html.index("After the columns")
+        assert "\ue003" not in html
+
+    def test_equal_columns_share_the_width(self):
+        document = docx.Document()
+        self._columns(document)
+        assert 'data-widths="50,50"' in _docx_document_to_result(document)["html"]
+
+    def test_a_long_column_section_stays_single_column(self):
+        document = docx.Document()
+        for index in range(60):
+            document.add_paragraph(f"filler {index}")
+        self._columns(document)
+        html = _docx_document_to_result(document)["html"]
+        assert "intellidocs-columns" not in html and "\ue003" not in html
+
+
+class TestListMarkerGeometry:
+    def _document(self, left, hanging=None, first_line=None, tab=None, text="%1."):
+        """A document whose one numbered paragraph uses a lettered level with the given own indent."""
+        document = docx.Document()
+        numbering = document.part.numbering_part.element
+        abstract = etree.fromstring(
+            '<w:abstractNum xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:abstractNumId="90">'
+            f'<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="{text}"/></w:lvl>'
+            "</w:abstractNum>"
+        )
+        numbering.insert(0, abstract)
+        num = etree.fromstring(
+            '<w:num xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:numId="90">'
+            '<w:abstractNumId w:val="90"/></w:num>'
+        )
+        numbering.append(num)
+        paragraph = document.add_paragraph("An item that wraps")
+        pr = paragraph._p.get_or_add_pPr()
+        pr.append(etree.fromstring('<w:numPr xmlns:w="%s"><w:ilvl w:val="0"/><w:numId w:val="90"/></w:numPr>' % qn("w:p").split("}")[0][1:]))
+        if tab:
+            pr.append(etree.fromstring('<w:tabs xmlns:w="%s"><w:tab w:val="left" w:pos="%d"/></w:tabs>' % (qn("w:p").split("}")[0][1:], tab)))
+        ind = etree.SubElement(pr, qn("w:ind"))
+        ind.set(qn("w:left"), str(left))
+        if hanging is not None:
+            ind.set(qn("w:hanging"), str(hanging))
+        if first_line is not None:
+            ind.set(qn("w:firstLine"), str(first_line))
+        return document
+
+    def test_a_marker_at_the_indent_runs_text_to_the_next_tab_stop(self):
+        html = _docx_document_to_result(self._document(left=720, first_line=0, tab=982))["html"]
+        assert 'data-mx="48"' in html and 'data-post="."' in html
+        # Wrapped lines return to the indent; the first line starts at the 982-twip tab stop.
+        assert "margin-left:48px" in html and "text-indent:17.5px" in html
+
+    def test_a_hanging_indent_puts_the_marker_left_of_the_text(self):
+        html = _docx_document_to_result(self._document(left=720, hanging=360))["html"]
+        assert 'data-mx="24"' in html
+        assert "margin-left:48px" in html and "text-indent:0px" in html
+
+    def test_the_levels_text_around_the_counter_is_kept(self):
+        html = _docx_document_to_result(self._document(left=720, hanging=360, text="(%1)"))["html"]
+        assert 'data-pre="("' in html and 'data-post=")"' in html
+
+    def test_a_level_that_joins_several_counters_falls_back_to_the_plain_list(self):
+        html = _docx_document_to_result(self._document(left=720, hanging=360, text="%1.%2"))["html"]
+        assert "data-mx" not in html
+
+
+class TestFillInBlanks:
+    def test_an_underlined_space_keeps_its_width_beside_another_space(self):
+        document = docx.Document()
+        paragraph = document.add_paragraph("No. ")
+        paragraph.add_run(" ").underline = True
+        paragraph.add_run("0440").underline = True
+        html = _docx_document_to_result(document)["html"]
+        assert "<u><span" in html and "\u00a0" in html
+
+    def test_a_plain_space_between_words_still_wraps(self):
+        document = docx.Document()
+        paragraph = document.add_paragraph("one")
+        paragraph.add_run(" ")
+        paragraph.add_run("two")
+        assert "\u00a0" not in _docx_document_to_result(document)["html"]
+
+
+MEMO_DOCX = ROOT / "tests" / "fixtures" / "import_baselines" / "documents" / "DM_0440_s_26_SGOD_Conduct-of-World-Teachers-Day.docx"
+
+
+@pytest.mark.skipif(not MEMO_DOCX.exists(), reason="fixture document is not available")
+def test_the_memos_letterhead_and_footer_rules_are_imported():
+    from converter import convert_docx_bytes_to_html
+
+    html = convert_docx_bytes_to_html(MEMO_DOCX.read_bytes())["html"]
+    # Both rules are custom-path lines (a flat stroke), not Word's preset line shapes.
+    assert html.count('class="rule-line"') == 2

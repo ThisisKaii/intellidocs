@@ -27,8 +27,9 @@ import { BlueprintGuideExtension } from './BlueprintGuideExtension'
 import { HarperLinterExtension } from './HarperLinterExtension'
 import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
-import { ListItem } from '@tiptap/extension-list'
+import { ListItem, OrderedList } from '@tiptap/extension-list'
 import { PageBreak } from './PageBreak'
+import { ColumnSection, SectionColumn } from './ColumnSection'
 import { PageFlowExtension } from './PageFlow'
 import { TabStop } from './TabStop'
 import {
@@ -1045,6 +1046,23 @@ declare module '@tiptap/core' {
 }
 
 /**
+ * Ordered list that also writes its numbering style to `data-list-type`. HTML compares the
+ * `type` attribute's value without case, so CSS cannot tell "a" from "A" by `[type]` alone.
+ */
+const CustomOrderedList = OrderedList.extend({
+  addAttributes() {
+    const parent = (this.parent?.() ?? {}) as Record<string, Record<string, unknown>>
+    return {
+      ...parent,
+      type: {
+        ...(parent.type ?? { default: null }),
+        renderHTML: (a: { type?: string | null }) => (a.type ? { type: a.type, 'data-list-type': a.type } : {}),
+      },
+    }
+  },
+})
+
+/**
  * List item that keeps an imported item's own text size. The number or bullet is
  * drawn in the item's font, not its paragraph's, so without this an 11pt Word
  * list shows small markers beside 11pt text at the editor's default size.
@@ -1058,6 +1076,32 @@ const CustomListItem = ListItem.extend({
         parseHTML: (el) => filterStyle(el.getAttribute('style')),
         renderHTML: (a) => (a.style ? { style: a.style } : {}),
       },
+      // Where Word puts this item's number: x from the text edge, top offset, and the text around it.
+      // A split item starts without them, so the new line falls back to the plain list marker.
+      markerX: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (el) => el.getAttribute('data-mx'),
+        renderHTML: (a) => (a.markerX ? { 'data-mx': a.markerX, style: `--mx:${a.markerX}px` } : {}),
+      },
+      markerTop: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (el) => el.getAttribute('data-mt'),
+        renderHTML: (a) => (a.markerX ? { 'data-mt': a.markerTop ?? '0', style: `--mt:${a.markerTop ?? '0'}px` } : {}),
+      },
+      markerPre: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (el) => el.getAttribute('data-pre'),
+        renderHTML: (a) => (a.markerX ? { 'data-pre': a.markerPre ?? '', style: `--pre:"${a.markerPre ?? ''}"` } : {}),
+      },
+      markerPost: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (el) => el.getAttribute('data-post'),
+        renderHTML: (a) => (a.markerX ? { 'data-post': a.markerPost ?? '', style: `--post:"${a.markerPost ?? ''}"` } : {}),
+      },
     }
   },
 })
@@ -1068,12 +1112,16 @@ export const editorExtensions = [
     heading: false,
     blockquote: false,
     listItem: false,
+    orderedList: false,
   }),
   CustomListItem,
+  CustomOrderedList,
   CustomParagraph,
   CustomHeading,
   CustomBlockquote,
   PageBreak,
+  ColumnSection,
+  SectionColumn,
   PageFlowExtension.configure({ enabled: true }),
   TabStop,
   HeaderFooterExtension,
@@ -3994,7 +4042,30 @@ const PROSE_STYLES = `
   }
   .ProseMirror ul { list-style: disc; padding-left: 1.5em; margin: 0.5em 0; }
   .ProseMirror ol { list-style: decimal; padding-left: 1.5em; margin: 0.5em 0; }
+  /* The list's own numbering style (imports: a. A. i. I.) beats the default above. */
+  .ProseMirror ol[data-list-type='a'] { list-style-type: lower-alpha; }
+  .ProseMirror ol[data-list-type='A'] { list-style-type: upper-alpha; }
+  .ProseMirror ol[data-list-type='i'] { list-style-type: lower-roman; }
+  .ProseMirror ol[data-list-type='I'] { list-style-type: upper-roman; }
   .ProseMirror li { margin: 0.2em 0; }
+  /* A tab inside underlined text (Word's fill-in line: "No. 0440" then a tab) is underlined to its
+     stop. A text underline does not paint across an inline-block, so draw it as a border. */
+  .ProseMirror u span[data-tab] { border-bottom: 1px solid currentColor; transform: translateY(0.1em); }
+  /* Imported numbered items: the marker sits at the x Word puts it (data-mx, from the page's text
+     edge) and the paragraph inside carries the wrap and first-line indents, so the list adds no
+     indent or spacing of its own. The number comes from the list's own counter. */
+  .ProseMirror ol:has(> li[data-mx]) { list-style: none; padding: 0; margin: 0; }
+  .ProseMirror li[data-mx] { list-style: none; position: relative; margin: 0; padding: 0; }
+  .ProseMirror li[data-mx]::before {
+    position: absolute;
+    left: var(--mx);
+    top: var(--mt);
+    content: var(--pre) counter(list-item, decimal) var(--post);
+  }
+  .ProseMirror ol[data-list-type='a'] > li[data-mx]::before { content: var(--pre) counter(list-item, lower-alpha) var(--post); }
+  .ProseMirror ol[data-list-type='A'] > li[data-mx]::before { content: var(--pre) counter(list-item, upper-alpha) var(--post); }
+  .ProseMirror ol[data-list-type='i'] > li[data-mx]::before { content: var(--pre) counter(list-item, lower-roman) var(--post); }
+  .ProseMirror ol[data-list-type='I'] > li[data-mx]::before { content: var(--pre) counter(list-item, upper-roman) var(--post); }
   .ProseMirror p.is-editor-empty:first-child::before {
     content: 'Start writing your document…';
     float: left;
