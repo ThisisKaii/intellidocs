@@ -90,12 +90,24 @@ def _clean_font_name(name: str) -> str:
     return cleaned.strip() or name
 
 
+# Free fonts with the same character widths as the Word fonts; the editor bundles them.
+_METRIC_TWINS = {
+    "times new roman": "Tinos", "times": "Tinos",
+    "arial": "Arimo", "helvetica": "Arimo",
+    "calibri": "Carlito", "cambria": "Caladea",
+    "courier new": "Cousine", "courier": "Cousine",
+}
+
+
 def _generic_family(name: str) -> str:
-    """The CSS generic family a font falls back to when it is not installed."""
+    """What follows a font in its CSS stack: its metric twin (when one is bundled), then the generic family."""
     lowered = name.lower()
     if "mono" in lowered or "courier" in lowered or "consolas" in lowered:
-        return "monospace"
-    return "sans-serif" if any(sans in lowered for sans in _SANS_FAMILIES) else "serif"
+        generic = "monospace"
+    else:
+        generic = "sans-serif" if any(sans in lowered for sans in _SANS_FAMILIES) else "serif"
+    twin = _METRIC_TWINS.get(lowered)
+    return f"{twin}, {generic}" if twin else generic
 
 
 def _inherited_run_flag(run: Run, attribute: str) -> bool:
@@ -153,6 +165,11 @@ def _run_to_html(run: Run) -> str:
     hex_color = _color_to_hex(run.font.color)
     if hex_color:
         styles.append(f"color:{hex_color}")
+
+    # Character spacing (w:spacing, twentieths of a point): condensed text wraps later.
+    spacing = run._element.rPr.find(qn("w:spacing")) if run._element.rPr is not None else None
+    if spacing is not None and spacing.get(qn("w:val")) not in (None, "0"):
+        styles.append(f"letter-spacing:{round(float(spacing.get(qn('w:val'))) / 20, 2):g}pt")
 
     # A run with no font of its own uses its paragraph's style chain, then the
     # document defaults; without this an Arial document imports as serif.
@@ -967,6 +984,9 @@ def _paragraph_indent_css(p: Paragraph) -> str:
         styles.append(f"text-indent:{round(-int(hanging) * TWIPS_PER_PX, 1)}px")
     else:
         styles.append("text-indent:0")
+    right = _resolve_pPr_attr(p, "ind", "right") or _resolve_pPr_attr(p, "ind", "end")
+    if right and right != "0":
+        styles.append(f"margin-right:{round(int(right) * TWIPS_PER_PX, 1)}px")
     return "; ".join(styles)
 
 
@@ -1431,15 +1451,90 @@ def _textbox_paragraphs(paragraph_el: Any) -> List[Any]:
     return found
 
 
-def _cell_paragraph_to_html(p: Paragraph, doc_parts: Dict[str, bytes], force_white: bool = False) -> str:
-    """Format paragraphs inside table cells compactly without ballooning cell heights."""
+_NUMBERING_CACHE: Dict[int, Dict[Tuple[str, str], Tuple[str, str]]] = {}
+
+
+def _numbering_levels(part: Any) -> Dict[Tuple[str, str], Tuple[str, str]]:
+    """(numId, ilvl) -> (numFmt, lvlText) for every numbered level of a document, read once."""
+    try:
+        root = part.numbering_part.element
+    except Exception:
+        return {}
+    if id(root) in _NUMBERING_CACHE:
+        return _NUMBERING_CACHE[id(root)]
+    abstract_levels: Dict[str, Dict[str, Tuple[str, str]]] = {}
+    for abstract in root.findall(qn("w:abstractNum")):
+        levels: Dict[str, Tuple[str, str]] = {}
+        for lvl in abstract.findall(qn("w:lvl")):
+            fmt = lvl.find(qn("w:numFmt"))
+            text = lvl.find(qn("w:lvlText"))
+            levels[lvl.get(qn("w:ilvl"), "0")] = (
+                fmt.get(qn("w:val")) if fmt is not None else "decimal",
+                text.get(qn("w:val")) if text is not None else "%1.",
+            )
+        abstract_levels[abstract.get(qn("w:abstractNumId"), "")] = levels
+    table: Dict[Tuple[str, str], Tuple[str, str]] = {}
+    for num in root.findall(qn("w:num")):
+        abstract_id = num.find(qn("w:abstractNumId"))
+        for ilvl, value in abstract_levels.get(abstract_id.get(qn("w:val")) if abstract_id is not None else "", {}).items():
+            table[(num.get(qn("w:numId"), ""), ilvl)] = value
+    _NUMBERING_CACHE[id(root)] = table
+    return table
+
+
+def _roman(number: int) -> str:
+    """A number as lower-case roman numerals."""
+    out = ""
+    for value, symbol in ((1000, "m"), (900, "cm"), (500, "d"), (400, "cd"), (100, "c"), (90, "xc"), (50, "l"), (40, "xl"), (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i")):
+        while number >= value:
+            out += symbol
+            number -= value
+    return out
+
+
+def _cell_marker(p: Paragraph, counters: Dict[Tuple[str, str], int]) -> str:
+    """The bullet or number Word draws before a numbered paragraph inside a table cell ("" when it has none)."""
+    pr = p._element.pPr
+    num_pr = pr.find(qn("w:numPr")) if pr is not None else None
+    num_id = num_pr.find(qn("w:numId")) if num_pr is not None else None
+    if num_id is None or num_id.get(qn("w:val")) in (None, "0"):
+        return ""
+    ilvl_el = num_pr.find(qn("w:ilvl"))
+    key = (num_id.get(qn("w:val")), ilvl_el.get(qn("w:val")) if ilvl_el is not None else "0")
+    fmt, text = _numbering_levels(p.part).get(key, ("bullet", "%1"))
+    if fmt == "bullet":
+        return "•"
+    counters[key] = counters.get(key, 0) + 1
+    count = counters[key]
+    shown = {
+        "lowerLetter": chr(96 + (count - 1) % 26 + 1), "upperLetter": chr(64 + (count - 1) % 26 + 1),
+        "lowerRoman": _roman(count), "upperRoman": _roman(count).upper(),
+    }.get(fmt, str(count))
+    return re.sub(r"%\d", shown, text)
+
+
+def _cell_paragraph_to_html(
+    p: Paragraph,
+    doc_parts: Dict[str, bytes],
+    force_white: bool = False,
+    counters: Optional[Dict[Tuple[str, str], int]] = None,
+) -> str:
+    """Format paragraphs inside table cells compactly without ballooning cell heights.
+
+    A cell paragraph keeps its own indents and, when Word numbers or bullets it, its
+    marker (drawn as text and a tab, which the paragraph's tab stop lines up).
+    """
     inner = _paragraph_inner_html(p, doc_parts)
     if not inner.strip():
         return ""
+    marker = _cell_marker(p, counters if counters is not None else {})
+    if marker:
+        inner = f"{marker}<span data-tab></span>{inner}"
     alignment = _get_paragraph_alignment(p)
     align_style = f"text-align:{alignment};" if alignment != "left" else ""
     color_style = "color:#ffffff;" if force_white else ""
-    pieces = [align_style, color_style, "margin:0", _paragraph_font_css(p), _paragraph_spacing_css(p), "text-indent:0"]
+    indent = _paragraph_indent_css(p)
+    pieces = [align_style, color_style, "margin:0", _paragraph_font_css(p), _paragraph_spacing_css(p), indent]
     css = "; ".join(piece.rstrip("; ") for piece in pieces if piece) + ";"
     return f'<p style="{css}"{_tab_attributes(p, inner)}>{inner}</p>'
 
@@ -1670,6 +1765,7 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
     borders = _table_borders(table)
     pad = _table_cell_margins(table)
     last_row = len(rows) - 1
+    list_counters: Dict[Tuple[str, str], int] = {}
 
     rows_html: List[str] = []
     for i, cells in enumerate(rows):
@@ -1702,7 +1798,7 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
             content_parts: List[str] = []
             for child in _iter_block_elements(tc):
                 if child.tag == qn("w:p"):
-                    content_parts.append(_cell_paragraph_to_html(Paragraph(child, table), doc_parts, force_white=is_dark))
+                    content_parts.append(_cell_paragraph_to_html(Paragraph(child, table), doc_parts, force_white=is_dark, counters=list_counters))
                 else:
                     content_parts.append(_table_to_html(Table(child, table), doc_parts, text_width_px))
             cell_content = "".join(content_parts)
@@ -1837,9 +1933,12 @@ def _body_to_html(
             # The item carries its text size: the marker is drawn in the item's font, not its paragraph's.
             size_css = _paragraph_font_css(p)
             item_open = f'<li style="{size_css}">' if size_css else "<li>"
-            # A deeper level with no list open above it starts at the top: the
-            # editor would otherwise invent an empty parent item (a stray "1.").
-            target_depth = min(info["level"] + 1, len(stack) + 1)
+            # Lists open one nesting level at a time and remember the Word level they hold: a lettered
+            # sublist whose first item has no numbered parent starts at the top (no stray empty "1."),
+            # and its later items stay siblings instead of nesting deeper.
+            while stack and stack[-1].get("level", -1) > info["level"]:
+                close_list()
+            target_depth = len(stack) if stack and stack[-1].get("level") == info["level"] else len(stack) + 1
             count_key = (info["num_id"], info["level"])
             item_counts[count_key] = item_counts.get(count_key, 0) + 1
             # A new item at this level restarts the deeper levels of the same list.
@@ -1847,9 +1946,6 @@ def _body_to_html(
                 del item_counts[deeper]
             ordinal = item_counts[count_key]
 
-            # Close lists deeper than the target depth.
-            while len(stack) > target_depth:
-                close_list()
             # Same depth but different kind -> close and reopen as the new kind.
             if stack and len(stack) == target_depth and stack[-1]["kind"] != kind:
                 close_list()
@@ -1868,7 +1964,7 @@ def _body_to_html(
                 # Open nested list(s) (inside the current open <li>) or a fresh list.
                 while len(stack) < target_depth:
                     opens_this_item = len(stack) + 1 == target_depth
-                    stack.append({"kind": kind, "num_id": info["num_id"] if opens_this_item else None})
+                    stack.append({"kind": kind, "num_id": info["num_id"] if opens_this_item else None, "level": info["level"]})
                     start_attr = f' start="{ordinal}"' if kind == "ol" and opens_this_item and ordinal > 1 else ""
                     type_attr = ""
                     if kind == "ol" and opens_this_item:
@@ -2817,4 +2913,6 @@ def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     doc.part._is_pdf_import = True  # pdf2docx leaves cell padding at zero; see _table_cell_margins
     result = _docx_document_to_result(doc, page_break_after, compress_images=True)
     _furniture_to_layout(result, furniture, page_count)
+    # A PDF is laid out page by page: Word's widow/orphan rules would spill lines onto extra pages.
+    result["flow_rules"] = False
     return result

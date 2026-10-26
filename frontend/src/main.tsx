@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { initOpenReplay } from './services/openreplay'
+import './styles/documentFonts.css'
 import './styles/index.css'
 
 // Opt-in research telemetry: only starts when the build carries

@@ -101,6 +101,7 @@ import {
 } from 'lucide-react'
 import { api } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
+import { LetterSpacingExtension } from './LetterSpacingExtension'
 import { IndentExtension } from './IndentExtension'
 import { exportThesisWord, exportThesisPdf } from '@/lib/thesisExport'
 import { exportIeeeDocx } from '@/lib/ieeeExport'
@@ -1073,7 +1074,7 @@ export const editorExtensions = [
   CustomHeading,
   CustomBlockquote,
   PageBreak,
-  PageFlowExtension,
+  PageFlowExtension.configure({ enabled: true }),
   TabStop,
   HeaderFooterExtension,
   AcademicObjectsExtension,
@@ -1083,6 +1084,7 @@ export const editorExtensions = [
   Color,
   FontFamily,
   FontSizeExtension,
+  LetterSpacingExtension,
   IndentExtension,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   AlignedImageResize.configure({ inline: false, allowBase64: true }),

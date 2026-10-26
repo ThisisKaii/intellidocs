@@ -517,6 +517,14 @@ export function PagedEditor({
     }
   }, [editor, overlays])
 
+  // Word's widow/orphan rules are opt-in (`flow_rules: true`): measured on the fixtures they moved
+  // lines Word had left alone, because our page bodies already differ from Word's by a line or two.
+  const flowRules = pageLayout?.flow_rules === true
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    ;(editor.storage as unknown as { pageFlow: { enabled: boolean } }).pageFlow.enabled = flowRules
+  }, [editor, flowRules])
+
   // Give every page the header and footer of its section: art, text and page numbers.
   useEffect(() => {
     if (!editor || editor.isDestroyed || !pageLayout) return

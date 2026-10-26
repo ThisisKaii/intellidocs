@@ -84,7 +84,7 @@ def _page_layout(result: dict) -> dict | None:
     hf, art = result.get("hf") or {}, result.get("page_art") or {}
     if not (hf.get("parts") or art.get("repeat") or art.get("pages") or art.get("overlays")):
         numbered = any(s.get("number_start") is not None or s.get("number_format") != "decimal" or s.get("title_pg") for s in hf.get("sections", []))
-        if not numbered:
+        if not numbered and result.get("flow_rules") is not False:
             return None
     return {
         "sections": hf.get("sections", []),
@@ -92,6 +92,7 @@ def _page_layout(result: dict) -> dict | None:
         "repeat_art": art.get("repeat", ""),
         "page_art": art.get("pages", {}),
         "overlays": art.get("overlays", {}),
+        **({"flow_rules": False} if result.get("flow_rules") is False else {}),
     }
 
 

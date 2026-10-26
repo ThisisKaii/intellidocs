@@ -164,6 +164,8 @@ export interface PageLayout {
   page_art: Record<string, string>
   /** Boxes hung beside a paragraph (`data-overlay` id): position from the paragraph, size and content. */
   overlays?: Record<string, PageOverlay>
+  /** False for PDF imports (no widow/orphan control). */
+  flow_rules?: boolean
 }
 
 /** A picture or text box Word hangs beside a paragraph without wrapping text around it. */
