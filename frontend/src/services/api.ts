@@ -1356,8 +1356,9 @@ export const api = {
         }
       )
     },
-    listFiles: async (): Promise<{ files: DriveFile[] }> => {
-      return fetchAPI<{ files: DriveFile[] }>('drive/files')
+    /** Token and keys for Google's file picker, which replaces listing the whole Drive. */
+    pickerConfig: async (): Promise<{ accessToken: string; apiKey: string; appId: string }> => {
+      return fetchAPI<{ accessToken: string; apiKey: string; appId: string }>('drive/picker-config')
     },
     /**
      * Import a Drive file. Small files resolve with the converted HTML; files

@@ -16,9 +16,23 @@ the same thing:
 
 Sign-in alone does **not** grant Drive access. Supabase's Google app is
 configured with identity scopes only, so a user who signs in with Google still
-needs to connect Drive separately. `AuthCallback` attempts an automatic link
-when the sign-in did return a usable Drive token, and quietly skips it when it
-did not. Both outcomes are correct.
+needs to connect Drive separately, from the import dialog.
+
+## 0. Scope and the file picker
+
+Drive import uses the non-sensitive `drive.file` scope, so Google shows no
+"unverified app" screen and imposes no user cap. The app cannot browse a Drive;
+the person chooses a file in Google's own **file picker** (opened from
+`DriveImportDialog` with a token from `GET /drive/picker-config`), and the app can
+read exactly that file. One-time Cloud setup:
+
+1. **APIs & Services** → enable **Google Picker API** (keep the Drive API on).
+2. **Credentials** → **Create credentials** → **API key**. Restrict it to the Google
+   Picker API and to HTTP referrers (your Vercel site and `http://localhost:5173/*`).
+3. Copy the **project number** from the Cloud console home page.
+4. Set `GOOGLE_PICKER_API_KEY` and `GOOGLE_APP_ID` (the project number) on the server
+   (Render env and local `server/.env`).
+5. **Google Auth Platform → Data access**: remove `drive.readonly`, add `drive.file`.
 
 ## 1. Create the OAuth client
 
@@ -50,18 +64,11 @@ a callback to the user who started it. Generate it with
 Both write to the same table, `google_tokens`, which has `UNIQUE (user_id)` and
 row-level security policies. **One row per user, ever.**
 
-### a. Automatic link after Google sign-in
+### a. No automatic link at sign-in
 
-`AuthCallback` reads `session.provider_token` and posts it to
-`POST /drive/link-provider`. This requires the sign-in to have requested offline
-access, which `AuthContext.loginWithGoogle` does with `access_type=offline` and
-`prompt=consent`.
-
-This step is deliberately best-effort: it is skipped when there is no
-`provider_refresh_token`, because storing an access token with no refresh token
-would leave the account connected only until that token expired and then fail
-with no obvious cause. It never overwrites an existing Drive connection, so a
-token the user granted deliberately through the sidebar is preserved.
+Sign-in asks for identity scopes only (`openid email profile`), so signing in with
+Google never shows Google's "unverified app" warning. `AuthCallback` no longer
+posts a provider token to `POST /drive/link-provider` (the route remains, unused).
 
 ### b. Explicit "Connect Google Drive" button
 

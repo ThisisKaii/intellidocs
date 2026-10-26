@@ -245,10 +245,10 @@ def test_drive_status_when_unconnected(auth_client: Api) -> None:
 
 
 @e2e("api/drive")
-def test_drive_list_files_requires_connection(auth_client: Api) -> None:
+def test_drive_picker_config_requires_connection(auth_client: Api) -> None:
     """Without a Google connection this must fail cleanly, not hang or 500 blindly."""
-    r = auth_client.get("/drive/files")
-    assert r.status_code in (200, 400, 401, 403), f"unexpected {r.status_code}: {r.text[:200]}"
+    r = auth_client.get("/drive/picker-config")
+    assert r.status_code in (200, 400, 401, 403, 500), f"unexpected {r.status_code}: {r.text[:200]}"
 
 
 @e2e("api/drive", requires=(Requires.GOOGLE_OAUTH,))

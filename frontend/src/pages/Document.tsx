@@ -1492,6 +1492,16 @@ export default function Document(): JSX.Element {
         return
       }
 
+      // A paragraph that already shows its own number, letter or bullet is a list the
+      // author wrote by hand: offering to turn it into a list is wrong.
+      const isListFormat = ['ordered_list', 'orderedList', 'ol', 'unordered_list', 'bulletList', 'ul'].includes(predictedFormat)
+      const typedMarker = /^\s*(\d+[.)]|[a-z][.)]|[ivx]+[.)]|[-*•])\s*\S/i.test(activeText)
+      if (isListFormat && (inList || typedMarker)) {
+        setSuggestions([])
+        setShowSuggestions(false)
+        return
+      }
+
       if (confidence < AUTO_FORMAT_CONFIDENCE_THRESHOLD) {
         setSuggestions([])
         setShowSuggestions(false)
@@ -1974,7 +1984,11 @@ export default function Document(): JSX.Element {
     if (typeof format === 'object' && (format.suggestionSource === 'learned' || carriesStyle)) {
       // Keep the applied block highlighted after accept so the user sees
       // exactly which text received the learned format.
-      const appliedRange = applyLearnedFormat(format)
+      // A scanner suggestion formats its own block. Without this the live selection
+      // would be used, and any larger selection got the bold and the highlight too.
+      const scannerRange =
+        suggestionRange && scannerActive && suggestionRange.from === scannerActive.from ? suggestionRange : undefined
+      const appliedRange = applyLearnedFormat(format, scannerRange)
       if (appliedRange) {
         setSuggestionRange(appliedRange)
       }
@@ -2954,6 +2968,10 @@ export default function Document(): JSX.Element {
               position: 'relative',
               flex: 1,
               overflowY: 'auto',
+              // The paginator re-lays out the pages above the caret on every edit. With scroll
+              // anchoring on, Chrome shifts the view to follow that reflow: one keystroke could
+              // move the page thousands of pixels, often to the end of the document.
+              overflowAnchor: 'none',
               backgroundColor: 'var(--canvas-bg)',
               padding: '2rem 1rem',
               ['--agentic-pulse-color' as string]: highlightColorCss(prefs),
@@ -3110,7 +3128,7 @@ export default function Document(): JSX.Element {
               role="status"
               style={{
                 position: 'fixed',
-                top: '4.5rem',
+                bottom: '3.25rem',
                 left: '50%',
                 transform: 'translateX(-50%)',
                 width: 'min(34rem, calc(100vw - 2rem))',

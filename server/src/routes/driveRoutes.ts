@@ -25,8 +25,8 @@ router.delete('/disconnect', authMiddleware, driveController.disconnect)
  */
 router.post('/link-provider', authMiddleware, validateBody(linkGoogleDriveSchema), driveController.linkProviderToken)
 
-/** List Google Docs files (authenticated). */
-router.get('/files', authMiddleware, driveController.listFiles)
+/** Token + keys for Google's file picker, which replaces browsing the whole Drive (authenticated). */
+router.get('/picker-config', authMiddleware, driveController.getPickerConfig)
 
 /** Export a single Google Doc as clean HTML (authenticated). */
 router.get('/files/:fileId/export', authMiddleware, driveController.exportFile)

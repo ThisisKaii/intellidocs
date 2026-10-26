@@ -144,3 +144,16 @@ export async function getDriveClient(
   if (!tokens) throw new Error('Google Drive not connected')
   return drive({ version: 'v3', auth: buildClientFromTokens(userId, tokens) })
 }
+
+/**
+ * A current access token for a user's Drive connection, for the browser's file picker.
+ * The OAuth client refreshes an expired token and the `tokens` listener stores the new
+ * one, so the picker never opens with a stale token.
+ */
+export async function getFreshAccessToken(userId: string): Promise<string> {
+  const tokens = await getGoogleTokens(userId)
+  if (!tokens) throw new Error('Google Drive not connected')
+  const { token } = await buildClientFromTokens(userId, tokens).getAccessToken()
+  if (!token) throw new Error('Google did not return an access token. Please reconnect Google Drive.')
+  return token
+}

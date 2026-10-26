@@ -107,9 +107,11 @@ export async function getAuthUrl(req: Request, res: Response): Promise<void> {
       access_type: 'offline',
       prompt: 'consent',
       state: signOAuthState(userId),
-      scope: [
-        'https://www.googleapis.com/auth/drive.readonly',
-      ],
+      // drive.file is non-sensitive: Google shows no "unverified app" warning. The app only
+      // reaches files the person picks in Google's file picker, never their whole Drive.
+      scope: ['https://www.googleapis.com/auth/drive.file'],
+      // Open the consent screen on the account they signed in with, not an account chooser.
+      ...(req.user?.email ? { login_hint: req.user.email } : {}),
     })
     res.status(200).json({ url })
   } catch (error) {
@@ -250,12 +252,23 @@ export async function linkProviderToken(req: Request, res: Response): Promise<vo
   }
 }
 
-/** List importable files from the user's Drive (native docs + office/plain text). */
-export async function listFiles(req: Request, res: Response): Promise<void> {
+/**
+ * Everything the browser needs to open Google's file picker for this user: a fresh access
+ * token for their Drive connection plus the picker's public API key and the Cloud project
+ * number. The token is the caller's own, so one user can never pick from another's Drive.
+ */
+export async function getPickerConfig(req: Request, res: Response): Promise<void> {
   try {
     const userId = req.user?.id
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const apiKey = process.env.GOOGLE_PICKER_API_KEY
+    const appId = process.env.GOOGLE_APP_ID
+    if (!apiKey || !appId) {
+      res.status(500).json({ error: 'Google file picker is not configured (GOOGLE_PICKER_API_KEY, GOOGLE_APP_ID).' })
       return
     }
 
@@ -265,58 +278,8 @@ export async function listFiles(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const drive = await getDriveClient(userId)
-    const q =
-      "trashed=false and " +
-      "(mimeType='application/vnd.google-apps.document' or " +
-      "mimeType='application/vnd.google-apps.kix-signed' or " +
-      "mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document' or " +
-      "mimeType='application/pdf' or " +
-      "mimeType='text/plain' or " +
-      "mimeType='application/rtf' or " +
-      "mimeType='application/vnd.oasis.opendocument.text' or " +
-      "name contains '.doc' or name contains '.docx' or " +
-      "name contains '.pdf' or name contains '.txt' or " +
-      "name contains '.rtf' or name contains '.odt')"
-
-    const response = await drive.files.list({
-      q,
-      fields: 'files(id, name, mimeType, modifiedTime, iconLink, size)',
-      orderBy: 'modifiedTime desc',
-      pageSize: 60,
-    })
-
-    let files = (response.data.files ?? []).map((f) => ({
-      id: f.id ?? '',
-      name: f.name ?? 'Untitled',
-      mimeType: f.mimeType ?? '',
-      modifiedTime: f.modifiedTime ?? '',
-      iconLink: f.iconLink ?? '',
-      size: f.size ?? '',
-    }))
-
-    // Some Accounts Index mismatches mimeType metadata; if the strict query came
-    // back empty, fall back to any untrashed file and filter locally.
-    if (files.length === 0) {
-      const fallback = await drive.files.list({
-        q: "trashed=false and not mimeType='application/vnd.google-apps.folder'",
-        fields: 'files(id, name, mimeType, modifiedTime, iconLink, size)',
-        orderBy: 'modifiedTime desc',
-        pageSize: 100,
-      })
-      files = (fallback.data.files ?? [])
-        .map((f) => ({
-          id: f.id ?? '',
-          name: f.name ?? 'Untitled',
-          mimeType: f.mimeType ?? '',
-          modifiedTime: f.modifiedTime ?? '',
-          iconLink: f.iconLink ?? '',
-          size: f.size ?? '',
-        }))
-        .filter(isImportable)
-    }
-
-    res.status(200).json({ files })
+    const accessToken = await driveModel.getFreshAccessToken(userId)
+    res.status(200).json({ accessToken, apiKey, appId })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     res.status(500).json({ error: message })
@@ -326,21 +289,6 @@ export async function listFiles(req: Request, res: Response): Promise<void> {
 /** Resolve the user's OAuth2 client with stored tokens, refreshing if expired. */
 async function getDriveClient(userId: string): Promise<drive_v3.Drive> {
   return driveModel.getDriveClient(userId)
-}
-
-/** Whether a Drive file can be imported into IntelliDocs (native docs, office, plain text). */
-function isImportable(file: { name: string; mimeType: string }): boolean {
-  const importableMimes = new Set([
-    'application/vnd.google-apps.document',
-    'application/vnd.google-apps.kix-signed',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/pdf',
-    'text/plain',
-    'application/rtf',
-    'application/vnd.oasis.opendocument.text',
-  ])
-  if (importableMimes.has(file.mimeType)) return true
-  return /\.(docx?|pdf|txt|rtf|odt)$/i.test(file.name)
 }
 
 /** Convert a googleapis download payload (stream/Blob/Buffer/string/ArrayBuffer) into a Buffer. */
