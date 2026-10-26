@@ -1,19 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api, type DriveFile } from '@/services/api'
-import { HardDrive, ExternalLink, Download, X, Loader2, Unplug, RefreshCw } from 'lucide-react'
+import { openDrivePicker } from '@/lib/googlePicker'
+import { HardDrive, ExternalLink, FolderOpen, X, Loader2, Unplug, RefreshCw } from 'lucide-react'
 
 interface DriveImportDialogProps {
   open: boolean
   onClose: () => void
   /** Hands the chosen file to the parent, which owns the import + progress UI. */
   onImport: (file: DriveFile) => void
-}
-
-/** Format a Drive-reported byte count into a readable size for the file list. */
-function formatFileSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '—'
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 /** Floating dialog to connect to Google Drive and import documents. */
@@ -24,8 +18,10 @@ export default function DriveImportDialog({
 }: DriveImportDialogProps): JSX.Element | null {
   const [connected, setConnected] = useState<boolean>(false)
   const [loading, setLoading] = useState<boolean>(true)
-  const [files, setFiles] = useState<DriveFile[]>([])
+  const [choosing, setChoosing] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  // The saved Google connection is no longer valid (revoked, or it predates the file picker).
+  const [needsReconnect, setNeedsReconnect] = useState<boolean>(false)
 
   /** Check Google Drive connection status. */
   const checkStatus = useCallback(async () => {
@@ -34,10 +30,6 @@ export default function DriveImportDialog({
     try {
       const res = await api.drive.status()
       setConnected(res.connected)
-      if (res.connected) {
-        const fileRes = await api.drive.listFiles()
-        setFiles(fileRes.files)
-      }
     } catch (error) {
       console.error('Drive status check failed', error)
       setError(error instanceof Error ? error.message : 'Failed to check Google Drive connection.')
@@ -80,10 +72,35 @@ export default function DriveImportDialog({
     try {
       await api.drive.disconnect()
       setConnected(false)
-      setFiles([])
+      setNeedsReconnect(false)
     } catch (error) {
       console.error('Failed to disconnect', error)
     }
+  }
+
+  /** Open Google's file picker and import what the person chooses. */
+  async function handleChoose(): Promise<void> {
+    setError(null)
+    setChoosing(true)
+    try {
+      const config = await api.drive.pickerConfig()
+      const file = await openDrivePicker(config)
+      if (file) handleImport(file)
+    } catch (error) {
+      console.error('Google file picker failed', error)
+      const message = error instanceof Error ? error.message : 'Could not open Google Drive.'
+      // A revoked or outdated connection cannot open the picker: offer to reconnect.
+      if (/not connected|invalid_grant|unauthor|forbidden|reconnect/i.test(message)) setNeedsReconnect(true)
+      setError(message)
+    } finally {
+      setChoosing(false)
+    }
+  }
+
+  /** Drop the saved connection and start the consent flow again. */
+  async function handleReconnect(): Promise<void> {
+    await handleDisconnect()
+    await handleConnect()
   }
 
   /**
@@ -287,85 +304,39 @@ export default function DriveImportDialog({
                 </button>
               </div>
 
-              {files.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>
-                    No importable documents found in your Drive.
-                  </p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', opacity: 0.75, margin: '0.375rem 0 0' }}>
-                    IntelliDocs can import Google Docs, Word (.docx), PDF, and text files.
-                  </p>
-                </div>
-              ) : (
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  {files.map((file) => (
-                    <li
-                      key={file.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '0.5rem 0.75rem',
-                        borderRadius: '0.5rem',
-                        backgroundColor: 'var(--secondary)',
-                        transition: 'background-color 150ms',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-                        {file.iconLink ? (
-                          <img src={file.iconLink} alt="" style={{ width: '16px', height: '16px' }} />
-                        ) : (
-                          <HardDrive style={{ width: '14px', height: '14px', color: 'var(--muted-foreground)' }} />
-                        )}
-                        <span
-                          style={{
-                            fontSize: '0.8125rem',
-                            color: 'var(--foreground)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {file.name}
-                        </span>
-                        {file.size ? (
-                          <span
-                            style={{
-                              fontSize: '0.6875rem',
-                              color: 'var(--muted-foreground)',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {formatFileSize(Number(file.size))}
-                          </span>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleImport(file)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: '0.375rem',
-                          border: 'none',
-                          backgroundColor: 'var(--primary)',
-                          color: 'var(--primary-foreground)',
-                          fontSize: '0.75rem',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Download style={{ width: '12px', height: '12px' }} />
-                        Import
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1rem' }}>
+                  Choose a document in Google Drive. IntelliDocs can import Google Docs, Word (.docx), PDF, and text files,
+                  and only sees the file you choose.
+                </p>
+                <button
+                  type="button"
+                  disabled={choosing}
+                  onClick={() => { void (needsReconnect ? handleReconnect() : handleChoose()) }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '0.5rem',
+                    border: 'none',
+                    backgroundColor: 'var(--primary)',
+                    color: 'var(--primary-foreground)',
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    cursor: choosing ? 'default' : 'pointer',
+                    opacity: choosing ? 0.7 : 1,
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {choosing ? (
+                    <Loader2 style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <FolderOpen style={{ width: '14px', height: '14px' }} />
+                  )}
+                  {needsReconnect ? 'Reconnect Google Drive' : 'Choose a file from Google Drive'}
+                </button>
+              </div>
             </div>
           )}
         </div>

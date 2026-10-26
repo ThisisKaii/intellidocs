@@ -219,23 +219,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Initiates Google OAuth via Supabase.
    * The user is redirected to Google, then back to /auth/callback.
    *
-   * `access_type=offline` with `prompt=consent` is required for Supabase to
-   * return a `provider_token`. Without it Google issues no refresh token, so the
-   * user's Google Drive can never be linked to their account and they would have
-   * to reconnect through the separate Drive consent flow every session.
+   * Identity scopes only: asking for Drive here would show Google's "unverified app"
+   * warning to every new person. Drive is connected separately, with the narrow
+   * drive.file scope, when someone chooses to import from it.
    */
   const loginWithGoogle = async (): Promise<void> => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        scopes: 'openid email profile https://www.googleapis.com/auth/drive.readonly',
+        scopes: 'openid email profile',
         queryParams: {
-          access_type: 'offline',
-          // `prompt=consent` forces Google to re-issue a refresh token even for
-          // a returning user; `prompt=select_account` would not.
-          prompt: 'consent',
-          include_granted_scopes: 'true',
+          prompt: 'select_account',
         },
       },
     })

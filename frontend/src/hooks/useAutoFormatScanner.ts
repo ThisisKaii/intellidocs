@@ -70,6 +70,19 @@ export type StructuralRole =
   | 'body_paragraph'
 
 /**
+ * Whether the text after a leading number ("3.1", "2.", "IV.", "B.") reads like a heading and
+ * not a sentence that happens to be numbered. Headings are short, are not closed by sentence
+ * punctuation and do not open with a lower-case word or an infinitive ("3.1 To develop ...").
+ */
+export function isHeadingLike(text: string): boolean {
+  const rest = text.trim().replace(/^(?:\d+(?:\.\d+)*\.?|[IVX]+\.|[A-Z]\.)\s+/, '')
+  if (!rest || rest.split(/\s+/).length > 12) return false
+  if (/[.;,:]$/.test(rest)) return false
+  if (/^[a-z]/.test(rest) || /^to\s/i.test(rest)) return false
+  return true
+}
+
+/**
  * Classify a block's structural role from its text. Deterministic pattern
  * matching: Roman/Chapter/decimal numbering plus the standard section-name
  * list for level 1, decimals and letter subsections for level 2, triples for
@@ -86,20 +99,20 @@ export function classifyStructuralRole(
   if (/^\[\d+\]/.test(value)) return 'reference_entry'
   if (
     /^chapter\s+\d+/i.test(value) ||
-    /^[IVX]+\.\s+[A-Z]/.test(value) ||
-    /^\d+\.0?\s+[A-Z]/.test(value) ||
+    (/^[IVX]+\.\s+[A-Z]/.test(value) && isHeadingLike(value)) ||
+    (/^\d+\.0?\s+[A-Z]/.test(value) && isHeadingLike(value)) ||
     /^(abstract|introduction|literature review|methodology|results and discussion|conclusion|references|bibliography|appendix|acknowledgments?)\s*[:.]?$/i.test(value)
   ) {
     return 'heading_1'
   }
   if (
-    /^\d+\.\d+\s+[A-Z]/.test(value) ||
-    /^[A-Z]\.\s+[A-Z]/.test(value) ||
+    (/^\d+\.\d+\s+[A-Z]/.test(value) && isHeadingLike(value)) ||
+    (/^[A-Z]\.\s+[A-Z]/.test(value) && isHeadingLike(value)) ||
     /^(problem statement|research objectives|scope and delimitation|theoretical framework|objectives)\s*[:.]?$/i.test(value)
   ) {
     return 'heading_2'
   }
-  if (/^\d+\.\d+\.\d+\s+/.test(value)) return 'heading_3'
+  if (/^\d+\.\d+\.\d+\s+/.test(value) && isHeadingLike(value)) return 'heading_3'
   if (options.isFirstTextBlock && value.length <= 150 && !/[.!?:]$/.test(value)) return 'title'
   return 'body_paragraph'
 }
@@ -180,25 +193,27 @@ const RESCAN_DEBOUNCE_MS = 1_500
 const MAX_SCAN_NODES = 30
 
 /** Regex patterns that indicate heading-like content. */
-const HEADING_PATTERNS: Array<{ re: RegExp; format: string; confidence: number }> = [
+const HEADING_PATTERNS: Array<{ re: RegExp; format: string; confidence: number; numbered?: boolean }> = [
   { re: /^(chapter|abstract|introduction|conclusion|references|bibliography|appendix|acknowledgment)\s*[:.]?\s*$/i, format: 'heading1', confidence: 95 },
   { re: /^chapter\s+([ivxlc]+|\d+)\s*[:.]?\s*$/i, format: 'heading1', confidence: 95 },
   { re: /^(section|part)\s+\d+/i, format: 'heading1', confidence: 92 },
-  { re: /^\d+\.\s+[A-Z]/, format: 'heading1', confidence: 90 },
-  { re: /^\d+\.\d+\s+/, format: 'heading2', confidence: 88 },
-  { re: /^\d+\.\d+\.\d+\s+/, format: 'heading3', confidence: 85 },
-  { re: /^[IVX]+\.\s+[A-Z]/, format: 'heading1', confidence: 88 },
+  { re: /^\d+\.\s+[A-Z]/, format: 'heading1', confidence: 90, numbered: true },
+  { re: /^\d+\.\d+\s+/, format: 'heading2', confidence: 88, numbered: true },
+  { re: /^\d+\.\d+\.\d+\s+/, format: 'heading3', confidence: 85, numbered: true },
+  { re: /^[IVX]+\.\s+[A-Z]/, format: 'heading1', confidence: 88, numbered: true },
   { re: /^(background|methodology|results|discussion|summary|related work|literature review|problem statement|objectives|scope)\s*[:.]?\s*$/i, format: 'heading2', confidence: 80 },
 ]
 
-/** Markdown shortcuts — explicit author intent, so confidence is very high. */
+/**
+ * Markdown shortcuts — explicit author intent, so confidence is very high. List markers are not
+ * here: typing "1. " or "- " already starts a list, so a line still showing its own number was
+ * numbered on purpose.
+ */
 const MARKDOWN_PATTERNS: Array<{ re: RegExp; format: string; confidence: number }> = [
   { re: /^###\s+\S+/, format: 'heading3', confidence: 98 },
   { re: /^##\s+\S+/, format: 'heading2', confidence: 98 },
   { re: /^#\s+\S+/, format: 'heading1', confidence: 98 },
   { re: /^>\s+\S+/, format: 'blockquote', confidence: 98 },
-  { re: /^[-*]\s+\S+/, format: 'bulletList', confidence: 98 },
-  { re: /^\d+[.)]\s+\S+/, format: 'orderedList', confidence: 98 },
 ]
 
 /** Display names for blueprint-derived formats shown in the suggestion chip. */
@@ -405,9 +420,11 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
           return
         }
       }
-      for (const { re, format, confidence } of HEADING_PATTERNS) {
+      for (const { re, format, confidence, numbered } of HEADING_PATTERNS) {
         if (re.test(text)) {
           if (confidence / 100 < minConfidence) continue
+          // A numbered sentence ("3.1 To develop ...") is body text, not a heading.
+          if (numbered && !isHeadingLike(text)) continue
           if (node.type.name === 'heading') {
             const level = node.attrs.level as number
             const fmtNum = parseInt(format.replace('heading', ''), 10)
