@@ -25,7 +25,32 @@ export interface ReviewRecord {
   message: string
   page_path: string | null
   image_urls: string[]
+  user_agent: string | null
   created_at: string
+}
+
+export interface ReviewWithAuthor extends ReviewRecord {
+  user_email: string | null
+}
+
+/** Newest reviews first, each with the email of the user who sent it. */
+export async function listReviews(limit: number): Promise<ReviewWithAuthor[]> {
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(`Failed to load reviews: ${error.message}`)
+  const reviews = (data ?? []) as ReviewRecord[]
+
+  const emails = new Map<string, string | null>()
+  await Promise.all(
+    [...new Set(reviews.map((review) => review.user_id))].map(async (userId) => {
+      const { data: found } = await supabase.auth.admin.getUserById(userId)
+      emails.set(userId, found.user?.email ?? null)
+    }),
+  )
+  return reviews.map((review) => ({ ...review, user_email: emails.get(review.user_id) ?? null }))
 }
 
 /** Upload one review screenshot to the `review-images` bucket and return its public URL. */

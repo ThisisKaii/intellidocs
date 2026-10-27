@@ -43,6 +43,17 @@ export interface MarginValues {
   right: number
 }
 
+export interface ReviewRecord {
+  id: string
+  user_id: string
+  user_email: string | null
+  message: string
+  page_path: string | null
+  image_urls: string[]
+  user_agent: string | null
+  created_at: string
+}
+
 export interface DocumentRecord {
   id: string
   user_id: string
@@ -1044,6 +1055,8 @@ export const api = {
   },
 
   reviews: {
+    /** Local development only: every review, newest first, with the sender's email. */
+    list: async (): Promise<ReviewRecord[]> => fetchAPI<ReviewRecord[]>('dev/reviews'),
     /** Send a tester review: text, the current page path and up to 5 screenshots. */
     submit: async (message: string, pagePath: string, images: File[]): Promise<{ id: string }> => {
       const formData = new FormData()
