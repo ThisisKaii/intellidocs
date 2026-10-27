@@ -1737,11 +1737,12 @@ def _table_column_px(tbl: Any, rows: List[List[Dict[str, Any]]], text_width_px: 
 def _column_size_attribute(rows: List[List[Dict[str, Any]]], col_px: List[float]) -> str:
     """data-column-size (percent per column) for the editor's grid tables.
 
-    The editor lays a row out as one grid track per cell of the WIDEST row, so
-    the list is only valid when that count equals the number of grid columns;
-    otherwise the editor falls back to equal columns.
+    The editor lays a row out as one grid track per column of the WIDEST row (a
+    cell with colspan 2 takes two tracks), so the list is only valid when that
+    count equals the number of grid columns; otherwise the editor falls back to
+    equal columns.
     """
-    widest = max((len(cells) for cells in rows), default=0)
+    widest = max((sum(cell["span"] for cell in cells) for cells in rows), default=0)
     total = sum(col_px)
     if not col_px or widest != len(col_px) or total <= 0:
         return ""
@@ -2022,15 +2023,12 @@ def _body_to_html(
 
     section_no = 0
     section_starts: Dict[int, int] = {0: 0}
-    first_section_end: Optional[int] = None
     previous_closed_section = False
     for element in _iter_block_elements(doc.element.body):
         if previous_closed_section:
             section_no += 1
             close_all_lists()
             section_starts[section_no] = len(out)
-            if section_no == 1 and first_section_end is None:
-                first_section_end = len(out)
         previous_closed_section = element.tag == qn("w:p") and element.find(qn("w:pPr") + "/" + qn("w:sectPr")) is not None
         if page_break_after is not None:
             if pending_page_break:
@@ -2128,9 +2126,8 @@ def _body_to_html(
 
     close_all_lists()
     section_starts[section_no + 1] = len(out)
-    first_section_end = section_starts.get(1, len(out)) if first_section_end is None else first_section_end
     _wrap_columns(doc, out, section_starts)
-    _shift_first_section(doc, out, first_section_end if first_section_end is not None else len(out))
+    _shift_sections(doc, out, section_starts)
     return _trim_page_ends("\n".join(out).replace(_COLUMN_MARK, ""))
 
 
@@ -2192,26 +2189,21 @@ def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int]) ->
                 starts[later] -= shift
 
 
-def _shift_first_section(doc: docx.Document, out: List[str], end: int) -> None:
-    """Give the first section its own margins inside the document-wide page setup.
+def _shift_sections(doc: docx.Document, out: List[str], starts: Dict[int, int]) -> None:
+    """Give every section its own margins inside the document-wide page setup.
 
-    The editor has one page setup (the one most sections share), so a cover or
-    title section with different margins would reflow. Its blocks are moved by the
-    difference instead: left/right by their margin, and the first block up/down by
-    the top margin, which keeps page one where Word puts it.
+    The editor has one page setup (the one most sections share), so a section with
+    different margins would reflow: its lines wrap at the wrong width and the page
+    breaks drift from Word's. Each section's blocks are moved by the difference
+    instead: left/right by their margin, and the first block of a section that
+    starts a new page up/down by the top margin.
     """
     try:
         sections = list(doc.sections)
         setup = _extract_page_setup(doc)["margins"]
-        first = sections[0]
-        deltas = {
-            "left": first.left_margin / EMU_PER_PX - setup["left"] * 96,
-            "right": first.right_margin / EMU_PER_PX - setup["right"] * 96,
-            "top": first.top_margin / EMU_PER_PX - setup["top"] * 96,
-        }
     except Exception:
         return
-    if len(sections) < 2 or all(abs(value) < 4 for value in deltas.values()):
+    if len(sections) < 2:
         return
 
     def shifted(style: str, prop: str, delta: float) -> str:
@@ -2220,23 +2212,45 @@ def _shift_first_section(doc: docx.Document, out: List[str], end: int) -> None:
             return style.replace(found.group(0), f"{prop}:{round(float(found.group(1)) + delta, 1):g}px", 1)
         return f"{prop}:{round(delta, 1):g}px; {style}"
 
-    first_block = True
-    for index in range(min(end, len(out))):
-        html = out[index]
-        match = re.match(r'<(p|h[1-6])\b([^>]*)>', html)
-        if not match or html.startswith("<p class=\"empty-spacer\""):
+    # pdf2docx sets each page's margins from where its text happens to sit, so only the first
+    # page (the reference) is shifted for a PDF; every section is shifted for a real DOCX.
+    shifted_sections = sections[:1] if getattr(doc.part, "_is_pdf_import", False) else sections
+    for number, section in enumerate(shifted_sections):
+        begin, end = starts.get(number), starts.get(number + 1)
+        if begin is None or end is None:
             continue
-        attrs = match.group(2)
-        style_match = re.search(r'style="([^"]*)"', attrs)
-        style = style_match.group(1) if style_match else ""
-        for prop, delta in (("margin-left", deltas["left"]), ("margin-right", deltas["right"])):
-            if abs(delta) >= 4:
-                style = shifted(style, prop, delta)
-        if first_block and abs(deltas["top"]) >= 4:
-            style = shifted(style, "margin-top", deltas["top"])
-        first_block = False
-        new_attrs = attrs.replace(style_match.group(0), f'style="{style}"') if style_match else f' style="{style}"{attrs}'
-        out[index] = f"<{match.group(1)}{new_attrs}>" + html[match.end():]
+        try:
+            deltas = {
+                "left": section.left_margin / EMU_PER_PX - setup["left"] * 96,
+                "right": section.right_margin / EMU_PER_PX - setup["right"] * 96,
+                "top": section.top_margin / EMU_PER_PX - setup["top"] * 96,
+            }
+        except Exception:
+            continue
+        section_type = section._sectPr.find(qn("w:type"))
+        starts_page = number == 0 or section_type is None or section_type.get(qn("w:val")) != "continuous"
+        if not starts_page:
+            deltas["top"] = 0.0
+        if all(abs(value) < 4 for value in deltas.values()):
+            continue
+
+        first_block = True
+        for index in range(begin, min(end, len(out))):
+            html = out[index]
+            match = re.match(r'<(p|h[1-6])\b([^>]*)>', html)
+            if not match or html.startswith("<p class=\"empty-spacer\""):
+                continue
+            attrs = match.group(2)
+            style_match = re.search(r'style="([^"]*)"', attrs)
+            style = style_match.group(1) if style_match else ""
+            for prop, delta in (("margin-left", deltas["left"]), ("margin-right", deltas["right"])):
+                if abs(delta) >= 4:
+                    style = shifted(style, prop, delta)
+            if first_block and abs(deltas["top"]) >= 4:
+                style = shifted(style, "margin-top", deltas["top"])
+            first_block = False
+            new_attrs = attrs.replace(style_match.group(0), f'style="{style}"') if style_match else f' style="{style}"{attrs}'
+            out[index] = f"<{match.group(1)}{new_attrs}>" + html[match.end():]
 
 
 def _trim_page_ends(html: str) -> str:

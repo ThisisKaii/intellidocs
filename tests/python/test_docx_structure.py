@@ -115,11 +115,13 @@ class TestMergedCells:
         assert match and len(match.group(1).split(",")) == 3
         assert abs(sum(float(v) for v in match.group(1).split(",")) - 100) < 0.1
 
-    def test_column_sizes_omitted_when_merges_hide_the_column_count(self) -> None:
+    def test_column_sizes_kept_when_merges_hide_the_cell_count(self) -> None:
+        # The row holds 2 cells but spans 3 grid columns; the editor counts tracks by column span.
         doc = docx.Document()
         table = doc.add_table(rows=1, cols=3)
         table.cell(0, 0).merge(table.cell(0, 1))
-        assert "data-column-size" not in _html(doc)
+        match = re.search(r'data-column-size="([^"]*)"', _html(doc))
+        assert match and len(match.group(1).split(",")) == 3
 
 
 class TestPageBreaks:

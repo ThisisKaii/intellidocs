@@ -33,7 +33,17 @@ SUBJECT_VERB_ERRORS = {
     "i is", "i has",
 }
 
-SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
+SENTENCE_END_PATTERN = re.compile(r"(?<=[.!?])\s+")
+DOTTED_ABBREVIATION_PATTERN = re.compile(r"[A-Za-z]{1,3}(?:\.[A-Za-z]{1,3})+\.?")
+# Words whose trailing period does not end a sentence ("et al.", "Fig. 3", "Dr. Santos").
+NON_TERMINAL_ABBREVIATIONS = frozenset({
+    "al", "etc", "vs", "fig", "figs", "eq", "eqs", "no", "vol", "pp", "ch", "sec",
+    "approx", "ca", "cf", "dr", "mr", "mrs", "ms", "prof", "st", "jr", "sr", "inc", "ltd",
+})
+# Words that open a clause and end the reach of the tense-shift search.
+CLAUSE_BOUNDARY_WORDS = frozenset({
+    "which", "that", "who", "whom", "whose", "because", "although",
+})
 WORD_PATTERN = re.compile(r"\b[\w']+\b", re.UNICODE)
 
 ACADEMIC_KEYWORDS = frozenset({
@@ -351,6 +361,32 @@ def detect_subject_verb_mismatch(text: str) -> list[dict[str, str]]:
     return issues
 
 
+def ends_with_abbreviation(segment: str) -> bool:
+    """Return True when the segment's last word is an abbreviation, initial or dotted acronym."""
+    words = segment.split()
+    if not words or not words[-1].endswith("."):
+        return False
+    last_word = words[-1].lstrip("([{\"'“‘")
+    core = last_word[:-1].lower()
+    return (
+        core in NON_TERMINAL_ABBREVIATIONS
+        or (len(core) == 1 and core.isalpha())
+        or bool(DOTTED_ABBREVIATION_PATTERN.fullmatch(last_word))
+    )
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split text into sentences without breaking on abbreviations or line wraps."""
+    pieces = SENTENCE_END_PATTERN.split(" ".join(text.split()))
+    sentences: list[str] = []
+    for piece in pieces:
+        if sentences and ends_with_abbreviation(sentences[-1]):
+            sentences[-1] = f"{sentences[-1]} {piece}"
+        else:
+            sentences.append(piece)
+    return [sentence.strip() for sentence in sentences]
+
+
 def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
     """Detect sentence capitalization and punctuation as grouped issues."""
     issues: list[dict[str, str]] = []
@@ -358,7 +394,7 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
     if not normalized:
         return issues
 
-    sentences = [segment.strip() for segment in SENTENCE_SPLIT_PATTERN.split(normalized)]
+    sentences = split_sentences(normalized)
     if not sentences:
         sentences = [normalized]
 
@@ -368,6 +404,10 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
 
     for sentence in sentences:
         if not sentence:
+            continue
+
+        # A segment that opens with a number ("3 for details") is a continuation.
+        if sentence.lstrip("([{\"'“‘ ")[:1].isdigit():
             continue
 
         first_alpha = next((char for char in sentence if char.isalpha()), "")
@@ -459,7 +499,8 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
         w2_lower = w2.lower()
 
         # Singular subject + Plural/Base Verb
-        if (t1 in {"NN", "NNP"} or (t1 == "PRP" and w1_lower in {"he", "she", "it"})) and (t2 in {"VBP", "VB"}):
+        # NLTK tags a lowercase "i" as a noun; "i think" is not a singular subject.
+        if ((t1 in {"NN", "NNP"} and w1_lower != "i") or (t1 == "PRP" and w1_lower in {"he", "she", "it"})) and (t2 in {"VBP", "VB"}):
             if w2_lower in VERB_TO_SINGULAR:
                 sug_verb = VERB_TO_SINGULAR[w2_lower]
                 if w2.istitle():
@@ -498,7 +539,7 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
             v1_info = None
             for j in range(cc_idx - 1, max(-1, cc_idx - 9), -1):
                 w_j, t_j = tagged[j]
-                if w_j in {".", ";", "?", "!"} or t_j == "CC":
+                if w_j in {".", ";", "?", "!", ","} or t_j == "CC" or w_j.lower() in CLAUSE_BOUNDARY_WORDS:
                     break
                 if is_verb(t_j):
                     v1_info = (w_j, t_j, j)
@@ -508,7 +549,7 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
             v2_info = None
             for j in range(cc_idx + 1, min(len(tagged), cc_idx + 9)):
                 w_j, t_j = tagged[j]
-                if w_j in {".", ";", "?", "!"} or t_j == "CC":
+                if w_j in {".", ";", "?", "!", ","} or t_j == "CC" or w_j.lower() in CLAUSE_BOUNDARY_WORDS:
                     break
                 if is_verb(t_j):
                     v2_info = (w_j, t_j, j)

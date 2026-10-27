@@ -196,9 +196,43 @@ ACADEMIC_WHITELIST: frozenset[str] = frozenset({
 })
 
 
+# Teach the dictionary the whitelist terms so they are also offered as corrections
+# (a typo of "dataset" should suggest "dataset", not a rarer unrelated word).
+spellchecker.word_frequency.load_words(
+    word for word in ACADEMIC_WHITELIST if word.isalpha() and len(word) >= 3
+)
+
+
 def extract_words(text: str) -> list[str]:
     """Extract candidate words from text for spell checking."""
     return SPELL_PATTERN.findall(text)
+
+
+def is_sentence_start(text: str, start: int) -> bool:
+    """Return True when the word at `start` opens a sentence or a new line."""
+    prefix = text[:start].rstrip(" \t\"'“‘([")
+    return prefix == "" or prefix[-1] in ".!?\n"
+
+
+def extract_checkable_words(text: str) -> list[str]:
+    """Extract words to spell check, leaving out names and tech terms.
+
+    A capitalised word in mid-sentence (Mandaue, Supabase), a mixed-case token
+    (DuckDB, TipTap) and an all-caps token (IEEE) are treated as names, since a
+    dictionary lookup would only offer wrong corrections for them.
+    """
+    words: list[str] = []
+    for match in SPELL_PATTERN.finditer(text):
+        word = match.group()
+        mixed_case = any(char.isupper() for char in word[1:]) and not word.isupper()
+        if (
+            mixed_case
+            or (word.isupper() and len(word) > 1)
+            or (word[0].isupper() and not is_sentence_start(text, match.start()))
+        ):
+            continue
+        words.append(word)
+    return words
 
 
 def build_issue(word: str, suggestions: list[str]) -> dict[str, Any]:
@@ -264,7 +298,7 @@ def check_spelling(source: Any) -> dict[str, Any]:
             "message": "Text is required.",
         }
 
-    words = extract_words(normalized)
+    words = extract_checkable_words(normalized)
     # Skip single-character fragments — they are either valid (a, I)
     # or artifacts from stripped HTML entities (&#9; → t).
     words = [w for w in words if len(w) >= 2]

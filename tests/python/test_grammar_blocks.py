@@ -74,3 +74,63 @@ def test_plain_string_input_still_works() -> None:
     """The old plain-string input is split into one block per line."""
     issues = detect_block_issues(normalize_blocks("the system works well.\nIt is fast."))
     assert any("capital" in issue["explanation"] for issue in issues)
+
+
+def grammar_issues(text: str) -> list[dict]:
+    """Run the block grammar rules over one body paragraph."""
+    return detect_block_issues(normalize_blocks([paragraph(text)]))
+
+
+def capital_suggestions(text: str) -> list[dict]:
+    """Return only the capitalisation issues for one body paragraph."""
+    return [issue for issue in grammar_issues(text) if "capital" in issue["explanation"]]
+
+
+def test_abbreviations_do_not_end_a_sentence() -> None:
+    """A period after et al., Fig., e.g., U.S. or Mr. never forces a capital mid-sentence."""
+    for text in (
+        "Prior work (Smith et al. found similar results) supports this claim.",
+        "See Fig. 3 for details about the architecture of the system.",
+        "The cost was approx. five dollars, e.g. for the test devices.",
+        "The U.S. government funded it for two years.",
+        "Mr. santos and Ms. reyes reviewed it.",
+    ):
+        assert capital_suggestions(text) == [], text
+
+
+def test_line_break_inside_a_sentence_is_not_a_boundary() -> None:
+    """A soft line break in the middle of a sentence does not capitalise the next line."""
+    assert capital_suggestions("The model was trained on\nthe dataset and then evaluated on the test set.") == []
+
+
+def test_real_lowercase_sentence_start_is_still_flagged() -> None:
+    """A genuinely lowercase sentence start after a full stop is still reported."""
+    issues = capital_suggestions("The result is clear. however, more testing is needed.")
+    assert [issue["suggestion"] for issue in issues] == ["However, more testing is needed."]
+
+
+def test_lowercase_i_is_not_a_singular_subject() -> None:
+    """'i think' must not become 'i thinks'."""
+    assert all("thinks" not in issue["suggestion"] for issue in grammar_issues("i think the system is good."))
+
+
+def test_tense_shift_does_not_cross_a_relative_clause() -> None:
+    """'used python and react ..., which runs' is not a tense shift, but 'wrote ... and reads' is."""
+    assert all(issue.get("source") != "pos" for issue in grammar_issues(
+        "We used python and react to build the system, which runs on the cloud."
+    ))
+    assert any(issue.get("source") == "pos" for issue in grammar_issues("She wrote the report and reads it daily."))
+
+
+def test_names_and_tech_terms_are_not_spelling_errors() -> None:
+    """Capitalised mid-sentence names and mixed-case tech terms are left alone."""
+    text = "We used Supabase, DuckDB, TipTap and Redis for the Mandaue campus."
+    assert check_spelling(text)["issues"] == []
+
+
+def test_real_typos_are_still_flagged_with_the_right_fix() -> None:
+    """Misspelled ordinary words are reported and a whitelist term is offered as the fix."""
+    issues = {issue["word"]: issue["suggestion"] for issue in check_spelling("The studnet recieved the datset.")["issues"]}
+    assert issues["studnet"] == "student"
+    assert issues["recieved"] == "received"
+    assert issues["datset"] == "dataset"
