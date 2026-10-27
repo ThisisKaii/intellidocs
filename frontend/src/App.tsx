@@ -16,6 +16,7 @@ import AuthCallback from './pages/AuthCallback'
 import DriveCallback from './pages/DriveCallback'
 import Privacy from './pages/Privacy'
 import DevEditorHarness from './pages/DevEditorHarness'
+import ReviewButton from './components/ReviewButton'
 import './App.css'
 
 function App() {
@@ -101,6 +102,7 @@ function App() {
             }
           />
         </Routes>
+        <ReviewButton />
         </ImportProvider>
       </BrowserRouter>
     </AuthProvider>

@@ -1043,6 +1043,18 @@ export const api = {
     },
   },
 
+  reviews: {
+    /** Send a tester review: text, the current page path and up to 5 screenshots. */
+    submit: async (message: string, pagePath: string, images: File[]): Promise<{ id: string }> => {
+      const formData = new FormData()
+      formData.append('message', message)
+      formData.append('pagePath', pagePath)
+      images.forEach((image) => formData.append('images', image))
+      // Do NOT set Content-Type — browser sets the multipart boundary automatically
+      return fetchAPI<{ id: string }>('reviews', { method: 'POST', body: formData })
+    },
+  },
+
   behavior: {
     log: async (event: BehaviorEvent): Promise<{ status: string }> => {
       return fetchAPI<{ status: string }>('behavior/events', {
