@@ -13,7 +13,7 @@ const ALLOWED_STYLE_PROPS = new Set([
   'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
   'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
   'border', 'border-top', 'border-right', 'border-bottom', 'border-left', 'border-collapse',
-  'width', 'height', 'max-width', 'min-width', 'min-height', 'display', 'flex', 'align-items', 'justify-content',
+  'width', 'height', 'max-width', 'max-height', 'object-fit', 'min-width', 'min-height', 'display', 'flex', 'align-items', 'justify-content',
   'position', 'left', 'right', 'top', 'bottom', 'float', 'mix-blend-mode', 'pointer-events', 'opacity', 'z-index',
 ])
 

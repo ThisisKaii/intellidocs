@@ -1344,27 +1344,94 @@ def _list_item_geometry(p: Paragraph, info: Dict[str, Any]) -> Optional[Dict[str
     return {"marker_x": round(marker_x, 1), "wrap_x": round(wrap_x, 1), "text_x": round(text_x, 1), "pre": pre, "post": post}
 
 
+def _style_numbering(p: Paragraph) -> Optional[Tuple[str, Optional[str], str]]:
+    """(numId, ilvl, styleId) a paragraph inherits from its style chain, e.g. "List Bullet"; None for none.
+
+    Built-in list styles carry their numbering in the style, not on each paragraph. Headings are
+    skipped: their numbering is outline numbering ("1.1 Scope") written by the heading itself, and
+    turning those into list items would break the heading structure.
+    """
+    try:
+        style = p.style
+    except Exception:
+        return None
+    found: Optional[Tuple[str, Optional[str], str]] = None
+    seen: Set[str] = set()
+    while style is not None and style.style_id not in seen:
+        seen.add(style.style_id)
+        name = (style.name or "").lower()
+        if name.startswith("heading") or name == "title":
+            return None
+        style_pPr = style.element.find(qn("w:pPr"))
+        num_pr = style_pPr.find(qn("w:numPr")) if style_pPr is not None else None
+        num_id_el = num_pr.find(qn("w:numId")) if num_pr is not None else None
+        if found is None and num_id_el is not None and num_id_el.get(qn("w:val")):
+            ilvl_el = num_pr.find(qn("w:ilvl"))
+            found = (num_id_el.get(qn("w:val")), ilvl_el.get(qn("w:val")) if ilvl_el is not None else None, style.style_id)
+        style = style.base_style
+    return found
+
+
+def _style_level(part: Any, num_id: str, style_id: str) -> int:
+    """The list level a style maps to ("List Bullet 2" is level 1): the numbering level that names it, else 0."""
+    table = getattr(part, "_intellidocs_style_levels", None)
+    if table is None:
+        table = {}
+        try:
+            root = part.numbering_part.element
+            by_abstract: Dict[str, Dict[str, int]] = {}
+            for abstract in root.findall(qn("w:abstractNum")):
+                for lvl in abstract.findall(qn("w:lvl")):
+                    linked = lvl.find(qn("w:pStyle"))
+                    if linked is not None and linked.get(qn("w:val")):
+                        by_abstract.setdefault(abstract.get(qn("w:abstractNumId"), ""), {})[linked.get(qn("w:val"))] = int(lvl.get(qn("w:ilvl"), "0"))
+            for num in root.findall(qn("w:num")):
+                abstract_id = num.find(qn("w:abstractNumId"))
+                for linked_style, level in by_abstract.get(abstract_id.get(qn("w:val")) if abstract_id is not None else "", {}).items():
+                    table[(num.get(qn("w:numId"), ""), linked_style)] = level
+        except Exception:
+            pass
+        try:
+            setattr(part, "_intellidocs_style_levels", table)
+        except Exception:
+            pass
+    return table.get((num_id, style_id), 0)
+
+
 def _paragraph_list_info(
     p: Paragraph,
     num_to_abstract: Dict[str, str],
     abstract_levels: Dict[str, Dict[str, Tuple[str, float]]],
 ) -> Optional[Dict[str, Any]]:
-    """Return list kind + level for a numbered/bulleted paragraph, or None."""
+    """Return list kind + level for a numbered/bulleted paragraph, or None.
+
+    The paragraph's own numPr wins (numId 0 switches numbering off); a paragraph without one
+    takes the numbering of its style, which is how Word's "List Bullet"/"List Number" work.
+    """
     pPr = p._element.pPr
-    if pPr is None:
-        return None
-    num_pr = pPr.find(qn("w:numPr"))
-    if num_pr is None:
-        return None
-    num_id_el = num_pr.find(qn("w:numId"))
-    if num_id_el is None:
-        return None
-    num_id = num_id_el.get(qn("w:val"))
+    num_pr = pPr.find(qn("w:numPr")) if pPr is not None else None
+    num_id_el = num_pr.find(qn("w:numId")) if num_pr is not None else None
+    direct_ilvl_el = num_pr.find(qn("w:ilvl")) if num_pr is not None else None
+    style_id = ""
+    style_ilvl: Optional[str] = None
+    if num_id_el is not None:
+        num_id = num_id_el.get(qn("w:val"))
+    else:
+        inherited = _style_numbering(p)
+        if inherited is None:
+            return None
+        num_id, style_ilvl, style_id = inherited
     if not num_id or num_id == "0":
         return None
 
-    ilvl_el = num_pr.find(qn("w:ilvl"))
-    ilvl = int(ilvl_el.get(qn("w:val")) or "0") if ilvl_el is not None else 0
+    if direct_ilvl_el is not None:
+        ilvl = int(direct_ilvl_el.get(qn("w:val")) or "0")
+    elif style_ilvl is not None:
+        ilvl = int(style_ilvl or "0")
+    elif style_id:
+        ilvl = _style_level(p.part, num_id, style_id)
+    else:
+        ilvl = 0
 
     fmt, level_left = "bullet", 0.0
     abstract_id = num_to_abstract.get(num_id)
