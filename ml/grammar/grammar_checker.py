@@ -52,6 +52,18 @@ LABEL_MAX_WORDS = 12
 # Lowercase words that may sit inside a Title Case name or title ("College of Computer Studies").
 LABEL_CONNECTORS = frozenset({"of", "and", "the", "for", "in", "on", "at", "to", "a", "an", "de", "la", "del", "y", "&"})
 
+# A line this long reads as a sentence; a shorter one needs a verb to count as one.
+SENTENCE_MIN_WORDS = 6
+SHORT_PHRASE_MAX_WORDS = 3
+# Helping and linking verbs: with one of these even a short line is a sentence ("Data is stored").
+AUXILIARY_VERBS = frozenset({
+    "is", "are", "was", "were", "be", "been", "being", "am",
+    "has", "have", "had", "do", "does", "did",
+    "will", "would", "can", "could", "shall", "should", "may", "might", "must",
+})
+# NLTK tags for a verb that can head a sentence.
+VERB_TAGS = frozenset({"VB", "VBD", "VBP", "VBZ", "MD"})
+
 ACADEMIC_KEYWORDS = frozenset({
     "abstract", "introduction", "methodology", "literature review",
     "results", "discussion", "conclusion", "references",
@@ -612,26 +624,54 @@ def dedupe_issues(issues: list[dict[str, str]]) -> list[dict[str, str]]:
     return deduped
 
 
-def looks_like_label(text: str) -> bool:
-    """Return true for a name, address, web address, title or caption fragment: not a sentence.
+def has_sentence_evidence(text: str) -> bool:
+    """Return true when the text reads as a sentence rather than a noun phrase or a label.
 
-    Text boxes and title blocks hold lines like "Juan A. Dela Cruz", "www.deped.gov.ph" or
-    "Room 102, Rizal Building"; telling the writer to capitalise or end them with a period is wrong.
-    A line counts when it is short and is a web address, ends with a colon, is all capitals, or has
-    every word capitalised (small connectors like "of" aside). Ordinary sentences have lowercase
-    words, so they are never taken for labels.
+    A line of six or more words is treated as a sentence. A shorter one needs a helping verb
+    ("Data is stored"), or, at four or five words, a verb after its first word as tagged by NLTK
+    ("Students submit their drafts"). Up to three words with no helping verb ("Group name",
+    "Date submitted") is a label. If tagging fails the line is given the benefit of the doubt.
+    """
+    words = text.split()
+    if len(words) >= SENTENCE_MIN_WORDS:
+        return True
+    lowered = {word.strip(".,;:!?()[]\"'“”‘’").lower() for word in words}
+    if lowered & AUXILIARY_VERBS:
+        return True
+    if len(words) <= SHORT_PHRASE_MAX_WORDS:
+        return False
+    try:
+        tagged = nltk.pos_tag(nltk.word_tokenize(text))
+    except Exception:
+        return True
+    return any(tag in VERB_TAGS for _, tag in tagged[1:])
+
+
+def looks_like_label(text: str) -> bool:
+    """Return true for a name, number, address, web address, title or caption fragment: not a sentence.
+
+    Text boxes, table cells and title blocks hold lines like "Juan A. Dela Cruz", "Group name", "2",
+    "www.deped.gov.ph" or "Room 102, Rizal Building"; telling the writer to capitalise or end them
+    with a period is wrong. A line counts when it has no letters at all, or is short and is a web
+    address, ends with a colon, is all capitals or has every word capitalised (small connectors like
+    "of" aside), or when it shows no sign of being a sentence (see has_sentence_evidence). Ordinary
+    sentences have lowercase words and a verb, so they are never taken for labels.
     """
     stripped = text.strip()
     words = stripped.split()
-    if not words or len(words) > LABEL_MAX_WORDS:
+    if not words:
         return False
-    if stripped.endswith(":") or has_web_address(stripped):
+    if not any(char.isalpha() for char in stripped):
         return True
-    lettered = [word for word in words if any(char.isalpha() for char in word)]
-    return bool(lettered) and (
-        stripped.isupper()
-        or all(word[0].isupper() or word.lower() in LABEL_CONNECTORS for word in lettered if word[0].isalpha())
-    )
+    if len(words) <= LABEL_MAX_WORDS:
+        if stripped.endswith(":") or has_web_address(stripped):
+            return True
+        lettered = [word for word in words if any(char.isalpha() for char in word)]
+        if stripped.isupper() or all(
+            word[0].isupper() or word.lower() in LABEL_CONNECTORS for word in lettered if word[0].isalpha()
+        ):
+            return True
+    return not has_sentence_evidence(stripped)
 
 
 def detect_issues(text: str, check_boundaries: bool = True) -> list[dict[str, str]]:
@@ -668,7 +708,7 @@ def detect_block_issues(blocks: list[dict[str, Any]]) -> list[dict[str, str]]:
             issues.extend(
                 detect_issues(
                     block["text"],
-                    check_boundaries=not continues_previous(block, previous),
+                    check_boundaries=not continues_previous(block, previous) and not block.get("in_cell"),
                 )
             )
         previous = block

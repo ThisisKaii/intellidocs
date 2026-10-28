@@ -6,6 +6,8 @@ export interface GrammarBlock {
   kind: 'paragraph' | 'heading' | 'listItem'
   align: string
   centered: boolean
+  /** True for text inside a table cell, where lines are values and labels, not sentences. */
+  inCell?: boolean
 }
 
 /** The slice of a ProseMirror node the block builder reads. */
@@ -14,6 +16,13 @@ export interface GrammarNodeLike {
   textContent: string
   type: { name: string }
   attrs: Record<string, unknown>
+  /** Size of the node in the document; used to know where a table cell ends. */
+  nodeSize?: number
+}
+
+/** True for a table cell or header cell node (tableCell, tableHeader, apaTableCell, ...). */
+function isCellNode(node: GrammarNodeLike): boolean {
+  return /(Cell|Header)$/.test(node.type.name)
 }
 
 /** The slice of a ProseMirror document the block builder walks. */
@@ -43,13 +52,21 @@ function blockKind(node: GrammarNodeLike, parent: GrammarNodeLike | null): Gramm
 export function buildGrammarBlocks(doc: GrammarDocLike, maxChars: number = MAX_GRAMMAR_CHARS): GrammarBlock[] {
   const blocks: GrammarBlock[] = []
   let total = 0
-  doc.descendants((node, _pos, parent) => {
+  // Document position where the table cell being walked ends; blocks before it are inside the cell.
+  let cellEnd = -1
+  doc.descendants((node, pos, parent) => {
     if (total >= maxChars) return false
+    if (isCellNode(node)) {
+      cellEnd = pos + (node.nodeSize ?? 0)
+      return true
+    }
     if (!node.isTextblock) return true
     const text = node.textContent.replace(/\s+/g, ' ').trim()
     if (text) {
       const align = typeof node.attrs.textAlign === 'string' ? node.attrs.textAlign : 'left'
-      blocks.push({ text, kind: blockKind(node, parent), align, centered: align === 'center' })
+      const block: GrammarBlock = { text, kind: blockKind(node, parent), align, centered: align === 'center' }
+      if (pos < cellEnd) block.inCell = true
+      blocks.push(block)
       total += text.length
     }
     return false

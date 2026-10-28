@@ -44,6 +44,7 @@ def normalize_blocks(source: Any) -> list[dict[str, Any]]:
                 "kind": data.get("kind") or "paragraph",
                 "align": align,
                 "centered": bool(data.get("centered")) or align == "center",
+                "in_cell": bool(data.get("inCell")),
             }
         )
     return blocks

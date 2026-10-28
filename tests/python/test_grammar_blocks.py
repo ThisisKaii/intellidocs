@@ -154,6 +154,47 @@ def test_names_addresses_and_web_addresses_get_no_period_or_capital() -> None:
         assert grammar_issues(label) == [], label
 
 
+SHORT_PHRASES = [
+    "Members",
+    "Group name",
+    "Date submitted",
+    "Prepared by",
+    "Cost per unit",
+    "Date of birth",
+    "Name of the group leader",
+    "Number of group members",
+    "total number of respondents",
+    "n/a",
+]
+
+NUMBERS = ["2", "10", "3.5", "2024", "$1,200", "45%", "2 - 3"]
+
+
+def test_short_noun_phrases_get_no_period() -> None:
+    """A field name or table heading is a phrase, not a sentence missing its period."""
+    for phrase in SHORT_PHRASES:
+        assert grammar_issues(phrase) == [], phrase
+
+
+def test_numbers_get_no_period() -> None:
+    for number in NUMBERS:
+        assert grammar_issues(number) == [], number
+
+
+def test_table_cell_text_is_never_read_as_prose() -> None:
+    """Text in a table cell is a value or label, even when it looks like a short sentence."""
+    cell = {"text": "the group meets weekly", "kind": "paragraph", "align": "left", "centered": False, "inCell": True}
+    assert detect_block_issues(normalize_blocks([cell])) == []
+    outside = {**cell, "inCell": False}
+    assert detect_block_issues(normalize_blocks([outside])) != []
+
+
+def test_short_sentences_are_still_flagged_when_they_have_a_verb() -> None:
+    for sentence in ["Data is stored", "The group meets every week", "the report was submitted"]:
+        issues = grammar_issues(sentence)
+        assert any("punctuation" in issue["explanation"] or "capital" in issue["explanation"] for issue in issues), sentence
+
+
 def test_a_real_sentence_missing_its_period_is_still_flagged() -> None:
     issues = grammar_issues("The system stores every document safely")
     assert any("punctuation" in issue["explanation"] for issue in issues)

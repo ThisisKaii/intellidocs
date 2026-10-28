@@ -51,6 +51,28 @@ describe('buildGrammarBlocks', () => {
     expect(blocks.map((block) => block.text)).toEqual(['two words now'])
   })
 
+  it('marks only the blocks inside a table cell', () => {
+    const cell: GrammarNodeLike = { isTextblock: false, textContent: '', type: { name: 'tableCell' }, attrs: {}, nodeSize: 10 }
+    const header: GrammarNodeLike = { isTextblock: false, textContent: '', type: { name: 'apaTableHeader' }, attrs: {}, nodeSize: 8 }
+    // fakeDoc passes the entry index as the position, so the cell at 1 covers positions 1..11.
+    const doc: GrammarDocLike = {
+      descendants: (callback) => {
+        callback(textblock('paragraph', 'Intro text'), 0, null)
+        callback(cell, 1, null)
+        callback(textblock('paragraph', 'Members'), 2, cell)
+        callback(textblock('paragraph', 'Back to prose'), 20, null)
+        callback(header, 21, null)
+        callback(textblock('paragraph', 'Group name'), 22, header)
+      },
+    }
+    expect(buildGrammarBlocks(doc).map((block) => [block.text, block.inCell === true])).toEqual([
+      ['Intro text', false],
+      ['Members', true],
+      ['Back to prose', false],
+      ['Group name', true],
+    ])
+  })
+
   it('stops at the payload cap', () => {
     const big = 'a'.repeat(30000)
     const blocks = buildGrammarBlocks(

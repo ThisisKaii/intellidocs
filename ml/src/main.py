@@ -144,6 +144,8 @@ class TextBlock(BaseModel):
     kind: Literal["paragraph", "heading", "listItem"] = "paragraph"
     align: str = "left"
     centered: bool = False
+    # True for text inside a table cell: cells hold labels and values, not prose.
+    inCell: bool = False
 
 
 class TextCheckRequest(BaseModel):
