@@ -149,19 +149,64 @@ export async function createShareLink(req: Request, res: Response): Promise<void
     const doc = await documentModel.getDocumentById(id, userId)
     if (doc.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return }
 
-    const token = crypto.randomBytes(24).toString('base64url')
-    // The short code goes with the link; a clash with another document's code (practically never) retries.
-    let link: shareModel.ShareLink | null = null
-    for (let attempt = 0; attempt < 3 && !link; attempt += 1) {
-      try {
-        link = await shareModel.upsertShareLink(id, token, permission, expiry, generateShareCode())
-      } catch (error) {
-        if (!(error instanceof Error && error.message.includes('duplicate key'))) throw error
-      }
+    res.status(201).json(await mintLinkWithCode(id, permission, expiry))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    res.status(500).json({ error: message })
+  }
+}
+
+/** Run an action that stores a fresh code; a clash with another document's code (practically never) retries. */
+async function withUniqueCode<T>(store: (code: string) => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await store(generateShareCode())
+    } catch (error) {
+      if (!(error instanceof Error && error.message.includes('duplicate key'))) throw error
     }
-    if (!link) throw new Error('Could not create a unique share code')
+  }
+  throw new Error('Could not create a unique share code')
+}
+
+/** Create (or replace) a document's share link together with a fresh short code. */
+async function mintLinkWithCode(documentId: string, permission: SharePermission, expiry: string | null): Promise<shareModel.ShareLink> {
+  const token = crypto.randomBytes(24).toString('base64url')
+  return withUniqueCode((code) => shareModel.upsertShareLink(documentId, token, permission, expiry, code))
+}
+
+/**
+ * Generate a new short code for a document (owner only). If the document already has a share link the
+ * link is kept and only the code is replaced; otherwise a link is created with the code, using the
+ * permission and expiry sent (view and no expiry by default).
+ */
+export async function createShareCode(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id } = req.params
+    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return }
+    if (!id) { res.status(400).json({ error: 'Document ID is required' }); return }
+
+    const { permission = 'view', expiresAt } = req.body as { permission?: SharePermission; expiresAt?: string | null }
+    if (!['view', 'comment', 'edit'].includes(permission)) {
+      res.status(400).json({ error: 'Valid permission value is required' }); return
+    }
+    const expiry = parseExpiry(expiresAt)
+    if (expiry === 'invalid') {
+      res.status(400).json({ error: 'Invalid expiry value' }); return
+    }
+
+    const doc = await documentModel.getDocumentById(id, userId)
+    if (doc.user_id !== userId) { res.status(403).json({ error: 'Forbidden' }); return }
+
+    const current = await shareModel.getShareLink(id)
+    const link = current?.share_token
+      ? await withUniqueCode((code) => shareModel.setShareCode(id, code))
+      : await mintLinkWithCode(id, permission, expiry)
     res.status(201).json(link)
   } catch (error) {
+    if (error instanceof shareModel.ShareCodeError) {
+      res.status(error.status).json({ error: error.message }); return
+    }
     const message = error instanceof Error ? error.message : 'Unknown error'
     res.status(500).json({ error: message })
   }

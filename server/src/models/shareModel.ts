@@ -88,6 +88,23 @@ export async function upsertShareLink(
   return toShareLink(data as Partial<ShareLink>)
 }
 
+/**
+ * Replace only the short code of a document that already has a share link, keeping the link
+ * itself and its settings. The old code stops working. Throws a 503 ShareCodeError when
+ * migration 035 has not been applied.
+ */
+export async function setShareCode(documentId: string, code: string): Promise<ShareLink> {
+  const { data, error } = await supabase
+    .from('documents')
+    .update({ share_code: code })
+    .eq('id', documentId)
+    .select(`${LINK_COLUMNS}, share_code`)
+    .single()
+  if (isMissingCodeColumn(error)) throw new ShareCodeError('Share codes are not available yet. Please try again later.', 503)
+  if (error) throw new Error(`Failed to set share code: ${error.message}`)
+  return toShareLink(data as Partial<ShareLink>)
+}
+
 /** Remove a document's share token and code, disabling the link (owner only). */
 export async function revokeShareLink(documentId: string): Promise<void> {
   const base = { share_token: null, share_permission: 'view', share_expires_at: null }

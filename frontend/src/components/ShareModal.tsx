@@ -114,6 +114,21 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
     }
   }
 
+  /** Generate a new short code; an existing link stays as it is, and the old code stops working. */
+  async function handleGenerateCode(): Promise<void> {
+    setLinkBusy(true)
+    setError('')
+    try {
+      const link = await api.documents.generateShareCode(documentId, linkPermission, buildExpiryIso())
+      setShareLink(link)
+      if (!link.share_code) setError('Share codes are not available yet. The share link was created instead.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate a share code')
+    } finally {
+      setLinkBusy(false)
+    }
+  }
+
   /** Disable the copyable share link. */
   async function handleRevokeLink(): Promise<void> {
     setLinkBusy(true)
@@ -348,21 +363,39 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
           </div>
 
           {/* Short code: the same access as the link, easy to read out or type */}
-          {displayCode && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>Or share this code:</span>
-              <code style={{ fontSize: '0.875rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--foreground)' }}>{displayCode}</code>
-              <button
-                type="button"
-                onClick={() => { void handleCopyCode() }}
-                title="Copy code"
-                aria-label="Copy share code"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.5rem', borderRadius: '0.375rem', border: 'none', boxShadow: '0 0 0 1px var(--border-shadow)', backgroundColor: 'var(--background)', color: 'var(--foreground)', fontSize: '0.6875rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-              >
-                {codeCopied ? <Check style={{ width: '11px', height: '11px' }} /> : <Copy style={{ width: '11px', height: '11px' }} />}
-                {codeCopied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.625rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
+              {displayCode ? 'Or share this code:' : 'Or let people join with a short code:'}
+            </span>
+            {displayCode && (
+              <>
+                <code style={{ fontSize: '0.875rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--foreground)' }}>{displayCode}</code>
+                <button
+                  type="button"
+                  onClick={() => { void handleCopyCode() }}
+                  title="Copy code"
+                  aria-label="Copy share code"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.5rem', borderRadius: '0.375rem', border: 'none', boxShadow: '0 0 0 1px var(--border-shadow)', backgroundColor: 'var(--background)', color: 'var(--foreground)', fontSize: '0.6875rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {codeCopied ? <Check style={{ width: '11px', height: '11px' }} /> : <Copy style={{ width: '11px', height: '11px' }} />}
+                  {codeCopied ? 'Copied' : 'Copy'}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => { void handleGenerateCode() }}
+              disabled={linkBusy}
+              title={displayCode ? 'Replace this code; the old one stops working' : 'Generate a short code others can enter to join'}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.5rem', borderRadius: '0.375rem', border: 'none', boxShadow: '0 0 0 1px var(--border-shadow)', backgroundColor: displayCode ? 'var(--background)' : 'var(--primary)', color: displayCode ? 'var(--foreground)' : 'var(--primary-foreground)', fontSize: '0.6875rem', fontWeight: 500, cursor: linkBusy ? 'not-allowed' : 'pointer', opacity: linkBusy ? 0.6 : 1, fontFamily: 'inherit' }}
+            >
+              {displayCode ? 'New code' : 'Generate code'}
+            </button>
+          </div>
+          {!displayCode && (
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>
+              People type the code under Shared with me → Enter code. It gives the same access as the link above.
+            </p>
           )}
 
           {/* Persistent link settings — permission + expiry, applied without re-minting */}

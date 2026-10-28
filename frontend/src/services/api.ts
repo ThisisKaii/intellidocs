@@ -998,6 +998,14 @@ export const api = {
         body: JSON.stringify({ permission, expiresAt }),
       })
     },
+    /** Generate a new short code. An existing link is kept; without one a link is created too. */
+    generateShareCode: async (documentId: string, permission: SharePermission, expiresAt: string | null = null): Promise<DocumentShareLink> => {
+      return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission, expiresAt }),
+      })
+    },
     updateShareLink: async (documentId: string, permission: SharePermission, expiresAt: string | null = null): Promise<DocumentShareLink> => {
       return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-link`, {
         method: 'PUT',

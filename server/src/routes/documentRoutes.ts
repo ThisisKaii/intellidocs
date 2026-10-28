@@ -95,6 +95,7 @@ router.delete('/:id/shares/:shareId', shareController.deleteShare)
 router.get('/:id/share-link', shareController.getShareLink)
 router.post('/:id/share-link', shareController.createShareLink)
 router.put('/:id/share-link', shareController.updateShareLink)
+router.post('/:id/share-code', shareController.createShareCode)
 router.delete('/:id/share-link', shareController.revokeShareLink)
 
 /** Undo-lock version history — owner can list and restore snapshots. */
