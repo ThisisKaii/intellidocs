@@ -39,6 +39,18 @@ async function getText(url: string, headers: Record<string, string>): Promise<st
   return response.text()
 }
 
+/** POST form data to a URL and return its body as text, failing on HTTP error statuses. */
+async function postForm(url: string, body: string, headers: Record<string, string>): Promise<string> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers },
+    body,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+  if (!response.ok) throw new Error(`${new URL(url).hostname} answered ${response.status}`)
+  return response.text()
+}
+
 /** Wrap a phrase in quotes so providers search for the exact words in order. */
 function exact(phrase: string): string {
   return `"${phrase.replace(/"/g, '')}"`
@@ -164,16 +176,20 @@ function openAlexProvider(env: NodeJS.ProcessEnv): SearchProvider {
 
 // ── Web search (DuckDuckGo & Brave) ──────────────────────────────────────────
 
-/** Parse result links and titles from DuckDuckGo HTML search. */
+/** Parse result links and titles from DuckDuckGo HTML search. Supports both direct links and uddg redirect links. */
 export function parseDuckDuckGoResults(html: string): SourceCandidate[] {
   const results: SourceCandidate[] = []
-  const re = /<h2 class="result__title">[\s\S]*?<a[^>]*href="[^"]*uddg=([^&"']+)[\s\S]*?>([\s\S]*?)<\/a>/g
+  const re = /<h2 class="result__title">[\s\S]*?<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
   let m: RegExpExecArray | null
   while ((m = re.exec(html)) !== null) {
     try {
-      const url = decodeURIComponent(m[1])
+      let url = m[1]
+      const uddgMatch = url.match(/[?&]uddg=([^&"']+)/)
+      if (uddgMatch) {
+        url = decodeURIComponent(uddgMatch[1])
+      }
       const title = m[2].replace(/<[^>]+>/g, '').trim()
-      if (url.startsWith('http') && !results.some((r) => r.url === url)) {
+      if (url.startsWith('http') && !url.includes('duckduckgo.com/') && !results.some((r) => r.url === url)) {
         results.push({ url, title: title || url, kind: 'web' })
       }
     } catch {
@@ -183,17 +199,23 @@ export function parseDuckDuckGoResults(html: string): SourceCandidate[] {
   return results
 }
 
-/** Free keyless DuckDuckGo web search: extracts links and crawls pages directly. */
+/** Free keyless DuckDuckGo web search: sends POST form search to avoid bot GET timeouts, extracts links, and crawls pages. */
 function duckDuckGoProvider(env: NodeJS.ProcessEnv): SearchProvider {
   return {
     name: 'Web (DuckDuckGo)',
     kind: 'web',
     isConfigured: () => true,
     async search(phrase) {
-      const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(exact(phrase))}`
-      const html = await getText(url, {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      })
+      const html = await postForm(
+        'https://html.duckduckgo.com/html/',
+        `q=${encodeURIComponent(exact(phrase))}`,
+        {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Origin: 'https://html.duckduckgo.com',
+          Referer: 'https://html.duckduckgo.com/',
+        }
+      )
       return parseDuckDuckGoResults(html).slice(0, 5)
     },
     async loadText(candidate) {

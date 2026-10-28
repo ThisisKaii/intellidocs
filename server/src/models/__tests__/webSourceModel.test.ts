@@ -54,6 +54,16 @@ describe('parsers', () => {
     ])
     expect(parseDuckDuckGoResults('')).toEqual([])
   })
+
+  it('reads DuckDuckGo direct URL results and excludes internal ad links', () => {
+    const html = `
+      <h2 class="result__title"><a class="result__a" href="https://example.org/direct-page">Direct Result</a></h2>
+      <h2 class="result__title"><a class="result__a" href="https://duckduckgo.com/y.js?ad_domain=ad.com">Ad Link</a></h2>
+    `
+    expect(parseDuckDuckGoResults(html)).toEqual([
+      { url: 'https://example.org/direct-page', title: 'Direct Result', kind: 'web' },
+    ])
+  })
 })
 
 describe('getSearchProviders', () => {
