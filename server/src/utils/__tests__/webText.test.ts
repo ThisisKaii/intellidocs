@@ -18,6 +18,51 @@ describe('documentParagraphs', () => {
   it('also stops at a numbered bibliography heading', () => {
     expect(documentParagraphs('<p>Body.</p><p>5. Bibliography</p><p>Entry</p>')).toEqual(['Body.'])
   })
+
+  it('skips front-matter sections (approval sheet, dedication, TOC, list of figures) and resumes at body headings', () => {
+    const html = `
+      <h1>Intelligent Document System</h1>
+      <p>A Capstone Project Submitted in Partial Fulfillment of the Requirements for the Degree of Bachelor of Science in Information Technology</p>
+      <h2>Approval Sheet</h2>
+      <p>This is to certify that the project has been approved by the panel.</p>
+      <h2>Dedication</h2>
+      <p>Dedicated to our supportive parents and professors.</p>
+      <h2>Acknowledgments</h2>
+      <p>We thank everyone who supported this capstone research.</p>
+      <h2>Table of Contents</h2>
+      <p>Chapter 1 Introduction .................... 1</p>
+      <p>Chapter 2 Review of Related Literature .... 15</p>
+      <h2>List of Figures</h2>
+      <p>Figure 1: Architectural diagram ........... 8</p>
+      <h2>Chapter 1: Introduction</h2>
+      <p>Modern web-based editing platforms rarely incorporate behavioral formatting models.</p>
+      <h2>References</h2>
+      <p>Doe, J. (2024). Text analysis.</p>
+    `
+    expect(documentParagraphs(html)).toEqual([
+      'Intelligent Document System',
+      'Chapter 1: Introduction',
+      'Modern web-based editing platforms rarely incorporate behavioral formatting models.',
+    ])
+  })
+
+  it('skips storyboard descriptions, screen specifications, figure/table captions, and code lines', () => {
+    const html = `
+      <h2>System Architecture</h2>
+      <p>Figure 1: High-level architectural flowchart of the application.</p>
+      <p>Storyboard 1: User Login</p>
+      <p>Screen Description: Allows the user to enter their registered email address and password.</p>
+      <p>Screen Name: Authentication Screen</p>
+      <p>Actor: Student Author</p>
+      <p>Precondition: User is registered in the database.</p>
+      <p>const auth = getAuthToken();</p>
+      <p>The system verifies cryptographic tokens to protect sensitive documents from unauthorized access.</p>
+    `
+    expect(documentParagraphs(html)).toEqual([
+      'System Architecture',
+      'The system verifies cryptographic tokens to protect sensitive documents from unauthorized access.',
+    ])
+  })
 })
 
 describe('pageText', () => {
@@ -48,6 +93,9 @@ describe('pickQueryPhrases', () => {
       'Contact the registrar at registrar@school.edu for the full details on this particular topic today.',
       'Figure 3 shows the distribution of the responses across every barangay in the municipality surveyed.',
       'In 2019 the 1,245 respondents from 37 schools gave 4,502 answers across 18 categories in 2020 and 2021.',
+      'Storyboard 2: The screen displays the user settings panel and profile avatar image.',
+      'Screen Description: The user clicks the button to open the modal dialog box.',
+      'A capstone project presented to the faculty of the college in partial fulfillment of the requirements.',
     ]
     expect(pickQueryPhrases(poor, 5, 8)).toEqual([])
   })

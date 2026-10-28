@@ -10,10 +10,10 @@ const MAX_SOURCES = 12
 const MIN_SOURCE_CHARS = 200
 /** A document with fewer words than this is too short to search for. */
 const MIN_DOCUMENT_WORDS = 30
-/** Whole-check time budget; later steps are skipped once it is spent. */
-const TIME_BUDGET_MS = 50000
+/** Whole-check time budget; later steps are skipped once it is spent. Default 85s stays safely under Render 100s proxy timeout. */
+const TIME_BUDGET_MS = Number(process.env.WEB_CHECK_TIME_BUDGET_MS) || 85000
 /** Requests in flight at once, kept low for the free tiers of the services used. */
-const CONCURRENCY = 3
+const CONCURRENCY = 6
 
 /** What happened with one place that was searched. */
 export interface ProviderReport {
