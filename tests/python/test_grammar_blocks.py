@@ -134,3 +134,42 @@ def test_real_typos_are_still_flagged_with_the_right_fix() -> None:
     assert issues["studnet"] == "student"
     assert issues["recieved"] == "received"
     assert issues["datset"] == "dataset"
+
+
+LABELS = [
+    "Juan A. Dela Cruz",
+    "College of Computer Studies",
+    "Room 102, Rizal Building, DepEd Complex, Pasig City 1600",
+    "www.deped.gov.ph",
+    "Website: www.deped.gov.ph",
+    "usec.hrod@deped.gov.ph",
+    "Prepared by:",
+    "SCHOOLS DIVISION OF MANDAUE CITY",
+]
+
+
+def test_names_addresses_and_web_addresses_get_no_period_or_capital() -> None:
+    """Text boxes hold names and links; none of them is a sentence missing its period."""
+    for label in LABELS:
+        assert grammar_issues(label) == [], label
+
+
+def test_a_real_sentence_missing_its_period_is_still_flagged() -> None:
+    issues = grammar_issues("The system stores every document safely")
+    assert any("punctuation" in issue["explanation"] for issue in issues)
+
+
+def test_a_lowercase_sentence_with_a_link_is_still_checked() -> None:
+    issues = grammar_issues("the report is published at the office website and the full text is free to download")
+    assert any("capital" in issue["explanation"] for issue in issues)
+
+
+def test_web_addresses_are_not_spelling_errors() -> None:
+    text = "Visit www.deped.gov.ph or email usec.hrod@deped.gov.ph today."
+    assert check_spelling(text)["issues"] == []
+    assert check_spelling("www")["issues"] == []
+
+
+def test_real_typos_next_to_a_link_are_still_flagged() -> None:
+    words = {issue["word"] for issue in check_spelling("The studnet visited www.deped.gov.ph yesterday.")["issues"]}
+    assert words == {"studnet"}

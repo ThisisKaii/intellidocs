@@ -3,7 +3,7 @@ from typing import Any
 
 from spellchecker import SpellChecker
 
-from grammar.blocks import is_short_centered_line, normalize_blocks
+from grammar.blocks import WEB_ADDRESS_PATTERN, is_short_centered_line, normalize_blocks
 
 
 SPELL_PATTERN = re.compile(r"\b[a-zA-Z']+\b")
@@ -196,10 +196,13 @@ ACADEMIC_WHITELIST: frozenset[str] = frozenset({
 })
 
 
+# Words of web addresses; known so a stray "www" or "http" is not "corrected" to a real word.
+WEB_WORDS: frozenset[str] = frozenset({"www", "http", "https", "html", "com", "org", "net", "edu", "gov", "ph"})
+
 # Teach the dictionary the whitelist terms so they are also offered as corrections
 # (a typo of "dataset" should suggest "dataset", not a rarer unrelated word).
 spellchecker.word_frequency.load_words(
-    word for word in ACADEMIC_WHITELIST if word.isalpha() and len(word) >= 3
+    word for word in ACADEMIC_WHITELIST | WEB_WORDS if word.isalpha() and len(word) >= 3
 )
 
 
@@ -222,8 +225,12 @@ def extract_checkable_words(text: str) -> list[str]:
     dictionary lookup would only offer wrong corrections for them.
     """
     words: list[str] = []
+    # Words inside a URL, email or domain ("www", "deped", "gov", "ph") are never misspellings.
+    address_spans = [match.span() for match in WEB_ADDRESS_PATTERN.finditer(text)]
     for match in SPELL_PATTERN.finditer(text):
         word = match.group()
+        if any(start <= match.start() < end for start, end in address_spans):
+            continue
         mixed_case = any(char.isupper() for char in word[1:]) and not word.isupper()
         if (
             mixed_case
@@ -303,7 +310,7 @@ def check_spelling(source: Any) -> dict[str, Any]:
     # or artifacts from stripped HTML entities (&#9; → t).
     words = [w for w in words if len(w) >= 2]
     # Filter out academic vocabulary whitelist (case-insensitive)
-    words = [w for w in words if w.lower() not in ACADEMIC_WHITELIST]
+    words = [w for w in words if w.lower() not in ACADEMIC_WHITELIST and w.lower() not in WEB_WORDS]
     misspelled = sorted(spellchecker.unknown(words))
 
     issues: list[dict[str, Any]] = []

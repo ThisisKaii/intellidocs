@@ -12,6 +12,7 @@ import nltk
 
 from grammar.blocks import (
     continues_previous,
+    has_web_address,
     is_prose_block,
     normalize_blocks,
 )
@@ -45,6 +46,11 @@ CLAUSE_BOUNDARY_WORDS = frozenset({
     "which", "that", "who", "whom", "whose", "because", "although",
 })
 WORD_PATTERN = re.compile(r"\b[\w']+\b", re.UNICODE)
+
+# A block this short and capitalised like a name is an address, title or label, not a sentence.
+LABEL_MAX_WORDS = 12
+# Lowercase words that may sit inside a Title Case name or title ("College of Computer Studies").
+LABEL_CONNECTORS = frozenset({"of", "and", "the", "for", "in", "on", "at", "to", "a", "an", "de", "la", "del", "y", "&"})
 
 ACADEMIC_KEYWORDS = frozenset({
     "abstract", "introduction", "methodology", "literature review",
@@ -606,12 +612,35 @@ def dedupe_issues(issues: list[dict[str, str]]) -> list[dict[str, str]]:
     return deduped
 
 
+def looks_like_label(text: str) -> bool:
+    """Return true for a name, address, web address, title or caption fragment: not a sentence.
+
+    Text boxes and title blocks hold lines like "Juan A. Dela Cruz", "www.deped.gov.ph" or
+    "Room 102, Rizal Building"; telling the writer to capitalise or end them with a period is wrong.
+    A line counts when it is short and is a web address, ends with a colon, is all capitals, or has
+    every word capitalised (small connectors like "of" aside). Ordinary sentences have lowercase
+    words, so they are never taken for labels.
+    """
+    stripped = text.strip()
+    words = stripped.split()
+    if not words or len(words) > LABEL_MAX_WORDS:
+        return False
+    if stripped.endswith(":") or has_web_address(stripped):
+        return True
+    lettered = [word for word in words if any(char.isalpha() for char in word)]
+    return bool(lettered) and (
+        stripped.isupper()
+        or all(word[0].isupper() or word.lower() in LABEL_CONNECTORS for word in lettered if word[0].isalpha())
+    )
+
+
 def detect_issues(text: str, check_boundaries: bool = True) -> list[dict[str, str]]:
     """Run the baseline rule-based grammar checks on one block of text.
 
     Academic structural blocks (chapter headings, numbered sections, etc.)
-    bypass sentence boundary and fragment checks. Callers pass
-    check_boundaries=False for lines that continue the block above.
+    bypass sentence boundary and fragment checks, and so do names, addresses and
+    web addresses (see looks_like_label). Callers pass check_boundaries=False for
+    lines that continue the block above.
     """
     issues: list[dict[str, str]] = []
     issues.extend(detect_repeated_words(text))
@@ -619,7 +648,7 @@ def detect_issues(text: str, check_boundaries: bool = True) -> list[dict[str, st
     issues.extend(detect_subject_verb_mismatch(text))
     issues.extend(detect_pos_syntax_issues(text))
 
-    if check_boundaries and not is_academic_structural_block(text):
+    if check_boundaries and not is_academic_structural_block(text) and not looks_like_label(text):
         issues.extend(detect_sentence_boundary_issues(text))
 
     return dedupe_issues(issues)

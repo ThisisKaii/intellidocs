@@ -1,7 +1,21 @@
+import re
 from typing import Any
 
 TERMINAL_PUNCTUATION = (".", "!", "?")
 SHORT_LINE_MAX_WORDS = 12
+
+# A web address or email: "https://x.y", "www.deped.gov.ph", "name@host.tld", or a bare domain.
+WEB_ADDRESS_PATTERN = re.compile(
+    r"(?:https?://|www\.)\S+"
+    r"|\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b"
+    r"|\b[\w-]+(?:\.[\w-]+)*\.(?:com|org|net|edu|gov|ph|io|co|info)\b",
+    re.IGNORECASE,
+)
+
+
+def has_web_address(text: str) -> bool:
+    """Return true when the text contains a URL, a www address, an email or a bare domain."""
+    return WEB_ADDRESS_PATTERN.search(text) is not None
 
 
 def normalize_blocks(source: Any) -> list[dict[str, Any]]:
