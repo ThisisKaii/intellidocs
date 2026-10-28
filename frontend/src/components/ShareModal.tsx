@@ -25,6 +25,7 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
   const [linkPermission, setLinkPermission] = useState<SharePermission>('view')
   const [linkBusy, setLinkBusy] = useState<boolean>(false)
   const [copied, setCopied] = useState<boolean>(false)
+  const [codeCopied, setCodeCopied] = useState<boolean>(false)
   const [linkExpiryOffset, setLinkExpiryOffset] = useState<string>('none')
   const [customExpiryDate, setCustomExpiryDate] = useState<string>(
     new Date(Date.now() + 86400000).toISOString().slice(0, 10),
@@ -119,7 +120,7 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
     setError('')
     try {
       await api.documents.revokeShareLink(documentId)
-      setShareLink({ share_token: null, share_permission: linkPermission, share_expires_at: null })
+      setShareLink({ share_token: null, share_permission: linkPermission, share_expires_at: null, share_code: null })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to revoke share link')
     } finally {
@@ -183,6 +184,17 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
     await navigator.clipboard.writeText(url)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1600)
+  }
+
+  /** The share code as people type it: K7M2-QX9P. */
+  const displayCode = shareLink?.share_code ? `${shareLink.share_code.slice(0, 4)}-${shareLink.share_code.slice(4)}` : null
+
+  /** Copy the short share code to the clipboard. */
+  async function handleCopyCode(): Promise<void> {
+    if (!displayCode) return
+    await navigator.clipboard.writeText(displayCode)
+    setCodeCopied(true)
+    window.setTimeout(() => setCodeCopied(false), 1600)
   }
 
   return (
@@ -334,6 +346,24 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
               </button>
             )}
           </div>
+
+          {/* Short code: the same access as the link, easy to read out or type */}
+          {displayCode && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>Or share this code:</span>
+              <code style={{ fontSize: '0.875rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--foreground)' }}>{displayCode}</code>
+              <button
+                type="button"
+                onClick={() => { void handleCopyCode() }}
+                title="Copy code"
+                aria-label="Copy share code"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '0.25rem 0.5rem', borderRadius: '0.375rem', border: 'none', boxShadow: '0 0 0 1px var(--border-shadow)', backgroundColor: 'var(--background)', color: 'var(--foreground)', fontSize: '0.6875rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                {codeCopied ? <Check style={{ width: '11px', height: '11px' }} /> : <Copy style={{ width: '11px', height: '11px' }} />}
+                {codeCopied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          )}
 
           {/* Persistent link settings — permission + expiry, applied without re-minting */}
           <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>

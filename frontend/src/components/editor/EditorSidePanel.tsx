@@ -36,6 +36,8 @@ interface EditorSidePanelProps {
   documentId: string | undefined
   documentTitle?: string
   documentContent: string
+  /** The full document HTML for the history comparison (documentContent is a shortened AI summary). */
+  currentHtml: string
   scannerSuggestions: ScannerSuggestion[]
   /** Key of the suggestion currently highlighted in the editor (drives the active card state). */
   activeScannerKey?: string | null
@@ -89,6 +91,7 @@ export default function EditorSidePanel({
   documentId,
   documentTitle,
   documentContent,
+  currentHtml,
   scannerSuggestions,
   activeScannerKey = null,
   mlSuggestions,
@@ -260,7 +263,7 @@ export default function EditorSidePanel({
           {activeTab === 'history' && !readOnly && (
             <HistoryPanel
               documentId={documentId}
-              currentContent={documentContent}
+              currentHtml={currentHtml}
               onRestored={(version) => onVersionRestored?.(version)}
             />
           )}

@@ -23,6 +23,12 @@ export interface GrammarDocLike {
   ) => void
 }
 
+/** How much of a long document the automatic check reads (about 100 pages); it is sent in chunks. */
+export const MAX_DOCUMENT_GRAMMAR_CHARS = 200000
+
+/** Target size of one request, small enough for a slow service to answer well inside its timeout. */
+export const GRAMMAR_CHUNK_CHARS = 6000
+
 /** Work out whether a text block is a heading, a list item or an ordinary paragraph. */
 function blockKind(node: GrammarNodeLike, parent: GrammarNodeLike | null): GrammarBlock['kind'] {
   if (node.type.name === 'heading') return 'heading'
@@ -34,11 +40,11 @@ function blockKind(node: GrammarNodeLike, parent: GrammarNodeLike | null): Gramm
  * One block per non-empty text block of the document, with its kind and alignment, so
  * the checker never reads separate lines as one sentence. Stops at the payload cap.
  */
-export function buildGrammarBlocks(doc: GrammarDocLike): GrammarBlock[] {
+export function buildGrammarBlocks(doc: GrammarDocLike, maxChars: number = MAX_GRAMMAR_CHARS): GrammarBlock[] {
   const blocks: GrammarBlock[] = []
   let total = 0
   doc.descendants((node, _pos, parent) => {
-    if (total >= MAX_GRAMMAR_CHARS) return false
+    if (total >= maxChars) return false
     if (!node.isTextblock) return true
     const text = node.textContent.replace(/\s+/g, ' ').trim()
     if (text) {
@@ -52,7 +58,7 @@ export function buildGrammarBlocks(doc: GrammarDocLike): GrammarBlock[] {
 }
 
 /** Split plain text or HTML into one paragraph block per line (no layout hints available), up to the payload cap. */
-export function textToGrammarBlocks(source: string): GrammarBlock[] {
+export function textToGrammarBlocks(source: string, maxChars: number = MAX_GRAMMAR_CHARS): GrammarBlock[] {
   let total = 0
   return source
     .replace(/<\/(p|h[1-6]|li|div|tr)>|<br\s*\/?>/gi, '\n')
@@ -62,9 +68,31 @@ export function textToGrammarBlocks(source: string): GrammarBlock[] {
     .filter((line) => line.length > 0)
     .filter((line) => {
       total += line.length
-      return total - line.length < MAX_GRAMMAR_CHARS
+      return total - line.length < maxChars
     })
     .map((text) => ({ text, kind: 'paragraph' as const, align: 'left', centered: false }))
+}
+
+/**
+ * Split blocks into consecutive groups of about `maxChars` characters, keeping the document
+ * order, so the first screenful is checked first and one slow answer never holds up the rest.
+ * A single block longer than the target travels alone.
+ */
+export function chunkGrammarBlocks(blocks: GrammarBlock[], maxChars: number = GRAMMAR_CHUNK_CHARS): GrammarBlock[][] {
+  const chunks: GrammarBlock[][] = []
+  let current: GrammarBlock[] = []
+  let size = 0
+  for (const block of blocks) {
+    if (current.length > 0 && size + block.text.length > maxChars) {
+      chunks.push(current)
+      current = []
+      size = 0
+    }
+    current.push(block)
+    size += block.text.length
+  }
+  if (current.length > 0) chunks.push(current)
+  return chunks
 }
 
 /** Total character count of the blocks' text. */

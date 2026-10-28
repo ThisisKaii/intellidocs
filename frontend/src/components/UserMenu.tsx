@@ -2,16 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Settings, LogOut } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
-
-/** Two-letter initials derived from the user's display name or email, or a fallback. */
-function userInitials(name: string): string {
-  const parts = name.split('@')[0].split(/[\s._-]+/).filter(Boolean)
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase()
-  }
-  const initials = parts[0]?.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase()
-  return initials || 'U'
-}
+import { UserAvatar } from '@/components/UserAvatar'
 
 /**
  * Account dropdown (top right) with Settings navigation and logout.
@@ -59,9 +50,7 @@ export function UserMenu(): JSX.Element {
         aria-expanded={open}
         className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer transition-colors hover:bg-foreground/5"
       >
-        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary text-primary-foreground text-xs font-semibold select-none">
-          {userInitials(user?.displayName || user?.email || 'User')}
-        </span>
+        <UserAvatar src={user?.avatarUrl} name={user?.displayName || user?.email || 'User'} size={28} />
       </button>
 
       {open && (

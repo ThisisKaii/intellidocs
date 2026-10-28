@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Check, Lock } from 'lucide-react'
 import { api } from '@/services/api'
 import { supabase } from '@/lib/supabase'
+import { passwordFormReady, passwordProblems } from '@/lib/profileValidation'
 
 /** Change the password through the server; accounts that sign in with a password must give the current one. */
 export function PasswordSection(): JSX.Element {
@@ -20,28 +21,24 @@ export function PasswordSection(): JSX.Element {
     }).catch(() => setHasPassword(true))
   }, [])
 
-  /** Validate the form, then ask the server to change the password. */
+  const form = { hasPassword, currentPassword, newPassword, confirmPassword }
+  const problems = passwordProblems(form)
+
+  /** Check the form once more, then ask the server to change the password. */
   async function handleSubmit(event: FormEvent): Promise<void> {
     event.preventDefault()
     setFeedback(null)
-
-    if (hasPassword && !currentPassword) {
-      setFeedback({ ok: false, text: 'Enter your current password.' })
-      return
-    }
-    if (newPassword.length < 8) {
-      setFeedback({ ok: false, text: 'Password must be at least 8 characters long.' })
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setFeedback({ ok: false, text: 'Passwords do not match.' })
-      return
-    }
+    if (!passwordFormReady(form)) return
 
     setSaving(true)
     try {
       await api.auth.changePassword(newPassword, hasPassword ? currentPassword : undefined)
-      setFeedback({ ok: true, text: hasPassword ? 'Password updated.' : 'Password set. You can now sign in with your email too.' })
+      setFeedback({
+        ok: true,
+        text: hasPassword
+          ? 'Password updated.'
+          : 'Password set. You can now sign in with your email too.',
+      })
       setHasPassword(true)
       setCurrentPassword('')
       setNewPassword('')
@@ -76,6 +73,11 @@ export function PasswordSection(): JSX.Element {
           <input id="confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="settings-input max-w-sm w-full" />
         </div>
 
+        {problems.length > 0 && !feedback && (
+          <ul role="alert" className="m-0 list-none p-0 text-sm text-destructive flex flex-col gap-1">
+            {problems.map((problem) => <li key={problem}>{problem}</li>)}
+          </ul>
+        )}
         {feedback && (
           <p role={feedback.ok ? 'status' : 'alert'} className={`text-sm flex items-center gap-1.5 ${feedback.ok ? 'text-green-600' : 'text-destructive'}`}>
             {feedback.ok && <Check className="size-4" strokeWidth={2} />}
@@ -83,7 +85,7 @@ export function PasswordSection(): JSX.Element {
           </p>
         )}
 
-        <button type="submit" disabled={saving} className="btn-primary">
+        <button type="submit" disabled={saving || !passwordFormReady(form)} className="btn-primary">
           {saving ? 'Updating…' : hasPassword ? 'Update password' : 'Set password'}
         </button>
       </form>

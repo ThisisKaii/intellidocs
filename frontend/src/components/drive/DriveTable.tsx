@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   DropdownMenu,
@@ -15,6 +15,7 @@ import {
   GraduationCap,
   FolderIcon,
   Home,
+  KeyRound,
   LayoutGrid,
   List,
   MoreVertical,
@@ -30,6 +31,7 @@ import { ClassRosterModal } from '@/components/drive/ClassRosterModal'
 import { DocumentPreview, PreviewStyles, sanitizePreviewHtml } from '@/components/drive/DocumentPreview'
 import type { PreviewPageSetup } from '@/components/drive/DocumentPreview'
 import type { DocumentRecord, FolderRecord } from '@/services/api'
+import { columnsForWidth, hiddenCount, ROWS_PER_PAGE, visibleLimit } from '@/lib/paging'
 
 /* ─── Shared types ────────────────────────────────────────────── */
 
@@ -80,6 +82,28 @@ interface DriveTableProps {
   onShare?: (id: string) => void
   /** Re-fetch folders so class badges (student/submission counts) stay accurate. */
   onFoldersChanged?: () => void
+  /** Changes whenever the list shown changes (module, folder, search); "Show more" starts over. */
+  pageResetKey?: string
+  /** Which module is shown, so an empty list says the right thing (and "Shared with me" never offers to create). */
+  emptyVariant?: 'default' | 'shared' | 'recent' | 'trash'
+  /** Opens the "enter a share code" dialog (shown in the empty "Shared with me" state). */
+  onEnterCode?: () => void
+}
+
+/** What each module says when it has nothing to show. */
+const EMPTY_COPY: Record<'shared' | 'recent' | 'trash', { title: string; body: string }> = {
+  shared: {
+    title: 'Nothing shared with you yet',
+    body: 'Documents others share with you appear here. Got a share code? Enter it to open a document you were invited to.',
+  },
+  recent: {
+    title: 'Nothing opened this week',
+    body: 'Documents you open show up here for 7 days. Open one again to move it back to the top.',
+  },
+  trash: {
+    title: 'Trash is empty',
+    body: 'Documents you delete wait here until you restore or permanently delete them.',
+  },
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
@@ -228,6 +252,9 @@ export function DriveTable({
   onDragStart,
   onShare,
   onFoldersChanged,
+  pageResetKey = '',
+  emptyVariant = 'default',
+  onEnterCode,
 }: DriveTableProps): JSX.Element {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -235,6 +262,10 @@ export function DriveTable({
   const [rosterFolder, setRosterFolder] = useState<FolderRecord | null>(null)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const containerRef = useRef<HTMLDivElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  // Pagination: three rows first, three more per "Show more". A grid row holds as many cards as fit.
+  const [columns, setColumns] = useState<number>(1)
+  const [rows, setRows] = useState<number>(ROWS_PER_PAGE)
 
   const items: DriveItem[] = useMemo(
     () =>
@@ -275,6 +306,30 @@ export function DriveTable({
   }, [onClearSelection])
 
   const isEmpty = items.length === 0 && folders.length === 0 && !loading
+  const hasItems = items.length > 0
+
+  // A list of items is one per row; a grid's row holds as many cards as the width allows.
+  useLayoutEffect(() => {
+    if (viewMode === 'list') {
+      setColumns(1)
+      return
+    }
+    const grid = gridRef.current
+    if (!grid) return
+    const measure = (): void => setColumns(columnsForWidth(grid.clientWidth))
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(grid)
+    return () => observer.disconnect()
+  }, [viewMode, loading, hasItems])
+
+  // A different list (module, folder, search) or layout starts again at three rows.
+  useEffect(() => {
+    setRows(ROWS_PER_PAGE)
+  }, [pageResetKey, viewMode])
+
+  const shownItems = items.slice(0, visibleLimit(rows, columns))
+  const hidden = hiddenCount(items.length, rows, columns)
 
   return (
     <div ref={containerRef} className="flex flex-col gap-6 min-h-0 pb-12" onClick={handleBackgroundClick} data-drive-background="true">
@@ -311,8 +366,32 @@ export function DriveTable({
       {/* ── Loading ─────────────────────────────────── */}
       {loading && <ListSkeleton />}
 
-      {/* ── Empty state ─────────────────────────────── */}
-      {isEmpty && (
+      {/* ── Empty state: Shared, Recent and Trash say what they are; they never offer to create ── */}
+      {isEmpty && emptyVariant !== 'default' && (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-24 px-8 text-center bg-secondary/30 mt-4">
+          <div
+            className="flex items-center justify-center w-16 h-16 rounded-2xl bg-secondary mb-5"
+            style={{ boxShadow: 'inset 0 0 0 1px var(--border)' }}
+          >
+            {emptyVariant === 'shared' ? <Users className="size-7 text-muted-foreground" /> : <FileText className="size-7 text-muted-foreground" />}
+          </div>
+          <p className="text-lg font-semibold text-foreground mb-1.5">{EMPTY_COPY[emptyVariant].title}</p>
+          <p className="text-sm text-muted-foreground mb-6 max-w-sm">{EMPTY_COPY[emptyVariant].body}</p>
+          {emptyVariant === 'shared' && onEnterCode && (
+            <button
+              type="button"
+              onClick={onEnterCode}
+              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-primary hover:bg-[var(--accent-hover)] text-white text-sm font-semibold border-none cursor-pointer transition-all"
+              style={{ fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+            >
+              <KeyRound className="size-4" /> Enter code
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Empty state (My documents, folders) ──────── */}
+      {isEmpty && emptyVariant === 'default' && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-24 px-8 text-center bg-secondary/30 mt-4">
           <div
             className="flex items-center justify-center w-16 h-16 rounded-2xl bg-secondary mb-5"
@@ -571,8 +650,8 @@ export function DriveTable({
 
           <PreviewStyles />
           {viewMode === 'grid' ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-              {items.map((item) => {
+            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+              {shownItems.map((item, index) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
 
@@ -592,7 +671,7 @@ export function DriveTable({
                   >
                     {/* Google Docs-style Storefront Window Preview: page 1 scaled to the card width */}
                     <div className="relative aspect-[8.5/11] bg-slate-100/90 border-b border-border/40 overflow-hidden p-2.5 flex items-center justify-center">
-                      <DocumentPreview html={item.previewHtml} setup={item.pageSetup} />
+                      <DocumentPreview html={item.previewHtml} setup={item.pageSetup} priority={index < columns} />
                     </div>
 
                     {/* Card Footer */}
@@ -699,7 +778,7 @@ export function DriveTable({
                 <span className="w-8" />
               </div>
 
-              {items.map((item) => {
+              {shownItems.map((item) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
                 const displayName = user?.email?.split('@')[0] || 'Unknown'
@@ -840,6 +919,20 @@ export function DriveTable({
                   </div>
                 )
               })}
+            </div>
+          )}
+
+          {hidden > 0 && (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => setRows((current) => current + ROWS_PER_PAGE)}
+                className="inline-flex items-center gap-2 h-9 px-5 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer transition-colors hover:bg-secondary"
+                style={{ fontFamily: 'inherit' }}
+              >
+                Show more
+                <span className="text-xs font-normal text-muted-foreground">({hidden} more)</span>
+              </button>
             </div>
           )}
         </div>

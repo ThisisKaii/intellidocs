@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ACADEMIC_PRESETS, basePresetKey } from '@/components/editor/academicPresets'
 import { PAGE_SIZES, inToPx } from '@/components/editor/HeaderFooterPlugin'
 import type { MarginValues, PageOrientation, PageSizeKey } from '@/components/editor/HeaderFooterPlugin'
@@ -154,11 +154,41 @@ function pageCanvas(setup: PreviewPageSetup): { width: number; height: number; p
  * The scale is measured (not hardcoded) so the page fills the card edge to edge
  * at any grid width; taller pages are cropped by the card like Google Docs.
  */
-export function DocumentPreview({ html, setup }: { html: string; setup: PreviewPageSetup }): JSX.Element {
+export function DocumentPreview({
+  html,
+  setup,
+  priority = true,
+}: {
+  html: string
+  setup: PreviewPageSetup
+  /**
+   * True for the top-most cards: their page renders immediately. Others show the placeholder
+   * until they scroll near the screen, so the first row of a long list appears first.
+   */
+  priority?: boolean
+}): JSX.Element {
   const frameRef = useRef<HTMLDivElement>(null)
   const canvas = useMemo(() => pageCanvas(setup), [setup])
   const presetKey = ACADEMIC_PRESETS.find((preset) => preset.key === basePresetKey(setup.formattingPreset))?.key
   const [scale, setScale] = useState(0.25)
+  const [near, setNear] = useState<boolean>(priority || typeof IntersectionObserver === 'undefined')
+
+  useEffect(() => {
+    if (near) return
+    const frame = frameRef.current
+    if (!frame) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNear(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '400px' },
+    )
+    observer.observe(frame)
+    return () => observer.disconnect()
+  }, [near])
 
   useLayoutEffect(() => {
     const frame = frameRef.current
@@ -177,7 +207,7 @@ export function DocumentPreview({ html, setup }: { html: string; setup: PreviewP
       ref={frameRef}
       className="relative h-full w-full select-none overflow-hidden bg-white pointer-events-none"
     >
-      {html ? (
+      {html && near ? (
         <>
           <div
             className={`dd-preview ${presetKey ? `dd-preview--${presetKey}` : ''} absolute left-0 top-0 bg-white`}

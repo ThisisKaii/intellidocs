@@ -663,6 +663,8 @@ export default function Document(): JSX.Element {
     let cancelled = false
     async function loadDocument(): Promise<void> {
       try {
+        // Wake the grammar service while the document loads so the first check isn't a cold start.
+        void api.warmServices()
         // Paint from the IndexedDB cache first so the editor is instant on reload.
         const cached = await getCachedDocumentRead(docId)
         if (cancelled) return
@@ -674,6 +676,8 @@ export default function Document(): JSX.Element {
         if (cancelled) return
         applyLoadedDocument(doc)
         documentLoadedRef.current = true
+        // Opening a document puts it first in "Recent" and restarts its 7 days.
+        void api.documents.markOpened(docId)
         // Edits that never reached the server are offered back, never applied silently.
         const draft = readLocalDraft(docId)
         if (draft && draft.content !== (doc.content ?? '') && new Date(draft.savedAt).getTime() > new Date(doc.updated_at).getTime()) {
@@ -3198,6 +3202,7 @@ export default function Document(): JSX.Element {
           documentId={id}
           documentTitle={title}
           documentContent={chatContent}
+          currentHtml={content}
           scannerSuggestions={scannerSuggestions}
           activeScannerKey={scannerActive?.key ?? null}
           mlSuggestions={showSuggestions ? suggestions : []}

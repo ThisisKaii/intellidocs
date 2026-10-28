@@ -32,6 +32,8 @@ export interface UserAuthData {
   verificationStatus?: 'pending' | 'approved' | 'rejected'
   requestedRole?: 'student' | 'professor' | 'admin' | null
   displayName?: string | null
+  /** Link to the profile photo, or null/undefined to show initials. */
+  avatarUrl?: string | null
 }
 
 interface AuthContextType {

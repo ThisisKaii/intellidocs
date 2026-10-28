@@ -14,6 +14,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { PageHeader } from '@/components/PageHeader'
 import { ProfileSection } from '@/components/settings/ProfileSection'
+import { EmailSection } from '@/components/settings/EmailSection'
 import { PasswordSection } from '@/components/settings/PasswordSection'
 import { TwoFactorAuthSection } from '@/components/settings/TwoFactorAuthSection'
 import { ConnectedAccountsSection } from '@/components/settings/ConnectedAccountsSection'
@@ -123,7 +124,8 @@ export default function SettingsPage(): JSX.Element {
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             {section === 'profile' && (
               <>
-                <ProfileSection userDisplayName={user?.displayName ?? ''} onSaved={updateUser} />
+                <ProfileSection userDisplayName={user?.displayName ?? ''} email={user?.email ?? ''} avatarUrl={user?.avatarUrl ?? null} onSaved={updateUser} />
+                <EmailSection email={user?.email ?? ''} onEmailChanged={(email) => updateUser({ email })} />
                 <AccountInfoSection />
               </>
             )}
