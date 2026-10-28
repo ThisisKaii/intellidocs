@@ -27,6 +27,11 @@ wrong. These tools find the FIRST place the editor diverges instead.
 
 3. **Find the cause.**
    - `sections.py <docx>` lists every section's size, margins, columns and header/footer.
+   - `picture_positions.py <docx> <word.pdf>` compares where every picture sits (page, left edge,
+     width) in Word's exported PDF and in the editor.
+   - `anchors.py <docx> [--images-only]` lists every floating picture, text box and shape with its
+     position, wrap mode and size, which decides whether the converter pins it to the page,
+     merges it into a row, or leaves it in the text.
    - `xml_before.py <docx> <text> [n]` prints the raw WordprocessingML of the n-th paragraph
      containing the text and the two before it (searches content controls and tables too).
    - `html_around.py <docx> <text>` shows the HTML the converter emitted around some text.

@@ -12,6 +12,7 @@ import docx
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.shared import Emu
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
@@ -403,6 +404,140 @@ def _group_image_html(group: Any, doc_parts: Dict[str, bytes]) -> str:
         return ""
 
 
+def _floating_placement(blip: Any) -> Optional[Tuple[str, float]]:
+    """Where a floating picture sits across the text column: (side, offset px).
+
+    Any picture that text wraps around qualifies (top-and-bottom, square, tight, through). The editor
+    cannot flow text beside a picture, so the text goes below it, but the picture itself keeps its
+    side: "left", "center" or "right", or an offset from the column's left edge for any other
+    position. None when the picture follows the text (inline) or is pinned to the page.
+    """
+    anchor = next(blip.iterancestors(f"{{{_NS_WP}}}anchor"), None)
+    if anchor is None or not _PAGE_GEOMETRY or _page_art_geometry(anchor) is not None:
+        return None
+    if any(a.tag == _MC_FALLBACK for a in anchor.iterancestors()) or next(blip.iterancestors(f"{{{_NS_WPG}}}wgp"), None) is not None:
+        return None
+    extent = anchor.find(f"{{{_NS_WP}}}extent")
+    width = (_int_attr(extent, "cx") or 0) / EMU_PER_PX
+    g = _PAGE_GEOMETRY
+    column = g["w"] - g["l"] - g["r"]
+    x = _anchor_axis(anchor.find(f"{{{_NS_WP}}}positionH"), width, g["w"], g["l"], g["r"], "left", "right")
+    if x is None or width <= 0 or column <= 0 or width >= column - 2:
+        return None
+    if not any(anchor.find(f"{{{_NS_WP}}}{tag}") is not None for tag in ("wrapTopAndBottom", "wrapSquare", "wrapTight", "wrapThrough")):
+        return None  # in front of / behind the text: not placed in the flow
+    offset = x - g["l"]
+    if abs(offset - (column - width) / 2) <= 3:
+        return ("center", 0.0)
+    if offset <= 3:
+        return ("left", 0.0)
+    if offset + width >= column - 3:
+        return ("right", 0.0)
+    return ("left", round(offset, 1))
+
+
+def _place_floating(piece: str, blip: Any) -> str:
+    """Give a floating picture's <img> the side (and offset) Word puts it at across the text column."""
+    placement = _floating_placement(blip) if piece.startswith("<img") else None
+    width = re.search(r'\swidth="(\d+)"', piece)
+    if placement is None or width is None or placement[0] == "center":
+        return piece
+    side, offset = placement
+    margin = "0 0 0 auto" if side == "right" else (f"0 0 0 {offset:g}px" if offset else "0 auto 0 0")
+    container = f"width: {width.group(1)}px; height: auto; cursor: pointer; margin: {margin};"
+    return piece.replace("<img ", f'<img data-alignment="{side}" containerstyle="{container}" ', 1)
+
+
+def _place_inline_pictures(inner: str, p: Paragraph) -> str:
+    """A picture alone in its paragraph sits where the paragraph's alignment and indent put it.
+
+    The editor draws a picture as a block and ignores the paragraph around it (centred unless told
+    otherwise), so a picture in a left-aligned or indented paragraph would be centred. Centred
+    paragraphs need nothing. A paragraph that also holds text is left alone: Word lays the text and
+    the picture out on one line, which a block cannot reproduce.
+    """
+    try:
+        if "<img " not in inner or "".join(node.text or "" for node in p._element.iter(qn("w:t"))).strip():
+            return inner
+        alignment = _resolve_pPr_attr(p, "jc", "val") or "left"
+        left = _resolve_pPr_attr(p, "ind", "left") or _resolve_pPr_attr(p, "ind", "start") or "0"
+    except Exception:
+        return inner  # not a paragraph we can read: leave the picture as it is
+    if alignment == "center":
+        return inner
+    indent = int(left) * TWIPS_PER_PX if left.lstrip("-").isdigit() else 0.0
+    if alignment == "right":
+        side, margin = "right", "0 0 0 auto"
+    else:
+        side, margin = "left", (f"0 auto 0 {indent:.1f}px" if indent > 2 else "0 auto 0 0")
+
+    def place(match: "re.Match[str]") -> str:
+        tag = match.group(0)
+        width = re.search(r'\swidth="(\d+)"', tag)
+        if tag.startswith("<page-art") or "containerstyle=" in tag or width is None:
+            return tag
+        container = f"width: {width.group(1)}px; height: auto; cursor: pointer; margin: {margin};"
+        return tag.replace("<img ", f'<img data-alignment="{side}" containerstyle="{container}" ', 1)
+
+    return re.sub(r"<page-art [^>]*>.*?</page-art>|<img [^>]*>", place, inner, flags=re.S)
+
+
+def _anchored_row(p_element: Any, doc_parts: Dict[str, bytes]) -> Optional[Dict[str, Any]]:
+    """Pictures Word draws side by side on one line, merged into a single picture.
+
+    Two or more pictures anchored to the same paragraph with top-and-bottom wrapping, each at
+    its own horizontal offset and sharing one vertical band (the cover pages of two volumes),
+    sit in a row in Word. The editor's pictures are blocks and would stack, so the row is drawn
+    onto one transparent canvas, like a grouped letterhead. None when the paragraph holds no such row.
+    """
+    if not _PAGE_GEOMETRY:
+        return None
+    g = _PAGE_GEOMETRY
+    items: List[Tuple[float, float, float, float, Any, bytes]] = []
+    for anchor in p_element.iter(f"{{{_NS_WP}}}anchor"):
+        if any(a.tag == _MC_FALLBACK for a in anchor.iterancestors()):
+            continue
+        if anchor.find(f"{{{_NS_WP}}}wrapTopAndBottom") is None or _page_art_geometry(anchor) is not None:
+            continue
+        if anchor.find(f".//{{{_NS_WPG}}}wgp") is not None:
+            continue
+        blip = anchor.find(f".//{{{_NS_A}}}blip")
+        embed_id = blip.get(qn("r:embed")) if blip is not None else None
+        extent = anchor.find(f"{{{_NS_WP}}}extent")
+        if not embed_id or embed_id not in doc_parts or extent is None:
+            continue
+        width, height = (_int_attr(extent, "cx") or 0) / EMU_PER_PX, (_int_attr(extent, "cy") or 0) / EMU_PER_PX
+        x = _anchor_axis(anchor.find(f"{{{_NS_WP}}}positionH"), width, g["w"], g["l"], g["r"], "left", "right")
+        vertical = anchor.find(f"{{{_NS_WP}}}positionV")
+        offset = next(iter(vertical), None) if vertical is not None and vertical.get("relativeFrom") in ("paragraph", "line") else None
+        if x is None or width <= 0 or height <= 0 or offset is None or not offset.tag.endswith("}posOffset"):
+            continue
+        items.append((x, float(offset.text or 0) / EMU_PER_PX, width, height, blip, _crop_image(doc_parts[embed_id], blip)))
+    if len(items) < 2:
+        return None
+    items.sort(key=lambda item: item[0])
+    if any(a[0] + a[2] > b[0] + 2 for a, b in zip(items, items[1:])):
+        return None  # pictures overlap sideways: not a row
+    shared = min(i[1] + i[3] for i in items) - max(i[1] for i in items)
+    if shared < 0.5 * min(i[3] for i in items):
+        return None  # not on one line
+
+    left, top = items[0][0], min(i[1] for i in items)
+    width_px, height_px = max(i[0] + i[2] for i in items) - left, max(i[1] + i[3] for i in items) - top
+    try:
+        import pymupdf
+
+        width_pt, height_pt = width_px * 0.75, height_px * 0.75
+        canvas = pymupdf.open()
+        page = canvas.new_page(width=width_pt, height=height_pt)
+        for x, y, w, h, _blip, data in items:
+            page.insert_image(pymupdf.Rect((x - left) * 0.75, (y - top) * 0.75, (x - left + w) * 0.75, (y - top + h) * 0.75), stream=data)
+        dpi = max(36, min(150, int(MAX_GROUP_IMAGE_PX / (width_pt / 72))))
+        return {"html": _img_tag(page.get_pixmap(dpi=dpi, alpha=True).tobytes("png"), max(1, round(width_px))), "blips": {i[4] for i in items}, "done": False}
+    except Exception:
+        return None
+
+
 # Page size and margins (px) of the section being converted, for pictures Word pins to the page.
 _PAGE_GEOMETRY: Dict[str, float] = {}
 # Numbers the boxes that follow a paragraph, so the editor can find their paragraph again.
@@ -621,8 +756,12 @@ def _group_page_art(art: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes]) -> str:
-    """Render a run as either its inline image (if it contains a drawing) or styled text."""
+def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[str, Any]] = None) -> str:
+    """Render a run as either its inline image (if it contains a drawing) or styled text.
+
+    `row` is the paragraph's merged side-by-side pictures (see _anchored_row): the first run
+    holding one of them draws the merged picture, and the row's own pictures are not drawn again.
+    """
     try:
         element = run._element
         line_marks = _LINE_MARK * len(_line_shapes_in(element))
@@ -634,6 +773,11 @@ def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes]) -> str:
         ]
         if blips:
             pieces: List[str] = []
+            if row is not None and any(b in row["blips"] for b in blips):
+                blips = [b for b in blips if b not in row["blips"]]
+                if not row["done"]:
+                    row["done"] = True
+                    pieces.append(row["html"])
             grouped: Set[Any] = set()
             for group in element.iter(f"{{{_NS_WPG}}}wgp"):
                 if next(group.iterancestors(f"{{{_NS_WPG}}}wgp"), None) is not None:
@@ -642,7 +786,13 @@ def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes]) -> str:
                 if flat:
                     pieces.append(_as_page_art(flat, group))
                     grouped.update(group.iter(qn("a:blip")))
-            pieces.extend(_as_page_art(_image_html(b, doc_parts), b) for b in blips if b not in grouped)
+            for b in blips:
+                if b in grouped:
+                    continue
+                piece = _place_floating(_as_page_art(_image_html(b, doc_parts), b), b)
+                if next(b.iterancestors(f"{{{_NS_WP}}}anchor"), None) is None:  # inline: follows its paragraph
+                    piece = _place_inline_pictures(piece, run._parent)
+                pieces.append(piece)
             return line_marks + "".join(pieces)
         if line_marks:
             return line_marks
@@ -779,6 +929,7 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
     """Build the inner HTML (runs + hyperlinks + page breaks + images) of a paragraph."""
     parts: List[str] = []
     wrapper_tags = {qn(tag) for tag in _INLINE_WRAPPER_TAGS}
+    row = _anchored_row(p._element, doc_parts)
 
     def walk(container: Any) -> None:
         for child in container:
@@ -794,7 +945,7 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
                         parts.append(_COLUMN_MARK)
                     else:
                         parts.append("<br/>")
-                parts.append(page_breaks + _run_or_image_html(run, doc_parts) + _anchored_textboxes(child, p, doc_parts))
+                parts.append(page_breaks + _run_or_image_html(run, doc_parts, row) + _anchored_textboxes(child, p, doc_parts))
             elif tag == qn("w:hyperlink"):
                 parts.append(_hyperlink_html(child, p, doc_parts))
             elif tag == qn("w:br"):
@@ -2857,6 +3008,98 @@ def _realign_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Se
     return changed
 
 
+def _picture_only(element: Any) -> Optional[Tuple[Any, float, float]]:
+    """(inline drawing, width pt, height pt) for a paragraph that holds one inline picture and no text, else None."""
+    if element.tag != qn("w:p") or "".join(node.text or "" for node in element.iter(qn("w:t"))).strip():
+        return None
+    inlines = list(element.iter(f"{{{_NS_WP}}}inline"))
+    if len(inlines) != 1 or element.find(f".//{{{_NS_WP}}}anchor") is not None:
+        return None
+    extent = inlines[0].find(f"{{{_NS_WP}}}extent")
+    cx, cy = _int_attr(extent, "cx"), _int_attr(extent, "cy")
+    if not cx or not cy or inlines[0].find(f".//{{{_NS_A}}}blip") is None:
+        return None
+    return inlines[0], cx / EMU_PER_POINT, cy / EMU_PER_POINT
+
+
+def _merge_picture_rows_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Merge pictures that sit side by side in the PDF but came out one under the other.
+
+    pdf2docx writes every picture as its own inline paragraph, so two covers or two subfigures drawn
+    on one line become a stack. The PDF still knows where each picture was drawn: two neighbouring
+    picture-only paragraphs whose PDF rectangles share a horizontal band, one left of the other,
+    are drawn onto one canvas as a single picture. Returns how many rows were merged.
+    """
+    try:
+        import pymupdf
+    except ImportError:  # pragma: no cover - PyMuPDF ships with pdf2docx
+        import fitz as pymupdf
+    try:
+        pdf = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        rects_by_page = [
+            [tuple(info["bbox"]) for info in page.get_image_info() if info["bbox"][2] - info["bbox"][0] >= 40 and info["bbox"][3] - info["bbox"][1] >= 40]
+            for page in pdf
+        ]
+        pdf.close()
+    except Exception:
+        return 0
+
+    def rect_for(rects: List[Tuple[float, float, float, float]], width: float, height: float) -> Optional[Tuple[float, float, float, float]]:
+        return next((r for r in rects if abs(r[2] - r[0] - width) <= 4 and abs(r[3] - r[1] - height) <= 4), None)
+
+    merged, page_index = 0, 0
+    body = list(doc.element.body)
+    index = 0
+    while index < len(body):
+        element = body[index]
+        first = _picture_only(element)
+        if first is not None and page_index < len(rects_by_page):
+            # the next picture-only paragraph on this page, skipping blank spacer paragraphs
+            nxt = index + 1
+            while nxt < len(body) and body[nxt].tag == qn("w:p") and body[nxt] not in page_break_after and not "".join(body[nxt].itertext()).strip() and body[nxt].find(f".//{{{_NS_WP}}}inline") is None:
+                nxt += 1
+            second = _picture_only(body[nxt]) if nxt < len(body) and element not in page_break_after else None
+            rects = rects_by_page[page_index]
+            r1 = rect_for(rects, first[1], first[2])
+            r2 = rect_for([r for r in rects if r != r1], second[1], second[2]) if second is not None else None
+            if r1 and r2 and r1[2] <= r2[0] + 2 and min(r1[3], r2[3]) - max(r1[1], r2[1]) >= 0.5 * min(r1[3] - r1[1], r2[3] - r2[1]):
+                row = _compose_picture_row(doc, [(first[0], r1), (second[0], r2)])
+                if row is not None:
+                    png, width_pt, height_pt = row
+                    paragraph = Paragraph(element, doc._body)
+                    for run_element in list(element.findall(qn("w:r"))):
+                        element.remove(run_element)
+                    paragraph.add_run().add_picture(io.BytesIO(png), width=Emu(int(width_pt * 12700)), height=Emu(int(height_pt * 12700)))
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    for gone in body[index + 1: nxt + 1]:
+                        gone.getparent().remove(gone)
+                    merged += 1
+                    index = nxt + 1
+                    continue
+        if element in page_break_after:
+            page_index += 1
+        index += 1
+    return merged
+
+
+def _compose_picture_row(doc: docx.Document, placed: List[Tuple[Any, Tuple[float, float, float, float]]]) -> Optional[Tuple[bytes, float, float]]:
+    """Draw pictures at their PDF positions on one transparent canvas: (png bytes, width pt, height pt)."""
+    try:
+        import pymupdf
+
+        left, top = min(r[0] for _i, r in placed), min(r[1] for _i, r in placed)
+        width_pt, height_pt = max(r[2] for _i, r in placed) - left, max(r[3] for _i, r in placed) - top
+        canvas = pymupdf.open()
+        page = canvas.new_page(width=width_pt, height=height_pt)
+        for inline, (x0, y0, x1, y1) in placed:
+            embed_id = inline.find(f".//{{{_NS_A}}}blip").get(qn("r:embed"))
+            page.insert_image(pymupdf.Rect(x0 - left, y0 - top, x1 - left, y1 - top), stream=doc.part.related_parts[embed_id].blob)
+        dpi = max(36, min(150, int(MAX_GROUP_IMAGE_PX / (width_pt / 72))))
+        return page.get_pixmap(dpi=dpi, alpha=True).tobytes("png"), width_pt, height_pt
+    except Exception:
+        return None
+
+
 def _furniture_key(element: Any, doc: docx.Document) -> str:
     """Identity of an element for repeat detection: its digit-normalized text
     plus the hashes of its images. Empty when the element carries neither."""
@@ -2893,15 +3136,12 @@ def _strip_running_furniture(doc: docx.Document, page_break_after: Set[Any], rep
         return 0
 
     edges: List[List[Tuple[Any, str]]] = []
-    sides: Dict[Any, str] = {}
+    page_keyed: List[List[Tuple[Any, str]]] = []
     for page in pages:
         keyed = [(el, _furniture_key(el, doc)) for el in page]
         keyed = [(el, key) for el, key in keyed if key]
         head, tail = keyed[:_FURNITURE_EDGE_ELEMENTS], keyed[-_FURNITURE_EDGE_ELEMENTS:]
-        for el, _ in head:
-            sides[el] = "header"
-        for el, _ in tail:
-            sides.setdefault(el, "footer")
+        page_keyed.append(keyed)
         edges.append(head + [item for item in tail if item not in head])
 
     page_counts: Dict[str, int] = {}
@@ -2912,16 +3152,52 @@ def _strip_running_furniture(doc: docx.Document, page_break_after: Set[Any], rep
     min_pages = max(3, int(len(pages) * _FURNITURE_MIN_PAGE_SHARE + 0.999))
     furniture = {key for key, count in page_counts.items() if count >= min_pages}
 
+    # pdf2docx sometimes merges a page's footer lines into one table, their words interleaved, while
+    # the other pages keep them as separate elements, so that page's footer matches no key. An edge
+    # element of six or more words that are (all but a couple) words of the repeating furniture is
+    # the same footer, merged. Real body text always has words outside that small vocabulary.
+    furniture_words = {word for key in furniture for word in key.split("|", 1)[0].split() if len(key.split("|", 1)[0]) >= 20}
+
+    def is_merged_furniture(key: str) -> bool:
+        words = key.split("|", 1)[0].split()
+        if len(words) < 6 or not furniture_words:
+            return False
+        outside = sum(1 for word in words if word not in furniture_words)
+        return outside <= max(2, len(words) // 10)
+
+    def is_furniture(key: str) -> bool:
+        return key in furniture or is_merged_furniture(key)
+
+    # Furniture before a page's first body element is a header and after its last body element a
+    # footer. (Position alone fails on short pages: a footer can sit in the top half of one.) A page
+    # with no body element at all is left to the vote below.
+    sides: Dict[Any, str] = {}
+    for keyed in page_keyed:
+        body = [index for index, (_el, key) in enumerate(keyed) if not is_furniture(key)]
+        if not body:
+            continue
+        for index, (el, key) in enumerate(keyed):
+            if is_furniture(key):
+                sides[el] = "header" if index < body[0] else ("footer" if index > body[-1] else ("header" if index < len(keyed) / 2 else "footer"))
+
+    # One side per repeating line: the side it takes on most pages.
+    votes: Dict[str, Dict[str, int]] = {}
+    for edge in edges:
+        for element, key in edge:
+            if element in sides:
+                votes.setdefault(key, {"header": 0, "footer": 0})[sides[element]] += 1
+    key_side = {key: ("header" if counts["header"] > counts["footer"] else "footer") for key, counts in votes.items()}
+
     removed = 0
     for page_index, edge in enumerate(edges):
         for element, key in edge:
-            if key not in furniture or element.getparent() is None:
+            if (key not in furniture and not is_merged_furniture(key)) or element.getparent() is None:
                 continue
             if report is not None:
                 jc = element.find(qn("w:pPr") + "/" + qn("w:jc"))
                 report.setdefault("items", []).append({
                     "page": page_index,
-                    "side": sides.get(element, "footer"),
+                    "side": key_side.get(key, sides.get(element, "footer")) if key in furniture else sides.get(element, "footer"),
                     "key": key,
                     "text": "".join(node.text or "" for node in element.iter(qn("w:t"))).strip(),
                     "jc": jc.get(qn("w:val")) if jc is not None else None,
@@ -3197,6 +3473,7 @@ def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     _infer_heading_styles(doc, page_break_after)
     _snap_right_tabs(doc)
     _realign_from_pdf(doc, file_bytes, page_break_after)
+    _merge_picture_rows_from_pdf(doc, file_bytes, page_break_after)
     doc.part._is_pdf_import = True  # pdf2docx leaves cell padding at zero; see _table_cell_margins
     result = _docx_document_to_result(doc, page_break_after, compress_images=True)
     _furniture_to_layout(result, furniture, page_count)

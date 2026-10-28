@@ -212,3 +212,44 @@ def _save(document, path: Path) -> Path:
     """Save a python-docx document and return its path."""
     document.save(path)
     return path
+
+
+def picture_x(browser, tmp_path: Path, configure) -> int:
+    """Import a DOCX with one 2in picture paragraph (`configure(paragraph)` sets alignment/indent) and return its x."""
+    document = docx.Document()
+    for section in document.sections:
+        section.left_margin = section.right_margin = Inches(1)
+    paragraph = document.add_paragraph()
+    configure(paragraph)
+    ok, encoded = cv2.imencode(".png", np.full((60, 120, 3), 160, dtype=np.uint8))
+    assert ok
+    paragraph.add_run().add_picture(io.BytesIO(encoded.tobytes()), width=Inches(2), height=Inches(1))
+    path = tmp_path / "placed.docx"
+    document.save(path)
+    page = open_in_harness(browser, path)
+    x = page.evaluate("() => { const pm = document.querySelector('.ProseMirror'); return Math.round(document.querySelector('.ProseMirror img').getBoundingClientRect().left - pm.getBoundingClientRect().left); }")
+    page.context.close()
+    return x
+
+
+def test_picture_in_a_left_aligned_paragraph_is_drawn_at_the_left_margin(browser, tmp_path: Path) -> None:
+    assert abs(picture_x(browser, tmp_path, lambda p: None) - 96) <= 2  # 1in margin; it used to be centred
+
+
+def test_picture_in_a_right_aligned_paragraph_is_drawn_at_the_right_margin(browser, tmp_path: Path) -> None:
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    x = picture_x(browser, tmp_path, lambda p: setattr(p, "alignment", WD_ALIGN_PARAGRAPH.RIGHT))
+    assert abs(x - (816 - 96 - 192)) <= 2  # page - margin - 2in picture
+
+
+def test_picture_in_an_indented_paragraph_is_drawn_at_the_indent(browser, tmp_path: Path) -> None:
+    x = picture_x(browser, tmp_path, lambda p: setattr(p.paragraph_format, "left_indent", Inches(1)))
+    assert abs(x - (96 + 96)) <= 2
+
+
+def test_picture_in_a_centered_paragraph_stays_centered(browser, tmp_path: Path) -> None:
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    x = picture_x(browser, tmp_path, lambda p: setattr(p, "alignment", WD_ALIGN_PARAGRAPH.CENTER))
+    assert abs(x - (96 + (624 - 192) // 2)) <= 2
