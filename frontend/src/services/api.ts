@@ -599,6 +599,46 @@ export interface OriginalityPassage {
 export interface OriginalityResult {
   overlap_percent: number
   passages: OriginalityPassage[]
+  /** How many of the person's other documents were compared; 0 means there was nothing to compare with. */
+  compared_documents?: number
+}
+
+/** Where a published text comes from. */
+export type WebSourceKind = 'wikipedia' | 'arxiv' | 'openalex' | 'web'
+
+/** One paragraph of the document that shares text with a published source. */
+export interface WebOriginalityPassage {
+  paragraph_index: number
+  text: string
+  /** Share of the paragraph found in the source, 0-100. */
+  similarity: number
+  match_type: 'verbatim' | 'partial'
+  source_url: string
+  source_title: string
+  source_kind: WebSourceKind
+  /** The matching stretch of the source as written there. */
+  source_excerpt: string
+}
+
+/** What happened with one place that was searched online. */
+export interface WebProviderReport {
+  name: string
+  kind: WebSourceKind
+  status: 'searched' | 'not_configured' | 'failed'
+  message?: string
+}
+
+/** Result of checking a document against the web and scholarly sources. */
+export interface WebOriginalityResult {
+  overlap_percent: number
+  passages: WebOriginalityPassage[]
+  providers: WebProviderReport[]
+  /** The texts the document was compared with. */
+  sources: { url: string; title: string; kind: WebSourceKind; matched: boolean }[]
+  /** How many passages of the document were searched for. */
+  queries: number
+  truncated: boolean
+  note?: string
 }
 
 /** One judge's answer on a passage, so the student sees which model said what. */
@@ -1537,6 +1577,14 @@ export const api = {
     /** Compare a document with the student's own other documents (nothing stored). */
     selfCheck: async (documentId: string): Promise<OriginalityResult> => {
       return fetchAPI<OriginalityResult>('plagiarism/self-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId }),
+      })
+    },
+    /** Search Wikipedia, scholarly sources and (when set up) the web for text copied into a document (nothing stored). */
+    webCheck: async (documentId: string): Promise<WebOriginalityResult> => {
+      return fetchAPI<WebOriginalityResult>('plagiarism/web-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documentId }),
