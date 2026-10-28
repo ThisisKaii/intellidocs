@@ -147,21 +147,61 @@ export function parseOpenAlexWorks(json: unknown): SourceCandidate[] {
   })
 }
 
-/** OpenAlex: scholarly works; needs the free OPENALEX_API_KEY. Abstracts only. */
+/** OpenAlex: scholarly works. Free without key via polite pool; optional key for higher limits. */
 function openAlexProvider(env: NodeJS.ProcessEnv): SearchProvider {
   const headers = { 'User-Agent': userAgent(env), Accept: 'application/json' }
   return {
     name: 'OpenAlex',
     kind: 'openalex',
-    isConfigured: () => Boolean(env.OPENALEX_API_KEY),
+    isConfigured: () => true,
     async search(phrase) {
-      const url = `https://api.openalex.org/works?search=${encodeURIComponent(exact(phrase))}&per_page=3&select=id,doi,title,abstract_inverted_index&api_key=${encodeURIComponent(env.OPENALEX_API_KEY ?? '')}`
+      const apiKeyParam = env.OPENALEX_API_KEY ? `&api_key=${encodeURIComponent(env.OPENALEX_API_KEY)}` : ''
+      const url = `https://api.openalex.org/works?search=${encodeURIComponent(exact(phrase))}&per_page=3&select=id,doi,title,abstract_inverted_index${apiKeyParam}`
       return parseOpenAlexWorks(JSON.parse(await getText(url, headers)))
     },
   }
 }
 
-// ── Brave web search ─────────────────────────────────────────────────────────
+// ── Web search (DuckDuckGo & Brave) ──────────────────────────────────────────
+
+/** Parse result links and titles from DuckDuckGo HTML search. */
+export function parseDuckDuckGoResults(html: string): SourceCandidate[] {
+  const results: SourceCandidate[] = []
+  const re = /<h2 class="result__title">[\s\S]*?<a[^>]*href="[^"]*uddg=([^&"']+)[\s\S]*?>([\s\S]*?)<\/a>/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html)) !== null) {
+    try {
+      const url = decodeURIComponent(m[1])
+      const title = m[2].replace(/<[^>]+>/g, '').trim()
+      if (url.startsWith('http') && !results.some((r) => r.url === url)) {
+        results.push({ url, title: title || url, kind: 'web' })
+      }
+    } catch {
+      // skip malformed url
+    }
+  }
+  return results
+}
+
+/** Free keyless DuckDuckGo web search: extracts links and crawls pages directly. */
+function duckDuckGoProvider(env: NodeJS.ProcessEnv): SearchProvider {
+  return {
+    name: 'Web (DuckDuckGo)',
+    kind: 'web',
+    isConfigured: () => true,
+    async search(phrase) {
+      const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(exact(phrase))}`
+      const html = await getText(url, {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      })
+      return parseDuckDuckGoResults(html).slice(0, 5)
+    },
+    async loadText(candidate) {
+      const html = await fetchPublicPage(candidate.url, { userAgent: userAgent(env) })
+      return html ? pageText(html) : null
+    },
+  }
+}
 
 /** The pages (link, title) in a Brave web search answer. */
 export function parseBraveResults(json: unknown): SourceCandidate[] {
@@ -191,5 +231,6 @@ function braveProvider(env: NodeJS.ProcessEnv): SearchProvider {
 
 /** Every place the online check can search, in the order they are tried. */
 export function getSearchProviders(env: NodeJS.ProcessEnv = process.env): SearchProvider[] {
-  return [wikipediaProvider(env), arxivProvider(env), openAlexProvider(env), braveProvider(env)]
+  const webProvider = env.BRAVE_SEARCH_API_KEY ? braveProvider(env) : duckDuckGoProvider(env)
+  return [wikipediaProvider(env), arxivProvider(env), openAlexProvider(env), webProvider]
 }

@@ -3,6 +3,7 @@ import {
   getSearchProviders,
   parseArxivFeed,
   parseBraveResults,
+  parseDuckDuckGoResults,
   parseOpenAlexWorks,
   parseWikipediaExtract,
   parseWikipediaSearch,
@@ -45,18 +46,31 @@ describe('parsers', () => {
     ])
     expect(parseBraveResults({})).toEqual([])
   })
+
+  it('reads DuckDuckGo HTML results', () => {
+    const html = `<h2 class="result__title"><a class="result__url" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage">Example <b>Title</b></a></h2>`
+    expect(parseDuckDuckGoResults(html)).toEqual([
+      { url: 'https://example.com/page', title: 'Example Title', kind: 'web' },
+    ])
+    expect(parseDuckDuckGoResults('')).toEqual([])
+  })
 })
 
 describe('getSearchProviders', () => {
-  it('always has the free keyless sources and only enables keyed ones when their key is set', () => {
+  it('provides keyless sources by default and switches web to Brave when configured', () => {
     const bare = getSearchProviders({})
     expect(bare.map((p) => [p.name, p.isConfigured()])).toEqual([
       ['Wikipedia', true],
       ['arXiv', true],
-      ['OpenAlex', false],
-      ['Web (Brave Search)', false],
+      ['OpenAlex', true],
+      ['Web (DuckDuckGo)', true],
     ])
-    const keyed = getSearchProviders({ OPENALEX_API_KEY: 'k1', BRAVE_SEARCH_API_KEY: 'k2' })
-    expect(keyed.every((p) => p.isConfigured())).toBe(true)
+    const keyed = getSearchProviders({ BRAVE_SEARCH_API_KEY: 'k2' })
+    expect(keyed.map((p) => [p.name, p.isConfigured()])).toEqual([
+      ['Wikipedia', true],
+      ['arXiv', true],
+      ['OpenAlex', true],
+      ['Web (Brave Search)', true],
+    ])
   })
 })
