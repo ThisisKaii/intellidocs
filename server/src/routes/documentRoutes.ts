@@ -2,9 +2,12 @@ import { Router } from 'express'
 import multer from 'multer'
 import * as documentController from '../controllers/documentController'
 import * as shareController from '../controllers/shareController'
-import { validateBody, validateQuery } from '../middleware/validate'
+import * as documentOpenController from '../controllers/documentOpenController'
+import { validateBody, validateParams, validateQuery } from '../middleware/validate'
 import {
   createDocumentSchema,
+  documentIdParamSchema,
+  joinCodeSchema,
   updateDocumentSchema,
 } from '../../schemas/documentSchemas'
 import { importQuerySchema } from '../../schemas/importSchemas'
@@ -53,6 +56,10 @@ const imageUpload = multer({
 router.get('/', documentController.getAllDocuments)
 router.get('/shared', documentController.getSharedDocuments)
 router.get('/trash', documentController.getTrashDocuments)
+/** Documents opened in the last 7 days, most recently opened first. Must be before /:id */
+router.get('/recent', documentOpenController.listRecent)
+/** Open someone's document with its short share code. Must be before /:id */
+router.post('/join-code', validateBody(joinCodeSchema), shareController.joinWithCode)
 
 router.post('/', validateBody(createDocumentSchema), documentController.createDocument)
 
@@ -65,6 +72,9 @@ router.get('/imports/:jobId', documentController.getImportJobStatus)
 
 /** Upload an editor image and get back its public URL. Must be before /:id */
 router.post('/images', imageUpload.single('image'), documentController.uploadImage)
+
+/** The caller just opened this document (feeds "Recent"). */
+router.post('/:id/opened', validateParams(documentIdParamSchema), documentOpenController.markOpened)
 
 router.get('/:id', documentController.getDocument)
 router.put('/:id', validateBody(updateDocumentSchema), documentController.updateDocument)

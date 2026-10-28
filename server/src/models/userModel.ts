@@ -39,6 +39,17 @@ export async function updateOwnProfile(
 }
 
 /**
+ * Store (or clear, with null) the link to a user's profile photo in Supabase Auth's
+ * user_metadata, next to the display name. Returns false if Supabase refused the update.
+ */
+export async function setOwnAvatarUrl(userId: string, avatarUrl: string | null): Promise<boolean> {
+  const { data: existing } = await supabase.auth.admin.getUserById(userId)
+  const metadata = { ...(existing?.user?.user_metadata ?? {}), avatar_url: avatarUrl }
+  const { error } = await supabase.auth.admin.updateUserById(userId, { user_metadata: metadata })
+  return !error
+}
+
+/**
  * Read the stored size of a user's active (non-trashed) documents from the
  * `user_storage_bytes` database function and resolve the account quota from
  * their role. Returns null if the profile is missing.

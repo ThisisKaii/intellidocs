@@ -32,25 +32,37 @@ function hasPasswordLogin(providers: unknown): boolean {
 /**
  * Change a user's password. Accounts that sign in with a password must prove
  * they know the current one; Google-only accounts are setting their first
- * password, so there is nothing to prove.
+ * password, so there is nothing to prove. When the caller's session token is given, every
+ * other signed-in device is signed out afterwards (this session stays), so a stolen old
+ * password stops working everywhere.
  */
 export async function changePassword(
   userId: string,
   email: string,
   currentPassword: string | undefined,
   newPassword: string,
+  accessToken?: string,
 ): Promise<void> {
   const { data: found, error: lookupError } = await supabase.auth.admin.getUserById(userId)
   if (lookupError || !found?.user) throw failure(404, 'Account not found')
 
   if (hasPasswordLogin(found.user.app_metadata?.providers)) {
     if (!currentPassword) throw failure(400, 'Enter your current password')
+    if (currentPassword === newPassword) throw failure(400, 'Choose a new password that is different from the current one')
     const { error } = await supabase.auth.signInWithPassword({ email, password: currentPassword })
     if (error) throw failure(400, 'Your current password is not correct')
   }
 
   const { error } = await supabase.auth.admin.updateUserById(userId, { password: newPassword })
   if (error) throw failure(400, error.message)
+
+  if (accessToken) {
+    try {
+      await supabase.auth.admin.signOut(accessToken, 'others')
+    } catch {
+      // The password is already changed; failing to end other sessions must not undo that.
+    }
+  }
 }
 
 /** Read a user's editor preferences (null when they never saved any). */

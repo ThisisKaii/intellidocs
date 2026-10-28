@@ -4,11 +4,12 @@ import { changePassword, deleteAccount, getEditorPreferences, setEditorPreferenc
 const state: {
   providers: string[]
   signInError: boolean
+  signOutFails: boolean
   role: string
   adminCount: number
   settingsValue: unknown
   calls: string[]
-} = { providers: ['email'], signInError: false, role: 'student', adminCount: 2, settingsValue: null, calls: [] }
+} = { providers: ['email'], signInError: false, signOutFails: false, role: 'student', adminCount: 2, settingsValue: null, calls: [] }
 
 /** A chainable query for one table; deletes and upserts are recorded. */
 function makeQuery(table: string): Record<string, unknown> {
@@ -42,6 +43,11 @@ jest.mock('@supabase/supabase-js', () => ({
         getUserById: jest.fn(async () => ({ data: { user: { app_metadata: { providers: state.providers }, user_metadata: {} } }, error: null })),
         updateUserById: jest.fn(async () => { state.calls.push('update-password'); return { error: null } }),
         deleteUser: jest.fn(async () => { state.calls.push('delete-user'); return { error: null } }),
+        signOut: jest.fn(async (_token: string, scope: string) => {
+          if (state.signOutFails) throw new Error('sign-out unavailable')
+          state.calls.push(`sign-out:${scope}`)
+          return { error: null }
+        }),
       },
     },
   })),
@@ -51,6 +57,7 @@ describe('changePassword', () => {
   beforeEach(() => {
     state.providers = ['email']
     state.signInError = false
+    state.signOutFails = false
     state.calls = []
   })
 
@@ -67,6 +74,22 @@ describe('changePassword', () => {
 
   it('requires the current password for password accounts', async () => {
     await expect(changePassword('u1', 'a@b.c', undefined, 'new-password-1')).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('signs out the other devices but not this one after a change', async () => {
+    await changePassword('u1', 'a@b.c', 'old-password', 'new-password-1', 'jwt')
+    expect(state.calls).toContain('sign-out:others')
+  })
+
+  it('keeps the change when ending the other sessions fails', async () => {
+    state.signOutFails = true
+    await expect(changePassword('u1', 'a@b.c', 'old-password', 'new-password-1', 'jwt')).resolves.toBeUndefined()
+    expect(state.calls).toContain('update-password')
+  })
+
+  it('refuses a new password equal to the current one', async () => {
+    await expect(changePassword('u1', 'a@b.c', 'same-password', 'same-password')).rejects.toMatchObject({ status: 400 })
+    expect(state.calls).not.toContain('update-password')
   })
 
   it('lets a Google-only account set its first password without one', async () => {
