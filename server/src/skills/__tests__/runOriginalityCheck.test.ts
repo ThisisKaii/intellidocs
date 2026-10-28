@@ -28,6 +28,7 @@ describe('runOriginalityCheck', () => {
       peers: [{ documentId: 'b', title: 'Beta', text: '<p>Beta</p>' }],
     })
     expect(result.overlap_percent).toBe(12.5)
+    expect(result.compared_documents).toBe(1)
   })
 
   it('skips the ML call when there is nothing to compare against', async () => {
@@ -37,6 +38,6 @@ describe('runOriginalityCheck', () => {
     })
 
     expect(mockedRequest).not.toHaveBeenCalled()
-    expect(result).toEqual({ overlap_percent: 0, passages: [] })
+    expect(result).toEqual({ overlap_percent: 0, passages: [], compared_documents: 0 })
   })
 })

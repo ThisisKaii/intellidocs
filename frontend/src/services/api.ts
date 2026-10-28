@@ -25,6 +25,8 @@ interface User {
   id: string
   email: string
   displayName?: string | null
+  /** Link to the profile photo, or null when none is set. */
+  avatarUrl?: string | null
   role?: 'student' | 'professor' | 'admin'
   verificationStatus?: 'pending' | 'approved' | 'rejected'
   requestedRole?: 'student' | 'professor' | 'admin' | null
@@ -41,6 +43,17 @@ export interface MarginValues {
   bottom: number
   left: number
   right: number
+}
+
+export interface ReviewRecord {
+  id: string
+  user_id: string
+  user_email: string | null
+  message: string
+  page_path: string | null
+  image_urls: string[]
+  user_agent: string | null
+  created_at: string
 }
 
 export interface DocumentRecord {
@@ -72,6 +85,8 @@ export interface DocumentRecord {
   share_token?: string | null
   share_expires_at?: string | null
   shared_by?: string
+  /** When the caller last opened this document; set only on items of the "Recent" list. */
+  last_opened_at?: string
   created_at: string
   updated_at: string
 }
@@ -357,6 +372,17 @@ export interface DocumentShareLink {
   share_token: string | null
   share_permission: SharePermission
   share_expires_at: string | null
+  /** Short code (stored as 8 characters) that opens the document like the link does; null when unavailable. */
+  share_code?: string | null
+}
+
+/** What joining a document with a share code did. */
+export interface JoinCodeResult {
+  documentId: string
+  title: string
+  permission: SharePermission
+  /** True when the caller already had access, so nothing new was added. */
+  alreadyShared: boolean
 }
 
 export type SharePermission = 'view' | 'comment' | 'edit'
@@ -573,6 +599,46 @@ export interface OriginalityPassage {
 export interface OriginalityResult {
   overlap_percent: number
   passages: OriginalityPassage[]
+  /** How many of the person's other documents were compared; 0 means there was nothing to compare with. */
+  compared_documents?: number
+}
+
+/** Where a published text comes from. */
+export type WebSourceKind = 'wikipedia' | 'arxiv' | 'openalex' | 'web'
+
+/** One paragraph of the document that shares text with a published source. */
+export interface WebOriginalityPassage {
+  paragraph_index: number
+  text: string
+  /** Share of the paragraph found in the source, 0-100. */
+  similarity: number
+  match_type: 'verbatim' | 'partial'
+  source_url: string
+  source_title: string
+  source_kind: WebSourceKind
+  /** The matching stretch of the source as written there. */
+  source_excerpt: string
+}
+
+/** What happened with one place that was searched online. */
+export interface WebProviderReport {
+  name: string
+  kind: WebSourceKind
+  status: 'searched' | 'not_configured' | 'failed'
+  message?: string
+}
+
+/** Result of checking a document against the web and scholarly sources. */
+export interface WebOriginalityResult {
+  overlap_percent: number
+  passages: WebOriginalityPassage[]
+  providers: WebProviderReport[]
+  /** The texts the document was compared with. */
+  sources: { url: string; title: string; kind: WebSourceKind; matched: boolean }[]
+  /** How many passages of the document were searched for. */
+  queries: number
+  truncated: boolean
+  note?: string
 }
 
 /** One judge's answer on a passage, so the student sees which model said what. */
@@ -797,6 +863,18 @@ export const api = {
     return fetchAPI<{ status: string; message: string }>('health')
   },
 
+  /**
+   * Wake the checking service ahead of the first grammar request. The readiness probe pings
+   * it, so a sleeping free-tier host starts up while the document loads. The answer is ignored.
+   */
+  warmServices: async (): Promise<void> => {
+    try {
+      await fetch(`${API_BASE_URL}/health/ready`)
+    } catch {
+      // Warming is best effort; the real request reports any problem.
+    }
+  },
+
   auth: {
     login: async (email: string, password: string): Promise<LoginResponse> => {
       return fetchAPI<LoginResponse>('auth/login', {
@@ -858,6 +936,16 @@ export const api = {
         body: JSON.stringify({ display_name: displayName }),
       })
     },
+    /** Upload a new profile photo (PNG, JPG or WebP up to 2 MB); resolves with its link. */
+    uploadAvatar: async (file: File): Promise<{ avatarUrl: string; message: string }> => {
+      const formData = new FormData()
+      formData.append('avatar', file)
+      return fetchAPI<{ avatarUrl: string; message: string }>('auth/profile/avatar', { method: 'POST', body: formData })
+    },
+    /** Remove the profile photo. */
+    removeAvatar: async (): Promise<{ avatarUrl: null; message: string }> => {
+      return fetchAPI<{ avatarUrl: null; message: string }>('auth/profile/avatar', { method: 'DELETE' })
+    },
     /** Change the password. Password accounts must send the current one. */
     changePassword: async (newPassword: string, currentPassword?: string): Promise<{ message: string }> => {
       return fetchAPI<{ message: string }>('auth/password', {
@@ -898,6 +986,26 @@ export const api = {
     trash: async (): Promise<DocumentRecord[]> => {
       return fetchAPI<DocumentRecord[]>('documents/trash')
     },
+    /** Add the document behind a short share code to "Shared with me". */
+    joinWithCode: async (code: string): Promise<JoinCodeResult> => {
+      return fetchAPI<JoinCodeResult>('documents/join-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+    },
+    /** Documents opened in the last 7 days, most recently opened first. */
+    recent: async (): Promise<DocumentRecord[]> => {
+      return fetchAPI<DocumentRecord[]>('documents/recent')
+    },
+    /** Tell the server this document was just opened (feeds "Recent"). Never throws: it is best effort. */
+    markOpened: async (id: string): Promise<void> => {
+      try {
+        await fetchAPI<null>(`documents/${id}/opened`, { method: 'POST' })
+      } catch {
+        /* Recent is a convenience; failing to record an open must not disturb the editor. */
+      }
+    },
     share: async (documentId: string, email: string, permission: SharePermission): Promise<DocumentShare> => {
       return fetchAPI<DocumentShare>(`documents/${documentId}/shares`, {
         method: 'POST',
@@ -925,6 +1033,14 @@ export const api = {
     },
     createShareLink: async (documentId: string, permission: SharePermission, expiresAt: string | null = null): Promise<DocumentShareLink> => {
       return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission, expiresAt }),
+      })
+    },
+    /** Generate a new short code. An existing link is kept; without one a link is created too. */
+    generateShareCode: async (documentId: string, permission: SharePermission, expiresAt: string | null = null): Promise<DocumentShareLink> => {
+      return fetchAPI<DocumentShareLink>(`documents/${documentId}/share-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ permission, expiresAt }),
@@ -1040,6 +1156,20 @@ export const api = {
         body: formData,
       })
       return response.url
+    },
+  },
+
+  reviews: {
+    /** Local development only: every review, newest first, with the sender's email. */
+    list: async (): Promise<ReviewRecord[]> => fetchAPI<ReviewRecord[]>('dev/reviews'),
+    /** Send a tester review: text, the current page path and up to 5 screenshots. */
+    submit: async (message: string, pagePath: string, images: File[]): Promise<{ id: string }> => {
+      const formData = new FormData()
+      formData.append('message', message)
+      formData.append('pagePath', pagePath)
+      images.forEach((image) => formData.append('images', image))
+      // Do NOT set Content-Type — browser sets the multipart boundary automatically
+      return fetchAPI<{ id: string }>('reviews', { method: 'POST', body: formData })
     },
   },
 
@@ -1447,6 +1577,14 @@ export const api = {
     /** Compare a document with the student's own other documents (nothing stored). */
     selfCheck: async (documentId: string): Promise<OriginalityResult> => {
       return fetchAPI<OriginalityResult>('plagiarism/self-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId }),
+      })
+    },
+    /** Search Wikipedia, scholarly sources and (when set up) the web for text copied into a document (nothing stored). */
+    webCheck: async (documentId: string): Promise<WebOriginalityResult> => {
+      return fetchAPI<WebOriginalityResult>('plagiarism/web-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documentId }),

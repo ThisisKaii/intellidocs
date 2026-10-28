@@ -53,6 +53,8 @@ export default function AuthCallback(): JSX.Element {
         {
           id: result.user.id,
           email: result.user.email,
+          displayName: result.user.displayName ?? null,
+          avatarUrl: result.user.avatarUrl ?? null,
           role: result.role,
           verificationStatus: result.verificationStatus,
           requestedRole: result.requestedRole ?? null,

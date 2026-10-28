@@ -7,6 +7,8 @@ import * as plagiarismModel from '../models/plagiarismModel'
 import type { PlagiarismScope, ScanDocument } from '../models/plagiarismModel'
 import { runCouncilScan } from '../skills/runCouncilScan'
 import { runOriginalityCheck } from '../skills/runOriginalityCheck'
+import { runWebOriginalityCheck } from '../skills/runWebOriginalityCheck'
+import { allowAttempt } from '../utils/attemptLimit'
 import { reviewOriginalityWithCouncil } from '../skills/reviewOriginalityWithCouncil'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 
@@ -128,6 +130,33 @@ export async function selfCheck(req: AuthenticatedRequest, res: Response): Promi
     res.json(result)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to check originality'
+    res.status(errorStatus(err)).json({ error: message })
+  }
+}
+
+/** Online checks one person may run per hour; each one uses a few searches from a limited free allowance. */
+const WEB_CHECKS_PER_HOUR = 10
+
+/** Compare the document with the web and scholarly sources; nothing is stored. */
+export async function webCheck(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const { documentId } = req.body as { documentId: string }
+    const document = await documentModel.getDocumentById(documentId, userId)
+
+    if (!(await allowAttempt(`web-check:${userId}`, WEB_CHECKS_PER_HOUR, 3600))) {
+      res.status(429).json({ error: `You can run ${WEB_CHECKS_PER_HOUR} online checks per hour. Try again later.` })
+      return
+    }
+
+    res.json(await runWebOriginalityCheck({ documentHtml: document.content }))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to check originality online'
     res.status(errorStatus(err)).json({ error: message })
   }
 }

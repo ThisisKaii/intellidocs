@@ -12,7 +12,13 @@ describe('grammarCheckSchema', () => {
       kind: 'paragraph',
       align: 'left',
       centered: false,
+      inCell: false,
     })
+  })
+
+  it('keeps the table-cell flag when the editor sends it', () => {
+    const parsed = grammarCheckSchema.parse({ blocks: [{ text: 'Members', inCell: true }] })
+    expect(parsed.blocks?.[0].inCell).toBe(true)
   })
 
   it('rejects an empty body and blank blocks', () => {

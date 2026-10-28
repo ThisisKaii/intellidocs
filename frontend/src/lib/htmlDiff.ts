@@ -47,3 +47,28 @@ export function diffWords(originalHtml: string, revisedHtml: string): DiffToken[
   while (j < m) out.push({ text: b[j++], type: 'add' })
   return out
 }
+
+/** Escape text so diff words are never re-parsed as markup. */
+function escapeDiffText(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * Word diff of a saved snapshot against the current document as safe HTML: words only in
+ * the current text are `diff-add`, words only in the snapshot are `diff-del`. Both inputs
+ * must be the full document HTML; comparing against a shortened summary would show
+ * everything past the cut-off as deleted.
+ */
+export function diffToHtml(snapshotHtml: string, currentHtml: string): string {
+  return diffWords(snapshotHtml, currentHtml)
+    .map((token) => {
+      if (token.type === 'add') return `<span class="diff-add">${escapeDiffText(token.text)}</span>`
+      if (token.type === 'del') return `<span class="diff-del">${escapeDiffText(token.text)}</span>`
+      return escapeDiffText(token.text)
+    })
+    .join(' ')
+}

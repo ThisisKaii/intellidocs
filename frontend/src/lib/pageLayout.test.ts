@@ -59,3 +59,25 @@ describe('sanitizeHeaderHtml', () => {
     expect(clean).toContain('{page}')
   })
 })
+
+describe('pictures in a header or footer text flow', () => {
+  const tall: PageLayoutData = {
+    sections: [section(0, { header: 'h', footer: 'f', header_distance: 48, footer_distance: 36 })],
+    parts: {
+      h: { flow: '<p><img src="https://x/logo.png" style="width:192px" /></p>', art: '<img src="https://x/bg.png" />' },
+      f: { flow: '<p><img src="https://x/banner.png" /></p>', art: '' },
+    },
+    repeat_art: '',
+    page_art: {},
+  }
+
+  it('caps them to the room inside the margin and leaves full-page art alone', () => {
+    const zones = pageZones(tall, { starts: [], pageCount: 1 }, 1)
+    const header = sanitizeHeaderHtml(zones.header)
+    expect(header).toContain('max-height:max(24px,calc(var(--rm-margin-top) - 48px))')
+    expect(header).toContain('object-fit:contain')
+    expect(header).toContain('width:192px')
+    expect(header.match(/max-height/g)).toHaveLength(1) // the art image is not capped
+    expect(sanitizeHeaderHtml(zones.footer)).toContain('calc(var(--rm-margin-bottom) - 36px)')
+  })
+})

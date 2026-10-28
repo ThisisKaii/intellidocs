@@ -16,6 +16,8 @@ import AuthCallback from './pages/AuthCallback'
 import DriveCallback from './pages/DriveCallback'
 import Privacy from './pages/Privacy'
 import DevEditorHarness from './pages/DevEditorHarness'
+import DevReviews from './pages/DevReviews'
+import ReviewButton from './components/ReviewButton'
 import './App.css'
 
 function App() {
@@ -32,6 +34,7 @@ function App() {
           {import.meta.env.DEV && (
             <Route path="/dev/editor-harness" element={<DevEditorHarness />} />
           )}
+          {import.meta.env.DEV && <Route path="/dev/reviews" element={<DevReviews />} />}
           <Route path="/" element={<Landing />} />
 
           <Route
@@ -101,6 +104,7 @@ function App() {
             }
           />
         </Routes>
+        <ReviewButton />
         </ImportProvider>
       </BrowserRouter>
     </AuthProvider>

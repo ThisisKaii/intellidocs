@@ -95,6 +95,7 @@ export async function login(req: Request, res: Response): Promise<void> {
         verificationStatus: profile?.verification_status ?? 'approved',
         requestedRole: await getRequestedRole(data.user.id),
         displayName: data.user.user_metadata?.display_name ?? null,
+        avatarUrl: data.user.user_metadata?.avatar_url ?? null,
       },
       session: data.session,
       message: 'Login successful',
@@ -159,6 +160,7 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
         email: user.email ?? '',
         displayName:
           user.user_metadata?.display_name ?? user.user_metadata?.full_name ?? null,
+        avatarUrl: user.user_metadata?.avatar_url ?? null,
       },
       role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'student',
       verificationStatus: profile?.verification_status ?? 'approved',
@@ -213,7 +215,8 @@ export async function changePassword(req: AuthenticatedRequest, res: Response): 
       return
     }
     const { currentPassword, newPassword } = req.body as ChangePasswordBody
-    await accountModel.changePassword(userId, req.user?.email ?? '', currentPassword, newPassword)
+    const accessToken = req.headers.authorization?.replace('Bearer ', '')
+    await accountModel.changePassword(userId, req.user?.email ?? '', currentPassword, newPassword, accessToken)
     res.status(200).json({ message: 'Password updated' })
   } catch (err) {
     const status = (err as { status?: number }).status

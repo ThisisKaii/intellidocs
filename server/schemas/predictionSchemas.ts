@@ -18,6 +18,8 @@ export const textBlockSchema = z.object({
   kind: z.enum(['paragraph', 'heading', 'listItem']).default('paragraph'),
   align: z.string().max(20).default('left'),
   centered: z.boolean().default(false),
+  /** True for text inside a table cell, where lines are values and labels, not sentences. */
+  inCell: z.boolean().default(false),
 })
 
 /**

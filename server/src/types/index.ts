@@ -42,6 +42,8 @@ export interface Document {
   content: string
   /** Short, sanitized content prefix for grid previews (migration 026). */
   preview_snippet?: string
+  /** When the caller last opened this document; set only by the "Recent" list (migration 034). */
+  last_opened_at?: string
   header_content: string
   footer_content: string
   show_header: boolean

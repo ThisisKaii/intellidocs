@@ -35,6 +35,7 @@ function Login(): JSX.Element {
         verificationStatus: response.user.verificationStatus,
         requestedRole: response.user.requestedRole ?? null,
         displayName: response.user.displayName ?? null,
+        avatarUrl: response.user.avatarUrl ?? null,
       },
       accessToken,
       refreshToken

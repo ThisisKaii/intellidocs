@@ -643,6 +643,20 @@ html {
   border-right: 1px solid var(--border);
 }
 
+/* An image's node-view root is a flex container (block formatting context). The paginator's
+   page/page-break elements are full-width floats, and such a box shrinks to nothing beside one,
+   so an image near a page bottom vanished. An explicit width moves it below the float instead. */
+.ProseMirror .intellidocs-image-root {
+  width: 100%;
+}
+
+/* An image taller than a page body fits on no page, and the paginator then adds pages forever
+   (hundreds a second, freezing the tab). Cap it to the body height; contain keeps the aspect. */
+.ProseMirror .intellidocs-image-root img {
+  max-height: calc(var(--rm-page-height) - var(--rm-margin-top) - var(--rm-margin-bottom) - 1px);
+  object-fit: contain;
+}
+
 /* ── Academic Images - Text Wrapping (Phase 3) ───────────────────────── */
 
 .academic-image {

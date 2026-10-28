@@ -1,5 +1,15 @@
 import { z } from 'zod'
 
+/** Body of "join with a share code": what the person typed (the controller normalises it). */
+export const joinCodeSchema = z.object({
+  code: z.string().trim().min(1, 'Enter a code').max(30, 'That code is too long'),
+})
+
+/** The `:id` of a document route. */
+export const documentIdParamSchema = z.object({
+  id: z.string().uuid('Invalid document id'),
+})
+
 /** Page-number style options for headers/footers. */
 export const pageNumberFormatSchema = z.enum(['none', 'number', 'roman'])
 

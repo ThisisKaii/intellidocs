@@ -118,7 +118,7 @@ import {
 } from './behaviorListener'
 import { ImageResizeBehaviorExtension } from './ImageResizeBehaviorExtension'
 import ImageOptionsToolbar, { type ImageWrapStyle } from './ImageOptionsToolbar'
-import { NodeSelection } from '@tiptap/pm/state'
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 /** Download document content as a standalone clean HTML file. */
@@ -623,7 +623,72 @@ function selectedImageNode(state: EditorState): ProseMirrorNode | null {
     : null
 }
 
+/** Key of the plugin that keeps an image's stored width within the text column. */
+const imageWidthCapKey = new PluginKey('intellidocs-image-width-cap')
+
+/**
+ * Width in px of the text column the editor is laid out with (page width minus both margins),
+ * read from the paginator's CSS variables. Null before the paginator has set them.
+ */
+function textColumnWidthPx(dom: HTMLElement): number | null {
+  const style = getComputedStyle(dom)
+  const pageWidth = parseFloat(style.getPropertyValue('--rm-page-width'))
+  const left = parseFloat(style.getPropertyValue('--rm-margin-left'))
+  const right = parseFloat(style.getPropertyValue('--rm-margin-right'))
+  const column = pageWidth - left - right
+  return Number.isFinite(column) && column > 0 ? Math.floor(column) : null
+}
+
 const CenteredImageResize = ImageResize.extend({
+  // An image is drawn no wider than the text column (its container cannot grow past it), but a
+  // drag past the margin used to keep storing the larger width: 1324px saved, 624px shown. Cap the
+  // stored width so what is saved is what is drawn. Loading a document (preventUpdate) is left
+  // alone, so merely opening one never rewrites it.
+  addProseMirrorPlugins() {
+    const editor = this.editor
+    // No `this.parent` spread: ImageResize defines no plugins, and AlignedImageResize inherits
+    // this method, so spreading the parent created the keyed plugin twice and the editor threw.
+    return [
+      new Plugin({
+        key: imageWidthCapKey,
+        appendTransaction(transactions, _oldState, newState) {
+          if (!transactions.some((tr) => tr.docChanged && !tr.getMeta('preventUpdate'))) return null
+          const column = textColumnWidthPx(editor.view.dom as HTMLElement)
+          if (column === null) return null
+          let capped = newState.tr
+          let changed = false
+          newState.doc.descendants((node, pos) => {
+            if (node.type.name !== 'imageResize') return
+            const containerStyle = typeof node.attrs.containerStyle === 'string' ? node.attrs.containerStyle : ''
+            const stored = readStyleWidth(containerStyle) ?? (typeof node.attrs.width === 'number' ? node.attrs.width : null)
+            if (stored === null || stored <= column) return
+            capped = capped.setNodeMarkup(pos, undefined, {
+              ...node.attrs,
+              width: column,
+              containerStyle: withImageWidth(containerStyle || imageContainerStyle('center', null), column),
+            })
+            changed = true
+          })
+          return changed ? capped : null
+        },
+      }),
+    ]
+  },
+
+  // The paginator's page and page-break elements are full-width floats. The resize
+  // library's node view root is a flex container, which cannot sit beside a float, so
+  // an image that fell where a break goes was squeezed to 0x0 and vanished. Tagging the
+  // root lets index.css give it an explicit width, which moves it below the float.
+  addNodeView() {
+    const createView = this.parent?.()
+    if (!createView) return null
+    return (props) => {
+      const view = createView(props)
+      if (view.dom instanceof HTMLElement) view.dom.classList.add('intellidocs-image-root')
+      return view
+    }
+  },
+
   addAttributes() {
     return {
       ...this.parent?.(),

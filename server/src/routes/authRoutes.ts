@@ -1,5 +1,7 @@
 import { Router } from 'express'
 import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getApplicationStatus, changePassword, deleteAccount, getUserStorage, getMe } from '../controllers/authController'
+import { uploadAvatar, deleteAvatar } from '../controllers/avatarController'
+import { avatarUpload } from '../middleware/avatarUpload'
 import { authMiddleware } from '../middleware/authMiddleware'
 import { authArcjet, signupArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
@@ -16,6 +18,10 @@ router.post('/google', authArcjet, validateBody(googleAuthSchema), googleAuth)
 
 /** Update the signed-in user's own profile (display name). */
 router.patch('/profile', authMiddleware, validateBody(updateProfileSchema), updateProfile)
+
+/** Upload or remove the signed-in user's profile photo (PNG/JPG/WebP, up to 2 MB). */
+router.post('/profile/avatar', authMiddleware, avatarUpload, uploadAvatar)
+router.delete('/profile/avatar', authMiddleware, deleteAvatar)
 
 /** Return the signed-in user's storage usage vs their account quota. */
 router.get('/storage', authMiddleware, getUserStorage)

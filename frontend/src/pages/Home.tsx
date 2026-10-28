@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useImports } from '@/context/ImportContext'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
-import { FileText, FolderIcon, GraduationCap, HardDrive, Menu, Plus, Search, Upload } from 'lucide-react'
+import { FileText, FolderIcon, GraduationCap, HardDrive, KeyRound, Menu, Plus, Search, Upload } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +16,7 @@ import UserMenu from '@/components/UserMenu'
 import DriveImportDialog from '@/components/DriveImportDialog'
 import FolderCreateModal from '@/components/drive/FolderCreateModal'
 import JoinClassModal from '@/components/drive/JoinClassModal'
+import JoinCodeModal from '@/components/drive/JoinCodeModal'
 import DocumentCreateModal from '@/components/DocumentCreateModal'
 import {
   buildBlueprintHtml,
@@ -27,9 +28,6 @@ import { supabase } from '@/lib/supabase'
 import { useDriveCache } from '@/hooks/useDriveCache'
 import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
 import { motion } from 'framer-motion'
-
-/** One day in milliseconds — used for the "Recent" filter. */
-const RECENT_MS = 7 * 24 * 60 * 60 * 1000
 
 interface ConfirmDialogState {
   title: string
@@ -88,9 +86,13 @@ export default function HomePage(): JSX.Element {
   const [allDocuments, setAllDocuments] = useState<DocumentRecord[]>([])
   const [sharedDocuments, setSharedDocuments] = useState<DocumentRecord[]>([])
   const [trashDocuments, setTrashDocuments] = useState<DocumentRecord[]>([])
+  // Documents opened in the last 7 days, most recently opened first (the server keeps the 7-day window).
+  const [recentDocuments, setRecentDocuments] = useState<DocumentRecord[]>([])
+  const [recentNote, setRecentNote] = useState<string>('')
   const [folderDocuments, setFolderDocuments] = useState<DocumentRecord[]>([])
   const [folders, setFolders] = useState<FolderRecord[]>([])
   const [joinClassOpen, setJoinClassOpen] = useState(false)
+  const [joinCodeOpen, setJoinCodeOpen] = useState(false)
   const [currentFolderChildren, setCurrentFolderChildren] = useState<FolderRecord[]>([])
   const [storageSummary, setStorageSummary] = useState<StorageSummary | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
@@ -189,6 +191,29 @@ export default function HomePage(): JSX.Element {
     loadFolder()
   }, [selection])
 
+  /* ── Recent: what the user opened this week. Loaded on arrival (for the sidebar count) and
+   *    whenever the Recent view opens, so a document opened a moment ago is first. ── */
+  useEffect(() => {
+    let cancelled = false
+    api.documents
+      .recent()
+      .then((docs) => {
+        if (cancelled) return
+        setRecentDocuments(docs)
+        setRecentNote('')
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setRecentDocuments([])
+        setRecentNote(
+          err instanceof Error && err.message.includes('migration 034')
+            ? 'Recent is being set up and will start filling as you open documents.'
+            : 'Recent could not be loaded right now.',
+        )
+      })
+    return () => { cancelled = true }
+  }, [selection.type])
+
   /* ── Load shared + trash documents when those views open ── */
   useEffect(() => {
     if (selection.type === 'shared') {
@@ -243,11 +268,9 @@ export default function HomePage(): JSX.Element {
       case 'folder':
         docs = folderDocuments
         break
-      case 'recent': {
-        const cutoff = Date.now() - RECENT_MS
-        docs = allDocuments.filter((d) => new Date(d.updated_at).getTime() > cutoff)
+      case 'recent':
+        docs = recentDocuments
         break
-      }
       case 'shared':
         docs = sharedDocuments
         break
@@ -258,14 +281,16 @@ export default function HomePage(): JSX.Element {
         docs = allDocuments
     }
 
-    const sorted = [...docs].sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    )
+    // Recent keeps the server's order (most recently OPENED first); every other list is newest-edited first.
+    const sorted =
+      selection.type === 'recent'
+        ? docs
+        : [...docs].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
 
     const q = query.trim().toLowerCase()
     if (!q) return sorted
     return sorted.filter((d) => d.title.toLowerCase().includes(q))
-  }, [allDocuments, folderDocuments, sharedDocuments, trashDocuments, selection, query])
+  }, [allDocuments, recentDocuments, folderDocuments, sharedDocuments, trashDocuments, selection, query])
 
   /** Folders to display in the main content area (top-level or sub-folders). */
   const visibleFolders = useMemo((): FolderRecord[] => {
@@ -707,7 +732,7 @@ export default function HomePage(): JSX.Element {
         onImportFromFile={() => setImportFileOpen(true)}
         onImportFromDrive={() => setDriveOpen(true)}
         documentCount={allDocuments.length}
-        recentCount={allDocuments.filter((d) => new Date(d.updated_at).getTime() > Date.now() - RECENT_MS).length}
+        recentCount={recentDocuments.length}
         trashCount={trashDocuments.length}
         folders={folders}
         isOpen={sidebarOpen}
@@ -801,10 +826,25 @@ export default function HomePage(): JSX.Element {
               <span className="text-xs font-medium text-muted-foreground bg-secondary rounded-full px-2.5 py-1 leading-none">
                 {visibleDocuments.length} {visibleDocuments.length === 1 ? 'document' : 'documents'}
               </span>
+              {selection.type === 'shared' && (
+                <button
+                  type="button"
+                  onClick={() => setJoinCodeOpen(true)}
+                  className="ml-auto inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer transition-colors hover:bg-secondary"
+                  style={{ fontFamily: 'inherit' }}
+                >
+                  <KeyRound className="size-4" /> Enter code
+                </button>
+              )}
             </div>
             {selection.type === 'trash' && (
               <p className="text-sm text-muted-foreground mt-1">
                 Items in trash are permanently deleted after you confirm. Restore anything you still need.
+              </p>
+            )}
+            {selection.type === 'recent' && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {recentNote || 'Documents you opened in the last 7 days. Opening one again moves it to the top.'}
               </p>
             )}
           </div>
@@ -847,6 +887,9 @@ export default function HomePage(): JSX.Element {
           )}
 
           <DriveTable
+            pageResetKey={`${selection.type}:${selection.folderId ?? ''}:${query}`}
+            emptyVariant={selection.type === 'shared' || selection.type === 'recent' || selection.type === 'trash' ? selection.type : 'default'}
+            onEnterCode={() => setJoinCodeOpen(true)}
             documents={visibleDocuments}
             folders={visibleFolders}
             loading={loading}
@@ -915,6 +958,18 @@ export default function HomePage(): JSX.Element {
         />
       )}
 
+      {joinCodeOpen && (
+        <JoinCodeModal
+          onClose={() => setJoinCodeOpen(false)}
+          onJoined={() => {
+            // The document is now shared with the user: show it in "Shared with me".
+            api.documents.shared().then(setSharedDocuments).catch(() => {})
+            handleSelectView({ type: 'shared' })
+          }}
+          onOpenDocument={(documentId) => navigate(`/document/${documentId}`)}
+        />
+      )}
+
       {/* New folder — personal workspace vs. student class folder */}
       {folderModalOpen && (
         <FolderCreateModal
@@ -974,6 +1029,9 @@ export default function HomePage(): JSX.Element {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setJoinClassOpen(true)} className="gap-2 py-2.5 cursor-pointer">
               <GraduationCap className="size-4 text-primary" /> Join a class
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setJoinCodeOpen(true)} className="gap-2 py-2.5 cursor-pointer">
+              <KeyRound className="size-4 text-primary" /> Enter a share code
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setImportFileOpen(true)} className="gap-2 py-2.5 cursor-pointer">
               <Upload className="size-4 text-primary" /> Import from file

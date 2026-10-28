@@ -12,6 +12,7 @@ import nltk
 
 from grammar.blocks import (
     continues_previous,
+    has_web_address,
     is_prose_block,
     normalize_blocks,
 )
@@ -33,8 +34,35 @@ SUBJECT_VERB_ERRORS = {
     "i is", "i has",
 }
 
-SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
+SENTENCE_END_PATTERN = re.compile(r"(?<=[.!?])\s+")
+DOTTED_ABBREVIATION_PATTERN = re.compile(r"[A-Za-z]{1,3}(?:\.[A-Za-z]{1,3})+\.?")
+# Words whose trailing period does not end a sentence ("et al.", "Fig. 3", "Dr. Santos").
+NON_TERMINAL_ABBREVIATIONS = frozenset({
+    "al", "etc", "vs", "fig", "figs", "eq", "eqs", "no", "vol", "pp", "ch", "sec",
+    "approx", "ca", "cf", "dr", "mr", "mrs", "ms", "prof", "st", "jr", "sr", "inc", "ltd",
+})
+# Words that open a clause and end the reach of the tense-shift search.
+CLAUSE_BOUNDARY_WORDS = frozenset({
+    "which", "that", "who", "whom", "whose", "because", "although",
+})
 WORD_PATTERN = re.compile(r"\b[\w']+\b", re.UNICODE)
+
+# A block this short and capitalised like a name is an address, title or label, not a sentence.
+LABEL_MAX_WORDS = 12
+# Lowercase words that may sit inside a Title Case name or title ("College of Computer Studies").
+LABEL_CONNECTORS = frozenset({"of", "and", "the", "for", "in", "on", "at", "to", "a", "an", "de", "la", "del", "y", "&"})
+
+# A line this long reads as a sentence; a shorter one needs a verb to count as one.
+SENTENCE_MIN_WORDS = 6
+SHORT_PHRASE_MAX_WORDS = 3
+# Helping and linking verbs: with one of these even a short line is a sentence ("Data is stored").
+AUXILIARY_VERBS = frozenset({
+    "is", "are", "was", "were", "be", "been", "being", "am",
+    "has", "have", "had", "do", "does", "did",
+    "will", "would", "can", "could", "shall", "should", "may", "might", "must",
+})
+# NLTK tags for a verb that can head a sentence.
+VERB_TAGS = frozenset({"VB", "VBD", "VBP", "VBZ", "MD"})
 
 ACADEMIC_KEYWORDS = frozenset({
     "abstract", "introduction", "methodology", "literature review",
@@ -351,6 +379,32 @@ def detect_subject_verb_mismatch(text: str) -> list[dict[str, str]]:
     return issues
 
 
+def ends_with_abbreviation(segment: str) -> bool:
+    """Return True when the segment's last word is an abbreviation, initial or dotted acronym."""
+    words = segment.split()
+    if not words or not words[-1].endswith("."):
+        return False
+    last_word = words[-1].lstrip("([{\"'“‘")
+    core = last_word[:-1].lower()
+    return (
+        core in NON_TERMINAL_ABBREVIATIONS
+        or (len(core) == 1 and core.isalpha())
+        or bool(DOTTED_ABBREVIATION_PATTERN.fullmatch(last_word))
+    )
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split text into sentences without breaking on abbreviations or line wraps."""
+    pieces = SENTENCE_END_PATTERN.split(" ".join(text.split()))
+    sentences: list[str] = []
+    for piece in pieces:
+        if sentences and ends_with_abbreviation(sentences[-1]):
+            sentences[-1] = f"{sentences[-1]} {piece}"
+        else:
+            sentences.append(piece)
+    return [sentence.strip() for sentence in sentences]
+
+
 def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
     """Detect sentence capitalization and punctuation as grouped issues."""
     issues: list[dict[str, str]] = []
@@ -358,7 +412,7 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
     if not normalized:
         return issues
 
-    sentences = [segment.strip() for segment in SENTENCE_SPLIT_PATTERN.split(normalized)]
+    sentences = split_sentences(normalized)
     if not sentences:
         sentences = [normalized]
 
@@ -368,6 +422,10 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
 
     for sentence in sentences:
         if not sentence:
+            continue
+
+        # A segment that opens with a number ("3 for details") is a continuation.
+        if sentence.lstrip("([{\"'“‘ ")[:1].isdigit():
             continue
 
         first_alpha = next((char for char in sentence if char.isalpha()), "")
@@ -459,7 +517,8 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
         w2_lower = w2.lower()
 
         # Singular subject + Plural/Base Verb
-        if (t1 in {"NN", "NNP"} or (t1 == "PRP" and w1_lower in {"he", "she", "it"})) and (t2 in {"VBP", "VB"}):
+        # NLTK tags a lowercase "i" as a noun; "i think" is not a singular subject.
+        if ((t1 in {"NN", "NNP"} and w1_lower != "i") or (t1 == "PRP" and w1_lower in {"he", "she", "it"})) and (t2 in {"VBP", "VB"}):
             if w2_lower in VERB_TO_SINGULAR:
                 sug_verb = VERB_TO_SINGULAR[w2_lower]
                 if w2.istitle():
@@ -498,7 +557,7 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
             v1_info = None
             for j in range(cc_idx - 1, max(-1, cc_idx - 9), -1):
                 w_j, t_j = tagged[j]
-                if w_j in {".", ";", "?", "!"} or t_j == "CC":
+                if w_j in {".", ";", "?", "!", ","} or t_j == "CC" or w_j.lower() in CLAUSE_BOUNDARY_WORDS:
                     break
                 if is_verb(t_j):
                     v1_info = (w_j, t_j, j)
@@ -508,7 +567,7 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
             v2_info = None
             for j in range(cc_idx + 1, min(len(tagged), cc_idx + 9)):
                 w_j, t_j = tagged[j]
-                if w_j in {".", ";", "?", "!"} or t_j == "CC":
+                if w_j in {".", ";", "?", "!", ","} or t_j == "CC" or w_j.lower() in CLAUSE_BOUNDARY_WORDS:
                     break
                 if is_verb(t_j):
                     v2_info = (w_j, t_j, j)
@@ -565,12 +624,63 @@ def dedupe_issues(issues: list[dict[str, str]]) -> list[dict[str, str]]:
     return deduped
 
 
+def has_sentence_evidence(text: str) -> bool:
+    """Return true when the text reads as a sentence rather than a noun phrase or a label.
+
+    A line of six or more words is treated as a sentence. A shorter one needs a helping verb
+    ("Data is stored"), or, at four or five words, a verb after its first word as tagged by NLTK
+    ("Students submit their drafts"). Up to three words with no helping verb ("Group name",
+    "Date submitted") is a label. If tagging fails the line is given the benefit of the doubt.
+    """
+    words = text.split()
+    if len(words) >= SENTENCE_MIN_WORDS:
+        return True
+    lowered = {word.strip(".,;:!?()[]\"'“”‘’").lower() for word in words}
+    if lowered & AUXILIARY_VERBS:
+        return True
+    if len(words) <= SHORT_PHRASE_MAX_WORDS:
+        return False
+    try:
+        tagged = nltk.pos_tag(nltk.word_tokenize(text))
+    except Exception:
+        return True
+    return any(tag in VERB_TAGS for _, tag in tagged[1:])
+
+
+def looks_like_label(text: str) -> bool:
+    """Return true for a name, number, address, web address, title or caption fragment: not a sentence.
+
+    Text boxes, table cells and title blocks hold lines like "Juan A. Dela Cruz", "Group name", "2",
+    "www.deped.gov.ph" or "Room 102, Rizal Building"; telling the writer to capitalise or end them
+    with a period is wrong. A line counts when it has no letters at all, or is short and is a web
+    address, ends with a colon, is all capitals or has every word capitalised (small connectors like
+    "of" aside), or when it shows no sign of being a sentence (see has_sentence_evidence). Ordinary
+    sentences have lowercase words and a verb, so they are never taken for labels.
+    """
+    stripped = text.strip()
+    words = stripped.split()
+    if not words:
+        return False
+    if not any(char.isalpha() for char in stripped):
+        return True
+    if len(words) <= LABEL_MAX_WORDS:
+        if stripped.endswith(":") or has_web_address(stripped):
+            return True
+        lettered = [word for word in words if any(char.isalpha() for char in word)]
+        if stripped.isupper() or all(
+            word[0].isupper() or word.lower() in LABEL_CONNECTORS for word in lettered if word[0].isalpha()
+        ):
+            return True
+    return not has_sentence_evidence(stripped)
+
+
 def detect_issues(text: str, check_boundaries: bool = True) -> list[dict[str, str]]:
     """Run the baseline rule-based grammar checks on one block of text.
 
     Academic structural blocks (chapter headings, numbered sections, etc.)
-    bypass sentence boundary and fragment checks. Callers pass
-    check_boundaries=False for lines that continue the block above.
+    bypass sentence boundary and fragment checks, and so do names, addresses and
+    web addresses (see looks_like_label). Callers pass check_boundaries=False for
+    lines that continue the block above.
     """
     issues: list[dict[str, str]] = []
     issues.extend(detect_repeated_words(text))
@@ -578,7 +688,7 @@ def detect_issues(text: str, check_boundaries: bool = True) -> list[dict[str, st
     issues.extend(detect_subject_verb_mismatch(text))
     issues.extend(detect_pos_syntax_issues(text))
 
-    if check_boundaries and not is_academic_structural_block(text):
+    if check_boundaries and not is_academic_structural_block(text) and not looks_like_label(text):
         issues.extend(detect_sentence_boundary_issues(text))
 
     return dedupe_issues(issues)
@@ -598,7 +708,7 @@ def detect_block_issues(blocks: list[dict[str, Any]]) -> list[dict[str, str]]:
             issues.extend(
                 detect_issues(
                     block["text"],
-                    check_boundaries=not continues_previous(block, previous),
+                    check_boundaries=not continues_previous(block, previous) and not block.get("in_cell"),
                 )
             )
         previous = block

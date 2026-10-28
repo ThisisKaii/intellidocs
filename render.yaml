@@ -48,6 +48,14 @@ services:
       # SUPABASE_SERVICE_KEY, which works but couples two unrelated secrets.
       - key: DRIVE_OAUTH_STATE_SECRET
         sync: false
+      # Online originality check: optional keys for scholarly (OpenAlex) and general web (Brave) search.
+      # Wikipedia and arXiv are searched without any key.
+      - key: OPENALEX_API_KEY
+        sync: false
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: WEB_CHECK_CONTACT
+        sync: false
       - key: FRONTEND_URL
         sync: false
 

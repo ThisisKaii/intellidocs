@@ -1,3 +1,40 @@
+diff --git a/node_modules/tiptap-table-plus/dist/pagination/TablePlusNodeView.js b/node_modules/tiptap-table-plus/dist/pagination/TablePlusNodeView.js
+index e0a1c0d..43048fb 100644
+--- a/node_modules/tiptap-table-plus/dist/pagination/TablePlusNodeView.js
++++ b/node_modules/tiptap-table-plus/dist/pagination/TablePlusNodeView.js
+@@ -114,19 +114,28 @@ export class TablePlusNodeView {
+     updateNode(node) {
+         this.columnSize = node.attrs.columnSize;
+         let _maxCellCount = 0;
++        // Grid tracks are counted in columns, not cells: a cell with colspan 2 takes two tracks, so a
++        // row of one cell plus one colspan-2 cell needs 3 tracks (counting cells gave 2 and wrapped it).
++        const columnsOf = (row) => {
++            let columns = 0;
++            row.forEach((cell) => {
++                columns += Number(cell.attrs.colspan) || 1;
++            });
++            return columns;
++        };
+         node.forEach((child) => {
+             if (child.type.name === "tableRowGroup") {
+                 child.forEach((row) => {
+                     if (row.type.name === "tableRow") {
+-                        if (row.childCount > _maxCellCount) {
+-                            _maxCellCount = row.childCount;
++                        if (columnsOf(row) > _maxCellCount) {
++                            _maxCellCount = columnsOf(row);
+                         }
+                     }
+                 });
+             }
+             else if (child.type.name === "tableRow") {
+-                if (child.childCount > _maxCellCount) {
+-                    _maxCellCount = child.childCount;
++                if (columnsOf(child) > _maxCellCount) {
++                    _maxCellCount = columnsOf(child);
+                 }
+             }
+         });
 diff --git a/node_modules/tiptap-table-plus/dist/pagination/TableRowGroup.js b/node_modules/tiptap-table-plus/dist/pagination/TableRowGroup.js
 index 3f929c7..72611e7 100644
 --- a/node_modules/tiptap-table-plus/dist/pagination/TableRowGroup.js

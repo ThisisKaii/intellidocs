@@ -24,6 +24,18 @@ export function validateBody<T>(schema: ZodSchema<T>): RequestHandler {
   }
 }
 
+/** Validate the URL path parameters (`:id`) against a Zod schema before the controller runs. */
+export function validateParams<T>(schema: ZodSchema<T>): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const parsed = schema.safeParse(req.params)
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid parameters' })
+      return
+    }
+    next()
+  }
+}
+
 /** Validate the query string against a Zod schema before the controller runs. */
 export function validateQuery<T>(schema: ZodSchema<T>): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {

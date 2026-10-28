@@ -15,12 +15,13 @@ interface OriginalityDocument {
 export async function runOriginalityCheck(input: {
   document: OriginalityDocument
   others: OriginalityDocument[]
-}): Promise<PythonOriginalityResponse> {
+}): Promise<PythonOriginalityResponse & { compared_documents: number }> {
   const peers: OriginalityPeer[] = input.others
     .filter((other) => other.id !== input.document.id && other.content)
     .map((other) => ({ documentId: other.id, title: other.title, text: other.content }))
 
-  if (peers.length === 0) return { overlap_percent: 0, passages: [] }
+  // With nothing to compare against, 0% means "not checked", not "original"; the count lets the page say so.
+  if (peers.length === 0) return { overlap_percent: 0, passages: [], compared_documents: 0 }
 
-  return requestOriginalityCheck({ text: input.document.content, peers })
+  return { ...(await requestOriginalityCheck({ text: input.document.content, peers })), compared_documents: peers.length }
 }

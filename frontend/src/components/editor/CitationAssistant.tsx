@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
 import type { LucideIcon } from 'lucide-react'
 import { Search, Plus, Loader2, FileText, BookOpen, Globe, GraduationCap, FileCode, Trash2, Copy, Edit2 } from 'lucide-react'
@@ -92,6 +92,34 @@ function groupReferencesByType(references: CitationReference[]): Record<string, 
   return groups
 }
 
+type CitationTab = 'insert' | 'manage' | 'bibliography'
+
+/** The tabs in the order they are used, each with a one-line description of what it is for. */
+const CITATION_TABS: { id: CitationTab; label: string; summary: string }[] = [
+  { id: 'manage', label: 'Manage', summary: 'Add the sources you are using: look one up by DOI, link or title, or type it in.' },
+  { id: 'insert', label: 'Insert', summary: 'Put the cursor in your text, then press + next to a source to cite it there.' },
+  { id: 'bibliography', label: 'Bibliography', summary: 'Builds the References list from your sources. Add it to the end of your document.' },
+]
+
+/** Start on Manage until there is a source to cite, then on Insert where citing happens. */
+export function defaultCitationTab(referenceCount: number): CitationTab {
+  return referenceCount === 0 ? 'manage' : 'insert'
+}
+
+/** A small link-style button that moves to another tab. */
+const nextStepButtonStyle: CSSProperties = {
+  marginTop: '0.625rem',
+  padding: '0.375rem 0.625rem',
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  color: 'var(--primary)',
+  backgroundColor: 'transparent',
+  border: '1px solid var(--primary)',
+  borderRadius: '0.375rem',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+}
+
 interface CitationAssistantProps {
   /** Editor instance for inserting citations. */
   editor: Editor | null
@@ -126,7 +154,7 @@ export function CitationAssistant({
   const [lookupState, setLookupState] = useState<{ busy: boolean; message: string | null }>({ busy: false, message: null })
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [editingRef, setEditingRef] = useState<CitationReference | null>(null)
-  const [activeTab, setActiveTab] = useState<'insert' | 'manage' | 'bibliography'>('insert')
+  const [activeTab, setActiveTab] = useState<CitationTab>(() => defaultCitationTab(references.length))
   const [newRef, setNewRef] = useState<CitationReference>({
     id: '',
     type: 'journal',
@@ -235,21 +263,25 @@ export function CitationAssistant({
     <div style={panelStyle}>
       {/* Tabs */}
       <div style={tabsStyle}>
-        {(['insert', 'manage', 'bibliography'] as const).map((tab) => (
+        {CITATION_TABS.map((tab, index) => (
           <button
-            key={tab}
+            key={tab.id}
             type="button"
-            onClick={() => setActiveTab(tab)}
+            onClick={() => setActiveTab(tab.id)}
             style={{
               ...tabStyle,
-              backgroundColor: activeTab === tab ? 'var(--primary)' : 'transparent',
-              color: activeTab === tab ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
+              backgroundColor: activeTab === tab.id ? 'var(--primary)' : 'transparent',
+              color: activeTab === tab.id ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
             }}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            <span aria-hidden="true" style={{ opacity: 0.75, marginRight: '0.25rem' }}>{index + 1}</span>
+            {tab.label}
           </button>
         ))}
       </div>
+      <p data-testid="citation-tab-summary" style={{ margin: '0 0 0.5rem', padding: '0 0.25rem', fontSize: '0.75rem', lineHeight: 1.4, color: 'var(--muted-foreground)' }}>
+        {CITATION_TABS.find((tab) => tab.id === activeTab)?.summary}
+      </p>
 
       {/* Style Selector */}
       <div style={styleSelectorStyle}>
@@ -278,8 +310,11 @@ export function CitationAssistant({
             <div style={emptyStyle}>
               <Plus style={{ width: '24px', height: '24px', color: 'var(--muted-foreground)', marginBottom: '0.5rem' }} />
               <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>
-                No references yet. Switch to <strong>Manage</strong> tab to add references.
+                No sources to cite yet. Add them in <strong>Manage</strong> first.
               </p>
+              <button type="button" onClick={() => setActiveTab('manage')} style={nextStepButtonStyle}>
+                Go to Manage
+              </button>
             </div>
           ) : (
             <ul style={listStyle}>
@@ -410,6 +445,11 @@ export function CitationAssistant({
               </div>
             )
           })}
+          {references.length > 0 && (
+            <button type="button" onClick={() => setActiveTab('insert')} style={nextStepButtonStyle}>
+              Next: cite them in your text
+            </button>
+          )}
         </div>
       )}
 
@@ -443,8 +483,11 @@ export function CitationAssistant({
           {bibliographyRefs.length === 0 ? (
             <div style={emptyStyle}>
               <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: 0 }}>
-                Add references in the Manage tab to generate a bibliography.
+                Add your sources in Manage to generate a bibliography.
               </p>
+              <button type="button" onClick={() => setActiveTab('manage')} style={nextStepButtonStyle}>
+                Go to Manage
+              </button>
             </div>
           ) : (
             <ol style={bibliographyListStyle}>

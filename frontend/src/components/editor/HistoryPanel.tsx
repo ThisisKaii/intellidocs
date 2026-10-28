@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Clock, RotateCcw, History, Diff, Palette } from 'lucide-react'
 import { api, type DocumentVersion } from '@/services/api'
-import { diffWords } from '@/lib/htmlDiff'
+import { diffToHtml } from '@/lib/htmlDiff'
 import { readFormatSnapshot } from '@/lib/formatSnapshot'
 
 interface HistoryPanelProps {
   documentId: string | undefined
-  currentContent: string
+  /** The full HTML of the document as it is now; never a shortened summary. */
+  currentHtml: string
   onRestored: (version: DocumentVersion) => void
 }
 
@@ -28,7 +29,7 @@ function formatStamp(iso: string): string {
  */
 export default function HistoryPanel({
   documentId,
-  currentContent,
+  currentHtml,
   onRestored,
 }: HistoryPanelProps): JSX.Element {
   const [versions, setVersions] = useState<DocumentVersion[]>([])
@@ -77,17 +78,8 @@ export default function HistoryPanel({
       setDiffHtml(null)
       return
     }
-    const tokens = diffWords(v.content, currentContent)
     setDiffingId(v.version_id)
-    setDiffHtml(
-      tokens
-        .map((t) => {
-          if (t.type === 'add') return `<span class="diff-add">${escapeHtml(t.text)}</span>`
-          if (t.type === 'del') return `<span class="diff-del">${escapeHtml(t.text)}</span>`
-          return escapeHtml(t.text)
-        })
-        .join(' ')
-    )
+    setDiffHtml(diffToHtml(v.content, currentHtml))
   }
 
   return (
@@ -253,13 +245,4 @@ function diffButtonStyle(active: boolean): React.CSSProperties {
     flexShrink: 0,
     whiteSpace: 'nowrap',
   }
-}
-
-/** Escape HTML so diff text is never re-parsed as markup. */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }

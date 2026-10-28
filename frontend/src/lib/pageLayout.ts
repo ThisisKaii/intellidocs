@@ -67,6 +67,26 @@ export function sectionForPage(
   return current ? { section: current, start } : null
 }
 
+/**
+ * Cap every picture in a zone's text flow to the room between the zone's distance from the page
+ * edge and the body, so a tall logo or banner stays inside the margin instead of overlapping the
+ * first body line. The cap is an inline style because the header sanitizer drops classes and CSS
+ * variables; full-page art is a separate box and is not capped.
+ */
+function capFlowPictures(flow: string, kind: 'header' | 'footer', distance: number): string {
+  if (!flow.includes('<img')) return flow
+  const doc = new DOMParser().parseFromString(`<div id="flow">${flow}</div>`, 'text/html')
+  const root = doc.getElementById('flow')
+  if (!root) return flow
+  const margin = kind === 'header' ? 'top' : 'bottom'
+  const cap = `max-height:max(24px,calc(var(--rm-margin-${margin}) - ${distance}px));object-fit:contain`
+  root.querySelectorAll('img').forEach((img) => {
+    const style = img.getAttribute('style')
+    img.setAttribute('style', style ? `${style.replace(/;?\s*$/, '')};${cap}` : cap)
+  })
+  return root.innerHTML
+}
+
 /** One zone's absolutely positioned art plus its flowing text, ready for the pagination library. */
 function zoneHtml(
   layout: PageLayoutData,
@@ -86,7 +106,7 @@ function zoneHtml(
     kind === 'header'
       ? `top:calc(${distance}px - var(--rm-margin-top) * 0.5)`
       : `bottom:calc(${distance}px - var(--rm-margin-bottom) * 0.5 - 9px)`
-  return `${artBox}<div style="position:absolute;left:var(--rm-margin-left);right:var(--rm-margin-right);${place};font-size:11pt">${part.flow}</div>`
+  return `${artBox}<div style="position:absolute;left:var(--rm-margin-left);right:var(--rm-margin-right);${place};font-size:11pt">${capFlowPictures(part.flow, kind, distance)}</div>`
 }
 
 /**
