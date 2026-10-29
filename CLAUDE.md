@@ -9,6 +9,7 @@
 ### 1. The Open-Source Research Rule (Non-Negotiable)
 **For unfamiliar features, complex algorithms, or layout mechanics, do NOT write from scratch.**
 - First, search GitHub, established open-source projects, and community extensions (TipTap, ProseMirror, Mammoth, etc.) to see how battle-tested implementations solve the problem.
+- **Context7 MCP**: Context7 is installed and connected to Claude (`https://mcp.context7.com/mcp`). Use Context7 tools (`resolve-library-id`, `query-docs`) to look up official, version-specific documentation and code examples for modern libraries (TipTap v2+, ProseMirror, Tailwind, Vite, DuckDB, Radix UI) instead of relying on outdated training data.
 - Compare approaches, pick the cleanest and most reliable pattern, and adapt it to our codebase.
 - **Guardrails**:
   - Do NOT introduce unrequested heavy external dependencies or npm/pip bloat.

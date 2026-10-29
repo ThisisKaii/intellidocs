@@ -15,6 +15,7 @@
 - Keep solutions simple. Do not add abstraction or configurability that was not requested.
 - Match existing patterns in this repository even if you would structure it differently in a greenfield project.
 - Do not report success based only on a plausible diff. Verify the result.
+- Context7 MCP: When working with external library APIs (TipTap v2+, ProseMirror, Tailwind, Vite, DuckDB, Radix UI), use the connected Context7 MCP tools (`resolve-library-id`, `query-docs`) to pull exact, up-to-date documentation rather than guessing deprecated APIs.
 - Stop the local dev stack (ports 3000/5173/8001) whenever you finish a task and verify the ports are free — never leave services running in the background. Helper: `C:\Users\asus\AppData\Local\Temp\opencode\stop-stack.ps1`.
 
 ### Loop Circuit Breaker (Non-Negotiable)
