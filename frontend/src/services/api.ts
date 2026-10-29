@@ -628,6 +628,13 @@ export interface WebProviderReport {
   message?: string
 }
 
+export interface WebCheckOptions {
+  scope?: 'all' | 'chapter' | 'pages'
+  chapterTitle?: string
+  pageStart?: number
+  pageEnd?: number
+}
+
 /** Result of checking a document against the web and scholarly sources. */
 export interface WebOriginalityResult {
   overlap_percent: number
@@ -1583,11 +1590,11 @@ export const api = {
       })
     },
     /** Search Wikipedia, scholarly sources and (when set up) the web for text copied into a document (nothing stored). */
-    webCheck: async (documentId: string): Promise<WebOriginalityResult> => {
+    webCheck: async (documentId: string, options?: WebCheckOptions): Promise<WebOriginalityResult> => {
       return fetchAPI<WebOriginalityResult>('plagiarism/web-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId }),
+        body: JSON.stringify({ documentId, ...options }),
       })
     },
     /** Ask the AI judges to review this document's overlapping passages (nothing stored). */

@@ -74,6 +74,17 @@ export const selfCheckSchema = z.object({
   documentId: z.string().trim().min(1, 'documentId is required'),
 })
 
+/** Validate the request to run an online originality check with optional targeted scope. */
+export const webCheckSchema = z.object({
+  documentId: z.string().trim().min(1, 'documentId is required'),
+  scope: z.enum(['all', 'chapter', 'pages']).default('all'),
+  chapterTitle: z.string().trim().optional(),
+  pageStart: z.number().int().min(1).optional(),
+  pageEnd: z.number().int().min(1).optional(),
+})
+
+export type WebCheckPayload = z.infer<typeof webCheckSchema>
+
 /** One passage that overlaps with another of the student's documents. */
 export const originalityPassageSchema = z.object({
   paragraph_index: z.number().int().min(0),

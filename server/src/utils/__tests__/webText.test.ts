@@ -1,4 +1,4 @@
-import { documentParagraphs, pageText, pickQueryPhrases } from '../webText'
+import { documentParagraphs, pageText, pickQueryPhrases, sliceDocumentContent } from '../webText'
 
 const SENTENCE_A = 'The quick brown fox jumps over the lazy dog while the farmer watches the river flow slowly past.'
 const SENTENCE_B = 'Renewable energy adoption in coastal communities depends heavily on reliable funding and local training programs.'
@@ -103,5 +103,45 @@ describe('pickQueryPhrases', () => {
   it('strips quotation marks that would break an exact-phrase query', () => {
     const phrases = pickQueryPhrases(['He said “the quick brown fox jumps over the lazy dog” and then left the room quietly.'], 1, 8)
     expect(phrases[0]).not.toMatch(/[“”"]/)
+  })
+})
+
+describe('sliceDocumentContent', () => {
+  const sampleDoc = `
+    <h1>Chapter 1: Introduction</h1>
+    <p>Introduction body text here.</p>
+    <h1>Chapter 2: Review of Related Literature</h1>
+    <p>Literature review body text with citations.</p>
+    <h1>Chapter 3: Methodology</h1>
+    <p>Methodology body text.</p>
+  `
+
+  it('slices content by specific chapter heading', () => {
+    const sliced = sliceDocumentContent(sampleDoc, {
+      scope: 'chapter',
+      chapterTitle: 'Chapter 2: Review of Related Literature',
+    })
+    expect(sliced).toContain('Chapter 2: Review of Related Literature')
+    expect(sliced).toContain('Literature review body text with citations.')
+    expect(sliced).not.toContain('Chapter 1: Introduction')
+    expect(sliced).not.toContain('Chapter 3: Methodology')
+  })
+
+  it('slices content by explicit page breaks', () => {
+    const pagedDoc = `
+      <p>Page 1 content.</p>
+      <div class="intellidocs-page-break"></div>
+      <p>Page 2 content.</p>
+      <div class="intellidocs-page-break"></div>
+      <p>Page 3 content.</p>
+    `
+    const page2 = sliceDocumentContent(pagedDoc, { scope: 'pages', pageStart: 2, pageEnd: 2 })
+    expect(page2).toContain('Page 2 content.')
+    expect(page2).not.toContain('Page 1 content.')
+    expect(page2).not.toContain('Page 3 content.')
+  })
+
+  it('returns full content when scope is all', () => {
+    expect(sliceDocumentContent(sampleDoc, { scope: 'all' })).toBe(sampleDoc)
   })
 })

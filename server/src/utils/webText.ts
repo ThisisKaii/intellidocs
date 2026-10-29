@@ -75,6 +75,98 @@ function htmlToLines(html: string): string[] {
     .filter((line) => line.length > 0)
 }
 
+export interface ScopeOptions {
+  scope?: 'all' | 'chapter' | 'pages'
+  chapterTitle?: string
+  pageStart?: number
+  pageEnd?: number
+}
+
+/**
+ * Slice a document's HTML to a targeted section (specific chapter, page range, or entire document).
+ * Slicing enables deep, high-density originality checks on high-risk sections (e.g. Literature Review)
+ * in large 100+ page manuscripts while completing in seconds.
+ */
+export function sliceDocumentContent(html: string, options: ScopeOptions = {}): string {
+  const { scope = 'all', chapterTitle, pageStart = 1, pageEnd = 5 } = options
+  if (scope === 'all' || !html) return html
+
+  if (scope === 'chapter' && chapterTitle) {
+    const cleanTarget = chapterTitle.replace(/<[^>]+>/g, '').trim().toLowerCase()
+    // Find all headings
+    const headingRegex = /<(h[1-6])[^>]*>([\s\S]*?)<\/\1>/gi
+    let match: RegExpExecArray | null
+    let targetStart = -1
+    let targetEnd = -1
+    let targetTag = ''
+
+    while ((match = headingRegex.exec(html)) !== null) {
+      const headingText = match[2].replace(/<[^>]+>/g, '').trim().toLowerCase()
+      if (targetStart === -1) {
+        if (headingText === cleanTarget || headingText.includes(cleanTarget) || cleanTarget.includes(headingText)) {
+          targetStart = match.index
+          targetTag = match[1].toLowerCase()
+        }
+      } else {
+        // Next heading of same or higher level ends this chapter
+        const tag = match[1].toLowerCase()
+        if (tag <= targetTag) {
+          targetEnd = match.index
+          break
+        }
+      }
+    }
+
+    if (targetStart !== -1) {
+      return targetEnd === -1 ? html.slice(targetStart) : html.slice(targetStart, targetEnd)
+    }
+  }
+
+  if (scope === 'pages') {
+    const fromPage = Math.max(1, pageStart)
+    const toPage = Math.max(fromPage, Math.min(pageEnd, fromPage + 9)) // max 10 pages per check
+
+    // Check for explicit page break markers
+    const pageBreakRegex = /<(?:div|hr)[^>]*class="[^"]*(?:intellidocs-page-break|page-break|rm-page-break)[^"]*"[^>]*>(?:<\/(?:div|hr)>)?/gi
+    if (pageBreakRegex.test(html)) {
+      const pages = html.split(pageBreakRegex)
+      if (pages.length > 1) {
+        const fromIdx = Math.max(0, fromPage - 1)
+        const toIdx = Math.min(pages.length, toPage)
+        return pages.slice(fromIdx, toIdx).join('<div class="intellidocs-page-break"></div>')
+      }
+    }
+
+    // Fallback: estimate pages based on paragraphs (~250 words per academic page)
+    const blockRegex = /<(p|h[1-6]|li|blockquote|div)[^>]*>[\s\S]*?<\/\1>/gi
+    const blocks: { html: string; words: number }[] = []
+    let bMatch: RegExpExecArray | null
+    while ((bMatch = blockRegex.exec(html)) !== null) {
+      const text = bMatch[0].replace(/<[^>]+>/g, ' ').trim()
+      const words = text ? text.split(/\s+/).length : 0
+      blocks.push({ html: bMatch[0], words })
+    }
+
+    if (blocks.length > 0) {
+      let cumulativeWords = 0
+      const matchedBlocks: string[] = []
+      for (const block of blocks) {
+        const pageOfBlock = Math.floor(cumulativeWords / 250) + 1
+        if (pageOfBlock >= fromPage && pageOfBlock <= toPage) {
+          matchedBlocks.push(block.html)
+        }
+        cumulativeWords += block.words
+        if (pageOfBlock > toPage) break
+      }
+      if (matchedBlocks.length > 0) {
+        return matchedBlocks.join('\n')
+      }
+    }
+  }
+
+  return html
+}
+
 /**
  * The paragraphs of a document, one per block, stopping at the reference list: entries there are
  * supposed to match published sources and must not count as copied text.

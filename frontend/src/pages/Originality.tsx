@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { EditorContent, useEditor } from '@tiptap/react'
-import { ArrowLeft, Globe, Loader2, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, BookOpen, FileText, Globe, Layers, Loader2 } from 'lucide-react'
 import {
   api,
   type DocumentRecord,
-  type OriginalityPassageReview,
-  type OriginalityResult,
-  type OriginalityReview,
+  type WebCheckOptions,
   type WebOriginalityResult,
   type WebSourceKind,
 } from '@/services/api'
@@ -34,13 +32,6 @@ const VIEW_EXTENSIONS = [
   OriginalityHighlightExtension,
 ]
 
-const VERDICT: Record<OriginalityPassageReview['verdict'], { label: string; color: string }> = {
-  original: { label: 'Original', color: '#047857' },
-  paraphrased: { label: 'Paraphrased', color: '#b45309' },
-  reused: { label: 'Reused', color: '#b91c1c' },
-  inconclusive: { label: 'Unclear', color: 'var(--muted-foreground)' },
-}
-
 const SOURCE_LABEL: Record<WebSourceKind, string> = {
   wikipedia: 'Wikipedia',
   arxiv: 'arXiv',
@@ -53,57 +44,92 @@ function safeHref(url: string): string | undefined {
   return /^https?:\/\//i.test(url) ? url : undefined
 }
 
-type CheckMode = 'own' | 'online'
+type CheckScope = 'all' | 'chapter' | 'pages'
 
 /**
- * View-only page: the document with every passage that overlaps one of the student's other documents,
- * or (online mode) a Wikipedia, scholarly or web source, highlighted.
+ * View-only page: compares the document (or a targeted chapter/page range) against
+ * Wikipedia, scholarly sources (OpenAlex, arXiv) and the web, highlighting matches.
  */
 export default function Originality(): JSX.Element {
   const { id = '' } = useParams<{ id: string }>()
   const [document, setDocument] = useState<DocumentRecord | null>(null)
-  const [mode, setMode] = useState<CheckMode>('own')
-  const [result, setResult] = useState<OriginalityResult | null>(null)
   const [webResult, setWebResult] = useState<WebOriginalityResult | null>(null)
-  const [review, setReview] = useState<OriginalityReview | null>(null)
-  const [checking, setChecking] = useState<boolean>(false)
   const [webChecking, setWebChecking] = useState<boolean>(false)
-  const [reviewing, setReviewing] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Scope controls
+  const [scope, setScope] = useState<CheckScope>('all')
+  const [selectedChapter, setSelectedChapter] = useState<string>('')
+  const [pageStart, setPageStart] = useState<number>(1)
+  const [pageEnd, setPageEnd] = useState<number>(5)
+  const [activeScopeLabel, setActiveScopeLabel] = useState<string>('')
 
   const editor = useEditor({ extensions: VIEW_EXTENSIONS, content: '', editable: false })
 
+  // Extract chapters / major sections from headings in the document
+  const chapters = useMemo<string[]>(() => {
+    if (!document?.content) return []
+    const matches = [...document.content.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)]
+    const seen = new Set<string>()
+    const list: string[] = []
+    for (const m of matches) {
+      const text = m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+      if (text && !seen.has(text)) {
+        seen.add(text)
+        list.push(text)
+      }
+    }
+    return list
+  }, [document?.content])
+
+  // Estimate total pages in the manuscript (by page break markers or ~250 words per page)
+  const estimatedTotalPages = useMemo<number>(() => {
+    if (!document?.content) return 1
+    const breaks = (document.content.match(/class="[^"]*(?:intellidocs-page-break|page-break|rm-page-break)[^"]*"/gi) ?? []).length
+    if (breaks > 0) return breaks + 1
+    const words = document.content.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean).length
+    return Math.max(1, Math.ceil(words / 250))
+  }, [document?.content])
+
+  // Auto-select first chapter when chapters become available
+  useEffect(() => {
+    if (chapters.length > 0 && !selectedChapter) {
+      setSelectedChapter(chapters[0])
+    }
+  }, [chapters, selectedChapter])
+
   const passages = useMemo<HighlightedPassage[]>(() => {
-    const shown: { paragraph_index: number; text: string }[] = (mode === 'online' ? webResult?.passages : result?.passages) ?? []
+    const shown: { paragraph_index: number; text: string }[] = webResult?.passages ?? []
     return shown.map((passage) => ({ id: `${passage.paragraph_index}`, text: passage.text }))
-  }, [mode, result, webResult])
+  }, [webResult])
 
   /** Search the web and scholarly sources for text copied into the document. */
   async function runWebCheck(): Promise<void> {
     setWebChecking(true)
     setError(null)
+    const options: WebCheckOptions = {
+      scope,
+      chapterTitle: scope === 'chapter' ? selectedChapter : undefined,
+      pageStart: scope === 'pages' ? pageStart : undefined,
+      pageEnd: scope === 'pages' ? pageEnd : undefined,
+    }
+
+    if (scope === 'chapter' && selectedChapter) {
+      setActiveScopeLabel(`Chapter: ${selectedChapter}`)
+    } else if (scope === 'pages') {
+      setActiveScopeLabel(`Pages ${pageStart}–${pageEnd}`)
+    } else {
+      setActiveScopeLabel('Entire document')
+    }
+
     try {
-      setWebResult(await api.plagiarism.webCheck(id))
+      setWebResult(await api.plagiarism.webCheck(id, options))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The online check failed.')
     } finally {
       setWebChecking(false)
     }
   }
-
-  /** Run the originality check on the server. */
-  const runCheck = useCallback(async (): Promise<void> => {
-    setChecking(true)
-    setError(null)
-    setReview(null)
-    try {
-      setResult(await api.plagiarism.selfCheck(id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'The originality check failed.')
-    } finally {
-      setChecking(false)
-    }
-  }, [id])
 
   useEffect(() => {
     let cancelled = false
@@ -112,7 +138,6 @@ export default function Originality(): JSX.Element {
       .then((record) => {
         if (cancelled) return
         setDocument(record)
-        void runCheck()
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not open this document.')
@@ -120,7 +145,7 @@ export default function Originality(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [id, runCheck])
+  }, [id])
 
   useEffect(() => {
     if (!editor || editor.isDestroyed || !document) return
@@ -138,21 +163,6 @@ export default function Originality(): JSX.Element {
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  /** Ask the AI judges to explain what they found in the flagged passages. */
-  async function getReview(): Promise<void> {
-    setReviewing(true)
-    setError(null)
-    try {
-      setReview(await api.plagiarism.selfCheckReview(id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'The AI review failed.')
-    } finally {
-      setReviewing(false)
-    }
-  }
-
-  const reviewByParagraph = new Map((review?.reviews ?? []).map((item) => [item.paragraph_index, item]))
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <style>{`
@@ -167,50 +177,109 @@ export default function Originality(): JSX.Element {
           <ArrowLeft className="size-4" /> Back to the document
         </Link>
         <PageHeader
-          title="Originality check"
+          title="Online Originality Check"
           description={
             document
-              ? `${document.title || 'Untitled document'} — ${mode === 'online' ? 'compared with Wikipedia, scholarly sources and the web.' : 'compared with your other documents only, not the internet.'}`
+              ? `${document.title || 'Untitled document'} — Search Wikipedia, arXiv, OpenAlex, and the web for matching sources.`
               : undefined
           }
           actions={
-            mode === 'online' ? (
-              <button
-                type="button"
-                onClick={() => void runWebCheck()}
-                disabled={webChecking || !document}
-                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium cursor-pointer hover:bg-muted disabled:cursor-default"
-              >
-                {webChecking ? <Loader2 className="size-4 animate-spin" /> : <Globe className="size-4" />}
-                {webChecking ? 'Searching online…' : webResult ? 'Check online again' : 'Check online'}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => void runCheck()}
-                disabled={checking || !document}
-                className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium cursor-pointer hover:bg-muted disabled:cursor-default"
-              >
-                {checking ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-                {checking ? 'Checking…' : 'Check again'}
-              </button>
-            )
+            <button
+              type="button"
+              onClick={() => void runWebCheck()}
+              disabled={webChecking || !document}
+              className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary text-primary-foreground px-4 py-2 text-sm font-medium cursor-pointer hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {webChecking ? <Loader2 className="size-4 animate-spin" /> : <Globe className="size-4" />}
+              {webChecking ? 'Searching online…' : webResult ? 'Check online again' : 'Check online'}
+            </button>
           }
         />
-        <div role="tablist" aria-label="What to compare with" className="mb-4 inline-flex rounded-lg border border-border bg-card p-0.5">
-          {([['own', 'Your documents'], ['online', 'Online sources']] as const).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={mode === key}
-              onClick={() => setMode(key)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium cursor-pointer border-0 ${mode === key ? 'bg-primary text-primary-foreground' : 'bg-transparent text-muted-foreground hover:text-foreground'}`}
-            >
-              {label}
-            </button>
-          ))}
+
+        {/* Scope Selector Card */}
+        <div className="mb-6 rounded-xl border border-border bg-card p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Scope:</span>
+              <div role="tablist" className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setScope('all')}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium cursor-pointer border-0 transition-colors ${
+                    scope === 'all' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <FileText className="size-3.5" /> Entire document
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('chapter')}
+                  disabled={chapters.length === 0}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium cursor-pointer border-0 transition-colors disabled:opacity-50 ${
+                    scope === 'chapter' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <BookOpen className="size-3.5" /> By Chapter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('pages')}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium cursor-pointer border-0 transition-colors ${
+                    scope === 'pages' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Layers className="size-3.5" /> By Page Range
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-controls based on chosen scope */}
+            {scope === 'chapter' && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="chapter-select" className="text-xs text-muted-foreground whitespace-nowrap">
+                  Target Chapter:
+                </label>
+                <select
+                  id="chapter-select"
+                  value={selectedChapter}
+                  onChange={(e) => setSelectedChapter(e.target.value)}
+                  className="rounded-md border border-border bg-background px-2.5 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary max-w-[280px] truncate"
+                >
+                  {chapters.map((ch) => (
+                    <option key={ch} value={ch}>
+                      {ch}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {scope === 'pages' && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">From page</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={pageEnd}
+                  value={pageStart}
+                  onChange={(e) => setPageStart(Math.max(1, Number(e.target.value)))}
+                  className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <span className="text-muted-foreground">to</span>
+                <input
+                  type="number"
+                  min={pageStart}
+                  max={Math.min(estimatedTotalPages, pageStart + 9)}
+                  value={pageEnd}
+                  onChange={(e) => setPageEnd(Math.max(pageStart, Number(e.target.value)))}
+                  className="w-14 rounded-md border border-border bg-background px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <span className="text-muted-foreground text-[11px]">(of ~{estimatedTotalPages} pages, max 10)</span>
+              </div>
+            )}
+          </div>
         </div>
+
         {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -220,144 +289,106 @@ export default function Originality(): JSX.Element {
             </div>
           </div>
 
-          {mode === 'online' ? (
-            <aside className="flex flex-col gap-3">
-              <div className="rounded-xl border border-border bg-card p-4">
-                {webChecking ? (
-                  <p className="m-0 text-sm text-muted-foreground">Searching Wikipedia, scholarly sources and the web. This can take up to a minute…</p>
-                ) : webResult ? (
-                  <>
-                    {webResult.note ? (
-                      <p className="m-0 text-sm text-muted-foreground">{webResult.note}</p>
-                    ) : (
-                      <p className="m-0 text-sm">
-                        <strong>{webResult.overlap_percent}%</strong> matches published sources
-                      </p>
-                    )}
-                    {!webResult.note && webResult.passages.length === 0 && (
-                      <p className="mt-2 mb-0 text-sm text-muted-foreground">
-                        No matching passages found in the {webResult.sources.length} source{webResult.sources.length === 1 ? '' : 's'} compared.
-                      </p>
-                    )}
-                    <p className="mt-3 mb-1 text-xs font-semibold text-muted-foreground">Searched</p>
-                    <ul className="m-0 list-none p-0 text-xs text-muted-foreground">
-                      {webResult.providers.map((provider) => (
-                        <li key={provider.name}>
-                          {provider.status === 'searched' ? '✓' : '✗'} {provider.name}
-                          {provider.status === 'not_configured' && ' — not set up yet'}
-                          {provider.status === 'failed' && ` — unavailable${provider.message ? ` (${provider.message})` : ''}`}
-                        </li>
-                      ))}
-                    </ul>
-                    {webResult.providers.some((provider) => provider.kind === 'web' && provider.status !== 'searched') && (
-                      <p className="mt-2 mb-0 text-xs text-muted-foreground">
-                        General web pages were not searched, so a clean result here only covers the sources above. Ask the site administrator to set up web search.
-                      </p>
-                    )}
-                    {webResult.truncated && (
-                      <p className="mt-2 mb-0 text-xs text-muted-foreground">The check ran out of time, so some sources were skipped. Run it again to cover more.</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="m-0 text-sm text-muted-foreground">
-                    Press <strong>Check online</strong> to search Wikipedia, scholarly sources and the web for text copied into this document. It takes a few seconds to a minute.
-                  </p>
-                )}
-              </div>
-
-              {(webResult?.passages ?? []).map((passage) => (
-                <button
-                  key={`${passage.paragraph_index}-${passage.source_url}`}
-                  type="button"
-                  onClick={() => jumpTo(passage.paragraph_index)}
-                  className="rounded-xl border border-border bg-card p-3 text-left cursor-pointer hover:bg-muted"
-                >
-                  <span className="block text-sm font-medium">
-                    <span style={{ color: passage.match_type === 'verbatim' ? '#b91c1c' : '#b45309' }} className="font-bold">
-                      {passage.match_type === 'verbatim' ? 'Copied' : 'Partly copied'} ·{' '}
-                    </span>
-                    {Math.round(passage.similarity)}% · {SOURCE_LABEL[passage.source_kind]}
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">“{passage.text.slice(0, 140)}{passage.text.length > 140 ? '…' : ''}”</span>
-                  <span className="mt-1 block text-xs">
-                    Found in{' '}
-                    {safeHref(passage.source_url) ? (
-                      <a
-                        href={safeHref(passage.source_url)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(event) => event.stopPropagation()}
-                        className="text-primary underline break-all"
-                      >
-                        {passage.source_title || passage.source_url}
-                      </a>
-                    ) : (
-                      <span className="break-all">{passage.source_title || passage.source_url}</span>
-                    )}
-                  </span>
-                  {passage.source_excerpt && (
-                    <span className="mt-1 block text-xs text-muted-foreground">Source: “{passage.source_excerpt.slice(0, 160)}{passage.source_excerpt.length > 160 ? '…' : ''}”</span>
-                  )}
-                </button>
-              ))}
-            </aside>
-          ) : (
           <aside className="flex flex-col gap-3">
             <div className="rounded-xl border border-border bg-card p-4">
-              {checking && !result ? (
-                <p className="m-0 text-sm text-muted-foreground">Comparing your document…</p>
-              ) : result?.compared_documents === 0 ? (
-                <p className="m-0 text-sm text-muted-foreground">
-                  You have no other documents to compare this one with, so nothing was checked. Use <strong>Online sources</strong> above to search the web.
-                </p>
-              ) : result ? (
+              {webChecking ? (
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin text-primary" />
+                  <span>Searching online sources for {activeScopeLabel || 'selected content'}…</span>
+                </div>
+              ) : webResult ? (
                 <>
-                  <p className="m-0 text-sm">
-                    <strong>{result.overlap_percent}%</strong> overlap with your other documents
-                  </p>
-                  {result.passages.length === 0 && (
-                    <p className="mt-2 mb-0 text-sm text-muted-foreground">No overlapping passages found.</p>
+                  {activeScopeLabel && (
+                    <div className="mb-2 inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      <span>Checked: {activeScopeLabel}</span>
+                    </div>
+                  )}
+                  {webResult.note ? (
+                    <p className="m-0 text-sm text-muted-foreground">{webResult.note}</p>
+                  ) : (
+                    <p className="m-0 text-sm">
+                      <strong className="text-lg">{webResult.overlap_percent}%</strong> match with published sources
+                    </p>
+                  )}
+                  {!webResult.note && webResult.passages.length === 0 && (
+                    <p className="mt-2 mb-0 text-sm text-muted-foreground">
+                      No matching passages found in the {webResult.sources.length} source{webResult.sources.length === 1 ? '' : 's'} compared.
+                    </p>
+                  )}
+                  <p className="mt-3 mb-1 text-xs font-semibold text-muted-foreground">Searched Services</p>
+                  <ul className="m-0 list-none p-0 text-xs text-muted-foreground space-y-0.5">
+                    {webResult.providers.map((provider) => (
+                      <li key={provider.name} className="flex items-center gap-1.5">
+                        <span className={provider.status === 'searched' ? 'text-emerald-500 font-bold' : 'text-rose-500 font-bold'}>
+                          {provider.status === 'searched' ? '✓' : '✗'}
+                        </span>
+                        <span>{provider.name}</span>
+                        {provider.status === 'not_configured' && <span className="text-muted-foreground">— not configured</span>}
+                        {provider.status === 'failed' && <span className="text-rose-400">— unavailable</span>}
+                      </li>
+                    ))}
+                  </ul>
+                  {webResult.truncated && (
+                    <p className="mt-2 mb-0 text-xs text-amber-500">
+                      The check reached the time limit; some sources were skipped. Run again to cover more.
+                    </p>
                   )}
                 </>
-              ) : null}
-              {result && result.passages.length > 0 && !review && (
-                <button
-                  type="button"
-                  onClick={() => void getReview()}
-                  disabled={reviewing}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border bg-transparent px-3 py-1.5 text-sm font-medium cursor-pointer hover:bg-muted disabled:cursor-default"
-                >
-                  {reviewing && <Loader2 className="size-3.5 animate-spin" />}
-                  {reviewing ? 'Asking the AI judges…' : 'Get AI review'}
-                </button>
+              ) : (
+                <div className="py-2">
+                  <p className="m-0 text-sm font-medium">Ready to scan</p>
+                  <p className="mt-1 mb-0 text-xs text-muted-foreground">
+                    Select a scope above (Entire Document, Chapter, or Page Range) and press <strong>Check online</strong>.
+                    Targeting a 5-page range or literature chapter gives the deepest search coverage.
+                  </p>
+                </div>
               )}
             </div>
 
-            {(result?.passages ?? []).map((passage) => {
-              const judged = reviewByParagraph.get(passage.paragraph_index)
-              const verdict = judged ? VERDICT[judged.verdict] : null
-              return (
-                <button
-                  key={`${passage.paragraph_index}-${passage.peer_document_id}`}
-                  type="button"
-                  onClick={() => jumpTo(passage.paragraph_index)}
-                  className="rounded-xl border border-border bg-card p-3 text-left cursor-pointer hover:bg-muted"
-                >
-                  <span className="block text-sm font-medium">
-                    {verdict && (
-                      <span style={{ color: verdict.color }} className="font-bold">
-                        {verdict.label} ·{' '}
-                      </span>
-                    )}
-                    {passage.peer_title || 'Untitled'} · {Math.round(passage.similarity)}%
+            {(webResult?.passages ?? []).map((passage) => (
+              <button
+                key={`${passage.paragraph_index}-${passage.source_url}`}
+                type="button"
+                onClick={() => jumpTo(passage.paragraph_index)}
+                className="rounded-xl border border-border bg-card p-3 text-left cursor-pointer transition-colors hover:bg-muted"
+              >
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span
+                    className={`font-semibold px-1.5 py-0.5 rounded text-[10px] ${
+                      passage.match_type === 'verbatim' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                    }`}
+                  >
+                    {passage.match_type === 'verbatim' ? 'Verbatim' : 'Paraphrased'} · {Math.round(passage.similarity)}%
                   </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">“{passage.text.slice(0, 140)}{passage.text.length > 140 ? '…' : ''}”</span>
-                  {judged?.reasoning && <span className="mt-1 block text-xs text-muted-foreground">{judged.reasoning}</span>}
-                </button>
-              )
-            })}
+                  <span className="text-muted-foreground text-[10px] uppercase tracking-wider">{SOURCE_LABEL[passage.source_kind]}</span>
+                </div>
+                <span className="block text-xs font-serif text-foreground line-clamp-3 italic">
+                  “{passage.text}”
+                </span>
+                <span className="mt-2 block text-xs">
+                  Source:{' '}
+                  {safeHref(passage.source_url) ? (
+                    <a
+                      href={safeHref(passage.source_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      className="text-primary underline break-all font-medium hover:text-primary/80"
+                    >
+                      {passage.source_title || passage.source_url}
+                    </a>
+                  ) : (
+                    <span className="break-all font-medium">{passage.source_title || passage.source_url}</span>
+                  )}
+                </span>
+                {passage.source_excerpt && (
+                  <span className="mt-1 block text-[11px] text-muted-foreground line-clamp-2">
+                    Matched text: “{passage.source_excerpt}”
+                  </span>
+                )}
+              </button>
+            ))}
           </aside>
-          )}
         </div>
       </div>
     </div>

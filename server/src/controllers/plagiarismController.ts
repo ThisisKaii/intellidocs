@@ -11,6 +11,8 @@ import { runWebOriginalityCheck } from '../skills/runWebOriginalityCheck'
 import { allowAttempt } from '../utils/attemptLimit'
 import { reviewOriginalityWithCouncil } from '../skills/reviewOriginalityWithCouncil'
 import { consumeAIQuota } from '../models/aiQuotaModel'
+import { sliceDocumentContent } from '../utils/webText'
+import type { WebCheckPayload } from '../../schemas/plagiarismSchemas'
 
 /** True when the user owns the folder (folderModel throws otherwise). */
 async function ownsFolder(userId: string, folderId: string): Promise<boolean> {
@@ -137,7 +139,7 @@ export async function selfCheck(req: AuthenticatedRequest, res: Response): Promi
 /** Online checks one person may run per hour; each one uses a few searches from a limited free allowance. */
 const WEB_CHECKS_PER_HOUR = 10
 
-/** Compare the document with the web and scholarly sources; nothing is stored. */
+/** Compare the document with the web and scholarly sources; nothing is stored. Supports optional targeted scope (chapter or page range). */
 export async function webCheck(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const userId = req.user?.id
@@ -146,7 +148,7 @@ export async function webCheck(req: AuthenticatedRequest, res: Response): Promis
       return
     }
 
-    const { documentId } = req.body as { documentId: string }
+    const { documentId, scope = 'all', chapterTitle, pageStart, pageEnd } = req.body as WebCheckPayload
     const document = await documentModel.getDocumentById(documentId, userId)
 
     if (!(await allowAttempt(`web-check:${userId}`, WEB_CHECKS_PER_HOUR, 3600))) {
@@ -154,7 +156,9 @@ export async function webCheck(req: AuthenticatedRequest, res: Response): Promis
       return
     }
 
-    res.json(await runWebOriginalityCheck({ documentHtml: document.content }))
+    const contentToCheck = sliceDocumentContent(document.content || '', { scope, chapterTitle, pageStart, pageEnd })
+
+    res.json(await runWebOriginalityCheck({ documentHtml: contentToCheck }))
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to check originality online'
     res.status(errorStatus(err)).json({ error: message })
