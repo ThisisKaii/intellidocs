@@ -46,6 +46,9 @@ export default function ReviewButton(): JSX.Element | null {
   const close = (): void => {
     setOpen(false)
     setError('')
+    if (sent) {
+      finish()
+    }
   }
 
   /** Close the popup and clear the draft (used after a successful send). */
@@ -55,6 +58,24 @@ export default function ReviewButton(): JSX.Element | null {
     setImages([])
     setError('')
     setSent(false)
+    try {
+      localStorage.removeItem(DRAFT_KEY)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Reset form fields so the user can immediately type another review without closing the modal. */
+  const resetForNewReview = (): void => {
+    setMessage('')
+    setImages([])
+    setError('')
+    setSent(false)
+    try {
+      localStorage.removeItem(DRAFT_KEY)
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Add picked or pasted images, enforcing type, size and the 5-image cap. */
@@ -72,7 +93,11 @@ export default function ReviewButton(): JSX.Element | null {
     try {
       await api.reviews.submit(message.trim(), location.pathname, images)
       setSent(true)
-      setTimeout(finish, 1500)
+      try {
+        localStorage.removeItem(DRAFT_KEY)
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send review')
     } finally {
@@ -84,7 +109,10 @@ export default function ReviewButton(): JSX.Element | null {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (sent) finish()
+          setOpen(true)
+        }}
         aria-label="Send a review"
         className="fixed bottom-4 right-4 z-[1000] flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-slate-700"
       >
@@ -112,7 +140,26 @@ export default function ReviewButton(): JSX.Element | null {
             </div>
 
             {sent ? (
-              <p className="py-8 text-center text-sm text-slate-700">Thanks, your review was sent.</p>
+              <div className="py-6 text-center">
+                <p className="text-sm font-semibold text-slate-900">Thanks! Your review was sent.</p>
+                <p className="mt-1 text-xs text-slate-500">You can submit multiple reviews anytime.</p>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={resetForNewReview}
+                    className="rounded bg-slate-900 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-slate-700 cursor-pointer"
+                  >
+                    Send another review
+                  </button>
+                  <button
+                    type="button"
+                    onClick={finish}
+                    className="rounded border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
             ) : (
               <>
                 <textarea
