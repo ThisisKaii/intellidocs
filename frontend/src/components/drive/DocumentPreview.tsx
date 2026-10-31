@@ -65,6 +65,12 @@ export function sanitizePreviewHtml(raw: string): string {
   if (!root) return ''
   for (const el of Array.from(root.querySelectorAll(DROPPED_SELECTOR))) el.remove()
 
+  // An equation is drawn from its data-latex attribute, which the card does not keep; its LaTeX
+  // source stands in for it so the line is not left with a gap.
+  for (const el of Array.from(root.querySelectorAll('[data-type="inline-math"], [data-type="block-math"]'))) {
+    el.textContent = el.getAttribute('data-latex') ?? ''
+  }
+
   // Collect first, then mutate: unwrapping during the walk disturbs it.
   const elements: Element[] = []
   const walker = parsed.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)

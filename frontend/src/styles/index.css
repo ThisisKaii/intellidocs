@@ -782,39 +782,27 @@ html {
   font-weight: 600;
 }
 
-/* ── Academic Equations (Phase 3) ────────────────────────────────────── */
+/* ── Equations (KaTeX; MathNodes.ts) ─────────────────────────────────── */
 
-.academic-equation {
-  font-family: var(--font-mono);
+/* Page text is black on white whatever the app theme, and an equation is part of the text. */
+.ProseMirror .tiptap-mathematics-render { color: inherit; }
+.ProseMirror .tiptap-mathematics-render--editable { cursor: pointer; }
+.ProseMirror .tiptap-mathematics-render--editable:hover { background: color-mix(in srgb, var(--accent-strong, #1351aa) 8%, transparent); }
+
+/* A display equation is centred with its number at the right edge of the column. */
+.ProseMirror div[data-type='block-math'] { position: relative; margin: 0.5em 0; }
+.ProseMirror div[data-type='block-math'] .katex-display { margin: 0; }
+.ProseMirror div[data-type='block-math'][data-number]::after {
+  content: '(' attr(data-number) ')';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
-.academic-equation.equation-inline {
-  display: inline-block;
-  padding: 0 0.25rem;
-}
-
-.academic-equation.equation-display {
-  display: block;
-  text-align: center;
-  margin: 1.5rem 0;
-  padding: 1rem;
-  background: var(--surface-sunken);
-  border-radius: 0.375rem;
-}
-
-.academic-equation .equation-math {
-  font-family: 'Times New Roman', serif;
-  font-style: italic;
-}
-
-.academic-equation .equation-number {
-  float: right;
-  font-family: var(--font-sans);
-  font-style: normal;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  margin-left: 1rem;
-}
+/* A LaTeX mistake shows the source in red instead of an empty gap. */
+.ProseMirror .inline-math-error,
+.ProseMirror .block-math-error { color: var(--error, #c0453f); font-family: var(--font-mono, monospace); }
 
 @layer utilities {
   .font-geist {

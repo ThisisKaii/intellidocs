@@ -23,6 +23,9 @@ import Highlight from '@tiptap/extension-highlight'
 import { IeeePrintPreview } from './IeeePrintPreview'
 import { GrammarUnderlineExtension } from './GrammarUnderlineExtension'
 import { SuggestionDecorationsExtension } from './SuggestionDecorationsExtension'
+import { TableInset } from './TableInset'
+import { MathExtension } from './MathNodes'
+import { FullSpan, spanTarget } from './FullSpan'
 import { BlueprintGuideExtension } from './BlueprintGuideExtension'
 import { HarperLinterExtension } from './HarperLinterExtension'
 import { StyleGuideExtension } from './StyleGuideExtension'
@@ -94,6 +97,7 @@ import {
   BadgeInfo,
   Maximize2,
   Columns,
+  MoveHorizontal,
   Minimize2,
   Merge,
   Scissors as SplitSquare,
@@ -1167,6 +1171,22 @@ const CustomListItem = ListItem.extend({
         parseHTML: (el) => el.getAttribute('data-post'),
         renderHTML: (a) => (a.markerX ? { 'data-post': a.markerPost ?? '', style: `--post:"${a.markerPost ?? ''}"` } : {}),
       },
+      // An imported item: Word adds no space around a list or between items, so the editor's list margins are dropped.
+      flat: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-flat'),
+        renderHTML: (a) => (a.flat ? { 'data-flat': '1' } : {}),
+      },
+      // A number written out in full ("1.1", "5.") when the list's own counter cannot draw it.
+      markerText: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (el) => el.getAttribute('data-marker'),
+        renderHTML: (a) =>
+          a.markerX && a.markerText
+            ? { 'data-marker': a.markerText, style: `--marker:"${String(a.markerText).replace(/["\\]/g, '')}"` }
+            : {},
+      },
     }
   },
 })
@@ -1204,6 +1224,9 @@ export const editorExtensions = [
   // table-plus draws its own column handles; prosemirror-tables' resizing
   // plugin would fight them, so stock resizing stays off.
   TableAlignmentExtension.configure({ resizable: false }),
+  TableInset,
+  MathExtension,
+  FullSpan,
   TableRowPlus,
   CustomTableCell,
   CustomTableHeader,
@@ -1644,6 +1667,9 @@ export function TiptapToolbar({
     editor,
     selector: ({ transactionNumber }) => transactionNumber,
   })
+
+  /** The table, figure or equation the caret is in or on (it can run across both IEEE columns), if any. */
+  const fullSpanTarget = editor ? spanTarget(editor.state) : null
 
   // Report image resizes for behavior tracking. Assigned to per-editor storage
   // because the shared extension array is built once at module scope, so the
@@ -2438,6 +2464,17 @@ export function TiptapToolbar({
               }
               active={columnsDraft}
               onClick={() => toggleColumnsDraft()}
+            />
+            <ToolButton
+              icon={MoveHorizontal}
+              title={
+                fullSpanTarget
+                  ? 'Run the selected table, figure or equation across both columns (click again to undo)'
+                  : 'Select a table, figure or equation to run it across both columns'
+              }
+              active={fullSpanTarget?.node.attrs.span === 'full'}
+              disabled={!fullSpanTarget}
+              onClick={() => editor?.chain().focus().toggleFullSpan().run()}
             />
           </>
         )}
@@ -4113,6 +4150,9 @@ const PROSE_STYLES = `
   .ProseMirror ol[data-list-type='i'] { list-style-type: lower-roman; }
   .ProseMirror ol[data-list-type='I'] { list-style-type: upper-roman; }
   .ProseMirror li { margin: 0.2em 0; }
+  /* An imported list: Word puts no space around it or between its items (each paragraph carries its own). */
+  .ProseMirror li[data-flat] { margin-top: 0; margin-bottom: 0; }
+  .ProseMirror ul:has(> li[data-flat]), .ProseMirror ol:has(> li[data-flat]) { margin-top: 0; margin-bottom: 0; }
   /* A tab inside underlined text (Word's fill-in line: "No. 0440" then a tab) is underlined to its
      stop. A text underline does not paint across an inline-block, so draw it as a border. */
   .ProseMirror u span[data-tab] { border-bottom: 1px solid currentColor; transform: translateY(0.1em); }
@@ -4131,6 +4171,9 @@ const PROSE_STYLES = `
   .ProseMirror ol[data-list-type='A'] > li[data-mx]::before { content: var(--pre) counter(list-item, upper-alpha) var(--post); }
   .ProseMirror ol[data-list-type='i'] > li[data-mx]::before { content: var(--pre) counter(list-item, lower-roman) var(--post); }
   .ProseMirror ol[data-list-type='I'] > li[data-mx]::before { content: var(--pre) counter(list-item, upper-roman) var(--post); }
+  /* A number the converter wrote out (it joins several counters, or restarts at a chosen number). */
+  .ProseMirror ol > li[data-mx][data-marker]::before,
+  .ProseMirror ol[data-list-type] > li[data-mx][data-marker]::before { content: var(--marker); }
   .ProseMirror p.is-editor-empty:first-child::before {
     content: 'Start writing your document…';
     float: left;

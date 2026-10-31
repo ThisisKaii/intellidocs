@@ -7,7 +7,7 @@ import { sanitizeImportedHtml } from './sanitizeImportedHtml'
 function needsLayout(py: PythonConversionResponse, hasParts: boolean, hasArt: boolean): boolean {
   const sections = py.hf?.sections ?? []
   const numbered = sections.some((s) => s.number_start !== null || s.number_format !== 'decimal' || s.title_pg)
-  return hasParts || hasArt || numbered || py.flow_rules === false
+  return hasParts || hasArt || numbered || py.flow_rules === false || py.two_column_body === true
 }
 
 /**
@@ -39,7 +39,7 @@ export async function buildImportedLayout(
   const hasParts = Object.keys(parts).length > 0
   const hasArt = repeatArt !== '' || Object.keys(pageArt).length > 0 || Object.keys(overlays).length > 0
   const layout: PageLayout | undefined = needsLayout(py, hasParts, hasArt)
-    ? { sections: py.hf?.sections ?? [], parts, repeat_art: repeatArt, page_art: pageArt, overlays, ...(py.flow_rules === false ? { flow_rules: false } : {}) }
+    ? { sections: py.hf?.sections ?? [], parts, repeat_art: repeatArt, page_art: pageArt, overlays, ...(py.flow_rules === false ? { flow_rules: false } : {}), ...(py.two_column_body === true ? { two_column: true } : {}) }
     : undefined
 
   return {

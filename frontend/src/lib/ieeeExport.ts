@@ -15,6 +15,9 @@ import type {
   Table as DocxTable,
 } from 'docx'
 
+import { latexToMath } from './latexToMath'
+import { groupBySpan } from '@/components/editor/ieeeSpan'
+
 type Docx = typeof import('docx')
 type Block = DocxParagraph | DocxTable
 
@@ -23,6 +26,8 @@ const TWIPS_PER_INCH = 1440
 const PAGE = { width: 12240, height: 15840 }
 const MARGINS = { top: 1080, bottom: 1440, left: 900, right: 900 }
 const COLUMN_GAP = 360
+/** Width of one text column in twips: the page between its margins, less the gap, split in two. */
+const COLUMN_WIDTH = (PAGE.width - MARGINS.left - MARGINS.right - COLUMN_GAP) / 2
 /** Widest an image may be inside one column (3.5in) in CSS pixels. */
 const COLUMN_IMAGE_PX = 336
 
@@ -52,6 +57,34 @@ function decodeDataImage(src: string): { data: Uint8Array; type: 'png' | 'jpg' |
   return { data, type: kind === 'png' ? 'png' : kind === 'gif' ? 'gif' : 'jpg' }
 }
 
+/**
+ * An equation as a Word equation, or its LaTeX source as visible italic text when it uses something
+ * the mapper does not cover (accents, matrices, aligned blocks), so no equation is ever left out.
+ */
+function equationChild(D: Docx, latex: string, style: RunStyle): ParagraphChild {
+  const parts = latexToMath(D, latex)
+  return parts ? new D.Math({ children: parts }) : new D.TextRun({ text: latex, font: FONT, ...style, italics: true })
+}
+
+/** A display equation: centred between the column edges, its number (if any) at the right edge. */
+function equationBlock(D: Docx, el: HTMLElement): DocxParagraph {
+  const number = el.getAttribute('data-number')
+  const equation = equationChild(D, el.getAttribute('data-latex') ?? '', {})
+  if (!number) return new D.Paragraph({ alignment: D.AlignmentType.CENTER, spacing: { before: 60, after: 60 }, children: [equation] })
+  return new D.Paragraph({
+    tabStops: [
+      { type: D.TabStopType.CENTER, position: COLUMN_WIDTH / 2 },
+      { type: D.TabStopType.RIGHT, position: COLUMN_WIDTH },
+    ],
+    spacing: { before: 60, after: 60 },
+    children: [
+      new D.TextRun({ children: [new D.Tab()], font: FONT }),
+      equation,
+      new D.TextRun({ children: [new D.Tab(), `(${number})`], font: FONT }),
+    ],
+  })
+}
+
 /** Walks an element's inline content and returns Word runs/images carrying the inherited style. */
 function inlineChildren(D: Docx, node: Node, style: RunStyle): ParagraphChild[] {
   const out: ParagraphChild[] = []
@@ -65,6 +98,8 @@ function inlineChildren(D: Docx, node: Node, style: RunStyle): ParagraphChild[] 
     const tag = child.tagName.toLowerCase()
     if (tag === 'br') {
       out.push(new D.TextRun({ break: 1, font: FONT, ...style }))
+    } else if (child.getAttribute('data-type') === 'inline-math') {
+      out.push(equationChild(D, child.getAttribute('data-latex') ?? '', style))
     } else if (tag === 'img') {
       const image = decodeDataImage(child.getAttribute('src') ?? '')
       if (!image) return
@@ -164,6 +199,7 @@ function bodyBlocks(D: Docx, el: HTMLElement, inReferences: { value: boolean }):
   }
   if (tag === 'ul' || tag === 'ol') return listBlocks(D, el, inReferences.value ? 18 : 20)
   if (tag === 'table') return [tableBlock(D, el)]
+  if (tag === 'div' && el.getAttribute('data-type') === 'block-math') return [equationBlock(D, el)]
   if (tag === 'p' || tag === 'blockquote' || tag === 'div') {
     if (el.getAttribute('data-caption-kind')) {
       return [paragraphFrom(D, el, { size: 18 }, { alignment: D.AlignmentType.CENTER, spacing: { after: 120 } })]
@@ -215,15 +251,18 @@ function frontBlocks(D: Docx, titleEl: HTMLElement | null, authorEls: HTMLElemen
   return out
 }
 
-/** Page setup shared by both sections. */
-function pageProperties(D: Docx, continuous: boolean): ISectionOptions['properties'] {
+/** How a section lays out its page: the full-width front matter, the two-column body, or a full-width run inside it. */
+type SectionLayout = 'front' | 'columns' | 'full'
+
+/** Page setup shared by every section; only the type and column count differ. */
+function pageProperties(D: Docx, layout: SectionLayout): ISectionOptions['properties'] {
   return {
-    type: continuous ? D.SectionType.CONTINUOUS : undefined,
+    type: layout === 'front' ? undefined : D.SectionType.CONTINUOUS,
     page: {
       size: { width: PAGE.width, height: PAGE.height },
       margin: { ...MARGINS, header: TWIPS_PER_INCH / 2, footer: TWIPS_PER_INCH / 2 },
     },
-    column: continuous ? { count: 2, space: COLUMN_GAP, equalWidth: true } : undefined,
+    column: layout === 'columns' ? { count: 2, space: COLUMN_GAP, equalWidth: true } : undefined,
   }
 }
 
@@ -250,9 +289,16 @@ export async function buildIeeeDocxBlob(html: string, title: string): Promise<Bl
     cursor += 1
   }
 
+  // The body runs in two columns; a table, figure or equation marked full width (with its caption) is a
+  // single-column run of its own between two-column runs, as in an IEEE paper.
   const references = { value: false }
-  const bodyChildren: Block[] = rest.slice(cursor).flatMap((el) => bodyBlocks(D, el, references))
-  if (bodyChildren.length === 0) bodyChildren.push(new D.Paragraph({}))
+  const bodySections: ISectionOptions[] = groupBySpan(rest.slice(cursor) as HTMLElement[])
+    .map((group) => ({
+      properties: pageProperties(D, group.full ? 'full' : 'columns'),
+      children: (group.elements as HTMLElement[]).flatMap((el) => bodyBlocks(D, el, references)),
+    }))
+    .filter((section) => section.children.length > 0)
+  if (bodySections.length === 0) bodySections.push({ properties: pageProperties(D, 'columns'), children: [new D.Paragraph({})] })
 
   const doc = new D.Document({
     title: title.trim() || 'Untitled Document',
@@ -260,8 +306,8 @@ export async function buildIeeeDocxBlob(html: string, title: string): Promise<Bl
       default: { document: { run: { font: FONT, size: 20 } } },
     },
     sections: [
-      { properties: pageProperties(D, false), children: frontBlocks(D, titleEl, authorEls, labelEls, title.trim() || 'Untitled Document') },
-      { properties: pageProperties(D, true), children: bodyChildren },
+      { properties: pageProperties(D, 'front'), children: frontBlocks(D, titleEl, authorEls, labelEls, title.trim() || 'Untitled Document') },
+      ...bodySections,
     ],
   })
   return D.Packer.toBlob(doc)

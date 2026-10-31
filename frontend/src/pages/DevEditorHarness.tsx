@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { PagedEditor } from '@/components/editor/PagedEditor'
+import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
 import type { PageLayoutData } from '@/lib/pageLayout'
 import { applyIeeeNumbering } from '@/components/editor/ieeeNumberingCommand'
 import { convertToIeee } from '@/components/editor/ieeeConvertCommand'
@@ -9,6 +10,7 @@ import type { PageSizeKey } from '@/components/editor/TiptapEditor'
 import type { PageNumberFormat } from '@/services/api'
 import type { GrammarIssue } from '@/services/api'
 import { createDefaultHeaderFooterConfig } from '@/components/editor/HeaderFooterPlugin'
+import { useAutoFormatScanner } from '@/hooks/useAutoFormatScanner'
 
 /** Fixture text long enough to force pagination onto a second page. */
 const FIXTURE = `
@@ -92,6 +94,24 @@ export default function DevEditorHarness() {
   const [editor, setEditor] = useState<Editor | null>(null)
   const [spreadPreview, setSpreadPreview] = useState(false)
   const [html, setHtml] = useState('')
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null)
+
+  // The real formatting scanner, run on whatever the editor holds; `?preset=` picks its blueprint.
+  const scanner = useAutoFormatScanner({
+    editor,
+    enabled: !!editor && new URLSearchParams(window.location.search).has('scan'),
+    presetKey: new URLSearchParams(window.location.search).get('preset'),
+  })
+  useEffect(() => {
+    ;(window as unknown as { __scanner?: unknown }).__scanner = scanner.suggestions
+  }, [scanner.suggestions])
+
+  // Test hook: the real IEEE print preview, opened on the editor's own saved HTML (what the toolbar button does).
+  useEffect(() => {
+    const hooks = window as unknown as { __editor?: Editor | null; __showIeeePreview?: () => void }
+    hooks.__editor = editor
+    hooks.__showIeeePreview = () => setPreviewHtml(editor?.getHTML() ?? '')
+  }, [editor])
 
   /** Renders the live editor HTML into a hidden node for Playwright assertions. */
   const captureHtml = (next: string): void => {
@@ -146,6 +166,7 @@ export default function DevEditorHarness() {
           spreadPreview={spreadPreview}
         />
       </div>
+      {previewHtml !== null && <IeeePrintPreview html={previewHtml} onClose={() => setPreviewHtml(null)} />}
     </div>
   )
 }

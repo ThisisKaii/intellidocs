@@ -28,10 +28,29 @@ describe('imported list markers', () => {
     expect(saved).toContain('font-size: 11pt')
   })
 
+  it('keep a number the converter wrote out (1.1, a restart) through a load and save', () => {
+    const written =
+      '<ol><li data-mx="48" data-mt="0" data-pre="" data-post="" data-marker="1.2" style="font-size:11pt">' +
+      '<p style="margin-left:72px">A sub-item</p></li></ol>'
+    const editor = new Editor({ extensions: editorExtensions, content: written })
+    const saved = editor.getHTML()
+    editor.destroy()
+    expect(saved).toContain('data-marker="1.2"')
+    expect(saved).toContain('--marker: &quot;1.2&quot;')
+  })
+
+  it('keep the flag that marks an imported item, so its list gets no margins', () => {
+    const editor = new Editor({ extensions: editorExtensions, content: '<ul><li data-flat="1" style="font-size:10pt"><p>Bullet</p></li></ul>' })
+    const saved = editor.getHTML()
+    editor.destroy()
+    expect(saved).toContain('data-flat="1"')
+  })
+
   it('leave an ordinary list alone', () => {
     const editor = new Editor({ extensions: editorExtensions, content: '<ol><li><p>Typed</p></li></ol>' })
     const saved = editor.getHTML()
     editor.destroy()
     expect(saved).not.toContain('data-mx')
+    expect(saved).not.toContain('data-flat')
   })
 })

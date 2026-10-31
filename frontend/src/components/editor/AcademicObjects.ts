@@ -526,117 +526,8 @@ export const APATableHeader = Node.create({
   },
 })
 
-// ============================================================================
-// ACADEMIC EQUATIONS (Inline & Display Math)
-// ============================================================================
-
-/** Math equation node (supports inline and display modes) */
-const AcademicEquation = Node.create({
-  name: 'academicEquation',
-  group: 'inline',
-  inline: true,
-  atom: true,
-
-  addAttributes() {
-    return {
-      latex: { default: '' },
-      mode: {
-        default: 'inline',
-        parseHTML: (element) => element.getAttribute('data-mode') || 'inline',
-        renderHTML: (attributes) => {
-          const mode = attributes.mode
-          return { 'data-mode': mode }
-        },
-      },
-      number: {
-        default: null,
-        parseHTML: (element) => element.getAttribute('data-number'),
-        renderHTML: (attributes) =>
-          attributes.number ? { 'data-number': attributes.number } : {},
-      },
-    }
-  },
-
-  parseHTML() {
-    return [
-      { tag: 'span[data-academic-equation]', getAttrs: (el) => ({ latex: el.getAttribute('data-latex'), mode: el.getAttribute('data-mode') || 'inline', number: el.getAttribute('data-number') }) },
-      { tag: 'div[data-academic-equation]', getAttrs: (el) => ({ latex: el.getAttribute('data-latex'), mode: el.getAttribute('data-mode') || 'display', number: el.getAttribute('data-number') }) },
-    ]
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    const { latex, mode, number, ...attrs } = HTMLAttributes
-    const isDisplay = mode === 'display'
-
-    if (isDisplay) {
-      let innerHTML = `<span class="equation-math">${latex}</span>`
-      if (number) {
-        innerHTML += `<span class="equation-number">(${number})</span>`
-      }
-      return ['div', { ...attrs, 'data-academic-equation': '', 'data-latex': latex, 'data-mode': 'display', 'data-number': number || '', class: 'academic-equation equation-display' }, innerHTML]
-    }
-
-    return ['span', { ...attrs, 'data-academic-equation': '', 'data-latex': latex, 'data-mode': 'inline', class: 'academic-equation equation-inline' }, `<span class="equation-math">${latex}</span>`]
-  },
-
-  addCommands() {
-    return {
-      insertEquation:
-        (latex: string, options?: { mode?: 'inline' | 'display'; number?: string }) =>
-        ({ chain }: { chain: any }) => {
-          return chain()
-            .insertContent({
-              type: 'academicEquation',
-              attrs: { latex, mode: options?.mode || 'inline', number: options?.number },
-            })
-            .run()
-        },
-      setEquationMode:
-        (mode: 'inline' | 'display') =>
-        ({ commands }: { commands: any }) => {
-          return commands.updateAttributes('academicEquation', { mode })
-        },
-      setEquationNumber:
-        (number: string | number | null) =>
-        ({ commands }: { commands: any }) => {
-          return commands.updateAttributes('academicEquation', { number: number ? String(number) : null })
-        },
-      nextEquationNumber:
-        () =>
-        ({ commands, editor }: { commands: any; editor: any }) => {
-          const equations: number[] = []
-          editor.state.doc.descendants((node: any) => {
-            if (node.type.name === 'academicEquation' && node.attrs.mode === 'display') {
-              equations.push(node.attrs.number ? parseInt(node.attrs.number) : 0)
-            }
-          })
-          const nextNum = equations.length > 0 ? Math.max(...equations) + 1 : 1
-          return commands.updateAttributes('academicEquation', { number: nextNum })
-        },
-    } as any
-  },
-
-  addInputRules() {
-    return [
-      // Inline: $...$
-      {
-        find: /\$([^$\n]+)\$/,
-        type: this.type,
-        getAttributes: (match: string[]) => ({ latex: match[1], mode: 'inline' }),
-        handler: () => {},
-        undoable: true,
-      },
-      // Display: $$...$$
-      {
-        find: /\$\$([^$\n]+)\$\$/,
-        type: this.type,
-        getAttributes: (match: string[]) => ({ latex: match[1], mode: 'display' }),
-        handler: () => {},
-        undoable: true,
-      },
-    ]
-  },
-})
+// Equations are the math nodes in MathNodes.ts (KaTeX); the old `academicEquation` node never
+// rendered LaTeX, and MathNodes parses the markup it saved.
 
 // ============================================================================
 // ACADEMIC CALLOUTS (Enhanced)
@@ -658,7 +549,6 @@ const AcademicObjectsExtension = Extension.create({
     return {
       enableImages: true,
       enableTables: true,
-      enableEquations: true,
       enableCallouts: true,
     }
   },
@@ -671,9 +561,6 @@ const AcademicObjectsExtension = Extension.create({
     }
     if (this.options.enableTables) {
       extensions.push(AcademicTable)
-    }
-    if (this.options.enableEquations) {
-      extensions.push(AcademicEquation)
     }
 
     return extensions
@@ -690,6 +577,5 @@ export type {
 export {
   AcademicImage,
   AcademicTable,
-  AcademicEquation,
   AcademicObjectsExtension,
 }

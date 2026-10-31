@@ -1,0 +1,26 @@
+[
+ {
+  "text": "To handle larger design changes efficiently, the platform includes a natural language command interface engineered specifically for executing rapid bulk formatting operations via plain text commands. The system is built as an adaptive personalization platform, meaning it incorporates continuous learning by dynamically retraining its predictive models based on direct user acceptance and rejection feedback. Finally, to protect content integrity and ensure fluid, multi-device web access, the system features a real-time auto-save functionality alongside a responsive interface that maintains consistent usability across various mobile and desktop hardware configurations.",
+  "kind": "bold"
+ },
+ {
+  "text": "Increase productivity and satisfaction for Filipino students, educators, and professionals.",
+  "kind": "italic"
+ },
+ {
+  "text": "Professionals and Organizations. Can utilize the system's bulk formatting automation and adaptive learning to achieve substantial time savings and streamlined document workflows. Furthermore, they will benefit from the system's ability to ensure standardized styling and compliance with organizational guidelines, reducing formatting errors while supporting brand and institutional consistency across documents.",
+  "kind": "left"
+ },
+ {
+  "text": "Talk-to-Your-Slides is a hierarchical, LLM-powered agent developed by Jung et al. (2026) that edits presentation slides through natural language instructions by directly manipulating structured slide objects rather than relying on screen pixels or image-based recognition. Its language-driven structural agent enables 34% faster processing, 34% better instruction fidelity, and 87% lower cost compared to GUI-based baselines that rely on visual perception. The primary appeal of Talk-to-Your-Slides lies in how efficiently it executes large-scale structural edits across a slide deck using plain-language commands, avoiding the latency and cost of vision-based agents entirely.",
+  "kind": "size"
+ },
+ {
+  "text": "Despite the availability of powerful document editing platforms such as Microsoft Word and Google Docs, these tools are fundamentally limited by their reliance on user-driven templates and manually applied styles (Miraz, Ali, & Excell, 2022). Templates may provide a starting point, but they do not adapt dynamically to user preferences or institutional requirements. As a result, users spend countless hours reapplying styles, checking compliance, and correcting inconsistencies\u2014tasks that sap creativity, reduce focus, and contribute to burnout, especially when deadlines are tight or standards are high (Miraz, Ali, & Excell, 2022).",
+  "kind": "bold"
+ },
+ {
+  "text": "Advancements in artificial intelligence (AI) and machine learning are reshaping the landscape of writing assistance. Tools like Grammarly and ChatGPT offer sophisticated grammar correction, content generation, and style suggestions, demonstrating the transformative potential of AI in natural language processing (Stede & Marfurt, 2022; OpenAI, 2023). However, even these state-of-the-art systems primarily focus on textual accuracy and fluency, rather than the nuanced demands of document formatting and compliance with institutional guidelines. As noted by Stede and Marfurt (2022), most intelligent writing assistants cannot learn from user behaviors or adapt to specific formatting conventions, resulting in a persistent gap between user needs and tool capabilities.",
+  "kind": "italic"
+ }
+]

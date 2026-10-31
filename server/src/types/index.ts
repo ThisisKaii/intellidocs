@@ -168,6 +168,8 @@ export interface PageLayout {
   overlays?: Record<string, PageOverlay>
   /** False for PDF imports (no widow/orphan control). */
   flow_rules?: boolean
+  /** The imported file is a two-column paper: the editor offers its IEEE view. */
+  two_column?: boolean
 }
 
 /** A picture or text box Word hangs beside a paragraph without wrapping text around it. */

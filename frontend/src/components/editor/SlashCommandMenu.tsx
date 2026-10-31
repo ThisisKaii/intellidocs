@@ -16,7 +16,9 @@ import {
   ClipboardPaste,
   FileText,
   HelpCircle,
+  Sigma,
 } from 'lucide-react'
+import { insertMath } from './MathNodes'
 
 interface SlashCommand {
   id: string
@@ -101,6 +103,24 @@ const COMMANDS: SlashCommand[] = [
     category: 'blocks',
     keywords: ['table', 'grid', 'spreadsheet'],
     action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+  },
+  {
+    id: 'equation',
+    label: 'Equation',
+    description: 'Display equation on its own line, in LaTeX',
+    icon: Sigma,
+    category: 'blocks',
+    keywords: ['equation', 'math', 'latex', 'formula', 'display'],
+    action: (e) => insertMath(e, 'block'),
+  },
+  {
+    id: 'inline-equation',
+    label: 'Equation in text',
+    description: 'Small equation inside a line, in LaTeX',
+    icon: Sigma,
+    category: 'blocks',
+    keywords: ['inline', 'math', 'latex', 'formula', 'equation'],
+    action: (e) => insertMath(e, 'inline'),
   },
   {
     id: 'page-break',

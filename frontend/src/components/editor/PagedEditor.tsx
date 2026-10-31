@@ -15,6 +15,7 @@ import {
 } from './TiptapEditor'
 import type { UnderlineStyle } from '@/lib/editorPreferences'
 import { SlashCommandMenu } from './SlashCommandMenu'
+import { MathEditPopover } from './MathEditPopover'
 import type { BehaviorEventPayload } from './behaviorListener'
 import type { GrammarIssue } from './GrammarPanel'
 import { measureKey, numberingCss, pageZones, type PageLayoutData, type PageMeasure } from '@/lib/pageLayout'
@@ -108,8 +109,9 @@ function sanitizeLoadedHtml(html: string): string {
     }
   }
   // Drop wrappers left empty by the unwrap pass.
-  // (A tab node is an intentionally empty <span data-tab>; keep it.)
-  for (const el of Array.from(root.querySelectorAll('span:empty:not([data-tab]), font:empty'))) {
+  // (A tab node is an intentionally empty <span data-tab>, and an inline equation is an empty
+  // <span data-type="inline-math"> drawn from its data-latex; keep both.)
+  for (const el of Array.from(root.querySelectorAll('span:empty:not([data-tab]):not([data-type="inline-math"]), font:empty'))) {
     el.remove()
   }
 
@@ -791,7 +793,8 @@ export function PagedEditor({
             box-sizing: border-box;
             text-align: justify;
           }
-          .ProseMirror.ieee-columns-draft .ieee-front {
+          .ProseMirror.ieee-columns-draft .ieee-front,
+          .ProseMirror.ieee-columns-draft .ieee-span {
             column-span: all;
           }
           ${pageLayout ? numberingCss(pageLayout, measure) : romanStyle}
@@ -852,6 +855,7 @@ export function PagedEditor({
         </div>
       )}
       <SlashCommandMenu editor={editor} />
+      <MathEditPopover editor={editor} />
       {loadProgress !== null && (
         <div
           style={{

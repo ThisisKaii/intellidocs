@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Previewer } from 'pagedjs'
 import { Printer, X } from 'lucide-react'
+import katex from 'katex'
+import { groupBySpan } from './ieeeSpan'
 
 interface IeeePrintPreviewProps {
   /** The document's HTML as stored by the editor. */
@@ -35,13 +37,41 @@ html, body { margin: 0; }
 .ieee-doc .ieee-front h1 { font-size: 24pt; font-weight: 400; margin: 0 0 12pt; }
 .ieee-doc .ieee-front p[style*="font-size"] { text-align: justify; font-weight: 700; }
 .ieee-doc .ieee-body { columns: 2; column-gap: 0.25in; column-fill: auto; }
-.ieee-doc .ieee-body h1 { font-size: 10pt; font-weight: 400; text-transform: uppercase; text-align: center; margin: 12pt 0 4pt; }
-.ieee-doc .ieee-body h2 { font-size: 10pt; font-weight: 400; font-style: italic; margin: 8pt 0 3pt; }
-.ieee-doc .ieee-body h3 { font-size: 10pt; font-weight: 400; font-style: italic; margin: 6pt 0 2pt; }
-.ieee-doc .ieee-body p { margin: 0 0 6pt; text-indent: 0.2in; }
+/* Level 1 is set in small caps, as the Word export writes it. */
+.ieee-doc .ieee-body h1 { font-size: 10pt; font-weight: 400; font-variant: small-caps; text-transform: none; text-align: center; margin: 12pt 0 4pt; }
+.ieee-doc .ieee-body h2 { font-size: 10pt; font-weight: 400; font-style: italic; text-align: left; margin: 8pt 0 3pt; }
+.ieee-doc .ieee-body h3 { font-size: 10pt; font-weight: 400; font-style: italic; text-align: left; margin: 6pt 0 2pt; }
+/* The Word export puts 3pt after a paragraph; the preview matches it so the two agree. */
+.ieee-doc .ieee-body p { margin: 0 0 3pt; text-indent: 0.2in; }
+.ieee-doc .ieee-body [data-caption-kind] { font-size: 8pt; text-align: center; text-indent: 0; }
+/* A table, figure or equation the author runs across both columns, with its caption. */
+.ieee-doc .ieee-span { column-span: all; margin: 6pt 0; }
+.ieee-doc .ieee-span p[data-caption-kind] { margin: 0 0 3pt; }
+/* Paged.js marks every block it splits and then justifies the last line of each; a centred or left-set
+   block must keep its own alignment. */
+.ieee-doc h1[data-align-last-split-element], .ieee-doc h2[data-align-last-split-element], .ieee-doc h3[data-align-last-split-element],
+.ieee-doc [data-caption-kind][data-align-last-split-element], .ieee-doc .ieee-front [data-align-last-split-element] { text-align-last: auto !important; }
+.ieee-doc [data-type='block-math'] { position: relative; margin: 6pt 0; text-indent: 0; }
+.ieee-doc [data-type='block-math'] .katex-display { margin: 0; }
+.ieee-doc [data-type='block-math'][data-number]::after { content: '(' attr(data-number) ')'; position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
 .ieee-doc img { max-width: 100%; height: auto; }
 .ieee-doc table { width: 100%; border-collapse: collapse; font-size: 8pt; }
 .ieee-doc td, .ieee-doc th { border: 1px solid #000; padding: 2pt; }`
+
+/**
+ * Draws every equation in the copy. The editor's saved HTML holds an equation as its LaTeX in an
+ * attribute (the editor draws it with KaTeX when it shows the document), so the preview draws it too.
+ */
+function renderEquations(container: HTMLElement): void {
+  container.querySelectorAll<HTMLElement>('[data-type="inline-math"], [data-type="block-math"]').forEach((el) => {
+    const latex = el.getAttribute('data-latex') ?? ''
+    try {
+      katex.render(latex, el, { displayMode: el.getAttribute('data-type') === 'block-math' })
+    } catch {
+      el.textContent = latex
+    }
+  })
+}
 
 /**
  * Splits document HTML into the full-width front matter (title, authors,
@@ -50,6 +80,7 @@ html, body { margin: 0; }
 export function buildIeeeLayoutHtml(html: string): string {
   const container = document.createElement('div')
   container.innerHTML = html
+  renderEquations(container)
   const blocks = Array.from(container.children)
   let frontEnd = blocks.findIndex((el) => /^\s*(?:<[^>]+>\s*)*index terms/i.test(el.innerHTML))
   if (frontEnd >= 0) {
@@ -61,7 +92,13 @@ export function buildIeeeLayoutHtml(html: string): string {
     if (frontEnd < 0) frontEnd = 0
   }
   const front = blocks.slice(0, frontEnd).map((el) => el.outerHTML).join('')
-  const body = blocks.slice(frontEnd).map((el) => el.outerHTML).join('')
+  // Blocks marked full width (with their captions) run across both columns; the rest flow in two.
+  const body = groupBySpan(blocks.slice(frontEnd))
+    .map((group) => {
+      const markup = group.elements.map((el) => el.outerHTML).join('')
+      return group.full ? `<div class="ieee-span">${markup}</div>` : markup
+    })
+    .join('')
   return `<div class="ieee-doc"><div class="ieee-front">${front}</div><div class="ieee-body">${body}</div></div>`
 }
 
@@ -99,7 +136,7 @@ export function IeeePrintPreview({ html, onClose }: IeeePrintPreviewProps): JSX.
   return createPortal(
     <div
       id="ieee-print-preview"
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'var(--canvas-bg, #e5e7eb)', overflow: 'auto' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--canvas-bg, #e5e7eb)', overflow: 'auto' }}
     >
       <style>{SCREEN_CSS + PRINT_CSS}</style>
       <div

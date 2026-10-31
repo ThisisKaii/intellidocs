@@ -52,6 +52,8 @@ SOURCES: list[tuple[str, str]] = [
     ("V2 INTELLIDOCS sabotage.pdf", "V2 INTELLIDOCS sabotage.pdf"),
     ("0200725_[research]_9569504b.docx", "0200725_[research]_9569504b.pdf"),
     ("0200725_[research]_9569504b.pdf", "0200725_[research]_9569504b.pdf"),
+    # Synthetic IEEE paper (tests/e2e/tools/make_ieee_sample.cjs); its reference is Word's own PDF export.
+    ("ieee_sample_paper.docx", "ieee_sample_paper.pdf"),
 ]
 
 # The editor's page grid: a page is this tall and the next one starts this far below (page + gap).
@@ -63,14 +65,19 @@ def folder_name(pdf_name: str) -> str:
     return re.sub(r"[^\w\-.]", "_", Path(pdf_name).stem).strip("_")
 
 
-def reference_words(pdf_path: Path) -> list[list[str]]:
-    """The normalised words of each page of the original PDF, in reading order."""
-    pages: list[list[str]] = []
+def reference_words(pdf_path: Path, strip_furniture: bool = True) -> list[list[str]]:
+    """The normalised words of each page of the original PDF, in reading order.
+
+    The editor's word list leaves out header and footer zones, so by default the
+    running furniture is left out here too (see fl.furniture_keys).
+    """
     with fitz.open(str(pdf_path)) as pdf:
-        for page in pdf:
-            words = page.get_text("words", sort=True)
-            pages.append(fl.normalize_words(" ".join(w[4] for w in words)))
-    return pages
+        per_page = [fl.page_blocks(page) for page in pdf]
+    drop = fl.furniture_keys(per_page) if strip_furniture else set()
+    return [
+        fl.normalize_words(" ".join(text for key, text in blocks if key not in drop))
+        for blocks in per_page
+    ]
 
 
 def convert(path: Path) -> dict:

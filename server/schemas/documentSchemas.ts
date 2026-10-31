@@ -54,6 +54,7 @@ export const pageLayoutBaseSchema = z.object({
       )
       .optional(),
     flow_rules: z.boolean().optional(),
+    two_column: z.boolean().optional(),
 })
 
 export const pageLayoutSchema = pageLayoutBaseSchema.refine(

@@ -120,6 +120,8 @@ export const pythonConversionResponseSchema = z.object({
   footer_number_format: pageNumberFormatSchema.optional(),
   /** Page furniture beyond text (absent from older ML builds). */
   flow_rules: z.boolean().optional(),
+  /** Most of the text is in sections with two or more columns (a paper): the editor offers the IEEE view. */
+  two_column_body: z.boolean().optional(),
   hf: z
     .object({
       sections: pageLayoutBaseSchema.shape.sections,

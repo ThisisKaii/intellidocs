@@ -22,6 +22,8 @@ export interface PageLayoutData {
   overlays?: Record<string, PageOverlay>
   /** Widow/orphan control, on only when true (never for PDF imports, whose pages are fixed). */
   flow_rules?: boolean
+  /** The imported file is a two-column paper: the document page offers its IEEE view. */
+  two_column?: boolean
 }
 
 /** A picture or text box Word hangs beside a paragraph without wrapping text around it. */

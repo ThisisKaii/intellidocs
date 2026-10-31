@@ -43,6 +43,14 @@ describe('buildImportedLayout', () => {
     expect(pageLayoutSchema.safeParse(fields.page_layout).success).toBe(true)
   })
 
+  it('keeps the layout, and says so, when the file is a two-column paper', async () => {
+    const fields = await buildImportedLayout('u1', { ...base, two_column_body: true, hf: { sections: [section], parts: {} } })
+    expect(fields.page_layout?.two_column).toBe(true)
+    expect(pageLayoutSchema.safeParse(fields.page_layout).success).toBe(true)
+    // The flag survives validation (an unknown key would be stripped).
+    expect(pageLayoutSchema.parse(fields.page_layout).two_column).toBe(true)
+  })
+
   it('keeps the layout when only the numbering restarts', async () => {
     const fields = await buildImportedLayout('u1', { ...base, hf: { sections: [section, { ...section, index: 1, number_start: 3 }], parts: {} } })
     expect(fields.page_layout?.sections).toHaveLength(2)

@@ -43,6 +43,44 @@ def normalize_words(text: str) -> list[str]:
     return _WORD.findall(text.lower())
 
 
+# A block this close to the top or bottom edge of a page may be running furniture.
+FURNITURE_BAND_PT = 94.0
+# Furniture repeats on at least this share of pages (and at least 3 pages).
+FURNITURE_MIN_SHARE = 0.4
+
+
+def furniture_key(text: str) -> str:
+    """A block's text with digits collapsed, so "Page 3" and "Page 4" count as the same line."""
+    return re.sub(r"\d+", "#", " ".join(text.lower().split()))
+
+
+def page_blocks(page: "fitz.Page") -> list[tuple[str | None, str]]:
+    """The text blocks of a PDF page in reading order, as (furniture key or None, text).
+
+    The key is set only for blocks inside the top or bottom band; body blocks never carry one.
+    Blocks stay in content-stream order, which is Word's document order: sorting them by position
+    interleaves the columns of a two-column page (0.63 vs 0.96 agreement with Word on a sample paper).
+    """
+    height = page.rect.height
+    out: list[tuple[str | None, str]] = []
+    for x0, y0, x1, y1, text, _no, kind in page.get_text("blocks"):
+        if kind != 0 or not text.strip():
+            continue
+        in_band = y1 <= FURNITURE_BAND_PT or y0 >= height - FURNITURE_BAND_PT
+        out.append((furniture_key(text) if in_band else None, text))
+    return out
+
+
+def furniture_keys(per_page: Sequence[Sequence[tuple[str | None, str]]]) -> set[str]:
+    """Keys of the band blocks that repeat on enough pages to be a running header or footer."""
+    counts: dict[str, int] = {}
+    for blocks in per_page:
+        for key in {key for key, _ in blocks if key}:
+            counts[key] = counts.get(key, 0) + 1
+    need = max(3, int(FURNITURE_MIN_SHARE * len(per_page) + 0.999))
+    return {key for key, n in counts.items() if n >= need}
+
+
 def sequence_ratio(reference: Sequence[str], actual: Sequence[str]) -> float:
     """Order-aware similarity of two word lists in [0, 1]; two empty pages count as equal."""
     if not reference and not actual:

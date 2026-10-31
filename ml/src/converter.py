@@ -11,11 +11,14 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import docx
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Emu
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
+
+import omml
 
 # Word highlight color names -> CSS hex.
 HIGHLIGHT_COLORS: Dict[str, str] = {
@@ -116,31 +119,42 @@ def _generic_family(name: str) -> str:
     return f"{twin}, {generic}" if twin else generic
 
 
+def _style_flag(style: Any, attribute: str) -> Optional[bool]:
+    """The nearest explicit bold/italic value along a style's based-on chain, or None when it never says."""
+    seen: Set[str] = set()
+    while style is not None and style.style_id not in seen:
+        seen.add(style.style_id)
+        value = getattr(style.font, attribute, None) if style.font is not None else None
+        if value is not None:
+            return bool(value)
+        style = style.base_style
+    return None
+
+
 def _inherited_run_flag(run: Run, attribute: str) -> bool:
-    """Bold/italic a run gets from its own, its character style's or its paragraph style's settings."""
+    """Bold/italic a run gets: its own setting, else its character style and its paragraph style combined.
+
+    Bold and italic are toggle properties. A value set directly on the run is absolute. Otherwise the
+    character style and the paragraph style each contribute their nearest value and the two are
+    toggled against each other: both on gives off, so a "Strong" character style inside a bold
+    heading style reads as regular text, as it does in Word.
+    """
     direct = getattr(run, attribute)
     if direct is not None:
         return bool(direct)
-    styles: List[Any] = []
+    from_character: Optional[bool] = None
     try:
-        styles.append(run.style)
+        from_character = _style_flag(run.style, attribute)
     except Exception:
         pass
+    from_paragraph: Optional[bool] = None
     parent = run._parent
     if isinstance(parent, Paragraph):
         try:
-            styles.append(parent.style)
+            from_paragraph = _style_flag(parent.style, attribute)
         except Exception:
             pass
-    for style in styles:
-        seen: Set[str] = set()
-        while style is not None and style.style_id not in seen:
-            seen.add(style.style_id)
-            value = getattr(style.font, attribute, None) if style.font is not None else None
-            if value is not None:
-                return bool(value)
-            style = style.base_style
-    return False
+    return bool(from_character) != bool(from_paragraph)
 
 
 def _run_to_html(run: Run) -> str:
@@ -924,6 +938,127 @@ def _is_dark_hex(hex_str: str) -> bool:
 # smart tags, custom XML and simple fields (their cached result runs).
 _INLINE_WRAPPER_TAGS = ("w:ins", "w:smartTag", "w:customXml", "w:fldSimple", "w:moveTo")
 
+_M_OMATH = qn("m:oMath")
+_M_OMATHPARA = qn("m:oMathPara")
+# Children of a paragraph that carry no content of their own (they do not stop it being "only an equation").
+_NEUTRAL_PARAGRAPH_CHILDREN = {qn("w:pPr"), qn("w:bookmarkStart"), qn("w:bookmarkEnd"), qn("w:proofErr")}
+
+
+def _note_reference_html(run_el: Any, p: Paragraph) -> str:
+    """A footnote or endnote reference as its number, raised; the note's text is collected for the end of the document.
+
+    The editor has no page-bottom note area, so notes follow the text in reference order. A note
+    referenced twice keeps its first number. Paragraphs outside the body (headers, footers) never
+    collect notes.
+    """
+    state = getattr(p.part, "_intellidocs_notes", None)
+    if state is None:
+        return ""
+    for tag, kind, fmt in (("w:footnoteReference", "footnote", "decimal"), ("w:endnoteReference", "endnote", "lowerRoman")):
+        ref = run_el.find(qn(tag))
+        if ref is None:
+            continue
+        note_id = ref.get(qn("w:id")) or ""
+        numbers = state[kind]
+        if note_id not in numbers:
+            numbers[note_id] = len(numbers) + 1
+        return f"<sup>{_format_number(fmt, numbers[note_id])}</sup>"
+    return ""
+
+
+def _notes_part_root(doc: docx.Document, kind: str) -> Optional[Any]:
+    """The parsed footnotes.xml / endnotes.xml of the document, or None when it has none."""
+    for rel in doc.part.rels.values():
+        if rel.reltype.endswith(f"/{kind}s"):
+            try:
+                return parse_xml(rel.target_part.blob)
+            except Exception:
+                return None
+    return None
+
+
+def _notes_html(doc: docx.Document, doc_parts: Dict[str, bytes]) -> str:
+    """The text of every referenced footnote and endnote, under "Notes" / "Endnotes", in reference order."""
+    state = getattr(doc.part, "_intellidocs_notes", None)
+    if not state:
+        return ""
+    sections: List[str] = []
+    for kind, heading, fmt in (("footnote", "Notes", "decimal"), ("endnote", "Endnotes", "lowerRoman")):
+        if not state[kind]:
+            continue
+        root = _notes_part_root(doc, kind)
+        if root is None:
+            continue
+        pieces: List[str] = []
+        for note_id, number in state[kind].items():
+            note = next((n for n in root.findall(qn(f"w:{kind}")) if n.get(qn("w:id")) == note_id), None)
+            if note is None:
+                continue
+            paragraphs = [_paragraph_to_html(Paragraph(pe, doc), doc_parts) for pe in note.findall(qn("w:p"))]
+            paragraphs = [html for html in paragraphs if html]
+            if not paragraphs:
+                continue
+            label = f"<sup>{_format_number(fmt, number)}</sup> "
+            paragraphs[0] = re.sub(r"(<p\b[^>]*>)", lambda m: m.group(1) + label, paragraphs[0], count=1)
+            pieces.extend(paragraphs)
+        if pieces:
+            sections.append(f'<p style="font-weight:600; margin-top:12px; margin-bottom:4px;">{heading}</p>' + "".join(pieces))
+    return "".join(sections)
+
+
+def _inline_math_html(omath: Any) -> str:
+    """An equation set inside a line of text: the editor's inline math node, or its own text if it cannot be converted."""
+    latex = omml.omath_to_latex(omath)
+    if latex is None:
+        return _html_escape(omml.linear_text(omath))
+    return f'<span data-type="inline-math" data-latex="{_html_escape(latex, quote=True)}"></span>'
+
+
+def _block_math_html(latex: str, number: Optional[str] = None) -> str:
+    """A display equation: the editor's block math node, with its number when it has one."""
+    number_attr = f' data-number="{_html_escape(number, quote=True)}"' if number else ""
+    return f'<div data-type="block-math" data-latex="{_html_escape(latex, quote=True)}"{number_attr}></div>'
+
+
+def _equation_paragraph_html(p: Paragraph) -> Optional[str]:
+    """Display equation(s) when the paragraph is only math, else None.
+
+    Word shows an equation that stands alone in its paragraph (or any m:oMathPara) as display math.
+    A number may follow it after a tab, "(1)", or be typed inside it as "#(1)". A paragraph with
+    other text, or an equation that cannot be converted, stays an ordinary paragraph (inline math or
+    the equation's own text).
+    """
+    maths: List[Any] = []
+    after: List[str] = []
+    for child in p._p:
+        if child.tag in _NEUTRAL_PARAGRAPH_CHILDREN:
+            continue
+        if child.tag == _M_OMATH:
+            maths.append(child)
+        elif child.tag == _M_OMATHPARA:
+            maths.extend(child.findall(_M_OMATH))
+        elif child.tag == qn("w:r") and child.find(qn("w:drawing")) is None and child.find(qn("w:pict")) is None:
+            after.append("".join(t.text or "" for t in child.findall(qn("w:t"))))
+        else:
+            return None
+    if not maths:
+        return None
+    latexes = [omml.omath_to_latex(m) for m in maths]
+    if any(latex is None for latex in latexes):
+        return None
+    number: Optional[str] = None
+    text = "".join(after).strip()
+    if text:
+        found = omml.EQUATION_NUMBER.fullmatch(text)
+        if found is None or len(maths) != 1:
+            return None
+        number = found.group(1)
+    blocks = []
+    for latex in latexes:
+        body, typed = omml.split_equation_number(latex or "")
+        blocks.append(_block_math_html(body, number or typed))
+    return "".join(blocks)
+
 
 def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
     """Build the inner HTML (runs + hyperlinks + page breaks + images) of a paragraph."""
@@ -946,6 +1081,7 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
                     else:
                         parts.append("<br/>")
                 parts.append(page_breaks + _run_or_image_html(run, doc_parts, row) + _anchored_textboxes(child, p, doc_parts))
+                parts.append(_note_reference_html(child, p))
             elif tag == qn("w:hyperlink"):
                 parts.append(_hyperlink_html(child, p, doc_parts))
             elif tag == qn("w:br"):
@@ -955,6 +1091,13 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
                     parts.append(_COLUMN_MARK)
                 else:
                     parts.append("<br/>")
+            elif tag == _M_OMATH:
+                parts.append(_inline_math_html(child))
+            elif tag == _M_OMATHPARA:
+                # Display math inside a paragraph that also holds other content: set as separate equations.
+                for omath in child.findall(_M_OMATH):
+                    latex = omml.omath_to_latex(omath)
+                    parts.append(_block_math_html(*omml.split_equation_number(latex)) if latex else _html_escape(omml.linear_text(omath)))
             elif tag == qn("w:sdt"):
                 content = child.find(qn("w:sdtContent"))
                 if content is not None:
@@ -1432,20 +1575,111 @@ def _numbering_geometry(part: Any) -> Dict[Tuple[str, str], Dict[str, Any]]:
             left = ind.get(qn("w:left")) or ind.get(qn("w:start")) if ind is not None else None
             first = ind.get(qn("w:firstLine")) if ind is not None else None
             hanging = ind.get(qn("w:hanging")) if ind is not None else None
+            fmt = lvl.find(qn("w:numFmt"))
+            start = lvl.find(qn("w:start"))
+            restart = lvl.find(qn("w:lvlRestart"))
             levels[lvl.get(qn("w:ilvl"), "0")] = {
                 "text": text.get(qn("w:val")) if text is not None else "%1.",
                 "suff": suff.get(qn("w:val")) if suff is not None else "tab",
                 "left": int(left) if left else 0,
                 "first": int(first) if first else (-int(hanging) if hanging else 0),
+                "fmt": fmt.get(qn("w:val")) if fmt is not None else "decimal",
+                "start": int(start.get(qn("w:val")) or 1) if start is not None else 1,
+                "lgl": lvl.find(qn("w:isLgl")) is not None,
+                # <w:lvlRestart w:val="0"/>: the level keeps counting when a higher level advances.
+                "keeps_counting": restart is not None and restart.get(qn("w:val")) == "0",
             }
         abstract_levels[abstract.get(qn("w:abstractNumId"), "")] = levels
     table: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for num in root.findall(qn("w:num")):
         abstract_id = num.find(qn("w:abstractNumId"))
+        overrides = {
+            ov.get(qn("w:ilvl"), "0"): int(so.get(qn("w:val")) or 1)
+            for ov in num.findall(qn("w:lvlOverride"))
+            for so in ov.findall(qn("w:startOverride"))
+        }
         for ilvl, value in abstract_levels.get(abstract_id.get(qn("w:val")) if abstract_id is not None else "", {}).items():
-            table[(num.get(qn("w:numId"), ""), ilvl)] = value
+            # A list that restarts (w:startOverride) numbers from its own start, whatever the shared definition says.
+            table[(num.get(qn("w:numId"), ""), ilvl)] = {**value, "start": overrides[ilvl]} if ilvl in overrides else value
     _GEOMETRY_CACHE[id(root)] = table
     return table
+
+
+def _format_number(fmt: str, number: int) -> str:
+    """One counter written in a Word numbering format (decimal, a, A, i, I, 01); other formats read as decimal."""
+    if fmt in ("lowerLetter", "upperLetter") and number > 0:
+        letters = ""
+        remaining = number
+        while remaining > 0:
+            remaining, digit = divmod(remaining - 1, 26)
+            letters = chr(97 + digit) + letters
+        return letters if fmt == "lowerLetter" else letters.upper()
+    if fmt in ("lowerRoman", "upperRoman") and 0 < number < 4000:
+        return _roman(number) if fmt == "lowerRoman" else _roman(number).upper()
+    if fmt == "decimalZero":
+        return f"{number:02d}"
+    return str(number)
+
+
+# A literal marker goes into a CSS string, so only plain text qualifies.
+_PLAIN_MARKER = re.compile(r"[\w.()\[\]\-–: §]{1,24}")
+
+
+def _literal_marker(part: Any, num_id: str, level: int, counts: Dict[Tuple[str, int], int]) -> Optional[str]:
+    """The number Word writes for a numbered item whose marker the editor's own counter cannot draw.
+
+    That is a level whose text joins several counters ("1.1", "1.1.1"), a legal-style level (isLgl), or a
+    list that starts above 1 or restarts at a chosen number. None for the plain case (one counter in the
+    level's own format from 1, drawn by the list's counter) and for anything that is not plain text.
+    """
+    table = _numbering_geometry(part)
+    lvl = table.get((num_id, str(level)))
+    if lvl is None or lvl["suff"] != "tab" or "%" not in lvl["text"]:
+        return None
+    refs = [int(k) for k in re.findall(r"%(\d)", lvl["text"])]
+    if any(k - 1 > level for k in refs):
+        return None  # a level cannot show the counter of a level below it
+    plain = (
+        len(refs) == 1
+        and refs[0] == level + 1
+        and not lvl["lgl"]
+        and lvl["start"] == 1
+        and lvl["fmt"] in ("decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman")
+    )
+    if plain:
+        return None
+    text = lvl["text"]
+    for k in sorted(set(refs), reverse=True):
+        shown = table.get((num_id, str(k - 1)))
+        number = (shown["start"] if shown else 1) + max(counts.get((num_id, k - 1), 1), 1) - 1
+        fmt = "decimal" if lvl["lgl"] else (shown["fmt"] if shown else "decimal")
+        text = text.replace(f"%{k}", _format_number(fmt, number))
+    return text if _PLAIN_MARKER.fullmatch(text) else None
+
+
+def _marker_width_px(text: str, size_pt: float) -> float:
+    """Approximate width of a written-out marker in a serif face: narrow letters and punctuation are narrow.
+
+    Where the item's text starts depends on whether the marker ends before the next tab stop, and a
+    marker like "B.ii" is far narrower than four digits, so a flat per-character width puts the text
+    a whole tab stop too far right.
+    """
+    narrow, medium, wide = "il.,:;'|!", "tfjr()[] -", "mwMW"
+    em = 0.0
+    for char in text:
+        if char in narrow:
+            em += 0.27
+        elif char in medium:
+            em += 0.33
+        elif char in wide:
+            em += 0.78
+        elif char.isupper():
+            em += 0.62
+        elif char.isdigit():
+            em += 0.5
+        else:
+            em += 0.46
+    return em * size_pt * 96 / 72
 
 
 def _list_item_geometry(p: Paragraph, info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1460,13 +1694,17 @@ def _list_item_geometry(p: Paragraph, info: Dict[str, Any]) -> Optional[Dict[str
     level = _numbering_geometry(p.part).get((info["num_id"], str(info["level"])))
     if level is None or level["suff"] != "tab":
         return None
-    match = re.fullmatch(r"([^%]*)%(\d)([^%]*)", level["text"])
-    if not match or int(match.group(2)) != int(info["level"]) + 1:
-        return None
-    # The affixes go into a CSS string, so only plain text qualifies.
-    if re.search(r"[\\\"'\n-]", match.group(1) + match.group(3)):
-        return None
-    pre, post = match.group(1), match.group(3)
+    marker = info.get("marker")
+    if marker:
+        pre, post = "", ""
+    else:
+        match = re.fullmatch(r"([^%]*)%(\d)([^%]*)", level["text"])
+        if not match or int(match.group(2)) != int(info["level"]) + 1:
+            return None
+        # The affixes go into a CSS string, so only plain text qualifies.
+        if re.search(r"[\\\"'\n-]", match.group(1) + match.group(3)):
+            return None
+        pre, post = match.group(1), match.group(3)
 
     pPr = p._element.pPr
     direct = pPr.find(qn("w:ind")) if pPr is not None else None
@@ -1482,7 +1720,7 @@ def _list_item_geometry(p: Paragraph, info: Dict[str, Any]) -> Optional[Dict[str
     marker_x = (left + first) * TWIPS_PER_PX
 
     size_pt = _resolve_font_size_pt(p) or 11.0
-    marker_end = marker_x + (len(pre) + len(post) + 1) * 0.5 * size_pt * 96 / 72
+    marker_end = marker_x + (_marker_width_px(marker, size_pt) if marker else (len(pre) + len(post) + 1) * 0.5 * size_pt * 96 / 72)
     stops = [pos for kind, pos, _leader in _paragraph_tab_stops(p) if kind in ("left", "num")]
     if first < 0:
         stops.append(wrap_x)
@@ -1492,7 +1730,7 @@ def _list_item_geometry(p: Paragraph, info: Dict[str, Any]) -> Optional[Dict[str
     else:
         step = _default_tab_px(p) or 48.0
         text_x = (math.floor(marker_end / step) + 1) * step
-    return {"marker_x": round(marker_x, 1), "wrap_x": round(wrap_x, 1), "text_x": round(text_x, 1), "pre": pre, "post": post}
+    return {"marker_x": round(marker_x, 1), "wrap_x": round(wrap_x, 1), "text_x": round(text_x, 1), "pre": pre, "post": post, "marker": marker or ""}
 
 
 def _style_numbering(p: Paragraph) -> Optional[Tuple[str, Optional[str], str]]:
@@ -1606,6 +1844,10 @@ def _paragraph_to_html(
     list_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Convert a paragraph to HTML; list paragraphs return only their inner content."""
+    if list_info is None:
+        equation = _equation_paragraph_html(p)
+        if equation is not None:
+            return equation
     inner = _paragraph_inner_html(p, doc_parts)
 
     if list_info is not None:
@@ -1690,6 +1932,10 @@ def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
     # empty paragraph above the block-level image node.
     if re.fullmatch(r'<img\s[^>]+/>', inner.strip()):
         return inner.strip()
+
+    # Display equations are blocks of their own, never inside a <p>.
+    if re.fullmatch(r'(<div data-type="block-math"[^>]*></div>\s*)+', inner):
+        return inner
 
     alignment = _get_paragraph_alignment(p)
     align_style = f"text-align:{alignment};" if alignment != "left" else ""
@@ -1862,6 +2108,9 @@ def _cell_paragraph_to_html(
     A cell paragraph keeps its own indents and, when Word numbers or bullets it, its
     marker (drawn as text and a tab, which the paragraph's tab stop lines up).
     """
+    equation = _equation_paragraph_html(p)
+    if equation is not None:
+        return equation
     inner = _paragraph_inner_html(p, doc_parts)
     if not inner.strip():
         return ""
@@ -2092,6 +2341,74 @@ def _cell_edge_css(table_borders: Dict[str, Optional[str]], tc: Any, row: int, l
     return "; ".join(parts)
 
 
+def _paragraph_height_px(p: Paragraph, width_px: float) -> float:
+    """Rough height of a paragraph in a cell: its spacing plus its wrapped lines at Word's line height.
+
+    Only used to decide which row of a vertically merged cell a paragraph starts in, so a line of error
+    matters only for a paragraph that starts within a line of a row boundary.
+    """
+    size_pt = _resolve_font_size_pt(p) or 11.0
+    size_px = size_pt * 96.0 / 72.0
+    before = int(_resolve_spacing_attr(p, "before") or 0) * TWIPS_PER_PX
+    after = int(_resolve_spacing_attr(p, "after") or 0) * TWIPS_PER_PX
+    line = _resolve_spacing_attr(p, "line")
+    rule = _resolve_spacing_attr(p, "lineRule") or "auto"
+    if line and line != "0" and rule in ("exact", "atLeast"):
+        line_px = int(line) / 20.0 * 96.0 / 72.0
+    else:
+        factor = _FONT_LINE_FACTORS.get((_resolve_font_name(p) or "").lower(), _DEFAULT_LINE_FACTOR)
+        line_px = size_px * factor * (int(line) / 240.0 if line and line != "0" else 1.0)
+    characters = sum(len(t.text or "") for t in p._p.iter(qn("w:t")))
+    breaks = len(p._p.findall(".//" + qn("w:br")))
+    wrapped = max(1, math.ceil(characters * 0.5 * size_px / max(width_px, 20.0))) if characters else 1
+    return before + (wrapped + breaks) * line_px + after
+
+
+def _merged_cell_chunks(table: Table, rows: List[List[Dict[str, Any]]], col_px: List[float]) -> Dict[Tuple[int, int], List[Any]]:
+    """For a cell merged down several rows, the paragraphs that start in each of those rows.
+
+    The editor cannot take real row spans (its paginator loops on them), so a merged cell's content sits
+    in its first row, which then grows to hold all of it while the rows below keep their own height: the
+    merged text is counted twice. Word lays the text down across the merged area, so each paragraph is put
+    in the row where it starts, given the rows' set heights. Applies only when every spanned row but the
+    last has a set height and the cell holds plain paragraphs; anything else keeps the single-row layout.
+    Keyed by (row index, grid column); a row's chunk can be empty.
+    """
+    chunks: Dict[Tuple[int, int], List[Any]] = {}
+    for r, cells in enumerate(rows):
+        for cell in cells:
+            if cell["merge"] != "restart" or cell["rowspan"] < 2:
+                continue
+            blocks = list(_iter_block_elements(cell["el"]))
+            if len(blocks) < 2 or any(b.tag != qn("w:p") for b in blocks):
+                continue
+            spanned = rows[r : r + cell["rowspan"]]
+            heights = [_row_height_px(row[0]["el"]) if row else None for row in spanned[:-1]]
+            if any(h is None or h <= 2 for h in heights):
+                continue
+            pad = _cell_padding_px(cell["el"], {"top": 0.0, "bottom": 0.0, "left": 0.0, "right": 0.0})
+            ends: List[float] = []
+            total = 0.0
+            for h in heights:
+                total += float(h or 0.0) + pad["top"] + pad["bottom"]
+                ends.append(total)
+            width = (sum(col_px[cell["col"] : cell["col"] + cell["span"]]) or _tc_width_px(cell["el"]) or 300.0) - pad["left"] - pad["right"]
+            found: List[List[Any]] = [[] for _ in spanned]
+            y, k = pad["top"], 0
+            for element in blocks:
+                paragraph = Paragraph(element, table)
+                # The row is the one the paragraph's text starts in (after its own space-before); text that
+                # starts within a couple of pixels of a row's end belongs to the next row.
+                text_top = y + int(_resolve_spacing_attr(paragraph, "before") or 0) * TWIPS_PER_PX
+                while k < len(ends) and text_top >= ends[k] - 2.0:
+                    k += 1
+                found[k].append(element)
+                y += _paragraph_height_px(paragraph, width)
+            for offset, items in enumerate(found):
+                chunks[(r + offset, cell["col"])] = items
+    return chunks
+
+
 def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[float] = None) -> str:
     """Convert a Word table to HTML with real colspan/rowspan, per-cell column widths and nested tables.
 
@@ -2101,6 +2418,7 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
     tbl = table._element
     rows = _table_rows(tbl)
     col_px = _table_column_px(tbl, rows, text_width_px)
+    merged_chunks = _merged_cell_chunks(table, rows, col_px)
     borders = _table_borders(table)
     pad = _table_cell_margins(table)
     last_row = len(rows) - 1
@@ -2117,8 +2435,10 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
                 # Continuation of a vertical merge: an empty cell that hides the
                 # shared border, so the merged cell still reads as one block.
                 span_attr = f' colspan="{cell["span"]}"' if cell["span"] > 1 else ""
+                shared = merged_chunks.get((i, cell["col"]))
+                spill = "".join(_cell_paragraph_to_html(Paragraph(el, table), doc_parts, counters=list_counters) for el in shared) if shared else ""
                 cells_html.append(
-                    f'<{tag} style="{_cell_edge_css(borders, cell["el"], i, last_row, column, last_column)}; border-top:none; {_cell_padding_css(cell["el"], pad)}; vertical-align:top;"{span_attr}>&nbsp;</{tag}>'
+                    f'<{tag} style="{_cell_edge_css(borders, cell["el"], i, last_row, column, last_column)}; border-top:none; {_cell_padding_css(cell["el"], pad)}; vertical-align:top;"{span_attr}>{spill or "&nbsp;"}</{tag}>'
                 )
                 continue
             tc = cell["el"]
@@ -2135,7 +2455,9 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
                         text_color = "color:#ffffff; font-weight:600;"
 
             content_parts: List[str] = []
-            for child in _iter_block_elements(tc):
+            # A cell merged down several rows keeps only the paragraphs that start in this row.
+            own_blocks = merged_chunks.get((i, cell["col"])) if cell["rowspan"] > 1 else None
+            for child in own_blocks if own_blocks is not None else _iter_block_elements(tc):
                 if child.tag == qn("w:p"):
                     content_parts.append(_cell_paragraph_to_html(Paragraph(child, table), doc_parts, force_white=is_dark, counters=list_counters))
                 else:
@@ -2269,10 +2591,22 @@ def _body_to_html(
                 continue
 
             kind = info["kind"]
+            # Count this item first: a marker like "1.1" is built from the counters of the levels above.
+            count_key = (info["num_id"], info["level"])
+            item_counts[count_key] = item_counts.get(count_key, 0) + 1
+            # A new item at this level restarts the deeper levels of the same list, except levels set to keep counting.
+            levels_table = _numbering_geometry(p.part)
+            for deeper in [k for k in item_counts if k[0] == info["num_id"] and k[1] > info["level"]]:
+                if not levels_table.get((deeper[0], str(deeper[1])), {}).get("keeps_counting"):
+                    del item_counts[deeper]
+            ordinal = item_counts[count_key]
+            if kind == "ol":
+                info["marker"] = _literal_marker(p.part, info["num_id"], info["level"], item_counts)
             # The item carries its text size: the marker is drawn in the item's font, not its paragraph's.
             size_css = _paragraph_font_css(p)
             item_html = _paragraph_to_html(p, doc_parts, list_info=info)
-            item_open = f'<li style="{size_css}">' if size_css else "<li>"
+            # data-flat: Word puts no space around a list or between its items (the paragraphs carry it all).
+            item_open = f'<li data-flat="1" style="{size_css}">' if size_css else '<li data-flat="1">'
             geometry = _list_item_geometry(p, info)
             if geometry:
                 # The marker is drawn by the editor at Word's x, in the item's own font and line box.
@@ -2293,19 +2627,16 @@ def _body_to_html(
                     f' data-mx="{geometry["marker_x"]:g}" data-mt="{top.group(1) if top else 0}"'
                     f' data-pre="{_html_escape(geometry["pre"], quote=True)}" data-post="{_html_escape(geometry["post"], quote=True)}"'
                 )
-                item_open = f'<li{attrs} style="{style}">' if style else f"<li{attrs}>"
+                if geometry.get("marker"):
+                    # The number is written out (it joins several counters or restarts), not drawn from the list's counter.
+                    attrs += f' data-marker="{_html_escape(geometry["marker"], quote=True)}"'
+                item_open = f'<li data-flat="1"{attrs} style="{style}">' if style else f'<li data-flat="1"{attrs}>'
             # Lists open one nesting level at a time and remember the Word level they hold: a lettered
             # sublist whose first item has no numbered parent starts at the top (no stray empty "1."),
             # and its later items stay siblings instead of nesting deeper.
             while stack and stack[-1].get("level", -1) > info["level"]:
                 close_list()
             target_depth = len(stack) if stack and stack[-1].get("level") == info["level"] else len(stack) + 1
-            count_key = (info["num_id"], info["level"])
-            item_counts[count_key] = item_counts.get(count_key, 0) + 1
-            # A new item at this level restarts the deeper levels of the same list.
-            for deeper in [k for k in item_counts if k[0] == info["num_id"] and k[1] > info["level"]]:
-                del item_counts[deeper]
-            ordinal = item_counts[count_key]
 
             # Same depth but different kind -> close and reopen as the new kind.
             if stack and len(stack) == target_depth and stack[-1]["kind"] != kind:
@@ -2455,6 +2786,23 @@ def _shift_sections(doc: docx.Document, out: List[str], starts: Dict[int, int]) 
         first_block = True
         for index in range(begin, min(end, len(out))):
             html = out[index]
+            # A numbered item's marker sits at an absolute x from the column's edge, so it moves with its text.
+            marker = re.match(r'<li\b[^>]*\bdata-mx="(-?[\d.]+)"', html)
+            if marker and abs(deltas["left"]) >= 4:
+                moved = f'data-mx="{round(float(marker.group(1)) + deltas["left"], 1):g}"'
+                out[index] = html.replace(f'data-mx="{marker.group(1)}"', moved, 1)
+                continue
+            # The editor keeps no inline style on a table, so its section insets travel as data-inset (left,right,top).
+            if html.startswith("<table"):
+                inset = [
+                    deltas["left"] if abs(deltas["left"]) >= 4 else 0,
+                    deltas["right"] if abs(deltas["right"]) >= 4 else 0,
+                    deltas["top"] if first_block and abs(deltas["top"]) >= 4 else 0,
+                ]
+                if any(inset):
+                    out[index] = html.replace("<table", f'<table data-inset="{",".join(f"{round(v, 1):g}" for v in inset)}"', 1)
+                first_block = False
+                continue
             match = re.match(r'<(p|h[1-6])\b([^>]*)>', html)
             if not match or html.startswith("<p class=\"empty-spacer\""):
                 continue
@@ -2751,6 +3099,32 @@ def _page_size_key(short_in: float, long_in: float) -> str:
     return best
 
 
+# Smallest bottom margin the editor is given: its footer zone collapses with a zero margin.
+_MIN_BOTTOM_MARGIN_IN = 0.19
+
+
+def _page_bottom_margin(doc: docx.Document, chosen: Any) -> float:
+    """Bottom margin (inches) for the editor's single page setup.
+
+    The editor has one body height, and a section's own bottom margin cannot be shifted with
+    block margins the way left, right and top are. A section whose bottom margin is smaller than
+    the page setup's loses its last lines to the next page, and every later page then sits one
+    page behind Word. Taking the smallest bottom margin lets each Word page's content fit; the
+    hard page breaks Word writes between sections end the pages that are shorter. Measured on the
+    fixtures: 0200725 went from 16 to 14 pages (Word: 14) with pages 1-12 aligned, DM-OUHRODI from
+    37 to 35 (Word: 32). PDF imports keep their first page's margin (pdf2docx sets each page's
+    margins from where its text happens to sit).
+    """
+    own = round(chosen.bottom_margin / EMU_PER_INCH, 2)
+    if getattr(doc.part, "_is_pdf_import", False):
+        return own
+    try:
+        smallest = min(round((s.bottom_margin or 0) / EMU_PER_INCH, 2) for s in doc.sections)
+    except Exception:
+        return own
+    return min(own, max(smallest, _MIN_BOTTOM_MARGIN_IN))
+
+
 def _extract_page_setup(doc: docx.Document) -> Dict[str, Any]:
     """Extract page size, orientation, and margins (inches) from the section most pages use.
 
@@ -2788,7 +3162,7 @@ def _extract_page_setup(doc: docx.Document) -> Dict[str, Any]:
     try:
         margins = {
             "top": round(section.top_margin / EMU_PER_INCH, 2),
-            "bottom": round(section.bottom_margin / EMU_PER_INCH, 2),
+            "bottom": _page_bottom_margin(doc, section),
             "left": round(section.left_margin / EMU_PER_INCH, 2),
             "right": round(section.right_margin / EMU_PER_INCH, 2),
         }
@@ -2800,6 +3174,41 @@ def _extract_page_setup(doc: docx.Document) -> Dict[str, Any]:
         "orientation": orientation,
         "margins": margins,
     }
+
+
+# A paper counts as two-column when most of its text sits in sections with two or more columns.
+_TWO_COLUMN_SHARE = 0.5
+_TWO_COLUMN_MIN_CHARS = 1500
+
+
+def _section_columns(sect_pr: Any) -> int:
+    """How many text columns a section has (1 when it declares none)."""
+    cols = sect_pr.find(qn("w:cols"))
+    return int(cols.get(qn("w:num")) or 1) if cols is not None else 1
+
+
+def _is_two_column_body(doc: docx.Document) -> bool:
+    """True when most of the document's text is in sections laid out in two or more columns.
+
+    A header line and its date set in two columns (a memo) is a few lines of text, so it does not count:
+    the columns must hold at least half the text, and there must be a real body of it.
+    """
+    if getattr(doc.part, "_is_pdf_import", False):
+        return False  # pdf2docx marks every multi-column page as columns, whatever it is
+    try:
+        sections = list(doc.sections)
+        lengths = [0]
+        for child in doc.element.body.iterchildren():
+            if child.tag not in (qn("w:p"), qn("w:tbl")):
+                continue
+            lengths[-1] += sum(len(t.text or "") for t in child.iter(qn("w:t")))
+            if child.tag == qn("w:p") and child.find(qn("w:pPr") + "/" + qn("w:sectPr")) is not None:
+                lengths.append(0)
+        columned = sum(length for index, length in enumerate(lengths) if index < len(sections) and _section_columns(sections[index]._sectPr) >= 2)
+    except Exception:
+        return False
+    total = sum(lengths)
+    return total >= _TWO_COLUMN_MIN_CHARS and columned / total >= _TWO_COLUMN_SHARE
 
 
 def convert_docx_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
@@ -2830,8 +3239,10 @@ def _docx_document_to_result(
     if page_break_after is None:
         page_break_after = _page_break_paragraphs(doc)
     _set_page_geometry(doc)
+    doc.part._intellidocs_notes = {"footnote": {}, "endnote": {}}
     html = _body_to_html(doc, doc_parts, page_break_after)
     html, body_art = _extract_page_art(html)
+    html += _notes_html(doc, doc_parts)
     header, footer, header_number_format, footer_number_format = _extract_header_footer(doc)
     page_setup = _extract_page_setup(doc)
 
@@ -2844,6 +3255,7 @@ def _docx_document_to_result(
         "footer": footer,
         "header_number_format": header_number_format,
         "footer_number_format": footer_number_format,
+        "two_column_body": _is_two_column_body(doc),
     }
 
 

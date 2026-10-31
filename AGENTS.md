@@ -365,7 +365,14 @@ intellidocs/
   rows (no `<tbody>` per row) and NO rowspans: tall tables that need row groups
   make `tiptap-pagination-plus` grow the page count forever. Vertical merges are
   therefore flattened (restart cell `border-bottom:none`, continuation emitted
-  as an empty bordered cell). `data-column-size` carries column percents and is
+  as a bordered cell). A cell merged down several rows must NOT keep all its
+  paragraphs in its first row: that row grows to hold them while the rows below
+  keep their own height, so the text is counted twice (form-style tables: ~28pt per
+  merge, the cause of DM-OUHRODI running 35 pages against Word's 32). Its paragraphs
+  are spread over the rows it covers by where each starts (`_merged_cell_chunks`:
+  estimated paragraph heights against the rows' set heights; text starts after its own
+  space-before); only when every spanned row but the last has a set height, the
+  cell holds plain paragraphs and there are at least two. `data-column-size` carries column percents and is
   only emitted when the widest row has as many cells as the grid. The library
   has a bug (ghost tables, lost table attrs when regrouping); the fix lives in
   `frontend/patches/tiptap-table-plus+3.1.0.patch`, applied by `patch-package`
@@ -408,6 +415,78 @@ intellidocs/
 - The library's 1px border on the page stack (border-box) made the text column 2px
   narrower than the page margins and re-wrapped lines Word fits; PagedEditor removes it.
   Keep the text column exactly page width minus margins.
+- Page setup bottom margin (DOCX only): `_page_bottom_margin` takes the SMALLEST bottom margin of any
+  section (floor 0.19in; a zero margin collapses the footer zone), not the most common one. A section
+  cannot be shifted down at its bottom like left/right/top, so a section with a smaller bottom margin
+  than the page setup lost its last lines to the next page and every later page sat one page behind Word.
+  Measured: 0200725 16 -> 14 pages (Word 14), DM-OUHRODI 37 -> 35 (Word 32). PDF imports keep page one's margin.
+  What is left is per-page body height (continuation pages of a section take the document's margins).
+  Prototyped and NOT adopted (harness CSS: per-page `.rm-page-header-<n>` / `.rm-page-footer-<n>` padding plus
+  `--rm-page-content-<n> !important`; this does keep every sheet at the same pitch): exact per-page top+bottom
+  gave DM-OUHRODI 35 -> 33 pages (Word 32) but a worse median vertical error (38.6 vs 17.4pt), and 0200725
+  14 -> 15 pages (editor content runs a few points taller than Word's, so a full page spills before a hard
+  section break). It also needs each page's section from the laid-out `data-section` breaks, and a spilled page
+  makes that measurement wrong in a stable way. Revisit only after the content-height drift (wrapped cell
+  text, list row heights) is fixed.
+- Section margin shifts also cover tables and numbered items: a table carries `data-inset="left,right,top"`
+  (px; the `TableInset` extension draws it as a node decoration because the table node view drops inline
+  style), and a list item's `data-mx` moves by the section's left difference.
+- Known and not fixed: pinned footer art (copyright line, rule) is drawn from a page-sized box inside the
+  footer zone (`zoneHtml` in `lib/pageLayout.ts`) with page-corner `top` values, so it lands on the NEXT
+  page's body (~y 860-890px on 0200725), with the old and the new bottom margin alike.
+- Equations: Word's OMML becomes KaTeX math nodes. `ml/src/omml.py` converts `m:oMath` to LaTeX (structure
+  and symbol tables adapted from dwml, Apache-2.0; every command is one KaTeX supports; an equation it cannot
+  convert returns None and the converter keeps the equation's own text, never drops it). An equation that
+  is alone in its paragraph (or any `m:oMathPara`) is a block `<div data-type="block-math" data-latex
+  data-number>`, a number after a tab ("(1)") or typed as `#(1)` becomes `data-number`; an equation in a
+  line of text is `<span data-type="inline-math" data-latex>`. The editor nodes are in `MathNodes.ts`
+  (extending `@tiptap/extension-mathematics`, pinned to the TipTap version; it also reads the old
+  `data-academic-equation` markup): `$x$` follows Pandoc's rule so prices stay text, a whole paragraph
+  `$$x$$` is a display equation, clicking an equation opens `MathEditPopover` (editor event `math-edit`),
+  and `/equation` inserts one. Never remove the `span:empty` exception for `inline-math` in
+  `sanitizeLoadedHtml`. KaTeX fonts change an equation's height when they load, so the nodes ask the editor
+  to measure again once `document.fonts` has them. DOCX export (`ieeeExport.ts` + `lib/latexToMath.ts`)
+  writes Word equations for fractions, scripts, roots, sums, integrals and brackets; anything else is
+  written as its LaTeX source in italics. Not done: footnotes, `\begin{aligned}`/matrix export.
+- IEEE two-column layout: the editor stays single-column. Two columns appear in three places that must
+  agree: the print preview (`IeeePrintPreview.tsx`, Paged.js), the draft view (`ColumnsDraft`, pagination off) and
+  the Word export (`ieeeExport.ts`, a continuous 2-column section). A table, figure (`imageResize`) or
+  display equation can run across both columns: node attribute `span: 'full'` (`data-span="full"`), set by
+  the `toggleFullSpan` command (IEEE toolbar button). The one rule for "what spans" is `ieeeSpan.ts`
+  (a marked block plus the table caption above it or the figure caption below it); the preview wraps
+  such a run in `.ieee-span {column-span: all}`, the draft view decorates it with the same class, and the
+  export puts it in a single-column continuous section. Spike result (Paged.js 0.4.3 vs Chrome's own print
+  layout, same content): both keep every word and span correctly; Paged.js needs the `text-align-last`
+  override in `IEEE_PAGE_CSS` (it marks each block it splits and justifies its last line). WeasyPrint was not
+  used (not installed; needs native libraries on Windows). The preview draws equations itself
+  (`renderEquations`) because saved HTML holds only their LaTeX. The preview overlay sits above 9999 so the
+  editor's table resize handles do not show through. Paragraph spacing (3pt) and small-caps level 1 match
+  the Word export; these are the app's own values, not checked against IEEE's published template (it could
+  not be fetched). An imported DOCX with most of its text in 2+ column sections gets
+  `page_layout.two_column` (converter `_is_two_column_body`; short two-column memo headers do not count) and
+  the document page offers the preview once (`TwoColumnPrompt`, "Not now" kept in localStorage).
+- Imported list items carry `data-flat="1"` (`CustomListItem.flat`); the editor then drops the
+  list/item margins (`ul/ol:has(> li[data-flat])`, `li[data-flat]`). Word puts no space around a list
+  or between its items (the paragraphs carry it), while the editor's own lists keep 0.5em/0.2em. Each
+  imported single-item list added ~5pt. Lists typed in the editor are unchanged.
+- Numbered lists: a level the list's own counter can draw (one counter in the level's own format, from 1)
+  keeps the `data-pre`/`data-post` + CSS counter path. Every other numbered level gets a literal
+  `data-marker="1.2"` (`_literal_marker`): text that joins several counters (`%1.%2`), `isLgl` levels (digits
+  for the levels above), a `w:start` above 1, `w:startOverride`, and `lvlRestart=0` (keeps counting). Counters
+  come from `item_counts` in `_body_to_html`, which is updated BEFORE the item is built. A marker may only
+  reference its own level or those above it; anything not plain text falls back to the counter path. The
+  marker's width (`_marker_width_px`) decides whether the text starts at the hanging indent or the next tab
+  stop: it uses glyph-class widths, not a flat half-em per character (flat widths pushed "B.ii" a tab too
+  far). Checked against Word on a synthetic outline: numbers and text starts matched on every item.
+- Footnotes/endnotes: a reference becomes a raised number in the text and the note's text goes under a "Notes" /
+  "Endnotes" label at the END of the document in reference order (footnotes 1, 2..; endnotes i, ii..). The
+  editor has no page-bottom note area and the paginator cannot reserve one, so page counts differ from Word's
+  where notes would sit at the foot of a page. State lives on `doc.part._intellidocs_notes`; headers and
+  footers collect none. Note ids are not numbers (Word numbers by reference order).
+- Bold/italic follow Word's toggle rule: a direct setting on the run is absolute; otherwise the character style
+  and paragraph style each give their nearest value and the two are toggled (both on = off).
+- Not done on purpose: `w:tblStylePr` (conditional table formatting) and `contextualSpacing`: no fixture uses
+  either; add them when one does.
 - Fidelity is measured, not eyeballed: `tests/e2e/fidelity_run.py` converts every
   fixture and compares each page with its reference image (page count, words per page,
   blurred layout correlation). Run it after any converter or page-layout change.
@@ -734,3 +813,5 @@ formatting behavior and predicts it automatically.
 - sync-ai script: cp AGENTS.md .github/copilot-instructions.md
 - Generated ML data should stay local unless explicitly needed: `ml/dataset/raw/`, `ml/dataset/processed/`, `ml/models/*.pkl`
 - Keep provider-specific logic isolated inside `server/src/ai/aiClient.ts`
+- **Body-text consistency (suggestions):** `lib/bodyConsistency.ts` flags prose (>=80 chars, after the first chapter heading, outside lists/tables) whose bold/italic/size/alignment differs from the body norm, only when >=80% of prose shares one look. Accepting reproduces the norm, including removing a stray bold/italic. A body that is mixed throughout (e.g. the heavy sabotage fixture) gets no verdict. Measure with `tests/e2e/tools/suggestion_fidelity.py` (needs vite on 5183).
+- **Document-type offer:** `Document.tsx` calls `formatting/infer-structure` on a preset-less document with 200+ characters and shows `DocumentTypePrompt` once per document. Accepting sets only `formatting_preset` (suggestions use its blueprint); page geometry is never changed. The converter already resolves Normal-style sizes into inline styles, and fixtures show Normal says nothing about alignment (body is justified by direct formatting), so a Normal-style anchor was not added.

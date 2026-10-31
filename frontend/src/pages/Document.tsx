@@ -21,6 +21,9 @@ import type { GrammarIssue } from '@/components/editor/GrammarPanel'
 import type { Suggestion } from '@/components/editor/SuggestionPanel'
 import GrammarOverlay from '@/components/editor/GrammarOverlay'
 import InlineSuggestionChip from '@/components/editor/InlineSuggestionChip'
+import TwoColumnPrompt from '@/components/TwoColumnPrompt'
+import DocumentTypePrompt from '@/components/DocumentTypePrompt'
+import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
 import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import EditorSidePanel, { type SidePanelTab } from '@/components/editor/EditorSidePanel'
@@ -1045,6 +1048,10 @@ export default function Document(): JSX.Element {
     for (const [wanted, markName] of [[s.bold, 'bold'], [s.italic, 'italic'], [s.underline, 'underline']] as const) {
       if (wanted && schema.marks[markName]) tr.addMark(textRange.from, textRange.to, schema.marks[markName].create())
     }
+    // An explicit false (body-text consistency) takes a stray bold or italic off.
+    for (const [wanted, markName] of [[s.bold, 'bold'], [s.italic, 'italic']] as const) {
+      if (wanted === false && schema.marks[markName]) tr.removeMark(textRange.from, textRange.to, schema.marks[markName])
+    }
     if (typeof s.fontSize === 'number' && s.fontSize > 0 && schema.marks.textStyle) {
       const styleType = schema.marks.textStyle
       editor.state.doc.nodesBetween(textRange.from, textRange.to, (node, pos) => {
@@ -1055,6 +1062,18 @@ export default function Document(): JSX.Element {
           Math.min(pos + node.nodeSize, textRange.to),
           styleType.create({ ...(existing?.attrs ?? {}), fontSize: `${s.fontSize}pt` })
         )
+        return false
+      })
+    }
+    // fontSize null means the document's usual size is the inherited one: drop an explicit size.
+    if (s.fontSize === null && schema.marks.textStyle) {
+      const styleType = schema.marks.textStyle
+      editor.state.doc.nodesBetween(textRange.from, textRange.to, (node, pos) => {
+        if (!node.isText) return true
+        const existing = node.marks.find((mark) => mark.type === styleType)
+        if (existing?.attrs?.fontSize) {
+          tr.addMark(Math.max(pos, textRange.from), Math.min(pos + node.nodeSize, textRange.to), styleType.create({ ...existing.attrs, fontSize: '' }))
+        }
         return false
       })
     }
@@ -2371,6 +2390,97 @@ export default function Document(): JSX.Element {
   const [forkBusy, setForkBusy] = useState(false)
   const [forkError, setForkError] = useState('')
 
+  /* ── Two-column paper → offer the IEEE view ─────────────────────────────────
+   *
+   * An imported file set in two columns shows as one column in the editor. Offer the IEEE two-column
+   * preview once per document; "Not now" is remembered in this browser.
+   */
+  const [twoColumnPromptOpen, setTwoColumnPromptOpen] = useState(false)
+  const [twoColumnPreviewHtml, setTwoColumnPreviewHtml] = useState<string | null>(null)
+  const twoColumnKey = id ? `intellidocs.twoColumnPrompt.${id}` : null
+
+  useEffect(() => {
+    if (!pageLayout?.two_column || readOnly || !twoColumnKey) {
+      setTwoColumnPromptOpen(false)
+      return
+    }
+    let dismissed = false
+    try {
+      dismissed = window.localStorage.getItem(twoColumnKey) === 'dismissed'
+    } catch {
+      // Storage can be blocked; the prompt then simply shows again next time.
+    }
+    setTwoColumnPromptOpen(!dismissed)
+  }, [pageLayout?.two_column, readOnly, twoColumnKey])
+
+  /**
+   * A document with no format chosen that reads like a thesis, IEEE or APA paper gets one offer to use that
+   * format for suggestions. Only the format key is set; the imported page layout is left alone.
+   */
+  const [typeOffer, setTypeOffer] = useState<{ presetKey: string; typeLabel: string } | null>(null)
+  const typeOfferKey = id ? `intellidocs.docTypePrompt.${id}` : null
+  const typeCheckedRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !id || !typeOfferKey || readOnly || isHydrating || formattingPreset) return
+    if (typeCheckedRef.current === id) return
+    const text = editor.getText().trim()
+    if (text.length < 200) return
+    typeCheckedRef.current = id
+    try {
+      if (window.localStorage.getItem(typeOfferKey) === 'dismissed') return
+    } catch {
+      // Storage can be blocked; the offer then shows again next time.
+    }
+    let cancelled = false
+    api.formatting
+      .inferStructure(text.slice(0, 3000))
+      .then((result) => {
+        if (!cancelled && result.presetKey && ACADEMIC_PRESETS.some((p) => p.key === result.presetKey)) {
+          setTypeOffer({ presetKey: result.presetKey, typeLabel: result.typeLabel })
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [editor, id, typeOfferKey, readOnly, isHydrating, formattingPreset])
+
+  /** Hide the document-type offer and remember that for this document. */
+  function dismissTypeOffer(): void {
+    setTypeOffer(null)
+    try {
+      if (typeOfferKey) window.localStorage.setItem(typeOfferKey, 'dismissed')
+    } catch {
+      // Not remembered; harmless.
+    }
+  }
+
+  /** Adopt the detected format for suggestions without touching the page geometry. */
+  async function acceptTypeOffer(): Promise<void> {
+    if (!typeOffer) return
+    const { presetKey } = typeOffer
+    setFormattingPreset(presetKey)
+    dismissTypeOffer()
+    if (id) {
+      try {
+        await api.formatting.setDocumentPreset(id, presetKey)
+      } catch (err) {
+        console.error('Failed to persist the detected preset', err)
+      }
+    }
+  }
+
+  /** Hide the prompt and remember that for this document. */
+  function dismissTwoColumnPrompt(): void {
+    setTwoColumnPromptOpen(false)
+    try {
+      if (twoColumnKey) window.localStorage.setItem(twoColumnKey, 'dismissed')
+    } catch {
+      // Not remembered; harmless.
+    }
+  }
+
   // A freshly loaded document may already differ from its preset; re-arm the
   // check whenever the bound preset key changes.
   useEffect(() => {
@@ -3187,6 +3297,51 @@ export default function Document(): JSX.Element {
                 error={forkError}
               />
             </div>
+          )}
+
+          {/* An imported two-column paper — offer the IEEE two-column preview */}
+          {twoColumnPromptOpen && (
+            <div
+              style={{
+                position: 'fixed',
+                bottom: '7.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(32rem, calc(100vw - 2rem))',
+                zIndex: 40,
+              }}
+            >
+              <TwoColumnPrompt
+                onPreview={() => {
+                  setTwoColumnPreviewHtml(editor?.getHTML() ?? content)
+                  dismissTwoColumnPrompt()
+                }}
+                onDismiss={dismissTwoColumnPrompt}
+              />
+            </div>
+          )}
+          {/* An opened file that reads like a known paper type — offer its format for suggestions */}
+          {typeOffer && !twoColumnPromptOpen && (
+            <div
+              style={{
+                position: 'fixed',
+                bottom: '7.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(32rem, calc(100vw - 2rem))',
+                zIndex: 40,
+              }}
+            >
+              <DocumentTypePrompt
+                typeLabel={typeOffer.typeLabel}
+                presetName={ACADEMIC_PRESETS.find((p) => p.key === typeOffer.presetKey)?.name ?? typeOffer.typeLabel}
+                onApply={() => void acceptTypeOffer()}
+                onDismiss={dismissTypeOffer}
+              />
+            </div>
+          )}
+          {twoColumnPreviewHtml !== null && (
+            <IeeePrintPreview html={twoColumnPreviewHtml} onClose={() => setTwoColumnPreviewHtml(null)} />
           )}
 
         </main>
