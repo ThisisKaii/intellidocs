@@ -7,7 +7,7 @@ import { applyIeeeNumbering } from '@/components/editor/ieeeNumberingCommand'
 import { convertToIeee } from '@/components/editor/ieeeConvertCommand'
 import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
 import type { PageSizeKey } from '@/components/editor/TiptapEditor'
-import type { PageNumberFormat } from '@/services/api'
+import type { EditorJson, PageNumberFormat } from '@/services/api'
 import type { GrammarIssue } from '@/services/api'
 import { createDefaultHeaderFooterConfig } from '@/components/editor/HeaderFooterPlugin'
 import { useAutoFormatScanner } from '@/hooks/useAutoFormatScanner'
@@ -64,6 +64,8 @@ interface FidelityPayload {
   headerNumberFormat: PageNumberFormat
   footerNumberFormat: PageNumberFormat
   pageLayout?: PageLayoutData | null
+  /** The editor JSON a previous open saved: reopened from it, as the Document page reopens a saved document. */
+  json?: EditorJson | null
 }
 
 /** The payload the test injected, if any. */
@@ -153,6 +155,7 @@ export default function DevEditorHarness() {
       >
         <PagedEditor
           content={content}
+          contentJson={fidelity?.json ?? null}
           onContentChange={captureHtml}
           onActiveEditorChange={setEditor}
           onGrammarClick={() => undefined}

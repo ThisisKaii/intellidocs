@@ -35,11 +35,23 @@ export interface PageSetup {
   margins: MarginValues
 }
 
+/** The editor's own document (ProseMirror `editor.getJSON()`); node shapes belong to the editor. */
+export interface EditorJson {
+  type: 'doc'
+  content?: unknown[]
+  [key: string]: unknown
+}
+
 export interface Document {
   id: string
   user_id: string
   title: string
   content: string
+  /**
+   * The editor's JSON of `content`, loaded in preference to the HTML (migration 037). Null when
+   * `content` was last written without it (imports, older clients, pre-JSON versions).
+   */
+  content_json?: EditorJson | null
   /** Short, sanitized content prefix for grid previews (migration 026). */
   preview_snippet?: string
   /** When the caller last opened this document; set only by the "Recent" list (migration 034). */
@@ -125,6 +137,8 @@ export interface CreateDocumentRequest {
 export interface UpdateDocumentRequest {
   title?: string
   content?: string
+  /** Sent only with `content`; omitted or null clears the stored JSON. */
+  content_json?: EditorJson | null
   header_content?: string
   footer_content?: string
   show_header?: boolean
@@ -536,6 +550,8 @@ export interface DocumentVersion {
   document_id: string
   user_id: string
   content: string
+  /** The editor's JSON when the snapshot had one (migration 037). */
+  content_json?: EditorJson | null
   title: string
   word_count: number | null
   version_number: number | null

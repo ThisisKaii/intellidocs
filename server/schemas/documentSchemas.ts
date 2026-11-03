@@ -99,6 +99,25 @@ const citationDataSchema = z.object({
   references: z.array(citationReferenceSchema).max(500),
 })
 
+/** Largest editor JSON accepted, in serialised characters (matches the HTML cap). */
+export const EDITOR_JSON_MAX_CHARS = 8_000_000
+
+/**
+ * The editor's own document (ProseMirror `editor.getJSON()`). Only the root is checked here: node
+ * shapes belong to the editor's schema, which validates them when it loads the JSON.
+ */
+export const editorJsonSchema = z
+  .object({
+    type: z.literal('doc'),
+    content: z.array(z.unknown()).optional(),
+  })
+  .passthrough()
+  .refine((doc) => JSON.stringify(doc).length <= EDITOR_JSON_MAX_CHARS, {
+    message: 'Content JSON is too large',
+  })
+
+export type EditorJson = z.infer<typeof editorJsonSchema>
+
 /** Validate document update requests from HTTP clients. */
 export const updateDocumentSchema = z
   .object({
@@ -109,6 +128,9 @@ export const updateDocumentSchema = z
       .max(200, 'Title must be 200 characters or fewer')
       .optional(),
     content: z.string().max(8000000, 'Content is too large').optional(),
+    // The editor's JSON of the same content. Sent only together with `content`, so the two cannot
+    // disagree; an update of `content` without it clears the stored JSON (see documentModel).
+    content_json: editorJsonSchema.nullable().optional(),
     header_content: z.string().max(1_000_000, 'Header is too large').optional(),
     footer_content: z.string().max(1_000_000, 'Footer is too large').optional(),
     show_header: z.boolean().optional(),
@@ -123,6 +145,10 @@ export const updateDocumentSchema = z
     formatting_preset: z.string().max(100).nullable().optional(),
     citation_data: citationDataSchema.optional(),
     page_layout: pageLayoutSchema.nullable().optional(),
+  })
+  .refine((data) => data.content_json === undefined || data.content !== undefined, {
+    message: 'content_json must be sent together with content',
+    path: ['content_json'],
   })
   .refine(
     (data) =>

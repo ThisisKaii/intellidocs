@@ -3,6 +3,7 @@
 // ???
 /// <reference types="vite/client" />
 
+import type { JSONContent } from '@tiptap/core'
 import type { PageLayoutData } from '@/lib/pageLayout'
 import { supabase } from '../lib/supabase'
 import type { GrammarBlock } from '@/lib/grammarBlocks'
@@ -56,11 +57,16 @@ export interface ReviewRecord {
   created_at: string
 }
 
+/** The editor's own document (ProseMirror `editor.getJSON()`), stored beside the HTML (migration 037). */
+export type EditorJson = JSONContent
+
 export interface DocumentRecord {
   id: string
   user_id: string
   title: string
   content: string
+  /** The editor's JSON of `content`, loaded in preference to it; null when the HTML was written without it. */
+  content_json?: EditorJson | null
   /** Short, sanitized content prefix for grid previews (migration 026). */
   preview_snippet?: string
   header_content: string
@@ -96,6 +102,7 @@ export interface DocumentVersion {
   document_id: string
   user_id: string
   content: string
+  content_json?: EditorJson | null
   title: string
   word_count: number | null
   version_number: number | null
@@ -231,6 +238,8 @@ interface RegisterResponse {
 interface UpdateDocumentRequest {
   title?: string
   content?: string
+  /** Only with `content`: the editor's JSON of the same state. */
+  content_json?: EditorJson | null
   header_content?: string
   footer_content?: string
   show_header?: boolean

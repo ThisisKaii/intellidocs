@@ -19,6 +19,7 @@ import { MathEditPopover } from './MathEditPopover'
 import type { BehaviorEventPayload } from './behaviorListener'
 import type { GrammarIssue } from './GrammarPanel'
 import { loadEditorContent } from '@/lib/loadEditorContent'
+import type { EditorJson } from '@/services/api'
 import { lastLineSlackPx, measureKey, numberingCss, pageZones, type PageLayoutData, type PageMeasure } from '@/lib/pageLayout'
 import { sanitizeHeaderHtml } from '@/lib/sanitizeHeaderHtml'
 
@@ -134,10 +135,15 @@ function sanitizeLoadedHtml(html: string): string {
 }
 
 interface PagedEditorProps {
-  /** Full document HTML — the single source of truth. */
+  /** Full document HTML. A change here (load, restore, remote edit) is pushed into the editor. */
   content: string
-  /** Called with the full document HTML after any editor update. */
-  onContentChange: (html: string) => void
+  /**
+   * The editor's saved JSON of the same document. When set it is what loads with a `content`
+   * change, since parsing HTML back can drift; invalid JSON falls back to `content`.
+   */
+  contentJson?: EditorJson | null
+  /** Called with the full document HTML and the editor's JSON after any editor update. */
+  onContentChange: (html: string, json: EditorJson) => void
   /** Called with the live editor once it exists. */
   onActiveEditorChange: (editor: Editor | null) => void
   /** Forwarded grammar-underline clicks for the popover (includes the PM position). */
@@ -184,6 +190,7 @@ interface PagedEditorProps {
  */
 export function PagedEditor({
   content,
+  contentJson = null,
   onContentChange,
   onActiveEditorChange,
   onGrammarClick,
@@ -204,6 +211,11 @@ export function PagedEditor({
   const propsRef = useRef({ onContentChange, onGrammarClick })
   propsRef.current = { onContentChange, onGrammarClick }
   const lastEmittedRef = useRef<string | null>(null)
+  // Read when `content` changes, not a trigger of its own: the host sets both together. Each JSON
+  // object loads once, so a host that later sets HTML alone never gets the older JSON back.
+  const contentJsonRef = useRef<EditorJson | null>(contentJson)
+  contentJsonRef.current = contentJson
+  const loadedJsonRef = useRef<EditorJson | null>(null)
   // Pagination is paused around a document load so the single ProseMirror
   // parse triggers exactly one page relayout instead of intermediate passes.
   const paginationPausedRef = useRef<boolean>(false)
@@ -266,7 +278,7 @@ export function PagedEditor({
     onUpdate: ({ editor: ed }) => {
       const html = ed.getHTML()
       lastEmittedRef.current = html
-      propsRef.current.onContentChange(html)
+      propsRef.current.onContentChange(html, ed.getJSON())
     },
   })
 
@@ -315,14 +327,17 @@ export function PagedEditor({
 
     lastEmittedRef.current = content
 
-    // Strip import-only wrapper markup before ProseMirror builds its nodes.
+    // Strip import-only wrapper markup before ProseMirror builds its nodes. The saved JSON, when
+    // there is one, is the editor's own and loads in preference (the HTML is its fallback).
     const cleanContent = sanitizeLoadedHtml(content)
 
     if (!paginationPausedRef.current) {
       paginationPausedRef.current = true
       editor.commands.disablePagination()
     }
-    loadEditorContent(editor, cleanContent)
+    const json = contentJsonRef.current === loadedJsonRef.current ? null : contentJsonRef.current
+    loadedJsonRef.current = json ?? loadedJsonRef.current
+    loadEditorContent(editor, cleanContent, json)
     if (paginationPausedRef.current) {
       paginationPausedRef.current = false
       editor.commands.enablePagination()

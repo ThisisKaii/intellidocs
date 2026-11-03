@@ -9,6 +9,7 @@ from Word's.
 Run from the repo root with the frontend dev server up:
     ml/venv/Scripts/python tests/e2e/word_gate.py
     ml/venv/Scripts/python tests/e2e/word_gate.py --update-baseline   # deliberate; review the diff
+    ml/venv/Scripts/python tests/e2e/word_gate.py --roundtrip         # also reopen from the saved editor JSON
 
 Exit codes: 0 no regression, 1 regression, 2 the gate could not measure (stale golden, a fixture
 that failed to load, frontend down).
@@ -29,7 +30,7 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 
 import fidelity_run as fr  # noqa: E402  (convert, to_payload, wait_for_layout)
-from word_alignment import Score, baseline_from, compare, score, summary_lines  # noqa: E402
+from word_alignment import Regression, Score, baseline_from, compare, score, summary_lines  # noqa: E402
 
 FIXTURES = REPO / "tests" / "fixtures" / "import_baselines"
 TRUTH_DIR = FIXTURES / "word_truth"
@@ -89,11 +90,17 @@ def golden_files(only: str | None) -> list[tuple[str, Path, dict]]:
     return chosen
 
 
-def measure(browser, web: str, fixture: Path) -> tuple[list[dict], int]:
-    """The editor's rows and page count for one fixture, laid out the way the Document page does."""
-    payload = fr.to_payload(fr.convert(fixture))
+# PagedEditor logs this when saved JSON does not fit the editor schema and it falls back to the HTML.
+JSON_REJECTED = "Saved editor JSON does not fit the editor schema"
+
+
+def measure(browser, web: str, payload: dict, keep_json: bool = False) -> tuple[list[dict], int, dict | None]:
+    """The editor's rows and page count for one converted fixture, laid out the way the Document page
+    does, and (with keep_json) the editor's JSON as autosave would store it."""
     context = browser.new_context(viewport={"width": 1300, "height": 1250})
     page = context.new_page()
+    rejected: list[str] = []
+    page.on("console", lambda message: rejected.append(message.text) if JSON_REJECTED in message.text else None)
     page.route("**fonts.googleapis.com**", lambda r: r.abort())
     page.route("**fonts.gstatic.com**", lambda r: r.abort())
     page.add_init_script("window.__FIDELITY__ = " + json.dumps(payload))
@@ -104,24 +111,34 @@ def measure(browser, web: str, fixture: Path) -> tuple[list[dict], int]:
         page.evaluate("document.fonts.ready.then(() => true)")
         layout = fr.wait_for_layout(page)
         rows = page.evaluate(JS_ROWS, layout["pageH"] + 40)
-        return rows, int(layout["pages"])
+        if rejected:
+            raise GateError(f"the saved JSON was rejected on reopen: {rejected[0]}")
+        saved = page.evaluate("window.__editor.getJSON()") if keep_json else None
+        return rows, int(layout["pages"]), saved
     finally:
         context.close()
 
 
-def run(web: str, only: str | None) -> dict[str, Score]:
-    """Measure every selected fixture."""
+def run(web: str, only: str | None, roundtrip: bool = False) -> dict[str, Score]:
+    """Measure every selected fixture. With roundtrip, each is also reopened from the editor JSON its
+    first open would save, and must score exactly as that first open did (a `name (reopened)` entry)."""
     scores: dict[str, Score] = {}
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, channel="chrome", args=["--font-render-hinting=none"])
         try:
             for name, fixture, truth in golden_files(only):
                 print(f"{name} ...", flush=True)
+                payload = fr.to_payload(fr.convert(fixture))
                 try:
-                    rows, pages = measure(browser, web, fixture)
+                    rows, pages, saved = measure(browser, web, payload, keep_json=roundtrip)
+                    scores[name] = score(truth, rows, pages)
+                    if roundtrip:
+                        rows, pages, _ = measure(browser, web, {**payload, "json": saved})
+                        scores[f"{name} (reopened)"] = score(truth, rows, pages)
+                except GateError:
+                    raise
                 except Exception as error:  # a fixture that cannot load is a gate failure, not a skip
                     raise GateError(f"{name} could not be measured: {type(error).__name__}: {error}") from error
-                scores[name] = score(truth, rows, pages)
         finally:
             browser.close()
     return scores
@@ -133,12 +150,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--only", help="measure only fixtures whose name contains this text (no baseline update)")
     parser.add_argument("--update-baseline", action="store_true", help="record today's scores as the baseline")
+    parser.add_argument(
+        "--roundtrip",
+        action="store_true",
+        help="also reopen every fixture from the editor JSON it would save; it must score as the first open did",
+    )
     args = parser.parse_args(argv)
-    if args.update_baseline and args.only:
-        parser.error("--update-baseline records every fixture; drop --only")
+    if args.update_baseline and (args.only or args.roundtrip):
+        parser.error("--update-baseline records every fixture's first open; drop --only and --roundtrip")
 
     try:
-        scores = run(args.web, args.only)
+        scores = run(args.web, args.only, args.roundtrip)
     except GateError as error:
         print(f"GATE ERROR: {error}")
         return 2
@@ -158,9 +180,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nGATE ERROR: no baseline at {BASELINE.relative_to(REPO)}: run with --update-baseline")
         return 2
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    reopened = {name: s for name, s in scores.items() if name.endswith(" (reopened)")}
+    scores = {name: s for name, s in scores.items() if name not in reopened}
     if args.only:
         baseline = {name: entry for name, entry in baseline.items() if name in scores}
     regressions = compare(scores, baseline)
+    for name, again in reopened.items():
+        first = scores[name.removesuffix(" (reopened)")]
+        if again.as_dict() != first.as_dict():
+            regressions.append(Regression(
+                name,
+                "reopening from the saved JSON changed the layout: paragraphs on Word's page "
+                f"{first.same_page} -> {again.same_page}, pages {first.editor_pages} -> {again.editor_pages}",
+            ))
     if regressions:
         print("\nREGRESSION")
         for regression in regressions:

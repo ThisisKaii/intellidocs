@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
-import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion, FormatSnapshot, PageNumberFormat } from '../types/index'
+import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion, EditorJson, FormatSnapshot, PageNumberFormat } from '../types/index'
 import { getRedisClient } from '../utils/redisClient'
 import { isDestructiveBlankOverwrite } from '../utils/documentGuards'
 import { assertWithinStorageQuota } from './userModel'
@@ -366,10 +366,19 @@ export async function createDocument(
   return data
 }
 
+/**
+ * Bytes a document's content counts against the storage quota: its editor JSON when it has one,
+ * else its HTML, as `user_storage_bytes` counts it (migration 037).
+ */
+export function contentBytes(content: string | undefined, contentJson: EditorJson | null | undefined): number {
+  return contentJson ? Buffer.byteLength(JSON.stringify(contentJson)) : Buffer.byteLength(content ?? '')
+}
+
 /** Copy an update payload without the columns added by later migrations (pre-migration retry). */
 function withoutPreviewSnippet(payload: Record<string, unknown>): Record<string, unknown> {
   const clone: Record<string, unknown> = { ...payload }
   delete clone.preview_snippet
+  delete clone.content_json
   delete clone.citation_data
   delete clone.page_layout
   return clone
@@ -408,14 +417,23 @@ export async function updateDocument(
 
   // Only growth counts toward the owner's quota; shrinking a document always saves.
   if (req.content !== undefined) {
-    await assertWithinStorageQuota(doc.user_id, Buffer.byteLength(req.content) - Buffer.byteLength(doc.content ?? ''))
+    await assertWithinStorageQuota(
+      doc.user_id,
+      contentBytes(req.content, req.content_json) - contentBytes(doc.content, doc.content_json),
+    )
   }
 
-  // Refresh the grid-preview snippet whenever the content changes.
+  // Refresh the grid-preview snippet whenever the content changes. The stored editor JSON is
+  // replaced with the JSON sent alongside, or cleared when none was: JSON left over from an
+  // earlier save would otherwise load in place of this newer HTML.
   const updates =
     req.content === undefined
       ? req
-      : { ...req, preview_snippet: extractPreviewSnippet(req.content) }
+      : {
+          ...req,
+          content_json: req.content_json ?? null,
+          preview_snippet: extractPreviewSnippet(req.content),
+        }
 
   let { data, error } = await supabase
     .from('documents')
@@ -528,10 +546,11 @@ export async function snapshotDocumentVersion(
       if (Date.now() - last < VERSION_THROTTLE_MS) return
     }
 
-    const { error } = await supabase.from('document_versions').insert({
+    const snapshot: Record<string, unknown> = {
       document_id: doc.id,
       user_id: doc.user_id,
       content: doc.content,
+      content_json: doc.content_json ?? null,
       title: doc.title,
       word_count: countWords(doc.content),
       page_size: doc.page_size,
@@ -539,7 +558,13 @@ export async function snapshotDocumentVersion(
       orientation: doc.orientation,
       editor_prefs: buildFormatSnapshot(doc),
       reason,
-    })
+    }
+    let { error } = await supabase.from('document_versions').insert(snapshot)
+    if (isUndefinedColumnError(error)) {
+      // Migration 037 not applied yet: keep the snapshot without the editor JSON.
+      delete snapshot.content_json
+      ;({ error } = await supabase.from('document_versions').insert(snapshot))
+    }
     if (error) {
       throw new Error(`Failed to snapshot document version: ${error.message}`)
     }
@@ -600,27 +625,33 @@ export async function restoreDocumentVersion(
   const version = await getDocumentVersionById(documentId, versionId, userId)
   const prefs = readFormatSnapshot(version.editor_prefs)
 
-  const { data, error } = await supabase
-    .from('documents')
-    .update({
-      content: version.content,
-      title: version.title,
-      page_size: version.page_size ?? undefined,
-      margins: version.margins ?? undefined,
-      orientation: version.orientation ?? undefined,
-      header_content: prefs.header_content,
-      footer_content: prefs.footer_content,
-      show_header: prefs.show_header,
-      show_footer: prefs.show_footer,
-      header_number_format: prefs.header_number_format,
-      footer_number_format: prefs.footer_number_format,
-      formatting_history: prefs.formatting_history,
-      formatting_preset: prefs.formatting_preset,
-    })
-    .eq('id', documentId)
-    .eq('user_id', userId)
-    .select()
-    .single()
+  // A version saved before migration 037 has no JSON, so the restored HTML must load on its own:
+  // null clears whatever JSON the document held.
+  const restored: Record<string, unknown> = {
+    content: version.content,
+    content_json: version.content_json ?? null,
+    title: version.title,
+    page_size: version.page_size ?? undefined,
+    margins: version.margins ?? undefined,
+    orientation: version.orientation ?? undefined,
+    header_content: prefs.header_content,
+    footer_content: prefs.footer_content,
+    show_header: prefs.show_header,
+    show_footer: prefs.show_footer,
+    header_number_format: prefs.header_number_format,
+    footer_number_format: prefs.footer_number_format,
+    formatting_history: prefs.formatting_history,
+    formatting_preset: prefs.formatting_preset,
+  }
+  const restore = (payload: Record<string, unknown>) =>
+    supabase.from('documents').update(payload).eq('id', documentId).eq('user_id', userId).select().single()
+
+  let { data, error } = await restore(restored)
+  if (isUndefinedColumnError(error)) {
+    // Migration 037 not applied yet: restore without the editor JSON column.
+    delete restored.content_json
+    ;({ data, error } = await restore(restored))
+  }
 
   if (error) throw new Error(`Failed to restore document version: ${error.message}`)
   void invalidateDocumentCache(documentId)

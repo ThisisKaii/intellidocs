@@ -39,6 +39,7 @@ Table documents {
   user_id uuid [ref: > users.id]
   title text [not null]
   content text
+  content_json jsonb
   formatting_history jsonb
   is_isolated boolean
   created_at timestamptz

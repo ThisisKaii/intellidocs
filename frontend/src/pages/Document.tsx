@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { api, type DocumentRecord, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
+import { api, type DocumentRecord, type EditorJson, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
 import {
   TiptapToolbar,
   type Editor,
@@ -96,6 +96,8 @@ function avatarInitials(name: string): string {
 /** Live content snapshot broadcast on a document channel. */
 interface DocSyncPayload {
   content: string
+  /** The sender's editor JSON of `content`, loaded in preference to it. */
+  content_json?: EditorJson | null
   title?: string
   header_content?: string
   footer_content?: string
@@ -214,6 +216,12 @@ export default function Document(): JSX.Element {
   const documentLoadedRef = useRef<boolean>(false)
   const latestTitleRef = useRef<string>('Untitled Document')
   const latestContentRef = useRef<string>('')
+  /**
+   * The editor's JSON of latestContentRef, saved with it. Null when the content came from somewhere
+   * other than the editor (an import, a pre-JSON version): the HTML is then saved alone, and the
+   * server clears the stored JSON so it cannot load over the newer HTML.
+   */
+  const latestJsonRef = useRef<EditorJson | null>(null)
   const latestFormatHistoryRef = useRef<string[]>([])
   const pendingSaveRef = useRef<boolean>(false)
   const saveRetryCountRef = useRef<number>(0)
@@ -230,6 +238,8 @@ export default function Document(): JSX.Element {
 
   const [title, setTitle] = useState<string>('Untitled Document')
   const [content, setContent] = useState<string>('')
+  /** Saved editor JSON handed to the editor with each external `content` load (it loads in preference). */
+  const [contentJson, setContentJson] = useState<EditorJson | null>(null)
   const latestHeaderRef = useRef<string>('')
   const latestFooterRef = useRef<string>('')
   const [headerContent, setHeaderContent] = useState<string>('')
@@ -732,6 +742,8 @@ export default function Document(): JSX.Element {
       if (readOnly) return
       if (latestContentRef.current === payload.content) return
       latestContentRef.current = payload.content
+      latestJsonRef.current = payload.content_json ?? null
+      setContentJson(payload.content_json ?? null)
       setContent(payload.content)
       if (typeof payload.title === 'string' && payload.title) {
         latestTitleRef.current = payload.title
@@ -785,6 +797,7 @@ export default function Document(): JSX.Element {
     const nextHeader = doc.header_content || ''
     const nextFooter = doc.footer_content || ''
     setTitle(nextTitle)
+    setContentJson(doc.content_json ?? null)
     setContent(nextContent)
     latestHeaderRef.current = nextHeader
     latestFooterRef.current = nextFooter
@@ -813,6 +826,7 @@ export default function Document(): JSX.Element {
     }
     latestTitleRef.current = nextTitle
     latestContentRef.current = nextContent
+    latestJsonRef.current = doc.content_json ?? null
     setSaveStatus('saved')
     resetCompositionBaseline(updateWordCount(nextContent))
     setIsIsolated(doc.is_isolated ?? false)
@@ -1603,6 +1617,7 @@ export default function Document(): JSX.Element {
     const nextTitle = latestTitleRef.current
     // Read the latest content from the cache kept fresh by every page edit
     const nextContent = latestContentRef.current
+    const nextJson = latestJsonRef.current
     const nextFormatHistory = latestFormatHistoryRef.current
 
     savingRef.current = true
@@ -1613,6 +1628,7 @@ export default function Document(): JSX.Element {
       await api.documents.update(id, {
         title: nextTitle,
         content: nextContent,
+        content_json: nextJson,
         header_content: latestHeaderRef.current,
         footer_content: latestFooterRef.current,
         show_header: latestHeaderSettingsRef.current.showHeader,
@@ -1641,6 +1657,7 @@ export default function Document(): JSX.Element {
             event: 'doc_sync',
             payload: {
               content: nextContent,
+              content_json: nextJson,
               title: nextTitle,
               header_content: latestHeaderRef.current,
               footer_content: latestFooterRef.current,
@@ -1653,7 +1670,7 @@ export default function Document(): JSX.Element {
     } catch (error) {
       console.error('Autosave failed', error)
       // Keep the unsaved edits in this browser so a closed tab or a long outage loses nothing.
-      writeLocalDraft(id, { title: nextTitle, content: nextContent })
+      writeLocalDraft(id, { title: nextTitle, content: nextContent, content_json: nextJson })
       if ((error as { status?: number }).status === 413) {
         // Out of storage: retrying can't help. The draft above keeps the edits until space is freed.
         pendingSaveRef.current = false
@@ -1688,7 +1705,11 @@ export default function Document(): JSX.Element {
     if (!id) return
     const keepPendingEdits = (): void => {
       if (documentLoadedRef.current && (pendingSaveRef.current || savingRef.current)) {
-        writeLocalDraft(id, { title: latestTitleRef.current, content: latestContentRef.current })
+        writeLocalDraft(id, {
+          title: latestTitleRef.current,
+          content: latestContentRef.current,
+          content_json: latestJsonRef.current,
+        })
       }
     }
     window.addEventListener('beforeunload', keepPendingEdits)
@@ -1700,8 +1721,9 @@ export default function Document(): JSX.Element {
     if (!recoveredDraft || !id) return
     latestTitleRef.current = recoveredDraft.title || latestTitleRef.current
     if (recoveredDraft.title) setTitle(recoveredDraft.title)
+    setContentJson(recoveredDraft.content_json ?? null)
     setContent(recoveredDraft.content)
-    handleContentChange(recoveredDraft.content)
+    handleContentChange(recoveredDraft.content, recoveredDraft.content_json ?? null)
     setRecoveredDraft(null)
   }
 
@@ -1711,7 +1733,11 @@ export default function Document(): JSX.Element {
     setRecoveredDraft(null)
   }
 
-  function handleContentChange(newContent: string): void {
+  /**
+   * New content to save. `json` is the editor's JSON of it; content from anywhere else (an import,
+   * a version saved before JSON) has none, and is then saved as HTML alone.
+   */
+  function handleContentChange(newContent: string, json: EditorJson | null = null): void {
     // The empty editor emits an update on mount; before the document has
     // loaded that is not an edit and must not touch the latest-content cache.
     if (!documentLoadedRef.current) return
@@ -1720,6 +1746,7 @@ export default function Document(): JSX.Element {
     // PagedEditor) on every transaction, restarting the update cycle.
     if (newContent === latestContentRef.current) return
     latestContentRef.current = newContent
+    latestJsonRef.current = json
     setContent(newContent)
     const textLength = updateWordCount(newContent)
     trackComposition(textLength)
@@ -2955,6 +2982,8 @@ export default function Document(): JSX.Element {
                     setFooterContent(layout.footerContent)
                   }
                 }
+                // An import is HTML only: drop the saved JSON so the editor loads this HTML.
+                setContentJson(null)
                 handleContentChange(importedHtml)
               }}
               headerContent={headerContent}
@@ -3155,6 +3184,7 @@ export default function Document(): JSX.Element {
             {activeAcademicPreset && <style>{activeAcademicPreset.css}</style>}
             <PagedEditor
               content={content}
+              contentJson={contentJson}
               onContentChange={handleContentChange}
               onActiveEditorChange={setEditor}
               onGrammarClick={handleGrammarClick}
@@ -3383,8 +3413,9 @@ export default function Document(): JSX.Element {
             const snapshot = readFormatSnapshot(version.editor_prefs)
             latestTitleRef.current = version.title
             setTitle(version.title)
+            setContentJson(version.content_json ?? null)
             setContent(version.content)
-            handleContentChange(version.content)
+            handleContentChange(version.content, version.content_json ?? null)
             if (version.page_size) {
               latestPageSetupRef.current.pageSize = version.page_size
               setPageSize(version.page_size)

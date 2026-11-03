@@ -17,7 +17,12 @@ when a fixture changes; the gate refuses truth whose SHA-256 does not match its 
 ```powershell
 ml\venv\Scripts\python tests\e2e\word_gate.py                    # exit 0 ok, 1 regression, 2 could not measure
 ml\venv\Scripts\python tests\e2e\word_gate.py --update-baseline  # deliberate: review the diff
+ml\venv\Scripts\python tests\e2e\word_gate.py --roundtrip        # also reopen each fixture from its saved editor JSON
 ```
+
+`--roundtrip` measures every fixture twice: as first opened, then reopened from the editor JSON that
+autosave would store. The reopened layout must match the first open exactly, and saved JSON that the
+editor rejects is an error, not a quiet fallback to the HTML.
 
 The tools below explain a drop the gate reports.
 

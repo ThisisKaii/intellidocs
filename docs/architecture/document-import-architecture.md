@@ -94,6 +94,11 @@ Each stage is independent and testable, and none needs a canvas rewrite. A canva
 - Give node attributes typed values instead of CSS strings: paragraph spacing as numbers, a cell padding object, borders as structured values. `renderHTML` builds the CSS, so the browser never round-trips styles.
 - Files: `server/src/models/documentModel.ts`, a migration, `server/schemas/documentSchemas.ts`, `frontend/src/pages/Document.tsx`, `PagedEditor.tsx`, and the node extensions in `TiptapEditor.tsx`.
 - Gate: save, reload and save again produces identical JSON, using the existing `saveRoundTrip.test.ts` extended to every fixture.
+- **Status (2026-11-03): JSON storage done; typed attributes deferred.**
+  - Migration `037_document_content_json.sql` adds `content_json` to documents and versions. The storage quota counts the JSON in place of the HTML.
+  - The server clears `content_json` whenever `content` is written without it, so stale JSON never loads over newer HTML.
+  - `word_gate.py --roundtrip` reopens every fixture from its saved JSON and requires the same score as the first open.
+  - **Follow-up, typed attributes:** still open. JSON storage already removes the round-trip drift, because attribute strings are saved exactly as the editor holds them. Typed values would change converter output and every node extension, so they belong with Stage 2's canonical IR.
 
 ### Stage 2: canonical IR from the converter (fixes M1 and M5, enables everything else) · 1–2 weeks
 - `converter.py` emits a versioned JSON IR (with a Zod schema on the server boundary):
