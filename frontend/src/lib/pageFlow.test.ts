@@ -31,6 +31,10 @@ describe('decidePushes', () => {
     expect(pushes).toEqual([{ block: 0, line: 0, height: 960 - 940 + 1, reason: 'keep-with-next' }])
   })
 
+  it('keeps a heading in place when a blank line follows it, as Word does', () => {
+    expect(decidePushes(grid, [{ ...heading(940), blankAfter: true }, paragraph(1192, 1212, 1232)])).toEqual([])
+  })
+
   it('does not push a block that already starts a page', () => {
     expect(decidePushes(grid, [paragraph(1192, 1212, 1232)])).toEqual([])
   })

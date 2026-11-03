@@ -1624,12 +1624,12 @@ export default function Document(): JSX.Element {
         orientation: latestPageSetupRef.current.orientation,
         formatting_history: nextFormatHistory,
       }, shareToken)
-      latestContentRef.current = nextContent
-      setContent(nextContent)
+      // Edits made while this request was in flight are newer than nextContent: never put the older copy
+      // back (it used to overwrite them in the editor), and say Saved only once nothing waits to be saved.
       saveRetryCountRef.current = 0
-      setSaveStatus('saved')
+      setSaveStatus(pendingSaveRef.current ? 'unsaved' : 'saved')
       setStorageFull(false)
-      clearLocalDraft(id)
+      if (!pendingSaveRef.current) clearLocalDraft(id)
       if (id) void evictCachedDocument(id)
 
       // Broadcast the finished stroke to collaborators on the live channel.

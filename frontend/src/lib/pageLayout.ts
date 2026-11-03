@@ -20,7 +20,7 @@ export interface PageLayoutData {
   page_art: Record<string, string>
   /** Boxes hung beside a paragraph (`data-overlay` id): x from the page, y from the paragraph's top. */
   overlays?: Record<string, PageOverlay>
-  /** Widow/orphan control, on only when true (never for PDF imports, whose pages are fixed). */
+  /** Widow/orphan control: true when the Word file asks for it, false for PDF imports, whose pages are fixed. */
   flow_rules?: boolean
   /** The imported file is a two-column paper: the document page offers its IEEE view. */
   two_column?: boolean
@@ -48,6 +48,26 @@ const COUNTER_STYLES: Record<string, string> = {
   upperRoman: 'upper-roman',
   lowerLetter: 'lower-alpha',
   upperLetter: 'upper-alpha',
+}
+
+/**
+ * Word keeps a page's last line even when its line box ends a little past the bottom margin; the
+ * editor would push that line to the next page and every later line on the page would sit one line
+ * low. 3px was measured on the fixtures: 2px still loses some of those lines and 4px pulls up
+ * lines Word moves on. Files with widow control off (mostly converted from PDF, with full pages) need
+ * 9px: their last lines still fit in Word at 6px less room. These are measured values, not Word's rule.
+ */
+const LAST_LINE_SLACK_PX = 3
+const NO_WIDOW_CONTROL_SLACK_PX = 9
+
+/**
+ * Pixels taken off the bottom margin given to the paginator, so a page body has Word's room. Only
+ * imported Word documents get it, and it never reaches the stored margins: PDF pages are fixed by
+ * their source (`flow_rules: false`) and documents written in the editor have no page layout.
+ */
+export function lastLineSlackPx(layout: PageLayoutData | null | undefined): number {
+  if (!layout || layout.flow_rules === false) return 0
+  return layout.flow_rules === true ? LAST_LINE_SLACK_PX : NO_WIDOW_CONTROL_SLACK_PX
 }
 
 /** The section a page belongs to: the last one that started on or before it. */
@@ -98,7 +118,8 @@ function zoneHtml(
   extraArt: string,
 ): string {
   const part = key ? layout.parts[key] : undefined
-  const art = `${extraArt}${part?.art ?? ''}`
+  // A footer part's art is drawn from the header zone (see pageZones), never from its own zone.
+  const art = `${extraArt}${kind === 'header' ? (part?.art ?? '') : ''}`
   const distance = kind === 'header' ? section.header_distance : section.footer_distance
   const artBox = art
     ? `<div style="position:absolute;left:calc(var(--rm-margin-left) * -1);top:calc(var(--rm-margin-top) * -0.5);width:var(--rm-page-width);height:var(--rm-page-height);pointer-events:none">${art}</div>`
@@ -112,8 +133,9 @@ function zoneHtml(
 }
 
 /**
- * The header and footer HTML for one page. Pictures that repeat (running art)
- * and the page's own art are drawn from the header zone of that page; the
+ * The header and footer HTML for one page. All art is placed in page-corner coordinates, which only
+ * hold in the page-sized box of the header zone: drawn from the footer zone it lands on the next
+ * page's body. So running art, the page's own art and the footer's art all go there, and the
  * section's chosen header and footer parts supply the flowing text.
  */
 export function pageZones(layout: PageLayoutData, measure: PageMeasure, page: number): { header: string; footer: string } {
@@ -123,7 +145,8 @@ export function pageZones(layout: PageLayoutData, measure: PageMeasure, page: nu
   const first = section.title_pg && page === start
   const headerKey = first ? section.first_header : section.header
   const footerKey = first ? section.first_footer : section.footer
-  const extra = `${layout.repeat_art}${layout.page_art[String(page)] ?? ''}`
+  const footerArt = footerKey ? (layout.parts[footerKey]?.art ?? '') : ''
+  const extra = `${layout.repeat_art}${layout.page_art[String(page)] ?? ''}${footerArt}`
   return {
     header: zoneHtml(layout, headerKey, 'header', section, extra),
     footer: zoneHtml(layout, footerKey, 'footer', section, ''),
@@ -135,8 +158,12 @@ export function pageZones(layout: PageLayoutData, measure: PageMeasure, page: nu
  *
  * The pagination library numbers a page's header from `page-number-plus` (in the
  * break before the page) and its footer from `page-number` (in the break after
- * the previous page), so each restart resets the counter in the break that
- * renders that page's zone.
+ * the previous page), so each restart sets the counter in the break that
+ * renders that page's zone. It must be `counter-set`: a `counter-reset` makes a
+ * nested counter that the next break does not inherit, because the page stack
+ * already holds one of that name, so only the restart page itself would see it.
+ * `counter-set` runs after the break's `counter-increment`, so the value is the
+ * page's own number.
  */
 export function numberingCss(layout: PageLayoutData, measure: PageMeasure): string {
   const rules: string[] = []
@@ -156,9 +183,12 @@ export function numberingCss(layout: PageLayoutData, measure: PageMeasure): stri
     const start = item.section.number_start
     // Header of page p is drawn in break p-2 (1-based child p-1); footer of page p in break p-1 (child p).
     if (start !== null) {
-      if (from === 1) rules.push(`.rm-with-pagination .rm-first-page-header { counter-reset: page-number page-number-plus ${start}; }`)
-      else rules.push(`.rm-with-pagination .rm-pages-wrapper > .rm-page-break:nth-child(${from - 1}) { counter-reset: page-number-plus ${start - 1}; }`)
-      rules.push(`.rm-with-pagination .rm-pages-wrapper > .rm-page-break:nth-child(${from}) { counter-reset: page-number ${start - 1}; }`)
+      if (from === 1) {
+        rules.push(`.rm-with-pagination.rm-with-pagination, .rm-with-pagination .rm-first-page-header { counter-reset: page-number page-number-plus ${start}; }`)
+      } else {
+        rules.push(`.rm-with-pagination .rm-pages-wrapper > .rm-page-break:nth-child(${from - 1}) { counter-set: page-number-plus ${start}; }`)
+      }
+      rules.push(`.rm-with-pagination .rm-pages-wrapper > .rm-page-break:nth-child(${from}) { counter-set: page-number ${start}; }`)
     }
     if (!style && !hidden) return
     const headerValue = hidden ? '""' : `counter(page-number-plus, ${style})`

@@ -670,6 +670,39 @@ html {
   display: block;
 }
 
+/* A picture Word wraps text beside (see WrapBlock). Its float arrives on the inner box, a flex item of
+   the full-width image root, which would keep the line to itself, so the root floats instead. A float's
+   top margin would hold text away from the lines above the picture, so a zero-width spacer float
+   sets the height and the picture clears it: those lines run full width. */
+.intellidocs-wrap::before {
+  content: '';
+  float: left;
+  width: 0;
+  height: var(--wrap-top, 0);
+}
+
+.intellidocs-wrap:has(> .intellidocs-image-root > [style*='float: right'])::before {
+  float: right;
+}
+
+.intellidocs-wrap .intellidocs-image-root:has(> [style*='float: left']) {
+  display: block !important;
+  float: left;
+  clear: left;
+  width: auto !important;
+}
+
+.intellidocs-wrap .intellidocs-image-root:has(> [style*='float: right']) {
+  display: block !important;
+  float: right;
+  clear: right;
+  width: auto !important;
+}
+
+.intellidocs-wrap .intellidocs-image-root > [style*='float:'] {
+  float: none !important;
+}
+
 /* Inline wrap - image sits in text flow */
 .academic-image.wrap-inline,
 .ProseMirror .image-resizer.wrap-inline {

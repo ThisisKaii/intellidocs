@@ -20,7 +20,6 @@ from converter import (  # noqa: E402
     _docx_document_to_result,
     _generic_family,
     _snap_right_tabs,
-    _trim_page_ends,
 )
 
 
@@ -87,19 +86,16 @@ class TestTables:
 
 
 class TestPageEnds:
-    def test_blank_lines_before_a_page_break_are_dropped(self):
-        spacer = '<p class="empty-spacer" style="x"></p>'
-        html = f'<p>text</p>\n{spacer}\n{spacer}\n<hr class="page-break" data-page-break="true" />\n<p>next</p>'
-        assert "empty-spacer" not in _trim_page_ends(html)
-
-    def test_a_trailing_line_break_before_a_page_break_is_dropped(self):
-        html = '<p>text<br/></p>\n<hr class="page-break" data-page-break="true" />'
-        assert "<br" not in _trim_page_ends(html)
-
-    def test_a_page_that_is_blank_on_purpose_keeps_its_lines(self):
-        spacer = '<p class="empty-spacer"></p>'
-        html = f'<hr class="page-break" />\n{spacer}\n<hr class="page-break" />'
-        assert "empty-spacer" in _trim_page_ends(html)
+    def test_blank_lines_before_a_page_break_are_kept_because_word_lays_them_out(self):
+        document = docx.Document()
+        document.add_paragraph("text")
+        document.add_paragraph("")
+        document.add_paragraph("")
+        document.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        document.add_paragraph("next")
+        html = _html(document)
+        assert html.count("empty-spacer") >= 2
+        assert html.index("empty-spacer") < html.index('class="page-break"')
 
     def test_a_document_with_a_hard_break_still_breaks_the_page(self):
         document = docx.Document()

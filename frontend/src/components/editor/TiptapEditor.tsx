@@ -33,6 +33,7 @@ import { MarkdownTriggers } from './MarkdownTriggers'
 import { ListItem, OrderedList } from '@tiptap/extension-list'
 import { PageBreak } from './PageBreak'
 import { ColumnSection, SectionColumn } from './ColumnSection'
+import { WrapBlock } from './WrapBlock'
 import { PageFlowExtension } from './PageFlow'
 import { TabStop } from './TabStop'
 import {
@@ -265,8 +266,12 @@ const ALLOWED_STYLE_PROPS = new Set([
   'text-indent',
 ])
 
-/** Table cells also keep Word's row height as a minimum (text can still grow the row). */
-const CELL_STYLE_PROPS: ReadonlySet<string> = new Set(['min-height'])
+/**
+ * Table cells also keep Word's row height as a minimum (text can still grow the row), and `padding`:
+ * imports write the longhands, but the browser merges them into the shorthand when the document is
+ * saved. Dropped here, every cell falls back to the default padding on reload and tables grow.
+ */
+const CELL_STYLE_PROPS: ReadonlySet<string> = new Set(['min-height', 'padding'])
 
 /** Extract only whitelisted CSS properties from an inline style string. */
 function filterStyle(raw: string | null, extra: ReadonlySet<string> = new Set()): string | null {
@@ -1207,6 +1212,7 @@ export const editorExtensions = [
   PageBreak,
   ColumnSection,
   SectionColumn,
+  WrapBlock,
   PageFlowExtension.configure({ enabled: true }),
   TabStop,
   HeaderFooterExtension,

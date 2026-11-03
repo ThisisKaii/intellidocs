@@ -39,7 +39,7 @@ export async function buildImportedLayout(
   const hasParts = Object.keys(parts).length > 0
   const hasArt = repeatArt !== '' || Object.keys(pageArt).length > 0 || Object.keys(overlays).length > 0
   const layout: PageLayout | undefined = needsLayout(py, hasParts, hasArt)
-    ? { sections: py.hf?.sections ?? [], parts, repeat_art: repeatArt, page_art: pageArt, overlays, ...(py.flow_rules === false ? { flow_rules: false } : {}), ...(py.two_column_body === true ? { two_column: true } : {}) }
+    ? { sections: py.hf?.sections ?? [], parts, repeat_art: repeatArt, page_art: pageArt, overlays, ...(py.flow_rules !== undefined ? { flow_rules: py.flow_rules } : {}), ...(py.two_column_body === true ? { two_column: true } : {}) }
     : undefined
 
   return {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { numberingCss, pageZones, sectionForPage, type PageLayoutData, type PageLayoutSection } from './pageLayout'
+import { lastLineSlackPx, numberingCss, pageZones, sectionForPage, type PageLayoutData, type PageLayoutSection } from './pageLayout'
 import { sanitizeHeaderHtml } from './sanitizeHeaderHtml'
 
 const section = (index: number, patch: Partial<PageLayoutSection> = {}): PageLayoutSection => ({
@@ -34,13 +34,41 @@ describe('pageZones', () => {
     expect(pageZones(layout, measure, 3).header).toContain('three.png')
     expect(pageZones(layout, measure, 5).header).toContain('Chapter {page}')
   })
+  it('draws footer art from the page-sized box in the header zone, where its page-corner position holds', () => {
+    const withFooterArt: PageLayoutData = {
+      ...layout,
+      sections: [section(0, { footer: 'f' })],
+      parts: { f: { flow: '<p>Foot</p>', art: '<img src="https://x/rule.png" />' } },
+    }
+    const zones = pageZones(withFooterArt, { starts: [], pageCount: 1 }, 1)
+    expect(zones.header).toContain('rule.png')
+    expect(zones.footer).not.toContain('rule.png')
+    expect(zones.footer).toContain('Foot')
+  })
+})
+
+describe('lastLineSlackPx', () => {
+  it('gives only imported Word documents the room for a last line', () => {
+    expect(lastLineSlackPx({ ...layout, flow_rules: true })).toBe(3)
+    expect(lastLineSlackPx(layout)).toBe(9) // widow control off in the file
+    expect(lastLineSlackPx({ ...layout, flow_rules: false })).toBe(0)
+    expect(lastLineSlackPx(null)).toBe(0)
+  })
 })
 
 describe('numberingCss', () => {
   const css = numberingCss(layout, measure)
   it('restarts the counters in the breaks that draw the section start page', () => {
-    expect(css).toContain('.rm-page-break:nth-child(3) { counter-reset: page-number-plus 0; }')
-    expect(css).toContain('.rm-page-break:nth-child(4) { counter-reset: page-number 0; }')
+    expect(css).toContain('.rm-page-break:nth-child(3) { counter-set: page-number-plus 1; }')
+    expect(css).toContain('.rm-page-break:nth-child(4) { counter-set: page-number 1; }')
+  })
+  it('never restarts a later section with counter-reset, which the next page would not inherit', () => {
+    expect(css).not.toMatch(/nth-child\(\d+\) \{ counter-reset/)
+  })
+  it('starts the first section from the root, so the pages after the first follow it', () => {
+    const fromFive = numberingCss({ ...layout, sections: [section(0, { number_start: 5 })] }, { starts: [], pageCount: 3 })
+    expect(fromFive).toContain('.rm-with-pagination.rm-with-pagination, .rm-with-pagination .rm-first-page-header { counter-reset: page-number page-number-plus 5; }')
+    expect(fromFive).toContain('.rm-page-break:nth-child(1) { counter-set: page-number 5; }')
   })
   it('formats the first section in roman numerals up to the page before the next section', () => {
     expect(css).toContain('counter(page-number, lower-roman)')

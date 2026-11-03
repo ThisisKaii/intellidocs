@@ -9,6 +9,10 @@ const pageFlowKey = new PluginKey<DecorationSet>('pageFlow')
 const MAX_PASSES = 4
 /** Quiet time after typing before the spacers are recomputed from scratch. */
 const IDLE_MS = 400
+/** How long the layout must hold still after a document arrives before it is measured again. */
+const SETTLE_MS = 1500
+/** Size of an empty document: a change from this is a document arriving, not an edit. */
+const EMPTY_DOC_SIZE = 2
 
 /** A block pushed down by padding added above its first line (a decoration, never a document change). */
 interface FlowPush {
@@ -117,6 +121,8 @@ export const PageFlowExtension = Extension.create<{ enabled: boolean }>({
 function watchPageFlow(view: EditorView, isEnabled: () => boolean): { update: (view: EditorView, previous: EditorState) => void; destroy: () => void } {
   let frame = 0
   let idleTimer = 0
+  let settleTimer = 0
+  let awaitingSettle = false
   let passes = 0
   let destroyed = false
   let working = false
@@ -136,6 +142,7 @@ function watchPageFlow(view: EditorView, isEnabled: () => boolean): { update: (v
       kind: el.tagName === 'P' ? 'paragraph' : 'heading',
       lineTops: lines[index].map((line) => line.top),
       lineHeight: parseFloat(getComputedStyle(el).lineHeight) / scale || 20,
+      blankAfter: el.nextElementSibling?.matches('p') === true && !el.nextElementSibling.textContent?.trim(),
     }))
     return { grid, blocks, elements, lines }
   }
@@ -195,7 +202,21 @@ function watchPageFlow(view: EditorView, isEnabled: () => boolean): { update: (v
     }
   }
 
+  // Spacers measured while a document is still laying out (pictures decoding, pages being added) are
+  // wrong, and nothing else would revisit them until the first edit. So once the size has stopped
+  // changing after a document arrives, measure again, once: the spacers' own resizing must not repeat it.
+  const settle = (): void => {
+    settleTimer = 0
+    awaitingSettle = false
+    recompute()
+  }
+  const waitForSettle = (): void => {
+    if (settleTimer) window.clearTimeout(settleTimer)
+    settleTimer = window.setTimeout(settle, SETTLE_MS)
+  }
+
   const resize = new ResizeObserver(() => {
+    if (awaitingSettle) waitForSettle()
     if (!idleTimer && passes < MAX_PASSES) schedule(80)
   })
   resize.observe(view.dom)
@@ -205,6 +226,10 @@ function watchPageFlow(view: EditorView, isEnabled: () => boolean): { update: (v
     update: (updated, previous) => {
       // Only edits matter: the pass's own spacer transactions and the paginator's redraws must not restart it.
       if (updated.state.doc.eq(previous.doc)) return
+      if (previous.doc.content.size <= EMPTY_DOC_SIZE) {
+        awaitingSettle = true
+        waitForSettle()
+      }
       if (idleTimer) window.clearTimeout(idleTimer)
       idleTimer = window.setTimeout(recompute, IDLE_MS)
     },
@@ -213,6 +238,7 @@ function watchPageFlow(view: EditorView, isEnabled: () => boolean): { update: (v
       resize.disconnect()
       if (frame) window.clearTimeout(frame)
       if (idleTimer) window.clearTimeout(idleTimer)
+      if (settleTimer) window.clearTimeout(settleTimer)
     },
   }
 }

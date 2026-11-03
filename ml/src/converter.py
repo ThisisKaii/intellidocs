@@ -157,6 +157,59 @@ def _inherited_run_flag(run: Run, attribute: str) -> bool:
     return bool(from_character) != bool(from_paragraph)
 
 
+def _font_widths() -> Dict[str, Dict[str, List[int]]]:
+    """Character widths of common Word fonts (made by tests/e2e/tools/make_font_widths.py)."""
+    global _FONT_WIDTHS
+    if _FONT_WIDTHS is None:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "font_widths.json"), encoding="utf-8") as table:
+            _FONT_WIDTHS = json.load(table)
+    return _FONT_WIDTHS
+
+
+_FONT_WIDTHS: Optional[Dict[str, Dict[str, List[int]]]] = None
+# Word squeezes the spaces of a justified line to fit one more word; a browser only ever widens them.
+# Scaled runs in justified paragraphs are set this much tighter so the same words fit, and
+# justification widens the line back out. 0.9 doubled the lines matching Word on DM_0440.
+_JUSTIFIED_TRACKING = 0.9
+# Characters outside the width table (and in no listed font) count as half an em.
+_UNKNOWN_CHAR_WIDTH = 500
+
+
+def _text_width_em(text: str, family: Optional[str], bold: bool, italic: bool) -> float:
+    """Natural width of text in ems, from the font's own character widths."""
+    table = _font_widths()
+    faces = table.get((family or "").lower(), table["times new roman"])
+    style = {(False, False): "regular", (True, False): "bold", (False, True): "italic", (True, True): "bold italic"}[(bold, italic)]
+    widths = faces[style]
+    total = 0
+    for char in text:
+        code = ord(char) - 32
+        total += widths[code] if 0 <= code < len(widths) else _UNKNOWN_CHAR_WIDTH
+    return total / 1000
+
+
+def _character_scale_tracking(run: Run, font_name: Optional[str]) -> float:
+    """Points of letter spacing that make a run as wide as Word's character scale (w:w) makes it.
+
+    Word stretches the glyphs of a run scaled to, say, 115%. CSS cannot: a transform does not reflow, and
+    an inline-block would make a run of several lines one unbreakable box. So the run's extra width
+    is shared across its characters, measured from its own text in its own font, and its lines break
+    where Word's do. The glyphs keep their shape.
+    """
+    scale = run._element.rPr.find(qn("w:w")) if run._element.rPr is not None else None
+    value = scale.get(qn("w:val")) if scale is not None else None
+    if not value or not value.isdigit() or int(value) == 100 or not run.text:
+        return 0.0
+    size = run.font.size.pt if run.font.size else None
+    parent = run._parent if isinstance(run._parent, Paragraph) else None
+    if size is None and parent is not None:
+        size = _resolve_font_size_pt(parent)
+    width = _text_width_em(run.text, font_name, _inherited_run_flag(run, "bold"), _inherited_run_flag(run, "italic"))
+    tracking = (int(value) / 100 - 1) * (size or 11.0) * width / len(run.text)
+    justified = parent is not None and _resolve_pPr_attr(parent, "jc", "val") in ("both", "distribute")
+    return tracking * _JUSTIFIED_TRACKING if justified else tracking
+
+
 def _run_to_html(run: Run) -> str:
     """Convert a single text run into styled HTML with font size, color, family, and styles."""
     text = run.text
@@ -191,14 +244,17 @@ def _run_to_html(run: Run) -> str:
 
     # Character spacing (w:spacing, twentieths of a point): condensed text wraps later.
     spacing = run._element.rPr.find(qn("w:spacing")) if run._element.rPr is not None else None
-    if spacing is not None and spacing.get(qn("w:val")) not in (None, "0"):
-        styles.append(f"letter-spacing:{round(float(spacing.get(qn('w:val'))) / 20, 2):g}pt")
+    tracking = float(spacing.get(qn("w:val")) or 0) / 20 if spacing is not None else 0.0
 
     # A run with no font of its own uses its paragraph's style chain, then the
     # document defaults; without this an Arial document imports as serif.
     font_name = run.font.name or _rfonts_name(run._element.rPr.find(qn("w:rFonts")) if run._element.rPr is not None else None, run.part)
     if not font_name and isinstance(run._parent, Paragraph):
         font_name = _inherited_font_name(run._parent)
+
+    tracking += _character_scale_tracking(run, font_name)
+    if abs(tracking) >= 0.005:
+        styles.append(f"letter-spacing:{round(tracking, 3):g}pt")
     if font_name:
         family = _clean_font_name(font_name)
         styles.append(f"font-family:'{family}', {_generic_family(family)}")
@@ -450,13 +506,49 @@ def _floating_placement(blip: Any) -> Optional[Tuple[str, float]]:
     return ("left", round(offset, 1))
 
 
+# Word wraps text beside a picture only where a line of it fits: narrower gaps stay blank.
+_MIN_WRAP_ROOM_PX = 144.0
+
+
+def _wrap_float(blip: Any, width: float) -> Optional[Tuple[float, float, float]]:
+    """(top, gap, reach in px) for a square-wrapped picture with room for text beside it, else None.
+
+    `top` is Word's distance from the top of the paragraph holding the anchor, `gap` the space it keeps
+    between picture and text, and `reach` how far down the picture ends.
+    """
+    anchor = next(blip.iterancestors(f"{{{_NS_WP}}}anchor"), None)
+    if anchor is None or not any(anchor.find(f"{{{_NS_WP}}}{tag}") is not None for tag in ("wrapSquare", "wrapTight", "wrapThrough")):
+        return None
+    g = _PAGE_GEOMETRY
+    if g["w"] - g["l"] - g["r"] - width < _MIN_WRAP_ROOM_PX:
+        return None
+    vertical = anchor.find(f"{{{_NS_WP}}}positionV")
+    offset = vertical.find(f"{{{_NS_WP}}}posOffset") if vertical is not None else None
+    if vertical is None or vertical.get("relativeFrom") != "paragraph" or offset is None or not (offset.text or "").lstrip("-").isdigit():
+        return None
+    top = max(int(offset.text) / EMU_PER_PX, 0.0)
+    gap = max(_int_attr(anchor, "distL") or 0, _int_attr(anchor, "distR") or 0) / EMU_PER_PX
+    height = (_int_attr(anchor.find(f"{{{_NS_WP}}}extent"), "cy") or 0) / EMU_PER_PX
+    return (round(top, 1), round(gap, 1), round(top + height, 1))
+
+
 def _place_floating(piece: str, blip: Any) -> str:
-    """Give a floating picture's <img> the side (and offset) Word puts it at across the text column."""
+    """Give a floating picture's <img> the side (and offset) Word puts it at across the text column.
+
+    A picture narrow enough for text to run beside it floats, and carries how far down it reaches
+    for _group_wrapped_pictures.
+    """
     placement = _floating_placement(blip) if piece.startswith("<img") else None
     width = re.search(r'\swidth="(\d+)"', piece)
     if placement is None or width is None or placement[0] == "center":
         return piece
     side, offset = placement
+    wrap = _wrap_float(blip, float(width.group(1)))
+    if wrap is not None:
+        top, gap, reach = wrap
+        margin = f"0 0 0 {gap:g}px" if side == "right" else f"0 {gap:g}px 0 {offset:g}px"
+        container = f"width: {width.group(1)}px; height: auto; cursor: pointer; float: {side}; margin: {margin};"
+        return piece.replace("<img ", f'<img data-wrap-top="{top:g}" data-wrap-reach="{reach:g}" data-alignment="{side}" containerstyle="{container}" ', 1)
     margin = "0 0 0 auto" if side == "right" else (f"0 0 0 {offset:g}px" if offset else "0 auto 0 0")
     container = f"width: {width.group(1)}px; height: auto; cursor: pointer; margin: {margin};"
     return piece.replace("<img ", f'<img data-alignment="{side}" containerstyle="{container}" ', 1)
@@ -872,12 +964,16 @@ def _line_paragraph_html(p: Paragraph, line: Tuple[int, int, str], space_before:
     # An inline line sits on the baseline of a normal-height line: about 78% of
     # that line is blank above the rule and the descent (22%) below it.
     line_pt = (_resolve_font_size_pt(p) or 12.0) * _FONT_LINE_FACTORS.get((_resolve_font_name(p) or "").lower(), _DEFAULT_LINE_FACTOR)
+    above = line_pt * 0.78 - pt
+    # A rule thicker than the blank above it (a 1pt-tall line holding a 1.5pt rule): Word draws it over
+    # the line without making the line taller, so the block's own 1pt and border are taken back.
+    below = line_pt * 0.22 if above > 0 else line_pt - 1 - pt
     parts = [
         f"border-bottom:{pt:g}pt solid {color}",
         "font-size:1pt",
         "line-height:1pt",
-        f"padding-top:{round(line_pt * 0.78 - pt, 1):g}pt",
-        f"margin-bottom:{round(line_pt * 0.22, 1):g}pt",
+        f"padding-top:{round(max(above, 0.0), 1):g}pt",
+        f"margin-bottom:{round(below, 1):g}pt",
     ]
     spacing = _paragraph_spacing_css(p)
     before = next((part for part in spacing.split("; ") if part.startswith("margin-top")), None)
@@ -1319,13 +1415,35 @@ _FONT_LINE_FACTORS: Dict[str, float] = {
     "trebuchet ms": 1.161, "palatino linotype": 1.349, "bookman old style": 1.174,
     "candara": 1.221, "corbel": 1.208, "constantia": 1.221, "franklin gothic book": 1.134,
     "gill sans mt": 1.16, "rockwell": 1.174,
+    # Measured from Word: 21.4pt pitch at 1.5 lines of 11pt.
+    "ms mincho": 1.297,
 }
 _DEFAULT_LINE_FACTOR = 1.15
 _THEME_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+_WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+# The theme script entry Word reads for an East Asian language when the theme's own slot is empty.
+_EAST_ASIAN_SCRIPTS = (("ja", "Jpan"), ("ko", "Hang"), ("zh-tw", "Hant"), ("zh-hk", "Hant"), ("zh-mo", "Hant"), ("zh", "Hans"))
+# Themes name these fonts in their native script; the rest of the converter knows the Latin names.
+_NATIVE_FONT_NAMES = {
+    "ＭＳ 明朝": "MS Mincho", "ＭＳ ゴシック": "MS Gothic", "宋体": "SimSun", "黑体": "SimHei",
+    "新細明體": "PMingLiU", "맑은 고딕": "Malgun Gothic",
+}
+
+
+def _theme_east_asian_font(font: Any, language: str) -> Optional[str]:
+    """A theme font's East Asian face: its own slot, else the entry for the document's East Asian language."""
+    slot = font.find(f"{_THEME_NS}ea")
+    face = slot.get("typeface") if slot is not None else ""
+    if not face:
+        script = next((code for prefix, code in _EAST_ASIAN_SCRIPTS if language.lower().startswith(prefix)), None)
+        entry = next((item for item in font.findall(f"{_THEME_NS}font") if item.get("script") == script), None)
+        face = entry.get("typeface") if entry is not None else ""
+    return _NATIVE_FONT_NAMES.get(face, face) or None
 
 
 def _theme_fonts(part: Any) -> Dict[str, str]:
-    """Return {'major': name, 'minor': name} Latin theme fonts of the document (cached on the part)."""
+    """Return the document's theme fonts, keyed major, minor, majorEastAsia and minorEastAsia (cached on the part)."""
     cached = getattr(part, "_intellidocs_theme_fonts", None)
     if cached is not None:
         return cached
@@ -1333,13 +1451,25 @@ def _theme_fonts(part: Any) -> Dict[str, str]:
     try:
         from lxml import etree
 
-        for rel in part.package.iter_parts():
+        package_parts = list(part.package.iter_parts())
+        language = ""
+        for rel in package_parts:
+            if str(rel.partname) == "/word/settings.xml":
+                lang = etree.fromstring(rel.blob).find(f"{_WORD_NS}themeFontLang")
+                language = (lang.get(f"{_WORD_NS}eastAsia") or "") if lang is not None else ""
+        for rel in package_parts:
             if str(rel.partname).startswith("/word/theme/"):
                 root = etree.fromstring(rel.blob)
                 for kind in ("major", "minor"):
-                    latin = root.find(f".//{_THEME_NS}{kind}Font/{_THEME_NS}latin")
+                    font = root.find(f".//{_THEME_NS}{kind}Font")
+                    if font is None:
+                        continue
+                    latin = font.find(f"{_THEME_NS}latin")
                     if latin is not None and latin.get("typeface"):
                         fonts[kind] = latin.get("typeface")
+                    east_asian = _theme_east_asian_font(font, language)
+                    if east_asian:
+                        fonts[f"{kind}EastAsia"] = east_asian
                 break
     except Exception:
         pass
@@ -1357,7 +1487,9 @@ def _rfonts_name(r_fonts: Any, part: Any) -> Optional[str]:
     theme_ref = r_fonts.get(qn("w:asciiTheme"))
     if theme_ref:
         kind = "major" if theme_ref.lower().startswith("major") else "minor"
-        themed = _theme_fonts(part).get(kind)
+        fonts = _theme_fonts(part)
+        themed = fonts.get(f"{kind}EastAsia") if theme_ref.endswith("EastAsia") else None
+        themed = themed or fonts.get(kind)
         if themed:
             return themed
     return r_fonts.get(qn("w:ascii")) or r_fonts.get(qn("w:hAnsi"))
@@ -1372,8 +1504,11 @@ def _paragraph_mark_rpr(p: Paragraph) -> Any:
 def _resolve_font_name(p: Paragraph) -> Optional[str]:
     """Font family Word would use for the paragraph's text: first run, style chain, docDefaults."""
     for run in p.runs:
-        if run.text.strip() and run.font.name:
-            return run.font.name
+        if run.text.strip():
+            run_pr = run._element.rPr
+            name = _rfonts_name(run_pr.find(qn("w:rFonts")) if run_pr is not None else None, p.part)
+            if name:
+                return name
     # The paragraph mark's own properties size a blank line in Word, and they
     # usually name the font the author typed in (the style default may differ).
     mark_rpr = _paragraph_mark_rpr(p)
@@ -2539,14 +2674,8 @@ def _body_to_html(
         editor can give it that section's header, footer and page numbering.
         """
         close_all_lists()
-        # Blank lines at the end of a page only pad it; left in, they spill onto a
-        # blank page when the text above runs a line long. A page that is blank on
-        # purpose (break, blank lines, break) keeps its lines.
-        trailing = 0
-        while trailing < len(out) and out[-1 - trailing].startswith('<p class="empty-spacer"'):
-            trailing += 1
-        if trailing and trailing < len(out) and out[-1 - trailing] != _PAGE_BREAK_HTML:
-            del out[len(out) - trailing:]
+        # Blank lines before a break stay: when a full page pushes them over, Word
+        # leaves the blank page they make, and every later page depends on it.
         marked = _PAGE_BREAK_HTML if section is None else _PAGE_BREAK_HTML.replace(" />", f' data-section="{section}" />')
         if out and out[-1] == _PAGE_BREAK_HTML and section is not None:
             out[-1] = marked
@@ -2677,7 +2806,54 @@ def _body_to_html(
     section_starts[section_no + 1] = len(out)
     _wrap_columns(doc, out, section_starts)
     _shift_sections(doc, out, section_starts)
-    return _trim_page_ends("\n".join(out).replace(_COLUMN_MARK, ""))
+    _group_wrapped_pictures(out)
+    return "\n".join(out).replace(_COLUMN_MARK, "")
+
+
+def _block_height_px(html: str, width_px: float) -> float:
+    """Rough height of a paragraph at a text width, to see how far a wrapped picture reaches."""
+    size = re.search(r"font-size:\s*([\d.]+)pt", html)
+    size_px = float(size.group(1)) * 96 / 72 if size else 14.67
+    line = re.search(r"line-height:\s*([\d.]+)(pt)?", html)
+    if line is None:
+        line_px = size_px * 1.2
+    else:
+        line_px = float(line.group(1)) * 96 / 72 if line.group(2) else float(line.group(1)) * size_px
+    characters = len(re.sub(r"<[^>]+>", "", html))
+    lines = max(1, math.ceil(characters * size_px * 0.5 / max(width_px, 1.0)))
+    margins = sum(float(m) for m in re.findall(r"margin-(?:top|bottom):\s*([\d.]+)px", html.split(">", 1)[0]))
+    return lines * line_px + margins
+
+
+def _group_wrapped_pictures(out: List[str]) -> None:
+    """Put each wrapped picture and the paragraphs it reaches into one block (WrapBlock in the editor)."""
+    index = len(out) - 1
+    while index >= 0:
+        reach = re.search(r' data-wrap-reach="([\d.]+)"', out[index])
+        if reach is None:
+            index -= 1
+            continue
+        width = re.search(r"width: (\d+)px", out[index])
+        column = _PAGE_GEOMETRY["w"] - _PAGE_GEOMETRY["l"] - _PAGE_GEOMETRY["r"]
+        beside = column - (float(width.group(1)) if width else 0.0)
+        end, covered = index, 0.0
+        while end < len(out) and (end == index or covered < float(reach.group(1))):
+            if not out[end].startswith(("<p", "<h", "<img")) or out[end].startswith("<p class=\"rule-line\""):
+                break
+            covered += _block_height_px(out[end], beside)
+            end += 1
+        top = re.search(r' data-wrap-top="([\d.]+)"', out[index])
+        out[index] = out[index].replace(reach.group(0), "", 1).replace(top.group(0), "", 1)
+        if end > index:
+            # The picture leads the block: left inside its paragraph, the editor would split that
+            # paragraph round it and leave an empty line above.
+            first = re.sub(r"^(<p\b[^>]*>)(<img\b[^>]*/>)", r"\2\1", out[index], count=1)
+            out[index:end] = [f'<div class="intellidocs-wrap" data-top="{top.group(1)}">{first}{"".join(out[index + 1:end])}</div>']
+        else:
+            # Not a block that can be grouped (a picture in a list item). A float outside a wrap block
+            # would land below the last page, so it stays a plain block on its side.
+            out[index] = re.sub(r"float: (\w+); margin: [^;]+;", lambda m: f"margin: {'0 0 0 auto' if m[1] == 'right' else '0 auto 0 0'};", out[index], count=1)
+        index -= 1
 
 
 # A multi-column section longer than this stays single-column: the paginator cannot split a column block.
@@ -2817,26 +2993,6 @@ def _shift_sections(doc: docx.Document, out: List[str], starts: Dict[int, int]) 
             first_block = False
             new_attrs = attrs.replace(style_match.group(0), f'style="{style}"') if style_match else f' style="{style}"{attrs}'
             out[index] = f"<{match.group(1)}{new_attrs}>" + html[match.end():]
-
-
-def _trim_page_ends(html: str) -> str:
-    """Drop the blank lines that only pad the end of a page before a page break.
-
-    Left in, they spill onto a blank page whenever the text above runs a line
-    long. A page that is blank on purpose (break, blank lines, break) is kept.
-    """
-    kept: List[str] = []
-    for line in html.split("\n"):
-        if line.startswith('<hr class="page-break"'):
-            trailing = 0
-            while trailing < len(kept) and kept[-1 - trailing].startswith('<p class="empty-spacer"'):
-                trailing += 1
-            # Only a page that has other content loses its padding lines.
-            if trailing and trailing < len(kept) and not kept[-1 - trailing].startswith('<hr class="page-break"'):
-                del kept[len(kept) - trailing:]
-        kept.append(line)
-    html = "\n".join(kept)
-    return re.sub(r'(?:<br\s*/?>\s*(?:<span[^>]*>\s*</span>)?)+(?=</p>\s*<hr class="page-break")', "", html)
 
 
 def _page_field_format(instruction: str) -> str:
@@ -3211,6 +3367,24 @@ def _is_two_column_body(doc: docx.Document) -> bool:
     return total >= _TWO_COLUMN_MIN_CHARS and columned / total >= _TWO_COLUMN_SHARE
 
 
+def _widow_control_on(doc: docx.Document) -> bool:
+    """Whether the document's body text follows Word's widow/orphan rules: default style, then docDefaults, then on."""
+    try:
+        styles = doc.styles.element
+        default = next(
+            (s for s in styles.findall(qn("w:style")) if s.get(qn("w:type")) == "paragraph" and s.get(qn("w:default")) in ("1", "true")),
+            None,
+        )
+        defaults = styles.find(qn("w:docDefaults") + "/" + qn("w:pPrDefault"))
+        for holder in (default, defaults):
+            setting = holder.find(qn("w:pPr") + "/" + qn("w:widowControl")) if holder is not None else None
+            if setting is not None:
+                return setting.get(qn("w:val")) not in ("0", "false", "off")
+    except Exception:
+        return False
+    return True
+
+
 def convert_docx_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     """High-fidelity DOCX to HTML converter using python-docx XML traversal.
 
@@ -3256,6 +3430,7 @@ def _docx_document_to_result(
         "header_number_format": header_number_format,
         "footer_number_format": footer_number_format,
         "two_column_body": _is_two_column_body(doc),
+        **({"flow_rules": True} if _widow_control_on(doc) else {}),
     }
 
 

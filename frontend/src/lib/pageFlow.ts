@@ -13,6 +13,8 @@ export interface FlowBlock {
   /** Top of each line box, in order. */
   lineTops: number[]
   lineHeight: number
+  /** A blank line follows: a heading is then kept with that line, not with the text after it. */
+  blankAfter?: boolean
 }
 
 /** A push that keeps a block (or the tail of one) off an awkward page position. */
@@ -66,7 +68,7 @@ export function decidePushes(grid: PageGrid, blocks: FlowBlock[]): FlowPush[] {
 
     if (block.kind === 'heading') {
       const next = blocks[index + 1]
-      if (next && next.lineTops.length > 0 && !atPageTop) {
+      if (next && next.lineTops.length > 0 && !atPageTop && !block.blankAfter) {
         const nextPage = pageOf(grid, next.lineTops[0] + next.lineHeight / 2)
         if (nextPage > pages[lines - 1]) {
           pushes.push({ block: index, line: 0, height: toPageEnd(grid, first, block.lineTops[0]), reason: 'keep-with-next' })

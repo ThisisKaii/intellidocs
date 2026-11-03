@@ -18,7 +18,8 @@ import { SlashCommandMenu } from './SlashCommandMenu'
 import { MathEditPopover } from './MathEditPopover'
 import type { BehaviorEventPayload } from './behaviorListener'
 import type { GrammarIssue } from './GrammarPanel'
-import { measureKey, numberingCss, pageZones, type PageLayoutData, type PageMeasure } from '@/lib/pageLayout'
+import { loadEditorContent } from '@/lib/loadEditorContent'
+import { lastLineSlackPx, measureKey, numberingCss, pageZones, type PageLayoutData, type PageMeasure } from '@/lib/pageLayout'
 import { sanitizeHeaderHtml } from '@/lib/sanitizeHeaderHtml'
 
 /** Vertical gap between stacked page sheets, in px. */
@@ -214,7 +215,7 @@ export function PagedEditor({
       ? { label: preset.label, width: preset.height, height: preset.width }
       : preset
   const topPx = inToPx(margins.top)
-  const bottomPx = inToPx(margins.bottom)
+  const bottomPx = inToPx(margins.bottom) - lastLineSlackPx(pageLayout)
   const leftPx = inToPx(margins.left)
   const rightPx = inToPx(margins.right)
 
@@ -321,7 +322,7 @@ export function PagedEditor({
       paginationPausedRef.current = true
       editor.commands.disablePagination()
     }
-    editor.commands.setContent(cleanContent, { emitUpdate: false })
+    loadEditorContent(editor, cleanContent)
     if (paginationPausedRef.current) {
       paginationPausedRef.current = false
       editor.commands.enablePagination()
@@ -519,8 +520,8 @@ export function PagedEditor({
     }
   }, [editor, overlays])
 
-  // Word's widow/orphan rules are opt-in (`flow_rules: true`): measured on the fixtures they moved
-  // lines Word had left alone, because our page bodies already differ from Word's by a line or two.
+  // Word's widow/orphan rules run when the imported file asks for them (`flow_rules: true`, set by the
+  // converter from the document's own w:widowControl). Documents written in the editor do not use them.
   const flowRules = pageLayout?.flow_rules === true
   useEffect(() => {
     if (!editor || editor.isDestroyed) return

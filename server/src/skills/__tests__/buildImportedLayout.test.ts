@@ -51,6 +51,14 @@ describe('buildImportedLayout', () => {
     expect(pageLayoutSchema.parse(fields.page_layout).two_column).toBe(true)
   })
 
+  it('carries the widow rules setting of a Word file and of a PDF to the stored layout', async () => {
+    const numbered = { sections: [{ ...section, number_start: 3 }], parts: {} }
+    const word = await buildImportedLayout('u1', { ...base, flow_rules: true, hf: numbered })
+    const pdf = await buildImportedLayout('u1', { ...base, flow_rules: false, hf: numbered })
+    expect(pageLayoutSchema.parse(word.page_layout).flow_rules).toBe(true)
+    expect(pageLayoutSchema.parse(pdf.page_layout).flow_rules).toBe(false)
+  })
+
   it('keeps the layout when only the numbering restarts', async () => {
     const fields = await buildImportedLayout('u1', { ...base, hf: { sections: [section, { ...section, index: 1, number_start: 3 }], parts: {} } })
     expect(fields.page_layout?.sections).toHaveLength(2)
