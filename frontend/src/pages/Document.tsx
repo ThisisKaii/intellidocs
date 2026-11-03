@@ -59,6 +59,7 @@ import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { confidenceThreshold, highlightColorCss, setEditorPreferences } from '@/lib/editorPreferences'
 import { readFormatSnapshot } from '@/lib/formatSnapshot'
 import { clearLocalDraft, readLocalDraft, writeLocalDraft, type LocalDraft } from '@/lib/localDraft'
+import { fetchAnnouncedDocument, isDocSyncNotice, isNewer, type DocSyncNotice } from '@/lib/docSync'
 import {
   cacheDocumentRead,
   evictCachedDocument,
@@ -91,18 +92,6 @@ function avatarInitials(name: string): string {
   if (parts.length === 0) return '?'
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
-/** Live content snapshot broadcast on a document channel. */
-interface DocSyncPayload {
-  content: string
-  /** The sender's editor JSON of `content`, loaded in preference to it. */
-  content_json?: EditorJson | null
-  title?: string
-  header_content?: string
-  footer_content?: string
-  sender_id: string
-  timestamp: number
 }
 
 /** Presence-tracked collaborator entry. */
@@ -735,28 +724,33 @@ export default function Document(): JSX.Element {
     })
     docChannelRef.current = channel
 
-    // Live content sync — apply whole-document snapshots from peers without
-    // triggering a local autosave or echoing the broadcast back.
-    channel.on('broadcast', { event: 'doc_sync' }, ({ payload }: { payload: DocSyncPayload }) => {
-      if (!payload || typeof payload.content !== 'string') return
-      if (readOnly) return
-      if (latestContentRef.current === payload.content) return
-      latestContentRef.current = payload.content
-      latestJsonRef.current = payload.content_json ?? null
-      setContentJson(payload.content_json ?? null)
-      setContent(payload.content)
-      if (typeof payload.title === 'string' && payload.title) {
-        latestTitleRef.current = payload.title
-        setTitle(payload.title)
-      }
-      if (typeof payload.header_content === 'string' && payload.footer_content !== undefined) {
-        if (typeof payload.footer_content === 'string') {
-          latestHeaderRef.current = payload.header_content
-          latestFooterRef.current = payload.footer_content
-          setHeaderContent(payload.header_content)
-          setFooterContent(payload.footer_content)
-        }
-      }
+    // Live content sync: a peer announces each save and this page fetches the saved document (see
+    // lib/docSync), applying it without triggering a local autosave or echoing a notice back.
+    let lastApplied: string | null = null
+    channel.on('broadcast', { event: 'doc_sync' }, ({ payload }: { payload: unknown }) => {
+      if (readOnly || !isDocSyncNotice(payload)) return
+      if (!isNewer(payload.updated_at, lastApplied)) return
+      void fetchAnnouncedDocument(payload, () => api.documents.get(docId, shareToken))
+        .then((doc) => {
+          // A slower fetch for an earlier notice must not replace a newer state already applied.
+          if (!doc || !isNewer(doc.updated_at, lastApplied)) return
+          lastApplied = doc.updated_at
+          if (latestContentRef.current !== doc.content) {
+            latestContentRef.current = doc.content
+            latestJsonRef.current = doc.content_json ?? null
+            setContentJson(doc.content_json ?? null)
+            setContent(doc.content)
+          }
+          if (doc.title) {
+            latestTitleRef.current = doc.title
+            setTitle(doc.title)
+          }
+          latestHeaderRef.current = doc.header_content ?? ''
+          latestFooterRef.current = doc.footer_content ?? ''
+          setHeaderContent(doc.header_content ?? '')
+          setFooterContent(doc.footer_content ?? '')
+        })
+        .catch((error: unknown) => console.warn('Live sync: could not fetch the saved document', error))
     })
 
     const refreshPresence = (): void => {
@@ -788,7 +782,7 @@ export default function Document(): JSX.Element {
       supabase.removeChannel(channel)
       setRemotePresence(new Map())
     }
-  }, [id, user?.id, readOnly, user?.displayName, user?.email])
+  }, [id, user?.id, readOnly, user?.displayName, user?.email, shareToken])
 
   /** Apply a loaded document record to all editor state. */
   function applyLoadedDocument(doc: DocumentRecord): void {
@@ -1625,7 +1619,7 @@ export default function Document(): JSX.Element {
     setSaveStatus('saving')
 
     try {
-      await api.documents.update(id, {
+      const savedDoc = await api.documents.update(id, {
         title: nextTitle,
         content: nextContent,
         content_json: nextJson,
@@ -1648,24 +1642,11 @@ export default function Document(): JSX.Element {
       if (!pendingSaveRef.current) clearLocalDraft(id)
       if (id) void evictCachedDocument(id)
 
-      // Broadcast the finished stroke to collaborators on the live channel.
+      // Announce the save to collaborators on the live channel; they fetch the saved document.
       const channel = docChannelRef.current
-      if (channel) {
-        void channel
-          .send({
-            type: 'broadcast',
-            event: 'doc_sync',
-            payload: {
-              content: nextContent,
-              content_json: nextJson,
-              title: nextTitle,
-              header_content: latestHeaderRef.current,
-              footer_content: latestFooterRef.current,
-              sender_id: user?.id ?? '',
-              timestamp: Date.now(),
-            },
-          })
-          .catch(() => {})
+      if (channel && savedDoc?.updated_at) {
+        const notice: DocSyncNotice = { updated_at: savedDoc.updated_at, sender_id: user?.id ?? '', timestamp: Date.now() }
+        void channel.send({ type: 'broadcast', event: 'doc_sync', payload: notice }).catch(() => {})
       }
     } catch (error) {
       console.error('Autosave failed', error)
