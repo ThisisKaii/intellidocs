@@ -56,6 +56,10 @@ SOURCES: list[tuple[str, str]] = [
     ("ieee_sample_paper.docx", "ieee_sample_paper.pdf"),
 ]
 
+# The editor is single-column by design: a two-column paper's layout belongs to the IEEE print
+# preview (and its PDF export), so these sources are scored from there and not from the editor.
+PRINT_PREVIEW_SOURCES = {"ieee_sample_paper.docx"}
+
 # The editor's page grid: a page is this tall and the next one starts this far below (page + gap).
 PAGE_PITCH_PX = 1096
 
@@ -99,7 +103,7 @@ def _page_layout(result: dict) -> dict | None:
         "repeat_art": art.get("repeat", ""),
         "page_art": art.get("pages", {}),
         "overlays": art.get("overlays", {}),
-        **({"flow_rules": False} if result.get("flow_rules") is False else {}),
+        **({"flow_rules": result["flow_rules"]} if result.get("flow_rules") is not None else {}),
     }
 
 
@@ -199,6 +203,26 @@ def capture_pages(page: Page, count: int, pitch: float = PAGE_PITCH_PX) -> list[
     return images
 
 
+def capture_print_preview(page: Page, limit: int) -> tuple[list[np.ndarray], list[str], int]:
+    """Open the real IEEE print preview on the editor's content: its page images, words and page count."""
+    page.evaluate("window.__showIeeePreview()")
+    page.wait_for_function(
+        """() => /\\d+ pages?/.test(document.querySelector('[data-testid="ieee-preview-status"]')?.textContent ?? '')""",
+        timeout=120000,
+    )
+    page.add_style_tag(content=".ieee-preview-bar { display: none !important; }")
+    sheets = page.locator("#ieee-print-preview .pagedjs_page")
+    count = sheets.count()
+    images: list[np.ndarray] = []
+    words: list[str] = []
+    for index in range(count):
+        words.append(sheets.nth(index).locator(".pagedjs_page_content").inner_text())
+        if index < limit:
+            png = sheets.nth(index).screenshot()
+            images.append(cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR))
+    return images, words, count
+
+
 @dataclass
 class Args:
     web: str
@@ -210,7 +234,8 @@ class Args:
 
 def run_one(browser, source: str, pdf_name: str, args: Args) -> fl.DocumentResult:
     """Import one file and compare every page."""
-    name = source
+    in_preview = source in PRINT_PREVIEW_SOURCES
+    name = f"{source} (print preview)" if in_preview else source
     ref_dir = REFS / folder_name(pdf_name)
     ref_paths = sorted(ref_dir.glob("page_*.png"))
     ref_images = [fl.read_image(p) for p in ref_paths]
@@ -239,11 +264,13 @@ def run_one(browser, source: str, pdf_name: str, args: Args) -> fl.DocumentResul
     # Fonts load on first use; measure again once they have, as a person's browser would.
     page.evaluate("document.fonts.ready.then(() => true)")
     layout = wait_for_layout(page)
-    editor_pages = layout["pages"]
-    pitch = layout["pageH"] + 40
-    words_by_page = page.evaluate(JS_PAGE_WORDS, pitch)
-    to_capture = min(editor_pages, limit)
-    images = capture_pages(page, to_capture, pitch)
+    if in_preview:
+        images, words_by_page, editor_pages = capture_print_preview(page, limit)
+    else:
+        editor_pages = layout["pages"]
+        pitch = layout["pageH"] + 40
+        words_by_page = page.evaluate(JS_PAGE_WORDS, pitch)
+        images = capture_pages(page, min(editor_pages, limit), pitch)
     context.close()
 
     actual_words = [fl.normalize_words(text) for text in words_by_page]

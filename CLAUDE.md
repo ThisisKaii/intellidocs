@@ -52,6 +52,7 @@ AI Skills (skills/)     → Single-purpose async service functions called by con
 ---
 
 ## 🔬 Testing & Verification
-- **Fidelity Run**: Run `python tests/e2e/fidelity_run.py` to measure document rendering fidelity against reference fixtures.
+- **Word Gate**: Run `ml/venv/Scripts/python tests/e2e/word_gate.py` (frontend on 5173) after any converter or layout change: paragraphs on Word's page must not fall below `tests/fixtures/import_baselines/word_gate_baseline.json`.
+- **Fidelity Run**: Run `python tests/e2e/fidelity_run.py` to measure document rendering fidelity against reference fixtures (page images, PDF imports, IEEE preview).
 - **Python Suite**: Run `pytest tests/python/` in `ml/`.
 - **Node Suite**: Run `npm test` in `server/`.

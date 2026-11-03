@@ -46,7 +46,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     application. Blocking the suite once, here, keeps the report honest and the
     run fast.
 
-    The health tests are exempt: their purpose is to describe the outage.
+    The health tests are exempt: their purpose is to describe the outage. So is the import
+    fidelity gate, which needs only the frontend and gates itself on it.
     """
     ok, latency, detail = supabase_health()
     if not ok:
@@ -55,7 +56,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             f"(latencyMs={latency} detail={detail or 'no detail'}). "
             f"All tests depend on Supabase."
         )
-        exempt = ("liveness", "readiness")
+        exempt = ("liveness", "readiness", "word_gate")
         blocked = 0
         for item in items:
             if any(token in item.name for token in exempt):

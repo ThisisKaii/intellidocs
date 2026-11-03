@@ -98,13 +98,15 @@ def main() -> None:
         low, high = (int(x) for x in a.dump.split("-"))
         print(f"\n{'para':>5} {'Word p/y':>14} {'editor p/y':>14} {'dy':>6}  text")
         for wp, ep in pairs:
-            if low <= wp["i"] <= high:
+            if low <= wp["i"] <= high and wp.get("y") is not None:
                 print(f"{wp['i']:>5} {'p%d %.1f' % (wp['page'], wp['y']):>14} {'p%d %.0f' % (ep['page'], ep['y']):>14} "
                       f"{ep['y'] - wp['y']:>+6.0f}  {wp['text'][:52]!r}")
 
     shown = 0
     prev_dy, prev_delta = 0.0, 0
     for idx, (wp, ep) in enumerate(pairs):
+        if wp.get("y") is None:  # Word truth found no line for it in the PDF (word_truth_positions.py)
+            continue
         dy = ep["y"] - wp["y"]
         delta = ep["page"] - wp["page"]
         # a NEW divergence = the page offset changed, or the vertical drift jumped by more than a line

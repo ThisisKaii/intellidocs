@@ -6,6 +6,21 @@ these need Microsoft Word installed (Windows). Run them from the repo root.
 `fidelity_run.py` compares page *i* with page *i*, so one early drift marks every later page
 wrong. These tools find the FIRST place the editor diverges instead.
 
+## The gate
+
+`tests/e2e/word_gate.py` is the pass/fail check: for every Word fixture it counts the paragraphs the
+editor puts on the page Word puts them on, against `tests/fixtures/import_baselines/word_gate_baseline.json`.
+It needs only the frontend dev server, not Word, because Word's layout is committed in
+`tests/fixtures/import_baselines/word_truth/`. Re-record that with `make_word_golden.ps1` (needs Word)
+when a fixture changes; the gate refuses truth whose SHA-256 does not match its fixture.
+
+```powershell
+ml\venv\Scripts\python tests\e2e\word_gate.py                    # exit 0 ok, 1 regression, 2 could not measure
+ml\venv\Scripts\python tests\e2e\word_gate.py --update-baseline  # deliberate: review the diff
+```
+
+The tools below explain a drop the gate reports.
+
 ## Workflow
 
 1. **Word's layout (truth).** Opens the file hidden and read-only, exports a PDF, and writes
@@ -13,7 +28,14 @@ wrong. These tools find the FIRST place the editor diverges instead.
 
    ```powershell
    tests\e2e\tools\word_truth.ps1 -Docx "C:\path\file.docx" -OutDir "C:\temp\word"
+   ml\venv\Scripts\python tests\e2e\tools\word_truth_positions.py "C:\temp\word\file.word.json" "C:\temp\word\file.word.pdf"
    ```
+
+   Seconds per file: Word reports where each page starts (one call per page) and each paragraph's
+   start offset, and a paragraph's page follows from those; asking Word for every paragraph's page
+   was far slower. The second command adds each paragraph's vertical position from Word's PDF
+   (`y: null` where its first line is not found). Never pass Word a path built with `Join-Path`:
+   saving the PDF with one hangs a hidden Word indefinitely.
 
 2. **First divergence.** Needs the frontend dev server on 5173 (`cd frontend; npm run dev`);
    the converter runs in-process, so the ML service is not needed:

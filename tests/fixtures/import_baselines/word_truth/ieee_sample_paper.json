@@ -1,0 +1,646 @@
+{
+ "schema": 2,
+ "name": "ieee_sample_paper",
+ "sha256": "f4581b6182390e4806cfffa87aa4f3b73999e7e76f6100836296a0da476b5689",
+ "word_version": "16.0",
+ "word_build": "16.0.20326",
+ "pages": 2,
+ "page_starts": [
+  0,
+  3683
+ ],
+ "paragraphs": [
+  {
+   "i": 1,
+   "page": 1,
+   "start": 0,
+   "in_table": false,
+   "text": "Measuring Layout Agreement of Imported Documents Against The",
+   "y": 55.1
+  },
+  {
+   "i": 2,
+   "page": 1,
+   "start": 80,
+   "in_table": false,
+   "text": "Alex Rivera  and  Sam Okafor",
+   "y": 117.7
+  },
+  {
+   "i": 3,
+   "page": 1,
+   "start": 109,
+   "in_table": false,
+   "text": "Department of Computer Science, Example University",
+   "y": 131.5
+  },
+  {
+   "i": 4,
+   "page": 1,
+   "start": 160,
+   "in_table": false,
+   "text": "Abstract—We describe a method for scoring how closely an imp",
+   "y": 152.6
+  },
+  {
+   "i": 5,
+   "page": 1,
+   "start": 411,
+   "in_table": false,
+   "text": "Index Terms—document import, pagination, layout fidelity, eq",
+   "y": 176.4
+  },
+  {
+   "i": 6,
+   "page": 1,
+   "start": 479,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 7,
+   "page": 1,
+   "start": 480,
+   "in_table": false,
+   "text": "I. INTRODUCTION",
+   "y": 200.4
+  },
+  {
+   "i": 8,
+   "page": 1,
+   "start": 496,
+   "in_table": false,
+   "text": "Reliable import of word-processor files depends on resolving",
+   "y": 221.2
+  },
+  {
+   "i": 9,
+   "page": 1,
+   "start": 708,
+   "in_table": false,
+   "text": "The score of a page is a ratio 𝑠=\r𝑛\r𝑁\r, where 𝑛 is the n",
+   "y": 274.7
+  },
+  {
+   "i": 10,
+   "page": 1,
+   "start": 829,
+   "in_table": false,
+   "text": "𝐸=𝑚\r𝑐\r2\r\t(1)",
+   "y": null
+  },
+  {
+   "i": 11,
+   "page": 1,
+   "start": 846,
+   "in_table": false,
+   "text": "We measure agreement page by page against the original rende",
+   "y": 321.5
+  },
+  {
+   "i": 12,
+   "page": 1,
+   "start": 1049,
+   "in_table": false,
+   "text": "A. Problem statement",
+   "y": 373.0
+  },
+  {
+   "i": 13,
+   "page": 1,
+   "start": 1070,
+   "in_table": false,
+   "text": "The converter resolves styles down to inline properties, so",
+   "y": 368.5
+  },
+  {
+   "i": 14,
+   "page": 1,
+   "start": 1283,
+   "in_table": false,
+   "text": "𝐷=\r𝑖=1\r𝑁\r\r1\r2\r|𝑎−𝑏|\r\t(2)",
+   "y": null
+  },
+  {
+   "i": 15,
+   "page": 1,
+   "start": 1314,
+   "in_table": false,
+   "text": "Section breaks carry their own margins, columns and page siz",
+   "y": 213.5
+  },
+  {
+   "i": 16,
+   "page": 1,
+   "start": 1509,
+   "in_table": false,
+   "text": "Reliable import of word-processor files depends on resolving",
+   "y": 265.5
+  },
+  {
+   "i": 17,
+   "page": 1,
+   "start": 1924,
+   "in_table": false,
+   "text": "B. Contributions",
+   "y": 351.4
+  },
+  {
+   "i": 18,
+   "page": 1,
+   "start": 1941,
+   "in_table": false,
+   "text": "The converter resolves styles down to inline properties, so",
+   "y": 390.1
+  },
+  {
+   "i": 19,
+   "page": 1,
+   "start": 2349,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 20,
+   "page": 1,
+   "start": 2350,
+   "in_table": false,
+   "text": "TABLE I. Page agreement for the sample documents (full width",
+   "y": 456.2
+  },
+  {
+   "i": 21,
+   "page": 1,
+   "start": 2412,
+   "in_table": true,
+   "text": "Document\r\u0007",
+   "y": 82.7
+  },
+  {
+   "i": 22,
+   "page": 1,
+   "start": 2421,
+   "in_table": true,
+   "text": "Pages (ref)\r\u0007",
+   "y": 473.4
+  },
+  {
+   "i": 23,
+   "page": 1,
+   "start": 2433,
+   "in_table": true,
+   "text": "Pages (got)\r\u0007",
+   "y": 473.4
+  },
+  {
+   "i": 24,
+   "page": 1,
+   "start": 2445,
+   "in_table": true,
+   "text": "Words ok\r\u0007",
+   "y": 473.4
+  },
+  {
+   "i": 25,
+   "page": 1,
+   "start": 2454,
+   "in_table": true,
+   "text": "Layout\r\u0007",
+   "y": 473.4
+  },
+  {
+   "i": 26,
+   "page": 1,
+   "start": 2461,
+   "in_table": true,
+   "text": "Edges\r\u0007",
+   "y": 473.4
+  },
+  {
+   "i": 27,
+   "page": 1,
+   "start": 2467,
+   "in_table": true,
+   "text": "First divergence\r\u0007",
+   "y": 473.4
+  },
+  {
+   "i": 28,
+   "page": 1,
+   "start": 2484,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 29,
+   "page": 1,
+   "start": 2485,
+   "in_table": true,
+   "text": "Sample A\r\u0007",
+   "y": 486.1
+  },
+  {
+   "i": 30,
+   "page": 1,
+   "start": 2494,
+   "in_table": true,
+   "text": "14\r\u0007",
+   "y": null
+  },
+  {
+   "i": 31,
+   "page": 1,
+   "start": 2497,
+   "in_table": true,
+   "text": "14\r\u0007",
+   "y": null
+  },
+  {
+   "i": 32,
+   "page": 1,
+   "start": 2500,
+   "in_table": true,
+   "text": "0.99\r\u0007",
+   "y": null
+  },
+  {
+   "i": 33,
+   "page": 1,
+   "start": 2505,
+   "in_table": true,
+   "text": "0.91\r\u0007",
+   "y": null
+  },
+  {
+   "i": 34,
+   "page": 1,
+   "start": 2510,
+   "in_table": true,
+   "text": "yes\r\u0007",
+   "y": null
+  },
+  {
+   "i": 35,
+   "page": 1,
+   "start": 2514,
+   "in_table": true,
+   "text": "none\r\u0007",
+   "y": 486.1
+  },
+  {
+   "i": 36,
+   "page": 1,
+   "start": 2519,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 37,
+   "page": 1,
+   "start": 2520,
+   "in_table": true,
+   "text": "Sample B\r\u0007",
+   "y": 498.8
+  },
+  {
+   "i": 38,
+   "page": 1,
+   "start": 2529,
+   "in_table": true,
+   "text": "32\r\u0007",
+   "y": null
+  },
+  {
+   "i": 39,
+   "page": 1,
+   "start": 2532,
+   "in_table": true,
+   "text": "37\r\u0007",
+   "y": null
+  },
+  {
+   "i": 40,
+   "page": 1,
+   "start": 2535,
+   "in_table": true,
+   "text": "0.98\r\u0007",
+   "y": null
+  },
+  {
+   "i": 41,
+   "page": 1,
+   "start": 2540,
+   "in_table": true,
+   "text": "0.40\r\u0007",
+   "y": null
+  },
+  {
+   "i": 42,
+   "page": 1,
+   "start": 2545,
+   "in_table": true,
+   "text": "no\r\u0007",
+   "y": null
+  },
+  {
+   "i": 43,
+   "page": 1,
+   "start": 2548,
+   "in_table": true,
+   "text": "page 2\r\u0007",
+   "y": 498.8
+  },
+  {
+   "i": 44,
+   "page": 1,
+   "start": 2555,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 45,
+   "page": 1,
+   "start": 2556,
+   "in_table": true,
+   "text": "Sample C\r\u0007",
+   "y": 511.5
+  },
+  {
+   "i": 46,
+   "page": 1,
+   "start": 2565,
+   "in_table": true,
+   "text": "31\r\u0007",
+   "y": null
+  },
+  {
+   "i": 47,
+   "page": 1,
+   "start": 2568,
+   "in_table": true,
+   "text": "31\r\u0007",
+   "y": null
+  },
+  {
+   "i": 48,
+   "page": 1,
+   "start": 2571,
+   "in_table": true,
+   "text": "1.00\r\u0007",
+   "y": null
+  },
+  {
+   "i": 49,
+   "page": 1,
+   "start": 2576,
+   "in_table": true,
+   "text": "0.88\r\u0007",
+   "y": null
+  },
+  {
+   "i": 50,
+   "page": 1,
+   "start": 2581,
+   "in_table": true,
+   "text": "yes\r\u0007",
+   "y": null
+  },
+  {
+   "i": 51,
+   "page": 1,
+   "start": 2585,
+   "in_table": true,
+   "text": "page 18\r\u0007",
+   "y": 511.5
+  },
+  {
+   "i": 52,
+   "page": 1,
+   "start": 2593,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 53,
+   "page": 1,
+   "start": 2594,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 54,
+   "page": 1,
+   "start": 2595,
+   "in_table": false,
+   "text": "II. METHOD",
+   "y": 542.6
+  },
+  {
+   "i": 55,
+   "page": 1,
+   "start": 2606,
+   "in_table": false,
+   "text": "We measure agreement page by page against the original rende",
+   "y": 563.5
+  },
+  {
+   "i": 56,
+   "page": 1,
+   "start": 3022,
+   "in_table": false,
+   "text": "𝑥+𝑦\r≤𝑧\t(3)",
+   "y": null
+  },
+  {
+   "i": 57,
+   "page": 1,
+   "start": 3039,
+   "in_table": false,
+   "text": "Section breaks carry their own margins, columns and page siz",
+   "y": 667.5
+  },
+  {
+   "i": 58,
+   "page": 1,
+   "start": 3446,
+   "in_table": false,
+   "text": "TABLE II. Settings used",
+   "y": 597.7
+  },
+  {
+   "i": 59,
+   "page": 1,
+   "start": 3470,
+   "in_table": true,
+   "text": "Setting\r\u0007",
+   "y": 614.9
+  },
+  {
+   "i": 60,
+   "page": 1,
+   "start": 3478,
+   "in_table": true,
+   "text": "Value\r\u0007",
+   "y": 614.9
+  },
+  {
+   "i": 61,
+   "page": 1,
+   "start": 3484,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 62,
+   "page": 1,
+   "start": 3485,
+   "in_table": true,
+   "text": "Dpi\r\u0007",
+   "y": null
+  },
+  {
+   "i": 63,
+   "page": 1,
+   "start": 3489,
+   "in_table": true,
+   "text": "96\r\u0007",
+   "y": null
+  },
+  {
+   "i": 64,
+   "page": 1,
+   "start": 3492,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 65,
+   "page": 1,
+   "start": 3493,
+   "in_table": true,
+   "text": "Shift\r\u0007",
+   "y": 640.3
+  },
+  {
+   "i": 66,
+   "page": 1,
+   "start": 3499,
+   "in_table": true,
+   "text": "4 px\r\u0007",
+   "y": null
+  },
+  {
+   "i": 67,
+   "page": 1,
+   "start": 3504,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 68,
+   "page": 1,
+   "start": 3505,
+   "in_table": false,
+   "text": "Reliable import of word-processor files depends on resolving",
+   "y": 653.4
+  },
+  {
+   "i": 69,
+   "page": 2,
+   "start": 4133,
+   "in_table": false,
+   "text": "III. RESULTS",
+   "y": 153.2
+  },
+  {
+   "i": 70,
+   "page": 2,
+   "start": 4146,
+   "in_table": false,
+   "text": "The converter resolves styles down to inline properties, so",
+   "y": 174.0
+  },
+  {
+   "i": 71,
+   "page": 2,
+   "start": 4766,
+   "in_table": false,
+   "text": "We measure agreement page by page against the original rende",
+   "y": 306.5
+  },
+  {
+   "i": 72,
+   "page": 2,
+   "start": 5589,
+   "in_table": false,
+   "text": "Section breaks carry their own margins, columns and page siz",
+   "y": 473.5
+  },
+  {
+   "i": 73,
+   "page": 2,
+   "start": 6199,
+   "in_table": false,
+   "text": "IV. CONCLUSION",
+   "y": 595.2
+  },
+  {
+   "i": 74,
+   "page": 2,
+   "start": 6214,
+   "in_table": false,
+   "text": "The converter resolves styles down to inline properties, so",
+   "y": 616.1
+  },
+  {
+   "i": 75,
+   "page": 2,
+   "start": 6622,
+   "in_table": false,
+   "text": "REFERENCES",
+   "y": 703.2
+  },
+  {
+   "i": 76,
+   "page": 2,
+   "start": 6633,
+   "in_table": false,
+   "text": "[1] A. Author, “Layout in word processors,” J. Docs, vol. 1,",
+   "y": 54.4
+  },
+  {
+   "i": 77,
+   "page": 2,
+   "start": 6717,
+   "in_table": false,
+   "text": "[2] B. Writer, “Pagination,” Proc. Conf., 2021, pp. 11–20.",
+   "y": 73.0
+  },
+  {
+   "i": 78,
+   "page": 2,
+   "start": 6776,
+   "in_table": false,
+   "text": "[3] C. Reader, “Importing documents,” Trans. Doc., vol. 2, 2",
+   "y": 84.1
+  },
+  {
+   "i": 79,
+   "page": 2,
+   "start": 6841,
+   "in_table": false,
+   "text": "[4] D. Editor, “Sections and columns,” Doc. Eng., 2023.",
+   "y": 95.4
+  }
+ ]
+}

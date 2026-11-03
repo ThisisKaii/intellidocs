@@ -1,0 +1,9404 @@
+{
+ "schema": 2,
+ "name": "DM-OUHRODI-2026-3750-1",
+ "sha256": "ce30bd966a2e57e9b9afcd9a62613a5952372e1694cd69de09d2b2b578262273",
+ "word_version": "16.0",
+ "word_build": "16.0.20326",
+ "pages": 32,
+ "page_starts": [
+  0,
+  4,
+  2577,
+  2894,
+  3665,
+  4323,
+  7331,
+  8786,
+  11554,
+  14289,
+  17593,
+  20698,
+  23327,
+  26436,
+  28149,
+  30751,
+  32706,
+  34012,
+  35674,
+  38605,
+  40657,
+  41111,
+  43565,
+  45366,
+  45581,
+  48005,
+  50513,
+  52926,
+  53234,
+  54186,
+  55239,
+  56803
+ ],
+ "paragraphs": [
+  {
+   "i": 1,
+   "page": 1,
+   "start": 0,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 2,
+   "page": 1,
+   "start": 3,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 3,
+   "page": 2,
+   "start": 4,
+   "in_table": false,
+   "text": "baseline information on the functionality of SGCs in public",
+   "y": 71.1
+  },
+  {
+   "i": 4,
+   "page": 2,
+   "start": 384,
+   "in_table": false,
+   "text": "For 2026, the SGC Functionality Assessment Tool shall be imp",
+   "y": 147.8
+  },
+  {
+   "i": 5,
+   "page": 2,
+   "start": 977,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 6,
+   "page": 2,
+   "start": 978,
+   "in_table": false,
+   "text": "In line with the rollout of SGC Functionality Assessment Too",
+   "y": 265.1
+  },
+  {
+   "i": 7,
+   "page": 2,
+   "start": 1143,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 8,
+   "page": 2,
+   "start": 1144,
+   "in_table": true,
+   "text": "Enclosure No.\r\u0007",
+   "y": 305.4
+  },
+  {
+   "i": 9,
+   "page": 2,
+   "start": 1158,
+   "in_table": true,
+   "text": "Attachment\r\u0007",
+   "y": 305.4
+  },
+  {
+   "i": 10,
+   "page": 2,
+   "start": 1169,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 11,
+   "page": 2,
+   "start": 1170,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 12,
+   "page": 2,
+   "start": 1172,
+   "in_table": true,
+   "text": "SGC Functionality Assessment Tool User Guide Volume 1 and 2",
+   "y": 320.9
+  },
+  {
+   "i": 13,
+   "page": 2,
+   "start": 1232,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 14,
+   "page": 2,
+   "start": 1233,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 15,
+   "page": 2,
+   "start": 1235,
+   "in_table": true,
+   "text": "SGC Functionality Assessment Tool (printable for reference)",
+   "y": 336.2
+  },
+  {
+   "i": 16,
+   "page": 2,
+   "start": 1295,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 17,
+   "page": 2,
+   "start": 1296,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 18,
+   "page": 2,
+   "start": 1298,
+   "in_table": true,
+   "text": "Process Flow of the Data Collection and Monitoring of the SG",
+   "y": 351.7
+  },
+  {
+   "i": 19,
+   "page": 2,
+   "start": 1390,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 20,
+   "page": 2,
+   "start": 1391,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 21,
+   "page": 2,
+   "start": 1393,
+   "in_table": true,
+   "text": "Roles and Responsibilities per Governance Level as Mandated",
+   "y": 378.1
+  },
+  {
+   "i": 22,
+   "page": 2,
+   "start": 1480,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 23,
+   "page": 2,
+   "start": 1481,
+   "in_table": true,
+   "text": "5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 24,
+   "page": 2,
+   "start": 1483,
+   "in_table": true,
+   "text": "Roles\tand\tResponsibilities\tper\tGovernance\tLevel\tin\tthe",
+   "y": 404.4
+  },
+  {
+   "i": 25,
+   "page": 2,
+   "start": 1538,
+   "in_table": true,
+   "text": "implementation of the SGC Functionality Assessment Tool\r\u0007",
+   "y": 122.8
+  },
+  {
+   "i": 26,
+   "page": 2,
+   "start": 1594,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 27,
+   "page": 2,
+   "start": 1595,
+   "in_table": true,
+   "text": "6\r\u0007",
+   "y": null
+  },
+  {
+   "i": 28,
+   "page": 2,
+   "start": 1597,
+   "in_table": true,
+   "text": "SDO Spreadsheet: SDO Validation Sheet and SDO Monitoring She",
+   "y": 430.6
+  },
+  {
+   "i": 29,
+   "page": 2,
+   "start": 1660,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 30,
+   "page": 2,
+   "start": 1661,
+   "in_table": true,
+   "text": "7\r\u0007",
+   "y": null
+  },
+  {
+   "i": 31,
+   "page": 2,
+   "start": 1663,
+   "in_table": true,
+   "text": "RO\tSpreadsheet:\tRO\tMonitoring\tSheet\tand\tRO\tMultiple Submissi",
+   "y": 457.0
+  },
+  {
+   "i": 32,
+   "page": 2,
+   "start": 1739,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 33,
+   "page": 2,
+   "start": 1740,
+   "in_table": true,
+   "text": "8\r\u0007",
+   "y": null
+  },
+  {
+   "i": 34,
+   "page": 2,
+   "start": 1742,
+   "in_table": true,
+   "text": "Timeline of Activities relative to the Roll-Out of the SGC",
+   "y": 483.2
+  },
+  {
+   "i": 35,
+   "page": 2,
+   "start": 1801,
+   "in_table": true,
+   "text": "Functionality Assessment Tool\r\u0007",
+   "y": 364.4
+  },
+  {
+   "i": 36,
+   "page": 2,
+   "start": 1831,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 37,
+   "page": 2,
+   "start": 1832,
+   "in_table": true,
+   "text": "9\r\u0007",
+   "y": null
+  },
+  {
+   "i": 38,
+   "page": 2,
+   "start": 1834,
+   "in_table": true,
+   "text": "Links: SGC Functionality Assessment Tool, SDO Spreadsheet, R",
+   "y": 509.6
+  },
+  {
+   "i": 39,
+   "page": 2,
+   "start": 2013,
+   "in_table": true,
+   "text": "the confidentiality of the links).\r\u0007",
+   "y": 547.6
+  },
+  {
+   "i": 40,
+   "page": 2,
+   "start": 2048,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 41,
+   "page": 2,
+   "start": 2049,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 42,
+   "page": 2,
+   "start": 2050,
+   "in_table": false,
+   "text": "Please be informed that all personal information collected p",
+   "y": 575.4
+  },
+  {
+   "i": 43,
+   "page": 2,
+   "start": 2405,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 44,
+   "page": 2,
+   "start": 2406,
+   "in_table": false,
+   "text": "For guidance and references, you may access the following li",
+   "y": 652.8
+  },
+  {
+   "i": 45,
+   "page": 2,
+   "start": 2471,
+   "in_table": false,
+   "text": "SGC Policy: bit.ly/SGC-FAQs",
+   "y": 666.3
+  },
+  {
+   "i": 46,
+   "page": 2,
+   "start": 2499,
+   "in_table": false,
+   "text": "Roll-Out on the SGC Functionality Assessment Tool for ES:",
+   "y": 679.9
+  },
+  {
+   "i": 47,
+   "page": 2,
+   "start": 2557,
+   "in_table": false,
+   "text": "tinyurl.com/DMSGCE",
+   "y": 693.0
+  },
+  {
+   "i": 48,
+   "page": 2,
+   "start": 2576,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 49,
+   "page": 3,
+   "start": 2577,
+   "in_table": false,
+   "text": "For other concerns or inquiries, you may contact Ms. Joloren",
+   "y": 71.1
+  },
+  {
+   "i": 50,
+   "page": 3,
+   "start": 2793,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 51,
+   "page": 3,
+   "start": 2794,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 52,
+   "page": 3,
+   "start": 2795,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 53,
+   "page": 3,
+   "start": 2796,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 54,
+   "page": 3,
+   "start": 2797,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 55,
+   "page": 3,
+   "start": 2798,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 56,
+   "page": 3,
+   "start": 2799,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 57,
+   "page": 3,
+   "start": 2800,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 58,
+   "page": 3,
+   "start": 2801,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 59,
+   "page": 3,
+   "start": 2802,
+   "in_table": false,
+   "text": "Copy furnished:",
+   "y": 205.4
+  },
+  {
+   "i": 60,
+   "page": 3,
+   "start": 2818,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 61,
+   "page": 3,
+   "start": 2819,
+   "in_table": false,
+   "text": "Office of the Secretary",
+   "y": 226.6
+  },
+  {
+   "i": 62,
+   "page": 3,
+   "start": 2843,
+   "in_table": false,
+   "text": "Office of the Undersecretary for Field Operations",
+   "y": 237.2
+  },
+  {
+   "i": 63,
+   "page": 3,
+   "start": 2893,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 64,
+   "page": 4,
+   "start": 2894,
+   "in_table": false,
+   "text": "Enclosure No. 1 to DM-OUHRODI-2026- 3750_ USER GUIDE VOL. 1",
+   "y": 68.8
+  },
+  {
+   "i": 65,
+   "page": 4,
+   "start": 2963,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 66,
+   "page": 4,
+   "start": 2964,
+   "in_table": false,
+   "text": "This User Guide provides the procedures and reference materi",
+   "y": 112.9
+  },
+  {
+   "i": 67,
+   "page": 4,
+   "start": 3162,
+   "in_table": false,
+   "text": "The User Guide consists of two (2) volumes:",
+   "y": 163.6
+  },
+  {
+   "i": 68,
+   "page": 4,
+   "start": 3206,
+   "in_table": false,
+   "text": "Volume 1: Prepare and Respond – for Public Elementary School",
+   "y": null
+  },
+  {
+   "i": 69,
+   "page": 4,
+   "start": 3388,
+   "in_table": false,
+   "text": "Volume  2:  Validate  and  Monitor  –  for  SDO  and  RO Pro",
+   "y": 239.3
+  },
+  {
+   "i": 70,
+   "page": 4,
+   "start": 3562,
+   "in_table": false,
+   "text": "The  complete  User  Guide  may  be  accessed  through  the",
+   "y": 290.0
+  },
+  {
+   "i": 71,
+   "page": 4,
+   "start": 3640,
+   "in_table": false,
+   "text": "tinyurl.com/DMSGCES",
+   "y": 303.0
+  },
+  {
+   "i": 72,
+   "page": 4,
+   "start": 3660,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 73,
+   "page": 4,
+   "start": 3661,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 74,
+   "page": 4,
+   "start": 3664,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 75,
+   "page": 5,
+   "start": 3665,
+   "in_table": false,
+   "text": "Enclosure No. 2 to DM-OUHRODI-2026- 3750_",
+   "y": 69.8
+  },
+  {
+   "i": 76,
+   "page": 5,
+   "start": 3709,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 77,
+   "page": 5,
+   "start": 3710,
+   "in_table": false,
+   "text": "Printable Form of the SGC Functionality Assessment Tool",
+   "y": 98.1
+  },
+  {
+   "i": 78,
+   "page": 5,
+   "start": 3766,
+   "in_table": false,
+   "text": "The Printable Form of the SGC Functionality Assessment Tool",
+   "y": 123.8
+  },
+  {
+   "i": 79,
+   "page": 5,
+   "start": 4114,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 80,
+   "page": 5,
+   "start": 4115,
+   "in_table": false,
+   "text": "The  printable  form  may  be  accessed  through  the  follo",
+   "y": 201.3
+  },
+  {
+   "i": 81,
+   "page": 5,
+   "start": 4187,
+   "in_table": false,
+   "text": "tinyurl.com/DMSGCES",
+   "y": 214.3
+  },
+  {
+   "i": 82,
+   "page": 5,
+   "start": 4207,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 83,
+   "page": 5,
+   "start": 4208,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 84,
+   "page": 5,
+   "start": 4209,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 85,
+   "page": 5,
+   "start": 4210,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 86,
+   "page": 5,
+   "start": 4211,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 87,
+   "page": 5,
+   "start": 4212,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 88,
+   "page": 5,
+   "start": 4213,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 89,
+   "page": 5,
+   "start": 4214,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 90,
+   "page": 5,
+   "start": 4215,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 91,
+   "page": 5,
+   "start": 4216,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 92,
+   "page": 5,
+   "start": 4217,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 93,
+   "page": 5,
+   "start": 4218,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 94,
+   "page": 5,
+   "start": 4219,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 95,
+   "page": 5,
+   "start": 4220,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 96,
+   "page": 5,
+   "start": 4221,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 97,
+   "page": 5,
+   "start": 4222,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 98,
+   "page": 5,
+   "start": 4223,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 99,
+   "page": 5,
+   "start": 4224,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 100,
+   "page": 5,
+   "start": 4225,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 101,
+   "page": 5,
+   "start": 4226,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 102,
+   "page": 5,
+   "start": 4227,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 103,
+   "page": 5,
+   "start": 4228,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 104,
+   "page": 5,
+   "start": 4229,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 105,
+   "page": 5,
+   "start": 4230,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 106,
+   "page": 5,
+   "start": 4231,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 107,
+   "page": 5,
+   "start": 4232,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 108,
+   "page": 5,
+   "start": 4233,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 109,
+   "page": 5,
+   "start": 4234,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 110,
+   "page": 5,
+   "start": 4235,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 111,
+   "page": 5,
+   "start": 4236,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 112,
+   "page": 5,
+   "start": 4237,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 113,
+   "page": 5,
+   "start": 4238,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 114,
+   "page": 5,
+   "start": 4239,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 115,
+   "page": 5,
+   "start": 4240,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 116,
+   "page": 5,
+   "start": 4241,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 117,
+   "page": 5,
+   "start": 4242,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 118,
+   "page": 5,
+   "start": 4243,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 119,
+   "page": 5,
+   "start": 4244,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 120,
+   "page": 5,
+   "start": 4245,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 121,
+   "page": 5,
+   "start": 4246,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 122,
+   "page": 5,
+   "start": 4247,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 123,
+   "page": 5,
+   "start": 4248,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 124,
+   "page": 5,
+   "start": 4249,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 125,
+   "page": 5,
+   "start": 4250,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 126,
+   "page": 5,
+   "start": 4251,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 127,
+   "page": 5,
+   "start": 4252,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 128,
+   "page": 5,
+   "start": 4253,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 129,
+   "page": 5,
+   "start": 4254,
+   "in_table": true,
+   "text": "Doc. Ref. Code\r\u0007",
+   "y": 788.9
+  },
+  {
+   "i": 130,
+   "page": 5,
+   "start": 4269,
+   "in_table": true,
+   "text": "DM-OUHROD\r\u0007",
+   "y": 788.9
+  },
+  {
+   "i": 131,
+   "page": 5,
+   "start": 4279,
+   "in_table": true,
+   "text": "Rev\r\u0007",
+   "y": null
+  },
+  {
+   "i": 132,
+   "page": 5,
+   "start": 4283,
+   "in_table": true,
+   "text": "00\r\u0007",
+   "y": null
+  },
+  {
+   "i": 133,
+   "page": 5,
+   "start": 4286,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 134,
+   "page": 5,
+   "start": 4287,
+   "in_table": true,
+   "text": "Effectivity\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 135,
+   "page": 5,
+   "start": 4299,
+   "in_table": true,
+   "text": "03.23.23\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 136,
+   "page": 5,
+   "start": 4308,
+   "in_table": true,
+   "text": "Page\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 137,
+   "page": 5,
+   "start": 4313,
+   "in_table": true,
+   "text": "5 of 24\r\u0007",
+   "y": null
+  },
+  {
+   "i": 138,
+   "page": 5,
+   "start": 4321,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 139,
+   "page": 5,
+   "start": 4322,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 140,
+   "page": 6,
+   "start": 4323,
+   "in_table": false,
+   "text": "Enclosure No. 2 to DM-OUHROD-2026- 3750",
+   "y": 15.9
+  },
+  {
+   "i": 141,
+   "page": 6,
+   "start": 4363,
+   "in_table": false,
+   "text": "Implementing Guidelines on the Establishment of School Gover",
+   "y": 35.1
+  },
+  {
+   "i": 142,
+   "page": 6,
+   "start": 4454,
+   "in_table": false,
+   "text": "SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 44.7
+  },
+  {
+   "i": 143,
+   "page": 6,
+   "start": 4488,
+   "in_table": false,
+   "text": "For Public Elementary Schools • 2026 Rollout",
+   "y": 61.4
+  },
+  {
+   "i": 144,
+   "page": 6,
+   "start": 4534,
+   "in_table": false,
+   "text": "In relation to the mandate of DO. 26, s. 2022 on the establi",
+   "y": 83.8
+  },
+  {
+   "i": 145,
+   "page": 6,
+   "start": 4924,
+   "in_table": false,
+   "text": "UNDERSTANDING THE SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 142.4
+  },
+  {
+   "i": 146,
+   "page": 6,
+   "start": 4976,
+   "in_table": false,
+   "text": "This SGC Functionality Assessment Tool aims to assess the fu",
+   "y": 154.1
+  },
+  {
+   "i": 147,
+   "page": 6,
+   "start": 5125,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 148,
+   "page": 6,
+   "start": 5126,
+   "in_table": false,
+   "text": "Two (2) Main Purposes",
+   "y": 192.4
+  },
+  {
+   "i": 149,
+   "page": 6,
+   "start": 5148,
+   "in_table": false,
+   "text": "To provide structure for shared governance",
+   "y": null
+  },
+  {
+   "i": 150,
+   "page": 6,
+   "start": 5191,
+   "in_table": false,
+   "text": "To provide a feedback mechanism",
+   "y": null
+  },
+  {
+   "i": 151,
+   "page": 6,
+   "start": 5223,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 152,
+   "page": 6,
+   "start": 5224,
+   "in_table": false,
+   "text": "Twelve (12) Functionality Indicators",
+   "y": 240.2
+  },
+  {
+   "i": 153,
+   "page": 6,
+   "start": 5261,
+   "in_table": false,
+   "text": "Functionality indicators are anchored on the two main purpos",
+   "y": 251.9
+  },
+  {
+   "i": 154,
+   "page": 6,
+   "start": 5649,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 155,
+   "page": 6,
+   "start": 5650,
+   "in_table": false,
+   "text": "Nineteen (19) Functionality Sub-indicators",
+   "y": 311.6
+  },
+  {
+   "i": 156,
+   "page": 6,
+   "start": 5693,
+   "in_table": false,
+   "text": "In this SGC Tool, there are seven (7) functionality indicato",
+   "y": 323.2
+  },
+  {
+   "i": 157,
+   "page": 6,
+   "start": 5925,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 158,
+   "page": 6,
+   "start": 5926,
+   "in_table": false,
+   "text": "Primary Sub-Indicators, which are the sub-indicators that de",
+   "y": null
+  },
+  {
+   "i": 159,
+   "page": 6,
+   "start": 6085,
+   "in_table": false,
+   "text": "Other Sub-Indicators, which are the sub-indicators that SGCs",
+   "y": null
+  },
+  {
+   "i": 160,
+   "page": 6,
+   "start": 6222,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 161,
+   "page": 6,
+   "start": 6223,
+   "in_table": false,
+   "text": "The result of the assessment shall be used as information in",
+   "y": 433.5
+  },
+  {
+   "i": 162,
+   "page": 6,
+   "start": 6386,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 163,
+   "page": 6,
+   "start": 6387,
+   "in_table": false,
+   "text": "Determining a Functional SGC Through the SGC Functionality A",
+   "y": 468.7
+  },
+  {
+   "i": 164,
+   "page": 6,
+   "start": 6462,
+   "in_table": false,
+   "text": "For an SGC to be considered functional, the Council must be",
+   "y": 480.4
+  },
+  {
+   "i": 165,
+   "page": 6,
+   "start": 6722,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 166,
+   "page": 6,
+   "start": 6723,
+   "in_table": false,
+   "text": "Functionality Indicators without sub-indicators are observed",
+   "y": 346.7
+  },
+  {
+   "i": 167,
+   "page": 6,
+   "start": 6846,
+   "in_table": false,
+   "text": "Primary Sub-Indicators, under Functionality Indicators with",
+   "y": null
+  },
+  {
+   "i": 168,
+   "page": 6,
+   "start": 6972,
+   "in_table": false,
+   "text": "Minimum MOVs are submitted.",
+   "y": null
+  },
+  {
+   "i": 169,
+   "page": 6,
+   "start": 7000,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 170,
+   "page": 6,
+   "start": 7001,
+   "in_table": false,
+   "text": "The Other Sub-Indicators are also recommended to be attained",
+   "y": 602.5
+  },
+  {
+   "i": 171,
+   "page": 6,
+   "start": 7315,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 172,
+   "page": 6,
+   "start": 7316,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 173,
+   "page": 6,
+   "start": 7317,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 174,
+   "page": 6,
+   "start": 7318,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 175,
+   "page": 6,
+   "start": 7319,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 176,
+   "page": 6,
+   "start": 7320,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 177,
+   "page": 6,
+   "start": 7321,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 178,
+   "page": 6,
+   "start": 7322,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 179,
+   "page": 6,
+   "start": 7323,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 180,
+   "page": 6,
+   "start": 7324,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 181,
+   "page": 6,
+   "start": 7325,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 182,
+   "page": 6,
+   "start": 7326,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 183,
+   "page": 6,
+   "start": 7327,
+   "in_table": false,
+   "text": "1",
+   "y": null
+  },
+  {
+   "i": 184,
+   "page": 6,
+   "start": 7330,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 185,
+   "page": 7,
+   "start": 7331,
+   "in_table": false,
+   "text": "Implementing Guidelines on the Establishment of School Gover",
+   "y": 35.1
+  },
+  {
+   "i": 186,
+   "page": 7,
+   "start": 7422,
+   "in_table": false,
+   "text": "SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 44.7
+  },
+  {
+   "i": 187,
+   "page": 7,
+   "start": 7456,
+   "in_table": false,
+   "text": "For Public Elementary Schools • 2026 Rollout",
+   "y": 61.4
+  },
+  {
+   "i": 188,
+   "page": 7,
+   "start": 7503,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 189,
+   "page": 7,
+   "start": 7504,
+   "in_table": false,
+   "text": "School Name\t:",
+   "y": 106.5
+  },
+  {
+   "i": 190,
+   "page": 7,
+   "start": 7518,
+   "in_table": false,
+   "text": "/",
+   "y": null
+  },
+  {
+   "i": 191,
+   "page": 7,
+   "start": 7520,
+   "in_table": false,
+   "text": "School ID\t:\tRegion\t:",
+   "y": null
+  },
+  {
+   "i": 192,
+   "page": 7,
+   "start": 7543,
+   "in_table": false,
+   "text": "Contact",
+   "y": 149.7
+  },
+  {
+   "i": 193,
+   "page": 7,
+   "start": 7551,
+   "in_table": false,
+   "text": "Number\t:\tDivision\t:",
+   "y": null
+  },
+  {
+   "i": 194,
+   "page": 7,
+   "start": 7574,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 195,
+   "page": 7,
+   "start": 7575,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 196,
+   "page": 7,
+   "start": 7576,
+   "in_table": false,
+   "text": "Establishment of SGC\tDate of Establishment",
+   "y": 216.5
+  },
+  {
+   "i": 197,
+   "page": 7,
+   "start": 7619,
+   "in_table": false,
+   "text": "Newly-Established SGC",
+   "y": 232.6
+  },
+  {
+   "i": 198,
+   "page": 7,
+   "start": 7641,
+   "in_table": false,
+   "text": "The school has formed the SGC after the issuance of DO 26, s",
+   "y": 245.7
+  },
+  {
+   "i": 199,
+   "page": 7,
+   "start": 7711,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 200,
+   "page": 7,
+   "start": 7712,
+   "in_table": false,
+   "text": "The SGC was established in SY 2022-2023 or later.",
+   "y": 255.2
+  },
+  {
+   "i": 201,
+   "page": 7,
+   "start": 7762,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 202,
+   "page": 7,
+   "start": 7763,
+   "in_table": false,
+   "text": "With Existing SGC",
+   "y": 276.2
+  },
+  {
+   "i": 203,
+   "page": 7,
+   "start": 7781,
+   "in_table": false,
+   "text": "The school already has an SGC before the issuance of DO 26,",
+   "y": 289.5
+  },
+  {
+   "i": 204,
+   "page": 7,
+   "start": 7909,
+   "in_table": false,
+   "text": "\u000e( Month and Year )",
+   "y": 256.4
+  },
+  {
+   "i": 205,
+   "page": 7,
+   "start": 7929,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 206,
+   "page": 7,
+   "start": 7930,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 207,
+   "page": 7,
+   "start": 7931,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 208,
+   "page": 7,
+   "start": 7932,
+   "in_table": false,
+   "text": "Name of SGC\t:",
+   "y": 336.8
+  },
+  {
+   "i": 209,
+   "page": 7,
+   "start": 7947,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 210,
+   "page": 7,
+   "start": 7948,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 211,
+   "page": 7,
+   "start": 7949,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 212,
+   "page": 7,
+   "start": 7950,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 213,
+   "page": 7,
+   "start": 7951,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 214,
+   "page": 7,
+   "start": 7952,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 215,
+   "page": 7,
+   "start": 7953,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 216,
+   "page": 7,
+   "start": 7954,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 217,
+   "page": 7,
+   "start": 7955,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 218,
+   "page": 7,
+   "start": 7956,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 219,
+   "page": 7,
+   "start": 7957,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 220,
+   "page": 7,
+   "start": 7958,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 221,
+   "page": 7,
+   "start": 7959,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 222,
+   "page": 7,
+   "start": 7960,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 223,
+   "page": 7,
+   "start": 7961,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 224,
+   "page": 7,
+   "start": 7962,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 225,
+   "page": 7,
+   "start": 7963,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 226,
+   "page": 7,
+   "start": 7964,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 227,
+   "page": 7,
+   "start": 7965,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 228,
+   "page": 7,
+   "start": 7966,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 229,
+   "page": 7,
+   "start": 7967,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 230,
+   "page": 7,
+   "start": 7968,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 231,
+   "page": 7,
+   "start": 7969,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 232,
+   "page": 7,
+   "start": 7970,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 233,
+   "page": 7,
+   "start": 7971,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 234,
+   "page": 7,
+   "start": 7973,
+   "in_table": false,
+   "text": "HOW TO ANSWER THE SGC FUNCTIONALITY ASSESSMENT TOOL (PRINTED",
+   "y": 660.9
+  },
+  {
+   "i": 235,
+   "page": 7,
+   "start": 8035,
+   "in_table": false,
+   "text": "Functionality Indicators",
+   "y": null
+  },
+  {
+   "i": 236,
+   "page": 7,
+   "start": 8060,
+   "in_table": false,
+   "text": "Put a check mark ( / ) on the appropriate box:",
+   "y": 679.8
+  },
+  {
+   "i": 237,
+   "page": 7,
+   "start": 8107,
+   "in_table": false,
+   "text": "YES (if the indicator is met)",
+   "y": 689.3
+  },
+  {
+   "i": 238,
+   "page": 7,
+   "start": 8137,
+   "in_table": false,
+   "text": "NO (if the indicator is not met)",
+   "y": 698.8
+  },
+  {
+   "i": 239,
+   "page": 7,
+   "start": 8170,
+   "in_table": false,
+   "text": "Sub-Indicators",
+   "y": null
+  },
+  {
+   "i": 240,
+   "page": 7,
+   "start": 8185,
+   "in_table": false,
+   "text": "If the Primary Sub-Indicator is not met, no need to proceed",
+   "y": 727.0
+  },
+  {
+   "i": 241,
+   "page": 7,
+   "start": 8286,
+   "in_table": false,
+   "text": "Means of Verification (MOVs)",
+   "y": null
+  },
+  {
+   "i": 242,
+   "page": 7,
+   "start": 8315,
+   "in_table": false,
+   "text": "Put a check mark ( / ) on the box that corresponds to the av",
+   "y": 755.1
+  },
+  {
+   "i": 243,
+   "page": 7,
+   "start": 8388,
+   "in_table": false,
+   "text": "If YES to the Functionality Indicator, prepare the correspon",
+   "y": 773.8
+  },
+  {
+   "i": 244,
+   "page": 7,
+   "start": 8782,
+   "in_table": false,
+   "text": "2",
+   "y": null
+  },
+  {
+   "i": 245,
+   "page": 7,
+   "start": 8785,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 246,
+   "page": 8,
+   "start": 8786,
+   "in_table": false,
+   "text": "Implementing Guidelines on the Establishment of School Gover",
+   "y": 35.1
+  },
+  {
+   "i": 247,
+   "page": 8,
+   "start": 8877,
+   "in_table": false,
+   "text": "SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 44.7
+  },
+  {
+   "i": 248,
+   "page": 8,
+   "start": 8911,
+   "in_table": false,
+   "text": "For Public Elementary Schools • 2026 Rollout",
+   "y": 61.4
+  },
+  {
+   "i": 249,
+   "page": 8,
+   "start": 8957,
+   "in_table": false,
+   "text": "MAIN PURPOSE: STRUCTURE FOR SHARED GOVERNANCE",
+   "y": 86.8
+  },
+  {
+   "i": 250,
+   "page": 8,
+   "start": 9003,
+   "in_table": false,
+   "text": "As a structure for shared governance, the SGC shall be an av",
+   "y": 102.3
+  },
+  {
+   "i": 251,
+   "page": 8,
+   "start": 9207,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 252,
+   "page": 8,
+   "start": 9208,
+   "in_table": false,
+   "text": "FUNCTION 1:",
+   "y": 139.2
+  },
+  {
+   "i": 253,
+   "page": 8,
+   "start": 9221,
+   "in_table": false,
+   "text": "The SGC serves as a collective and consultative body for sch",
+   "y": 150.9
+  },
+  {
+   "i": 254,
+   "page": 8,
+   "start": 9340,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 255,
+   "page": 8,
+   "start": 9341,
+   "in_table": true,
+   "text": "FI1\tFUNCTIONALITY INDICATOR 1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 256,
+   "page": 8,
+   "start": 9371,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 257,
+   "page": 8,
+   "start": 9372,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 258,
+   "page": 8,
+   "start": 9373,
+   "in_table": true,
+   "text": "THE SGC HAS MEMBERS WHO ARE INFORMED OF AND GIVEN THE OPPORT",
+   "y": 211.2
+  },
+  {
+   "i": 259,
+   "page": 8,
+   "start": 9500,
+   "in_table": true,
+   "text": "A functional SGC has members who participate in the decision",
+   "y": 234.9
+  },
+  {
+   "i": 260,
+   "page": 8,
+   "start": 9577,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 261,
+   "page": 8,
+   "start": 9578,
+   "in_table": true,
+   "text": "FI1A\r\u0007",
+   "y": 248.5
+  },
+  {
+   "i": 262,
+   "page": 8,
+   "start": 9583,
+   "in_table": true,
+   "text": "PRIMARY SUB-INDICATOR\r\u0007",
+   "y": 248.5
+  },
+  {
+   "i": 263,
+   "page": 8,
+   "start": 9605,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 264,
+   "page": 8,
+   "start": 9606,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 265,
+   "page": 8,
+   "start": 9610,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 266,
+   "page": 8,
+   "start": 9613,
+   "in_table": true,
+   "text": "The SGC has called meetings in order to create a venue for i",
+   "y": 270.8
+  },
+  {
+   "i": 267,
+   "page": 8,
+   "start": 9702,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 268,
+   "page": 8,
+   "start": 9703,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 269,
+   "page": 8,
+   "start": 9704,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 295.7
+  },
+  {
+   "i": 270,
+   "page": 8,
+   "start": 9740,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 271,
+   "page": 8,
+   "start": 9769,
+   "in_table": true,
+   "text": "Notice of meeting (at least 1 of 4 Regular Meetings)\t□ Notic",
+   "y": 318.9
+  },
+  {
+   "i": 272,
+   "page": 8,
+   "start": 9870,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 273,
+   "page": 8,
+   "start": 9871,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 274,
+   "page": 8,
+   "start": 9872,
+   "in_table": false,
+   "text": "NOTE If the Primary Sub-Indicator is not met (NO), no need t",
+   "y": 344.8
+  },
+  {
+   "i": 275,
+   "page": 8,
+   "start": 9972,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 276,
+   "page": 8,
+   "start": 9973,
+   "in_table": true,
+   "text": "FI1B\r\u0007",
+   "y": 371.7
+  },
+  {
+   "i": 277,
+   "page": 8,
+   "start": 9978,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 371.7
+  },
+  {
+   "i": 278,
+   "page": 8,
+   "start": 9998,
+   "in_table": true,
+   "text": "SGC members have been inducted and oriented of their roles a",
+   "y": 388.0
+  },
+  {
+   "i": 279,
+   "page": 8,
+   "start": 10118,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 280,
+   "page": 8,
+   "start": 10119,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 281,
+   "page": 8,
+   "start": 10123,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 282,
+   "page": 8,
+   "start": 10126,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 283,
+   "page": 8,
+   "start": 10127,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 284,
+   "page": 8,
+   "start": 10128,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 285,
+   "page": 8,
+   "start": 10129,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 419.1
+  },
+  {
+   "i": 286,
+   "page": 8,
+   "start": 10165,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 287,
+   "page": 8,
+   "start": 10194,
+   "in_table": true,
+   "text": "Membership / Induction Certificates\t□ Membership / Induction",
+   "y": 442.3
+  },
+  {
+   "i": 288,
+   "page": 8,
+   "start": 10321,
+   "in_table": true,
+   "text": "SGC Resolution on the Official List of Voting Members\t□ SGC",
+   "y": 461.3
+  },
+  {
+   "i": 289,
+   "page": 8,
+   "start": 10471,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 290,
+   "page": 8,
+   "start": 10472,
+   "in_table": true,
+   "text": "FI1C\r\u0007",
+   "y": 484.6
+  },
+  {
+   "i": 291,
+   "page": 8,
+   "start": 10477,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 484.6
+  },
+  {
+   "i": 292,
+   "page": 8,
+   "start": 10497,
+   "in_table": true,
+   "text": "The SGC has organizational chart, including non-voting membe",
+   "y": 506.8
+  },
+  {
+   "i": 293,
+   "page": 8,
+   "start": 10576,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 294,
+   "page": 8,
+   "start": 10577,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 295,
+   "page": 8,
+   "start": 10581,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 296,
+   "page": 8,
+   "start": 10584,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 297,
+   "page": 8,
+   "start": 10585,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 298,
+   "page": 8,
+   "start": 10586,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 299,
+   "page": 8,
+   "start": 10587,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 531.6
+  },
+  {
+   "i": 300,
+   "page": 8,
+   "start": 10623,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 301,
+   "page": 8,
+   "start": 10652,
+   "in_table": true,
+   "text": "Draft / Operative Organizational Chart\t□ Approved / Adopted",
+   "y": 555.0
+  },
+  {
+   "i": 302,
+   "page": 8,
+   "start": 10733,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 303,
+   "page": 8,
+   "start": 10734,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 304,
+   "page": 8,
+   "start": 10735,
+   "in_table": true,
+   "text": "FI2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 305,
+   "page": 8,
+   "start": 10739,
+   "in_table": true,
+   "text": "FUNCTIONALITY INDICATOR 2\r\u0007",
+   "y": 192.6
+  },
+  {
+   "i": 306,
+   "page": 8,
+   "start": 10765,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 307,
+   "page": 8,
+   "start": 10766,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 308,
+   "page": 8,
+   "start": 10767,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 309,
+   "page": 8,
+   "start": 10768,
+   "in_table": true,
+   "text": "THE SGC HAS ESTABLISHED ITS POSITION AS A CONSULTATIVE BODY",
+   "y": 599.0
+  },
+  {
+   "i": 310,
+   "page": 8,
+   "start": 10859,
+   "in_table": true,
+   "text": "A functional SGC has knowledge on the needs of the school as",
+   "y": 622.8
+  },
+  {
+   "i": 311,
+   "page": 8,
+   "start": 11027,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 312,
+   "page": 8,
+   "start": 11028,
+   "in_table": true,
+   "text": "FI2A\r\u0007",
+   "y": 645.7
+  },
+  {
+   "i": 313,
+   "page": 8,
+   "start": 11033,
+   "in_table": true,
+   "text": "PRIMARY SUB-INDICATOR\r\u0007",
+   "y": 645.7
+  },
+  {
+   "i": 314,
+   "page": 8,
+   "start": 11055,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 315,
+   "page": 8,
+   "start": 11056,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 316,
+   "page": 8,
+   "start": 11057,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 317,
+   "page": 8,
+   "start": 11061,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 318,
+   "page": 8,
+   "start": 11064,
+   "in_table": true,
+   "text": "The SGC has participated actively in the formulation of the",
+   "y": 662.0
+  },
+  {
+   "i": 319,
+   "page": 8,
+   "start": 11184,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 320,
+   "page": 8,
+   "start": 11185,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 321,
+   "page": 8,
+   "start": 11186,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 692.8
+  },
+  {
+   "i": 322,
+   "page": 8,
+   "start": 11222,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 323,
+   "page": 8,
+   "start": 11223,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 324,
+   "page": 8,
+   "start": 11224,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 325,
+   "page": 8,
+   "start": 11225,
+   "in_table": true,
+   "text": "Minimum MOVs",
+   "y": 309.5
+  },
+  {
+   "i": 326,
+   "page": 8,
+   "start": 11238,
+   "in_table": true,
+   "text": "Minutes of Meeting with SPT on SIP / AIP (at least 1 meeting",
+   "y": 715.9
+  },
+  {
+   "i": 327,
+   "page": 8,
+   "start": 11300,
+   "in_table": true,
+   "text": "Additional MOVs",
+   "y": 309.5
+  },
+  {
+   "i": 328,
+   "page": 8,
+   "start": 11316,
+   "in_table": true,
+   "text": "Minutes of Meetings with SPT on SIP / AIP (2 or more meeting",
+   "y": 715.9
+  },
+  {
+   "i": 329,
+   "page": 8,
+   "start": 11379,
+   "in_table": true,
+   "text": "Minutes of Meeting/s with SPT on other DepEd programs, proje",
+   "y": 734.9
+  },
+  {
+   "i": 330,
+   "page": 8,
+   "start": 11480,
+   "in_table": true,
+   "text": "SGC's Action Plan",
+   "y": 753.4
+  },
+  {
+   "i": 331,
+   "page": 8,
+   "start": 11498,
+   "in_table": true,
+   "text": "SGC Resolution relative to the indicator (at least 1)\r\u0007",
+   "y": 461.3
+  },
+  {
+   "i": 332,
+   "page": 8,
+   "start": 11552,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 333,
+   "page": 8,
+   "start": 11553,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 334,
+   "page": 9,
+   "start": 11554,
+   "in_table": false,
+   "text": "Implementing Guidelines on the Establishment of School Gover",
+   "y": 35.1
+  },
+  {
+   "i": 335,
+   "page": 9,
+   "start": 11645,
+   "in_table": false,
+   "text": "SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 44.7
+  },
+  {
+   "i": 336,
+   "page": 9,
+   "start": 11679,
+   "in_table": false,
+   "text": "For Public Elementary Schools • 2026 Rollout",
+   "y": 61.4
+  },
+  {
+   "i": 337,
+   "page": 9,
+   "start": 11725,
+   "in_table": false,
+   "text": "NOTE If the Primary Sub-Indicator is not met (NO), no need t",
+   "y": 85.0
+  },
+  {
+   "i": 338,
+   "page": 9,
+   "start": 11825,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 339,
+   "page": 9,
+   "start": 11826,
+   "in_table": true,
+   "text": "FI2B\r\u0007",
+   "y": 112.1
+  },
+  {
+   "i": 340,
+   "page": 9,
+   "start": 11831,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 112.1
+  },
+  {
+   "i": 341,
+   "page": 9,
+   "start": 11851,
+   "in_table": true,
+   "text": "The SGC has passed recommendations to the School Head regard",
+   "y": 128.4
+  },
+  {
+   "i": 342,
+   "page": 9,
+   "start": 11990,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 343,
+   "page": 9,
+   "start": 11991,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 344,
+   "page": 9,
+   "start": 11995,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 345,
+   "page": 9,
+   "start": 11998,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 346,
+   "page": 9,
+   "start": 11999,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 347,
+   "page": 9,
+   "start": 12000,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 348,
+   "page": 9,
+   "start": 12001,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 159.2
+  },
+  {
+   "i": 349,
+   "page": 9,
+   "start": 12037,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 350,
+   "page": 9,
+   "start": 12066,
+   "in_table": true,
+   "text": "SGC Resolution relative to the indicator (at least 1)\t□ SGC",
+   "y": 182.6
+  },
+  {
+   "i": 351,
+   "page": 9,
+   "start": 12176,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 352,
+   "page": 9,
+   "start": 12177,
+   "in_table": true,
+   "text": "FI2C\r\u0007",
+   "y": 196.8
+  },
+  {
+   "i": 353,
+   "page": 9,
+   "start": 12182,
+   "in_table": true,
+   "text": "Other Sub-Indicator\r\u0007",
+   "y": 196.8
+  },
+  {
+   "i": 354,
+   "page": 9,
+   "start": 12202,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 355,
+   "page": 9,
+   "start": 12203,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 356,
+   "page": 9,
+   "start": 12207,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 357,
+   "page": 9,
+   "start": 12210,
+   "in_table": true,
+   "text": "The SGC has attended meetings on the importance of upholding",
+   "y": 218.1
+  },
+  {
+   "i": 358,
+   "page": 9,
+   "start": 12296,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 359,
+   "page": 9,
+   "start": 12297,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 360,
+   "page": 9,
+   "start": 12298,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 241.6
+  },
+  {
+   "i": 361,
+   "page": 9,
+   "start": 12334,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 362,
+   "page": 9,
+   "start": 12335,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 363,
+   "page": 9,
+   "start": 12336,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 364,
+   "page": 9,
+   "start": 12365,
+   "in_table": true,
+   "text": "Minutes of Meeting with CPU, CPC, or other similar\t□ Minutes",
+   "y": 267.5
+  },
+  {
+   "i": 365,
+   "page": 9,
+   "start": 12553,
+   "in_table": true,
+   "text": "□ SGC Resolution on promoting the rights of the child (at le",
+   "y": 182.6
+  },
+  {
+   "i": 366,
+   "page": 9,
+   "start": 12620,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 367,
+   "page": 9,
+   "start": 12621,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 368,
+   "page": 9,
+   "start": 12622,
+   "in_table": true,
+   "text": "FI3\tFUNCTIONALITY INDICATOR 3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 369,
+   "page": 9,
+   "start": 12652,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 370,
+   "page": 9,
+   "start": 12653,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 371,
+   "page": 9,
+   "start": 12654,
+   "in_table": true,
+   "text": "THE SGC HAS CONDUCTED REGULAR SGC MEETINGS AS PRESCRIBED IN",
+   "y": 339.2
+  },
+  {
+   "i": 372,
+   "page": 9,
+   "start": 12810,
+   "in_table": true,
+   "text": "A functional SGC has understood the process of discussing ma",
+   "y": 374.7
+  },
+  {
+   "i": 373,
+   "page": 9,
+   "start": 12954,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 374,
+   "page": 9,
+   "start": 12955,
+   "in_table": true,
+   "text": "FI3A\r\u0007",
+   "y": 397.7
+  },
+  {
+   "i": 375,
+   "page": 9,
+   "start": 12960,
+   "in_table": true,
+   "text": "PRIMARY SUB-INDICATOR\r\u0007",
+   "y": 397.7
+  },
+  {
+   "i": 376,
+   "page": 9,
+   "start": 12982,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 377,
+   "page": 9,
+   "start": 12983,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 378,
+   "page": 9,
+   "start": 12987,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 379,
+   "page": 9,
+   "start": 12990,
+   "in_table": true,
+   "text": "The SGC has decided matters through a resolution, signed by",
+   "y": 419.8
+  },
+  {
+   "i": 380,
+   "page": 9,
+   "start": 13074,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 381,
+   "page": 9,
+   "start": 13075,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 382,
+   "page": 9,
+   "start": 13076,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 444.7
+  },
+  {
+   "i": 383,
+   "page": 9,
+   "start": 13112,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 384,
+   "page": 9,
+   "start": 13141,
+   "in_table": true,
+   "text": "SGC Resolution (at least 1)\t□  SGC Resolutions (2 or more)",
+   "y": 286.4
+  },
+  {
+   "i": 385,
+   "page": 9,
+   "start": 13200,
+   "in_table": true,
+   "text": "□ SGC's Action Plan\r\u0007",
+   "y": 477.4
+  },
+  {
+   "i": 386,
+   "page": 9,
+   "start": 13220,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 387,
+   "page": 9,
+   "start": 13221,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 388,
+   "page": 9,
+   "start": 13222,
+   "in_table": false,
+   "text": "NOTE If the Primary Sub-Indicator is not met (NO), no need t",
+   "y": 503.2
+  },
+  {
+   "i": 389,
+   "page": 9,
+   "start": 13322,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 390,
+   "page": 9,
+   "start": 13323,
+   "in_table": true,
+   "text": "FI3B\r\u0007",
+   "y": 530.2
+  },
+  {
+   "i": 391,
+   "page": 9,
+   "start": 13328,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 530.2
+  },
+  {
+   "i": 392,
+   "page": 9,
+   "start": 13348,
+   "in_table": true,
+   "text": "Agenda of meetings have included programs, projects, and act",
+   "y": 546.6
+  },
+  {
+   "i": 393,
+   "page": 9,
+   "start": 13482,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 394,
+   "page": 9,
+   "start": 13483,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 395,
+   "page": 9,
+   "start": 13487,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 396,
+   "page": 9,
+   "start": 13490,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 397,
+   "page": 9,
+   "start": 13491,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 398,
+   "page": 9,
+   "start": 13492,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 399,
+   "page": 9,
+   "start": 13493,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 577.4
+  },
+  {
+   "i": 400,
+   "page": 9,
+   "start": 13529,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 401,
+   "page": 9,
+   "start": 13558,
+   "in_table": true,
+   "text": "Minutes of Meeting mentioning meeting agenda\t□ Minutes of Me",
+   "y": 267.5
+  },
+  {
+   "i": 402,
+   "page": 9,
+   "start": 13693,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 403,
+   "page": 9,
+   "start": 13694,
+   "in_table": true,
+   "text": "FI3C\r\u0007",
+   "y": 624.4
+  },
+  {
+   "i": 404,
+   "page": 9,
+   "start": 13699,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 624.4
+  },
+  {
+   "i": 405,
+   "page": 9,
+   "start": 13719,
+   "in_table": true,
+   "text": "All regular meetings have been conducted with a quorum of 50",
+   "y": 640.9
+  },
+  {
+   "i": 406,
+   "page": 9,
+   "start": 13819,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 407,
+   "page": 9,
+   "start": 13820,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 408,
+   "page": 9,
+   "start": 13824,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 409,
+   "page": 9,
+   "start": 13827,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 410,
+   "page": 9,
+   "start": 13828,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 411,
+   "page": 9,
+   "start": 13829,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 412,
+   "page": 9,
+   "start": 13830,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 671.8
+  },
+  {
+   "i": 413,
+   "page": 9,
+   "start": 13866,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 414,
+   "page": 9,
+   "start": 13895,
+   "in_table": true,
+   "text": "Minutes of Meetings specifying required quorum\t□ Minutes of",
+   "y": 600.9
+  },
+  {
+   "i": 415,
+   "page": 9,
+   "start": 14052,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 416,
+   "page": 9,
+   "start": 14053,
+   "in_table": true,
+   "text": "FI3D\r\u0007",
+   "y": 718.7
+  },
+  {
+   "i": 417,
+   "page": 9,
+   "start": 14058,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 718.7
+  },
+  {
+   "i": 418,
+   "page": 9,
+   "start": 14078,
+   "in_table": true,
+   "text": "Regular meetings have minutes.\r\u0007",
+   "y": 740.8
+  },
+  {
+   "i": 419,
+   "page": 9,
+   "start": 14109,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 420,
+   "page": 9,
+   "start": 14110,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 421,
+   "page": 9,
+   "start": 14114,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 422,
+   "page": 9,
+   "start": 14117,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 423,
+   "page": 9,
+   "start": 14118,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 424,
+   "page": 9,
+   "start": 14119,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 425,
+   "page": 9,
+   "start": 14120,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 765.5
+  },
+  {
+   "i": 426,
+   "page": 9,
+   "start": 14156,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 427,
+   "page": 9,
+   "start": 14185,
+   "in_table": true,
+   "text": "Minutes of Meeting (at least 1 of 4 Regular Meetings)\t□  Min",
+   "y": 600.9
+  },
+  {
+   "i": 428,
+   "page": 9,
+   "start": 14287,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 429,
+   "page": 9,
+   "start": 14288,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 430,
+   "page": 10,
+   "start": 14289,
+   "in_table": false,
+   "text": "Implementing Guidelines on the Establishment of School Gover",
+   "y": 35.1
+  },
+  {
+   "i": 431,
+   "page": 10,
+   "start": 14380,
+   "in_table": false,
+   "text": "SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 44.7
+  },
+  {
+   "i": 432,
+   "page": 10,
+   "start": 14414,
+   "in_table": false,
+   "text": "For Public Elementary Schools • 2026 Rollout",
+   "y": 61.4
+  },
+  {
+   "i": 433,
+   "page": 10,
+   "start": 14460,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 434,
+   "page": 10,
+   "start": 14461,
+   "in_table": false,
+   "text": "FUNCTION 2:",
+   "y": 86.2
+  },
+  {
+   "i": 435,
+   "page": 10,
+   "start": 14473,
+   "in_table": false,
+   "text": "The SGC serves as the overall coordinating body that will sy",
+   "y": 99.8
+  },
+  {
+   "i": 436,
+   "page": 10,
+   "start": 14968,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 437,
+   "page": 10,
+   "start": 14969,
+   "in_table": true,
+   "text": "FI4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 438,
+   "page": 10,
+   "start": 14973,
+   "in_table": true,
+   "text": "FUNCTIONALITY INDICATOR 4\r\u0007",
+   "y": 178.7
+  },
+  {
+   "i": 439,
+   "page": 10,
+   "start": 14999,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 440,
+   "page": 10,
+   "start": 15000,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 441,
+   "page": 10,
+   "start": 15001,
+   "in_table": true,
+   "text": "THE SGC HAS ORGANIZED MEETINGS WITH AND ATTENDED MEETINGS OF",
+   "y": 196.0
+  },
+  {
+   "i": 442,
+   "page": 10,
+   "start": 15137,
+   "in_table": true,
+   "text": "A functional SGC has ensured the involvement of different sc",
+   "y": 219.5
+  },
+  {
+   "i": 443,
+   "page": 10,
+   "start": 15310,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 444,
+   "page": 10,
+   "start": 15311,
+   "in_table": true,
+   "text": "FI4A\r\u0007",
+   "y": 242.8
+  },
+  {
+   "i": 445,
+   "page": 10,
+   "start": 15316,
+   "in_table": true,
+   "text": "PRIMARY SUB-INDICATOR\r\u0007",
+   "y": 242.8
+  },
+  {
+   "i": 446,
+   "page": 10,
+   "start": 15338,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 447,
+   "page": 10,
+   "start": 15339,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 448,
+   "page": 10,
+   "start": 15343,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 449,
+   "page": 10,
+   "start": 15346,
+   "in_table": true,
+   "text": "The SGC has organized meetings with different school stakeho",
+   "y": 259.1
+  },
+  {
+   "i": 450,
+   "page": 10,
+   "start": 15483,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 451,
+   "page": 10,
+   "start": 15484,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 452,
+   "page": 10,
+   "start": 15485,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 289.7
+  },
+  {
+   "i": 453,
+   "page": 10,
+   "start": 15521,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 454,
+   "page": 10,
+   "start": 15522,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 455,
+   "page": 10,
+   "start": 15523,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 456,
+   "page": 10,
+   "start": 15524,
+   "in_table": true,
+   "text": "Minimum MOVs",
+   "y": 303.3
+  },
+  {
+   "i": 457,
+   "page": 10,
+   "start": 15537,
+   "in_table": true,
+   "text": "Minutes of Meeting with stakeholders on programs, projects,",
+   "y": 312.9
+  },
+  {
+   "i": 458,
+   "page": 10,
+   "start": 15633,
+   "in_table": true,
+   "text": "Additional MOVs",
+   "y": 303.3
+  },
+  {
+   "i": 459,
+   "page": 10,
+   "start": 15649,
+   "in_table": true,
+   "text": "Minutes of Meetings with stakeholders on programs, projects,",
+   "y": 312.9
+  },
+  {
+   "i": 460,
+   "page": 10,
+   "start": 15746,
+   "in_table": true,
+   "text": "SGC's Action Plan",
+   "y": 331.7
+  },
+  {
+   "i": 461,
+   "page": 10,
+   "start": 15764,
+   "in_table": true,
+   "text": "SGC Resolution relative to the indicator (at least 1)\r\u0007",
+   "y": 341.1
+  },
+  {
+   "i": 462,
+   "page": 10,
+   "start": 15818,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 463,
+   "page": 10,
+   "start": 15819,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 464,
+   "page": 10,
+   "start": 15820,
+   "in_table": false,
+   "text": "NOTE If the Primary Sub-Indicator is not met (NO), no need t",
+   "y": 367.1
+  },
+  {
+   "i": 465,
+   "page": 10,
+   "start": 15920,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 466,
+   "page": 10,
+   "start": 15921,
+   "in_table": true,
+   "text": "FI4B\r\u0007",
+   "y": 394.1
+  },
+  {
+   "i": 467,
+   "page": 10,
+   "start": 15926,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 394.1
+  },
+  {
+   "i": 468,
+   "page": 10,
+   "start": 15946,
+   "in_table": true,
+   "text": "The SGC has been represented in meetings organized by differ",
+   "y": 410.7
+  },
+  {
+   "i": 469,
+   "page": 10,
+   "start": 16047,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 470,
+   "page": 10,
+   "start": 16048,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 471,
+   "page": 10,
+   "start": 16052,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 472,
+   "page": 10,
+   "start": 16055,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 473,
+   "page": 10,
+   "start": 16056,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 474,
+   "page": 10,
+   "start": 16057,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 475,
+   "page": 10,
+   "start": 16058,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 438.7
+  },
+  {
+   "i": 476,
+   "page": 10,
+   "start": 16094,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 477,
+   "page": 10,
+   "start": 16123,
+   "in_table": true,
+   "text": "Any document reporting the discussion from the\t□ Any documen",
+   "y": 464.8
+  },
+  {
+   "i": 478,
+   "page": 10,
+   "start": 16300,
+   "in_table": true,
+   "text": "□ Copy of the Minutes of Meetings from school committees and",
+   "y": 483.6
+  },
+  {
+   "i": 479,
+   "page": 10,
+   "start": 16375,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 480,
+   "page": 10,
+   "start": 16376,
+   "in_table": true,
+   "text": "FI4C\r\u0007",
+   "y": 507.1
+  },
+  {
+   "i": 481,
+   "page": 10,
+   "start": 16381,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 507.1
+  },
+  {
+   "i": 482,
+   "page": 10,
+   "start": 16401,
+   "in_table": true,
+   "text": "The SGC has met and discussed with school stakeholders its r",
+   "y": 523.4
+  },
+  {
+   "i": 483,
+   "page": 10,
+   "start": 16515,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 484,
+   "page": 10,
+   "start": 16516,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 485,
+   "page": 10,
+   "start": 16520,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 486,
+   "page": 10,
+   "start": 16523,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 487,
+   "page": 10,
+   "start": 16524,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 488,
+   "page": 10,
+   "start": 16525,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 489,
+   "page": 10,
+   "start": 16526,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 554.0
+  },
+  {
+   "i": 490,
+   "page": 10,
+   "start": 16562,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 491,
+   "page": 10,
+   "start": 16591,
+   "in_table": true,
+   "text": "Minutes of Meetings with different school stakeholders □ Min",
+   "y": 577.3
+  },
+  {
+   "i": 492,
+   "page": 10,
+   "start": 16748,
+   "in_table": true,
+   "text": "□ SGC Resolution relative to the indicator (at least 1)\r\u0007",
+   "y": 596.2
+  },
+  {
+   "i": 493,
+   "page": 10,
+   "start": 16804,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 494,
+   "page": 10,
+   "start": 16805,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 495,
+   "page": 10,
+   "start": 16806,
+   "in_table": true,
+   "text": "FI5\tFUNCTIONALITY INDICATOR 5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 496,
+   "page": 10,
+   "start": 16836,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 497,
+   "page": 10,
+   "start": 16837,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 498,
+   "page": 10,
+   "start": 16838,
+   "in_table": true,
+   "text": "THE SGC HAS COORDINATED WITH THE SCHOOL HEAD THE CONCERNS OF",
+   "y": 640.8
+  },
+  {
+   "i": 499,
+   "page": 10,
+   "start": 17014,
+   "in_table": true,
+   "text": "A functional SGC has been a conduit between the different sc",
+   "y": 676.2
+  },
+  {
+   "i": 500,
+   "page": 10,
+   "start": 17135,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 501,
+   "page": 10,
+   "start": 17136,
+   "in_table": true,
+   "text": "FI5A\r\u0007",
+   "y": 701.0
+  },
+  {
+   "i": 502,
+   "page": 10,
+   "start": 17141,
+   "in_table": true,
+   "text": "PRIMARY SUB-INDICATOR\r\u0007",
+   "y": 701.0
+  },
+  {
+   "i": 503,
+   "page": 10,
+   "start": 17163,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 504,
+   "page": 10,
+   "start": 17164,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 505,
+   "page": 10,
+   "start": 17168,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 506,
+   "page": 10,
+   "start": 17171,
+   "in_table": true,
+   "text": "The Co-Chairpersons have communicated the direction of the S",
+   "y": 723.6
+  },
+  {
+   "i": 507,
+   "page": 10,
+   "start": 17254,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 508,
+   "page": 10,
+   "start": 17255,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 509,
+   "page": 10,
+   "start": 17256,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 749.0
+  },
+  {
+   "i": 510,
+   "page": 10,
+   "start": 17292,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 511,
+   "page": 10,
+   "start": 17321,
+   "in_table": true,
+   "text": "Copy of the communication / transmittal letter to the\t□  Atn",
+   "y": 768.5
+  },
+  {
+   "i": 512,
+   "page": 10,
+   "start": 17470,
+   "in_table": true,
+   "text": "School Head reflecting the direction of the SGC",
+   "y": 774.8
+  },
+  {
+   "i": 513,
+   "page": 10,
+   "start": 17518,
+   "in_table": true,
+   "text": "□ School Head's acknowledgment of SGC (SOSA, speeches, newsl",
+   "y": 783.4
+  },
+  {
+   "i": 514,
+   "page": 10,
+   "start": 17591,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 515,
+   "page": 10,
+   "start": 17592,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 516,
+   "page": 11,
+   "start": 17593,
+   "in_table": false,
+   "text": "Implementing Guidelines on the Establishment of School Gover",
+   "y": 35.1
+  },
+  {
+   "i": 517,
+   "page": 11,
+   "start": 17684,
+   "in_table": false,
+   "text": "SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 44.7
+  },
+  {
+   "i": 518,
+   "page": 11,
+   "start": 17718,
+   "in_table": false,
+   "text": "For Public Elementary Schools • 2026 Rollout",
+   "y": 61.4
+  },
+  {
+   "i": 519,
+   "page": 11,
+   "start": 17764,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 520,
+   "page": 11,
+   "start": 17765,
+   "in_table": false,
+   "text": "FUNCTION 3:",
+   "y": 89.6
+  },
+  {
+   "i": 521,
+   "page": 11,
+   "start": 17777,
+   "in_table": false,
+   "text": "The SGC serves as a platform cultivating the spirit of bayan",
+   "y": 103.3
+  },
+  {
+   "i": 522,
+   "page": 11,
+   "start": 18090,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 523,
+   "page": 11,
+   "start": 18091,
+   "in_table": true,
+   "text": "FI6\r\u0007",
+   "y": null
+  },
+  {
+   "i": 524,
+   "page": 11,
+   "start": 18095,
+   "in_table": true,
+   "text": "FUNCTIONALITY INDICATOR 6\r\u0007",
+   "y": 169.2
+  },
+  {
+   "i": 525,
+   "page": 11,
+   "start": 18121,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 526,
+   "page": 11,
+   "start": 18122,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 527,
+   "page": 11,
+   "start": 18123,
+   "in_table": true,
+   "text": "THE SGC HAS TAKEN PART IN THE CONDUCT OF NEEDS-BASED AND APP",
+   "y": 186.8
+  },
+  {
+   "i": 528,
+   "page": 11,
+   "start": 18288,
+   "in_table": true,
+   "text": "A functional SGC has supported stakeholder-initiated program",
+   "y": 222.2
+  },
+  {
+   "i": 529,
+   "page": 11,
+   "start": 18422,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 530,
+   "page": 11,
+   "start": 18423,
+   "in_table": true,
+   "text": "FI6A\r\u0007",
+   "y": 245.3
+  },
+  {
+   "i": 531,
+   "page": 11,
+   "start": 18428,
+   "in_table": true,
+   "text": "PRIMARY SUB-INDICATOR\r\u0007",
+   "y": 245.3
+  },
+  {
+   "i": 532,
+   "page": 11,
+   "start": 18450,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 533,
+   "page": 11,
+   "start": 18451,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 534,
+   "page": 11,
+   "start": 18455,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 535,
+   "page": 11,
+   "start": 18458,
+   "in_table": true,
+   "text": "The SGC has been involved in the development of stakeholder-",
+   "y": 261.7
+  },
+  {
+   "i": 536,
+   "page": 11,
+   "start": 18553,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 537,
+   "page": 11,
+   "start": 18554,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 538,
+   "page": 11,
+   "start": 18555,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 289.8
+  },
+  {
+   "i": 539,
+   "page": 11,
+   "start": 18591,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 540,
+   "page": 11,
+   "start": 18592,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 541,
+   "page": 11,
+   "start": 18593,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 542,
+   "page": 11,
+   "start": 18594,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 543,
+   "page": 11,
+   "start": 18623,
+   "in_table": true,
+   "text": "Minutes of Meeting with stakeholders on stakeholder-\t□ Conce",
+   "y": 313.2
+  },
+  {
+   "i": 544,
+   "page": 11,
+   "start": 18796,
+   "in_table": true,
+   "text": "Concept note / Project brief, or similar document (at\t□ Copy",
+   "y": 313.2
+  },
+  {
+   "i": 545,
+   "page": 11,
+   "start": 18940,
+   "in_table": true,
+   "text": "□ SIP, AIP, SRC, and SMEA (specify the page in the reports)",
+   "y": 350.9
+  },
+  {
+   "i": 546,
+   "page": 11,
+   "start": 19000,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 547,
+   "page": 11,
+   "start": 19001,
+   "in_table": false,
+   "text": "NOTE If the Primary Sub-Indicator is not met (NO), no need t",
+   "y": 380.9
+  },
+  {
+   "i": 548,
+   "page": 11,
+   "start": 19101,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 549,
+   "page": 11,
+   "start": 19102,
+   "in_table": true,
+   "text": "FI6B\r\u0007",
+   "y": 408.1
+  },
+  {
+   "i": 550,
+   "page": 11,
+   "start": 19107,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 408.1
+  },
+  {
+   "i": 551,
+   "page": 11,
+   "start": 19127,
+   "in_table": true,
+   "text": "The SGC has monitored and evaluated the impact/success of st",
+   "y": 424.4
+  },
+  {
+   "i": 552,
+   "page": 11,
+   "start": 19232,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 553,
+   "page": 11,
+   "start": 19233,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 554,
+   "page": 11,
+   "start": 19237,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 555,
+   "page": 11,
+   "start": 19240,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 556,
+   "page": 11,
+   "start": 19241,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 557,
+   "page": 11,
+   "start": 19242,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 558,
+   "page": 11,
+   "start": 19243,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 455.3
+  },
+  {
+   "i": 559,
+   "page": 11,
+   "start": 19279,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 560,
+   "page": 11,
+   "start": 19308,
+   "in_table": true,
+   "text": "Report on the assessment / monitoring and evaluation □ Repor",
+   "y": 478.6
+  },
+  {
+   "i": 561,
+   "page": 11,
+   "start": 19587,
+   "in_table": true,
+   "text": "□ SIP, AIP, SRC, SMEA, and School Project Monitoring Reports",
+   "y": 506.6
+  },
+  {
+   "i": 562,
+   "page": 11,
+   "start": 19648,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 563,
+   "page": 11,
+   "start": 19649,
+   "in_table": true,
+   "text": "FI6C\r\u0007",
+   "y": 530.5
+  },
+  {
+   "i": 564,
+   "page": 11,
+   "start": 19654,
+   "in_table": true,
+   "text": "Other Sub-Indicator",
+   "y": 530.5
+  },
+  {
+   "i": 565,
+   "page": 11,
+   "start": 19674,
+   "in_table": true,
+   "text": "The SGC has established linkages with other stakeholders and",
+   "y": 546.8
+  },
+  {
+   "i": 566,
+   "page": 11,
+   "start": 19786,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 567,
+   "page": 11,
+   "start": 19787,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 568,
+   "page": 11,
+   "start": 19791,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 569,
+   "page": 11,
+   "start": 19794,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 570,
+   "page": 11,
+   "start": 19795,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 571,
+   "page": 11,
+   "start": 19796,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 572,
+   "page": 11,
+   "start": 19797,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 577.6
+  },
+  {
+   "i": 573,
+   "page": 11,
+   "start": 19833,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 574,
+   "page": 11,
+   "start": 19862,
+   "in_table": true,
+   "text": "SGC resolution on the referral of the identified potential □",
+   "y": 601.0
+  },
+  {
+   "i": 575,
+   "page": 11,
+   "start": 20040,
+   "in_table": true,
+   "text": "□ Copy of the MOA, DOD, DOA, etc., reflecting the name/s of",
+   "y": 619.7
+  },
+  {
+   "i": 576,
+   "page": 11,
+   "start": 20144,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 577,
+   "page": 11,
+   "start": 20145,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 578,
+   "page": 11,
+   "start": 20146,
+   "in_table": true,
+   "text": "FI7\r\u0007",
+   "y": null
+  },
+  {
+   "i": 579,
+   "page": 11,
+   "start": 20150,
+   "in_table": true,
+   "text": "FUNCTIONALITY INDICATOR 7\r\u0007",
+   "y": 655.4
+  },
+  {
+   "i": 580,
+   "page": 11,
+   "start": 20176,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 581,
+   "page": 11,
+   "start": 20177,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 582,
+   "page": 11,
+   "start": 20178,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 583,
+   "page": 11,
+   "start": 20182,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 584,
+   "page": 11,
+   "start": 20185,
+   "in_table": true,
+   "text": "THE SGC HAS RECOMMENDED POLICIES AND PROGRAMS TO THE LOCAL S",
+   "y": 673.2
+  },
+  {
+   "i": 585,
+   "page": 11,
+   "start": 20304,
+   "in_table": true,
+   "text": "A functional SGC has informed the LGU / community of the nee",
+   "y": 696.4
+  },
+  {
+   "i": 586,
+   "page": 11,
+   "start": 20426,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 587,
+   "page": 11,
+   "start": 20427,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 588,
+   "page": 11,
+   "start": 20428,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 722.4
+  },
+  {
+   "i": 589,
+   "page": 11,
+   "start": 20464,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 590,
+   "page": 11,
+   "start": 20465,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 591,
+   "page": 11,
+   "start": 20466,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 592,
+   "page": 11,
+   "start": 20467,
+   "in_table": true,
+   "text": "Minimum MOVs",
+   "y": 303.7
+  },
+  {
+   "i": 593,
+   "page": 11,
+   "start": 20480,
+   "in_table": true,
+   "text": "SGC Resolution recommending the SIP to LSB; or",
+   "y": 745.6
+  },
+  {
+   "i": 594,
+   "page": 11,
+   "start": 20527,
+   "in_table": true,
+   "text": "Any document recommending policy / program to the LSB, based",
+   "y": 755.1
+  },
+  {
+   "i": 595,
+   "page": 11,
+   "start": 20599,
+   "in_table": true,
+   "text": "Additional MOVs",
+   "y": 303.7
+  },
+  {
+   "i": 596,
+   "page": 11,
+   "start": 20615,
+   "in_table": true,
+   "text": "Proof of endorsement of the SGC Resolution to the SDS and tr",
+   "y": 745.7
+  },
+  {
+   "i": 597,
+   "page": 11,
+   "start": 20696,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 598,
+   "page": 11,
+   "start": 20697,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 599,
+   "page": 12,
+   "start": 20698,
+   "in_table": false,
+   "text": "Implementing Guidelines on the Establishment of School Gover",
+   "y": 35.1
+  },
+  {
+   "i": 600,
+   "page": 12,
+   "start": 20789,
+   "in_table": false,
+   "text": "SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 44.7
+  },
+  {
+   "i": 601,
+   "page": 12,
+   "start": 20823,
+   "in_table": false,
+   "text": "For Public Elementary Schools • 2026 Rollout",
+   "y": 61.4
+  },
+  {
+   "i": 602,
+   "page": 12,
+   "start": 20869,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 603,
+   "page": 12,
+   "start": 20870,
+   "in_table": true,
+   "text": "FI8\tFUNCTIONALITY INDICATOR 8\r\u0007",
+   "y": null
+  },
+  {
+   "i": 604,
+   "page": 12,
+   "start": 20901,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 605,
+   "page": 12,
+   "start": 20902,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 606,
+   "page": 12,
+   "start": 20903,
+   "in_table": true,
+   "text": "YES  THE SGC HAS INVOLVED THE DIFFERENT SECTORS TO ENSURE IN",
+   "y": 109.2
+  },
+  {
+   "i": 607,
+   "page": 12,
+   "start": 20971,
+   "in_table": true,
+   "text": "NO\tREPRESENTATION OF STAKEHOLDERS IN THE COUNCIL.",
+   "y": null
+  },
+  {
+   "i": 608,
+   "page": 12,
+   "start": 21021,
+   "in_table": true,
+   "text": "A functional SGC has encouraged the participation of school",
+   "y": 133.0
+  },
+  {
+   "i": 609,
+   "page": 12,
+   "start": 21178,
+   "in_table": true,
+   "text": "/",
+   "y": null
+  },
+  {
+   "i": 610,
+   "page": 12,
+   "start": 21180,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:",
+   "y": 158.9
+  },
+  {
+   "i": 611,
+   "page": 12,
+   "start": 21216,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 612,
+   "page": 12,
+   "start": 21245,
+   "in_table": true,
+   "text": "□ SGC Resolution on involving various sectors\t□  Official li",
+   "y": 182.1
+  },
+  {
+   "i": 613,
+   "page": 12,
+   "start": 21344,
+   "in_table": true,
+   "text": "(inclusive and diverse in terms of age, gender, religion, et",
+   "y": 191.6
+  },
+  {
+   "i": 614,
+   "page": 12,
+   "start": 21436,
+   "in_table": true,
+   "text": "□ SGC Resolution on inclusiveness, diversity, equity, and ac",
+   "y": 210.4
+  },
+  {
+   "i": 615,
+   "page": 12,
+   "start": 21508,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 616,
+   "page": 12,
+   "start": 21509,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 617,
+   "page": 12,
+   "start": 21510,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 618,
+   "page": 12,
+   "start": 21511,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 619,
+   "page": 12,
+   "start": 21512,
+   "in_table": false,
+   "text": "MAIN PURPOSE: FEEDBACK MECHANISM",
+   "y": 280.7
+  },
+  {
+   "i": 620,
+   "page": 12,
+   "start": 21545,
+   "in_table": false,
+   "text": "As a feedback mechanism, the SGC shall be a feedback link be",
+   "y": 295.7
+  },
+  {
+   "i": 621,
+   "page": 12,
+   "start": 21779,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 622,
+   "page": 12,
+   "start": 21780,
+   "in_table": false,
+   "text": "FUNCTION 1:",
+   "y": 344.8
+  },
+  {
+   "i": 623,
+   "page": 12,
+   "start": 21793,
+   "in_table": false,
+   "text": "The SGC helps the school improve and sustain its feedback sy",
+   "y": 356.5
+  },
+  {
+   "i": 624,
+   "page": 12,
+   "start": 21927,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 625,
+   "page": 12,
+   "start": 21928,
+   "in_table": true,
+   "text": "FI9\r\u0007",
+   "y": null
+  },
+  {
+   "i": 626,
+   "page": 12,
+   "start": 21932,
+   "in_table": true,
+   "text": "FUNCTIONALITY INDICATOR 9\r\u0007",
+   "y": 91.2
+  },
+  {
+   "i": 627,
+   "page": 12,
+   "start": 21958,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 628,
+   "page": 12,
+   "start": 21959,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 629,
+   "page": 12,
+   "start": 21960,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 630,
+   "page": 12,
+   "start": 21964,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 631,
+   "page": 12,
+   "start": 21967,
+   "in_table": true,
+   "text": "THE SGC HAS PARTICIPATED IN SCHOOL GENERAL ASSEMBLIES, PTA C",
+   "y": 416.6
+  },
+  {
+   "i": 632,
+   "page": 12,
+   "start": 22134,
+   "in_table": true,
+   "text": "A functional SGC has encouraged open communication among sch",
+   "y": 451.9
+  },
+  {
+   "i": 633,
+   "page": 12,
+   "start": 22321,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 634,
+   "page": 12,
+   "start": 22322,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 635,
+   "page": 12,
+   "start": 22323,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 477.8
+  },
+  {
+   "i": 636,
+   "page": 12,
+   "start": 22359,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 637,
+   "page": 12,
+   "start": 22360,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 638,
+   "page": 12,
+   "start": 22361,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 639,
+   "page": 12,
+   "start": 22362,
+   "in_table": true,
+   "text": "Minimum MOVs",
+   "y": 172.7
+  },
+  {
+   "i": 640,
+   "page": 12,
+   "start": 22375,
+   "in_table": true,
+   "text": "SGC Report on the issues / concerns raised during school act",
+   "y": 501.1
+  },
+  {
+   "i": 641,
+   "page": 12,
+   "start": 22452,
+   "in_table": true,
+   "text": "Additional MOVs",
+   "y": 172.7
+  },
+  {
+   "i": 642,
+   "page": 12,
+   "start": 22468,
+   "in_table": true,
+   "text": "Minutes of Meetings (SGC meetings) where issues / concerns a",
+   "y": 501.1
+  },
+  {
+   "i": 643,
+   "page": 12,
+   "start": 22541,
+   "in_table": true,
+   "text": "Photo documentation of school activities / events\r\u0007",
+   "y": 519.7
+  },
+  {
+   "i": 644,
+   "page": 12,
+   "start": 22591,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 645,
+   "page": 12,
+   "start": 22592,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 646,
+   "page": 12,
+   "start": 22593,
+   "in_table": true,
+   "text": "FI10\tFUNCTIONALITY INDICATOR 10\r\u0007",
+   "y": null
+  },
+  {
+   "i": 647,
+   "page": 12,
+   "start": 22625,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 648,
+   "page": 12,
+   "start": 22626,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 649,
+   "page": 12,
+   "start": 22627,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 650,
+   "page": 12,
+   "start": 22631,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 651,
+   "page": 12,
+   "start": 22634,
+   "in_table": true,
+   "text": "THE SGC HAS ORGANIZED DISCUSSIONS AND FORUMS THAT INVITE AND",
+   "y": 564.6
+  },
+  {
+   "i": 652,
+   "page": 12,
+   "start": 22743,
+   "in_table": true,
+   "text": "A functional SGC has established a platform for communicatio",
+   "y": 588.2
+  },
+  {
+   "i": 653,
+   "page": 12,
+   "start": 22951,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 654,
+   "page": 12,
+   "start": 22952,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 655,
+   "page": 12,
+   "start": 22953,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 614.1
+  },
+  {
+   "i": 656,
+   "page": 12,
+   "start": 22989,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 657,
+   "page": 12,
+   "start": 22990,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 658,
+   "page": 12,
+   "start": 22991,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 659,
+   "page": 12,
+   "start": 22992,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 660,
+   "page": 12,
+   "start": 23021,
+   "in_table": true,
+   "text": "Documentation of the organized / conducted program\t□ Documen",
+   "y": 637.3
+  },
+  {
+   "i": 661,
+   "page": 12,
+   "start": 23195,
+   "in_table": true,
+   "text": "Minutes of the meetings where issues / concerns are\tprovided",
+   "y": 655.9
+  },
+  {
+   "i": 662,
+   "page": 12,
+   "start": 23263,
+   "in_table": true,
+   "text": "discussed\t□ Photo documentation of school activities / event",
+   "y": null
+  },
+  {
+   "i": 663,
+   "page": 12,
+   "start": 23325,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 664,
+   "page": 12,
+   "start": 23326,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 665,
+   "page": 13,
+   "start": 23327,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 666,
+   "page": 13,
+   "start": 23328,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 667,
+   "page": 13,
+   "start": 23329,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 668,
+   "page": 13,
+   "start": 23330,
+   "in_table": false,
+   "text": "FUNCTION 2:",
+   "y": 77.8
+  },
+  {
+   "i": 669,
+   "page": 13,
+   "start": 23342,
+   "in_table": false,
+   "text": "\u000eImplementing Guidelines on the Establishment of School Gove",
+   "y": 35.1
+  },
+  {
+   "i": 670,
+   "page": 13,
+   "start": 23434,
+   "in_table": false,
+   "text": "SGC FUNCTIONALITY ASSESSMENT TOOL",
+   "y": 44.7
+  },
+  {
+   "i": 671,
+   "page": 13,
+   "start": 23468,
+   "in_table": false,
+   "text": "For Public Elementary Schools • 2026 Rollout",
+   "y": 61.4
+  },
+  {
+   "i": 672,
+   "page": 13,
+   "start": 23514,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 673,
+   "page": 13,
+   "start": 23515,
+   "in_table": false,
+   "text": "The SGC assists the school in ensuring transparency in its o",
+   "y": 89.5
+  },
+  {
+   "i": 674,
+   "page": 13,
+   "start": 23658,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 675,
+   "page": 13,
+   "start": 23659,
+   "in_table": true,
+   "text": "FI11\tFUNCTIONALITY INDICATOR 11\r\u0007",
+   "y": null
+  },
+  {
+   "i": 676,
+   "page": 13,
+   "start": 23691,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 677,
+   "page": 13,
+   "start": 23692,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 678,
+   "page": 13,
+   "start": 23693,
+   "in_table": true,
+   "text": "THE SGC HAS ASSISTED THE SCHOOL IN COMMUNICATING INFORMATION",
+   "y": 149.8
+  },
+  {
+   "i": 679,
+   "page": 13,
+   "start": 23824,
+   "in_table": true,
+   "text": "A functional SGC has promoted transparency by utilizing vari",
+   "y": 173.3
+  },
+  {
+   "i": 680,
+   "page": 13,
+   "start": 23983,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 681,
+   "page": 13,
+   "start": 23984,
+   "in_table": true,
+   "text": "FI11A\r\u0007",
+   "y": 196.5
+  },
+  {
+   "i": 682,
+   "page": 13,
+   "start": 23990,
+   "in_table": true,
+   "text": "PRIMARY SUB-INDICATOR\r\u0007",
+   "y": 196.5
+  },
+  {
+   "i": 683,
+   "page": 13,
+   "start": 24012,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 684,
+   "page": 13,
+   "start": 24013,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 685,
+   "page": 13,
+   "start": 24017,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 686,
+   "page": 13,
+   "start": 24020,
+   "in_table": true,
+   "text": "The SGC has promoted access to school data and information t",
+   "y": 212.8
+  },
+  {
+   "i": 687,
+   "page": 13,
+   "start": 24204,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 688,
+   "page": 13,
+   "start": 24205,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 689,
+   "page": 13,
+   "start": 24206,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 253.1
+  },
+  {
+   "i": 690,
+   "page": 13,
+   "start": 24242,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 691,
+   "page": 13,
+   "start": 24243,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 692,
+   "page": 13,
+   "start": 24244,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 693,
+   "page": 13,
+   "start": 24245,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 694,
+   "page": 13,
+   "start": 24274,
+   "in_table": true,
+   "text": "SGC Resolution on access to information (school data\t□ Advoc",
+   "y": 278.5
+  },
+  {
+   "i": 695,
+   "page": 13,
+   "start": 24453,
+   "in_table": true,
+   "text": "SGC's Action Plan on promoting access to information\t□ Schoo",
+   "y": 297.1
+  },
+  {
+   "i": 696,
+   "page": 13,
+   "start": 24552,
+   "in_table": true,
+   "text": "Transparency Board, SRC, and other reports to access school",
+   "y": 306.7
+  },
+  {
+   "i": 697,
+   "page": 13,
+   "start": 24617,
+   "in_table": true,
+   "text": "□ Photo Documentation of the transparency board or bulletin",
+   "y": 325.4
+  },
+  {
+   "i": 698,
+   "page": 13,
+   "start": 24683,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 699,
+   "page": 13,
+   "start": 24684,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 700,
+   "page": 13,
+   "start": 24685,
+   "in_table": false,
+   "text": "NOTE If the Primary Sub-Indicator is not met (NO), no need t",
+   "y": 360.5
+  },
+  {
+   "i": 701,
+   "page": 13,
+   "start": 24785,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 702,
+   "page": 13,
+   "start": 24786,
+   "in_table": true,
+   "text": "FI11B\r\u0007",
+   "y": 387.7
+  },
+  {
+   "i": 703,
+   "page": 13,
+   "start": 24792,
+   "in_table": true,
+   "text": "Other Sub-Indicator\r\u0007",
+   "y": 387.7
+  },
+  {
+   "i": 704,
+   "page": 13,
+   "start": 24812,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 705,
+   "page": 13,
+   "start": 24813,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 706,
+   "page": 13,
+   "start": 24817,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 707,
+   "page": 13,
+   "start": 24820,
+   "in_table": true,
+   "text": "The SGC has established alternative communication platform/s",
+   "y": 404.1
+  },
+  {
+   "i": 708,
+   "page": 13,
+   "start": 25072,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 709,
+   "page": 13,
+   "start": 25073,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 710,
+   "page": 13,
+   "start": 25074,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 444.2
+  },
+  {
+   "i": 711,
+   "page": 13,
+   "start": 25110,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 712,
+   "page": 13,
+   "start": 25111,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 713,
+   "page": 13,
+   "start": 25112,
+   "in_table": true,
+   "text": "Minimum MOVs\tAdditional MOVs",
+   "y": null
+  },
+  {
+   "i": 714,
+   "page": 13,
+   "start": 25141,
+   "in_table": true,
+   "text": "SGC Resolution on the use of approved alternative\t□ SGC's Al",
+   "y": 469.8
+  },
+  {
+   "i": 715,
+   "page": 13,
+   "start": 25284,
+   "in_table": true,
+   "text": "Online (Link/s):",
+   "y": 488.6
+  },
+  {
+   "i": 716,
+   "page": 13,
+   "start": 25301,
+   "in_table": true,
+   "text": "Website:",
+   "y": 498.5
+  },
+  {
+   "i": 717,
+   "page": 13,
+   "start": 25312,
+   "in_table": true,
+   "text": "Facebook Page / Group:",
+   "y": 508.1
+  },
+  {
+   "i": 718,
+   "page": 13,
+   "start": 25337,
+   "in_table": true,
+   "text": "Other Platform/s:",
+   "y": 517.4
+  },
+  {
+   "i": 719,
+   "page": 13,
+   "start": 25357,
+   "in_table": true,
+   "text": "Offline (Copy of printed materials such as newsletters, post",
+   "y": 526.9
+  },
+  {
+   "i": 720,
+   "page": 13,
+   "start": 25458,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 721,
+   "page": 13,
+   "start": 25459,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 722,
+   "page": 13,
+   "start": 25460,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 723,
+   "page": 13,
+   "start": 25461,
+   "in_table": false,
+   "text": "FUNCTION 3:",
+   "y": 571.5
+  },
+  {
+   "i": 724,
+   "page": 13,
+   "start": 25473,
+   "in_table": false,
+   "text": "The SGC recommends ways of improving the quality of basic ed",
+   "y": 584.9
+  },
+  {
+   "i": 725,
+   "page": 13,
+   "start": 25736,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 726,
+   "page": 13,
+   "start": 25737,
+   "in_table": true,
+   "text": "FI12\r\u0007",
+   "y": 650.9
+  },
+  {
+   "i": 727,
+   "page": 13,
+   "start": 25742,
+   "in_table": true,
+   "text": "FUNCTIONALITY INDICATOR 12\r\u0007",
+   "y": 132.3
+  },
+  {
+   "i": 728,
+   "page": 13,
+   "start": 25769,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 729,
+   "page": 13,
+   "start": 25770,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 730,
+   "page": 13,
+   "start": 25771,
+   "in_table": true,
+   "text": "YES",
+   "y": null
+  },
+  {
+   "i": 731,
+   "page": 13,
+   "start": 25775,
+   "in_table": true,
+   "text": "NO\r\u0007",
+   "y": null
+  },
+  {
+   "i": 732,
+   "page": 13,
+   "start": 25778,
+   "in_table": true,
+   "text": "THE SGC HAS SUGGESTED WAYS OF IMPROVING THE QUALITY OF SIP,",
+   "y": 668.6
+  },
+  {
+   "i": 733,
+   "page": 13,
+   "start": 25895,
+   "in_table": true,
+   "text": "A functional SGC has communicated feedback and suggestions t",
+   "y": 692.4
+  },
+  {
+   "i": 734,
+   "page": 13,
+   "start": 26069,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 735,
+   "page": 13,
+   "start": 26070,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 736,
+   "page": 13,
+   "start": 26071,
+   "in_table": true,
+   "text": "If YES, prepare the following MOVs:\r\u0007",
+   "y": 718.0
+  },
+  {
+   "i": 737,
+   "page": 13,
+   "start": 26107,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 738,
+   "page": 13,
+   "start": 26108,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 739,
+   "page": 13,
+   "start": 26109,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 740,
+   "page": 13,
+   "start": 26110,
+   "in_table": true,
+   "text": "Minimum MOVs",
+   "y": 269.0
+  },
+  {
+   "i": 741,
+   "page": 13,
+   "start": 26123,
+   "in_table": true,
+   "text": "SGC Resolution on the recommendation on ways of improving th",
+   "y": 741.3
+  },
+  {
+   "i": 742,
+   "page": 13,
+   "start": 26270,
+   "in_table": true,
+   "text": "Additional MOVs",
+   "y": 269.0
+  },
+  {
+   "i": 743,
+   "page": 13,
+   "start": 26286,
+   "in_table": true,
+   "text": "SGC Resolutions on the recommendations on ways of improving",
+   "y": 741.3
+  },
+  {
+   "i": 744,
+   "page": 13,
+   "start": 26434,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 745,
+   "page": 13,
+   "start": 26435,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 746,
+   "page": 14,
+   "start": 26436,
+   "in_table": false,
+   "text": "Enclosure No. 3 to DM-OUHRODI-2026- 3750_",
+   "y": 69.2
+  },
+  {
+   "i": 747,
+   "page": 14,
+   "start": 26480,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 748,
+   "page": 14,
+   "start": 26481,
+   "in_table": false,
+   "text": "PROCESS FLOW OF THE DATA COLLECTION AND MONITORING OF THE SG",
+   "y": 97.0
+  },
+  {
+   "i": 749,
+   "page": 14,
+   "start": 26573,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 750,
+   "page": 14,
+   "start": 26574,
+   "in_table": false,
+   "text": "To ensure smooth implementation of the SGC Functionality Ass",
+   "y": 135.7
+  },
+  {
+   "i": 751,
+   "page": 14,
+   "start": 26722,
+   "in_table": false,
+   "text": "General Process Flow:",
+   "y": 174.4
+  },
+  {
+   "i": 752,
+   "page": 14,
+   "start": 26744,
+   "in_table": false,
+   "text": "The General Process Flow below shall be broken down per Gove",
+   "y": 187.4
+  },
+  {
+   "i": 753,
+   "page": 14,
+   "start": 27032,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 754,
+   "page": 14,
+   "start": 27034,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 755,
+   "page": 14,
+   "start": 27035,
+   "in_table": false,
+   "text": "The process flow for the implementation of the SGC Functiona",
+   "y": 507.6
+  },
+  {
+   "i": 756,
+   "page": 14,
+   "start": 27269,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 757,
+   "page": 14,
+   "start": 27270,
+   "in_table": false,
+   "text": "Dissemination",
+   "y": 559.7
+  },
+  {
+   "i": 758,
+   "page": 14,
+   "start": 27284,
+   "in_table": false,
+   "text": "The process begins with dissemination. The CO disseminates t",
+   "y": 572.6
+  },
+  {
+   "i": 759,
+   "page": 14,
+   "start": 27702,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 760,
+   "page": 14,
+   "start": 27703,
+   "in_table": false,
+   "text": "Accomplishment",
+   "y": 663.5
+  },
+  {
+   "i": 761,
+   "page": 14,
+   "start": 27718,
+   "in_table": false,
+   "text": "Following dissemination is the accomplishment phase. Only Pu",
+   "y": 676.5
+  },
+  {
+   "i": 762,
+   "page": 14,
+   "start": 28076,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 763,
+   "page": 14,
+   "start": 28077,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 764,
+   "page": 14,
+   "start": 28078,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 765,
+   "page": 14,
+   "start": 28079,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 766,
+   "page": 14,
+   "start": 28080,
+   "in_table": true,
+   "text": "Doc. Ref. Code\r\u0007",
+   "y": 788.9
+  },
+  {
+   "i": 767,
+   "page": 14,
+   "start": 28095,
+   "in_table": true,
+   "text": "DM-OUHROD\r\u0007",
+   "y": 788.9
+  },
+  {
+   "i": 768,
+   "page": 14,
+   "start": 28105,
+   "in_table": true,
+   "text": "Rev\r\u0007",
+   "y": null
+  },
+  {
+   "i": 769,
+   "page": 14,
+   "start": 28109,
+   "in_table": true,
+   "text": "00\r\u0007",
+   "y": null
+  },
+  {
+   "i": 770,
+   "page": 14,
+   "start": 28112,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 771,
+   "page": 14,
+   "start": 28113,
+   "in_table": true,
+   "text": "Effectivity\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 772,
+   "page": 14,
+   "start": 28125,
+   "in_table": true,
+   "text": "03.23.23\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 773,
+   "page": 14,
+   "start": 28134,
+   "in_table": true,
+   "text": "Page\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 774,
+   "page": 14,
+   "start": 28139,
+   "in_table": true,
+   "text": "6 of 24\r\u0007",
+   "y": null
+  },
+  {
+   "i": 775,
+   "page": 14,
+   "start": 28147,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 776,
+   "page": 14,
+   "start": 28148,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 777,
+   "page": 15,
+   "start": 28149,
+   "in_table": false,
+   "text": "Validation and Monitoring",
+   "y": 71.1
+  },
+  {
+   "i": 778,
+   "page": 15,
+   "start": 28177,
+   "in_table": false,
+   "text": "Once submissions are completed, the process moves to validat",
+   "y": 84.1
+  },
+  {
+   "i": 779,
+   "page": 15,
+   "start": 28801,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 780,
+   "page": 15,
+   "start": 28802,
+   "in_table": false,
+   "text": "Provision of Technical Assistance",
+   "y": 200.2
+  },
+  {
+   "i": 781,
+   "page": 15,
+   "start": 28836,
+   "in_table": false,
+   "text": "Parallel to validation, SDOs continuously provide technical",
+   "y": 213.2
+  },
+  {
+   "i": 782,
+   "page": 15,
+   "start": 29228,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 783,
+   "page": 15,
+   "start": 29229,
+   "in_table": false,
+   "text": "RO and SDO Certification",
+   "y": 291.2
+  },
+  {
+   "i": 784,
+   "page": 15,
+   "start": 29254,
+   "in_table": false,
+   "text": "After completing validation, the SDO SGC Focal person submit",
+   "y": 304.2
+  },
+  {
+   "i": 785,
+   "page": 15,
+   "start": 29549,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 786,
+   "page": 15,
+   "start": 29550,
+   "in_table": false,
+   "text": "Subsequently, the RO SGC Focal person undertakes its certifi",
+   "y": 368.7
+  },
+  {
+   "i": 787,
+   "page": 15,
+   "start": 29902,
+   "in_table": false,
+   "text": "Consolidation and Analysis",
+   "y": 446.2
+  },
+  {
+   "i": 788,
+   "page": 15,
+   "start": 29929,
+   "in_table": false,
+   "text": "The final stage is consolidation and analysis at the CO leve",
+   "y": 459.1
+  },
+  {
+   "i": 789,
+   "page": 15,
+   "start": 30251,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 790,
+   "page": 15,
+   "start": 30252,
+   "in_table": false,
+   "text": "Overall, the process flow demonstrates a systematic framewor",
+   "y": 523.7
+  },
+  {
+   "i": 791,
+   "page": 15,
+   "start": 30666,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 792,
+   "page": 15,
+   "start": 30667,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 793,
+   "page": 15,
+   "start": 30668,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 794,
+   "page": 15,
+   "start": 30669,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 795,
+   "page": 15,
+   "start": 30670,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 796,
+   "page": 15,
+   "start": 30671,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 797,
+   "page": 15,
+   "start": 30672,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 798,
+   "page": 15,
+   "start": 30673,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 799,
+   "page": 15,
+   "start": 30674,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 800,
+   "page": 15,
+   "start": 30675,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 801,
+   "page": 15,
+   "start": 30676,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 802,
+   "page": 15,
+   "start": 30677,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 803,
+   "page": 15,
+   "start": 30678,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 804,
+   "page": 15,
+   "start": 30679,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 805,
+   "page": 15,
+   "start": 30680,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 806,
+   "page": 15,
+   "start": 30681,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 807,
+   "page": 15,
+   "start": 30682,
+   "in_table": true,
+   "text": "Doc. Ref. Code\r\u0007",
+   "y": 789.0
+  },
+  {
+   "i": 808,
+   "page": 15,
+   "start": 30697,
+   "in_table": true,
+   "text": "DM-OUHROD\r\u0007",
+   "y": 789.0
+  },
+  {
+   "i": 809,
+   "page": 15,
+   "start": 30707,
+   "in_table": true,
+   "text": "Rev\r\u0007",
+   "y": null
+  },
+  {
+   "i": 810,
+   "page": 15,
+   "start": 30711,
+   "in_table": true,
+   "text": "00\r\u0007",
+   "y": null
+  },
+  {
+   "i": 811,
+   "page": 15,
+   "start": 30714,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 812,
+   "page": 15,
+   "start": 30715,
+   "in_table": true,
+   "text": "Effectivity\r\u0007",
+   "y": 798.8
+  },
+  {
+   "i": 813,
+   "page": 15,
+   "start": 30727,
+   "in_table": true,
+   "text": "03.23.23\r\u0007",
+   "y": 798.8
+  },
+  {
+   "i": 814,
+   "page": 15,
+   "start": 30736,
+   "in_table": true,
+   "text": "Page\r\u0007",
+   "y": 798.8
+  },
+  {
+   "i": 815,
+   "page": 15,
+   "start": 30741,
+   "in_table": true,
+   "text": "7 of 24\r\u0007",
+   "y": null
+  },
+  {
+   "i": 816,
+   "page": 15,
+   "start": 30749,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 817,
+   "page": 15,
+   "start": 30750,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 818,
+   "page": 16,
+   "start": 30751,
+   "in_table": false,
+   "text": "Central Office",
+   "y": 71.1
+  },
+  {
+   "i": 819,
+   "page": 16,
+   "start": 30768,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 820,
+   "page": 16,
+   "start": 30770,
+   "in_table": false,
+   "text": "The diagram illustrates the six key responsibilities of the",
+   "y": 329.9
+  },
+  {
+   "i": 821,
+   "page": 16,
+   "start": 31271,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 822,
+   "page": 16,
+   "start": 31272,
+   "in_table": false,
+   "text": "Dissemination",
+   "y": 433.2
+  },
+  {
+   "i": 823,
+   "page": 16,
+   "start": 31286,
+   "in_table": false,
+   "text": "Following development, the CO undertakes the dissemination o",
+   "y": 446.2
+  },
+  {
+   "i": 824,
+   "page": 16,
+   "start": 31558,
+   "in_table": false,
+   "text": "Monitoring",
+   "y": 510.7
+  },
+  {
+   "i": 825,
+   "page": 16,
+   "start": 31569,
+   "in_table": false,
+   "text": "As implementation progresses, the CO performs a monitoring f",
+   "y": 523.7
+  },
+  {
+   "i": 826,
+   "page": 16,
+   "start": 32036,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 827,
+   "page": 16,
+   "start": 32037,
+   "in_table": false,
+   "text": "Consolidation",
+   "y": 614.1
+  },
+  {
+   "i": 828,
+   "page": 16,
+   "start": 32051,
+   "in_table": false,
+   "text": "Subsequently, the CO facilitates the consolidation of certif",
+   "y": 627.0
+  },
+  {
+   "i": 829,
+   "page": 16,
+   "start": 32631,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 830,
+   "page": 16,
+   "start": 32632,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 831,
+   "page": 16,
+   "start": 32633,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 832,
+   "page": 16,
+   "start": 32634,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 833,
+   "page": 16,
+   "start": 32635,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 834,
+   "page": 16,
+   "start": 32636,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 835,
+   "page": 16,
+   "start": 32637,
+   "in_table": true,
+   "text": "Doc. Ref. Code\r\u0007",
+   "y": 788.9
+  },
+  {
+   "i": 836,
+   "page": 16,
+   "start": 32652,
+   "in_table": true,
+   "text": "DM-OUHROD\r\u0007",
+   "y": 788.9
+  },
+  {
+   "i": 837,
+   "page": 16,
+   "start": 32662,
+   "in_table": true,
+   "text": "Rev\r\u0007",
+   "y": null
+  },
+  {
+   "i": 838,
+   "page": 16,
+   "start": 32666,
+   "in_table": true,
+   "text": "00\r\u0007",
+   "y": null
+  },
+  {
+   "i": 839,
+   "page": 16,
+   "start": 32669,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 840,
+   "page": 16,
+   "start": 32670,
+   "in_table": true,
+   "text": "Effectivity\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 841,
+   "page": 16,
+   "start": 32682,
+   "in_table": true,
+   "text": "03.23.23\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 842,
+   "page": 16,
+   "start": 32691,
+   "in_table": true,
+   "text": "Page\r\u0007",
+   "y": 798.6
+  },
+  {
+   "i": 843,
+   "page": 16,
+   "start": 32696,
+   "in_table": true,
+   "text": "8 of 24\r\u0007",
+   "y": null
+  },
+  {
+   "i": 844,
+   "page": 16,
+   "start": 32704,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 845,
+   "page": 16,
+   "start": 32705,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 846,
+   "page": 17,
+   "start": 32706,
+   "in_table": false,
+   "text": "Regional Office",
+   "y": 71.1
+  },
+  {
+   "i": 847,
+   "page": 17,
+   "start": 32725,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 848,
+   "page": 17,
+   "start": 32727,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 849,
+   "page": 17,
+   "start": 32728,
+   "in_table": false,
+   "text": "The process flow presents the role of the RO in the implemen",
+   "y": 407.9
+  },
+  {
+   "i": 850,
+   "page": 17,
+   "start": 32915,
+   "in_table": false,
+   "text": "Familiarization of User Guide Volume 1 and 2",
+   "y": 459.6
+  },
+  {
+   "i": 851,
+   "page": 17,
+   "start": 32960,
+   "in_table": false,
+   "text": "The process begins with reading and understanding the SGC Fu",
+   "y": 472.6
+  },
+  {
+   "i": 852,
+   "page": 17,
+   "start": 33194,
+   "in_table": false,
+   "text": "Dissemination",
+   "y": 524.2
+  },
+  {
+   "i": 853,
+   "page": 17,
+   "start": 33208,
+   "in_table": false,
+   "text": "Next is dissemination. The RO distributes the official Googl",
+   "y": 537.1
+  },
+  {
+   "i": 854,
+   "page": 17,
+   "start": 33431,
+   "in_table": false,
+   "text": "RO SGC Composite Team",
+   "y": 588.7
+  },
+  {
+   "i": 855,
+   "page": 17,
+   "start": 33453,
+   "in_table": false,
+   "text": "The RO SGC Composite Team may be composed of three (3) to fi",
+   "y": 601.7
+  },
+  {
+   "i": 856,
+   "page": 17,
+   "start": 33801,
+   "in_table": false,
+   "text": "Monitoring",
+   "y": 640.5
+  },
+  {
+   "i": 857,
+   "page": 17,
+   "start": 33812,
+   "in_table": false,
+   "text": "The RO then proceeds with monitoring using the RO Spreadshee",
+   "y": 692.1
+  },
+  {
+   "i": 858,
+   "page": 17,
+   "start": 34011,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 859,
+   "page": 18,
+   "start": 34012,
+   "in_table": false,
+   "text": "Multiple Submission",
+   "y": 71.1
+  },
+  {
+   "i": 860,
+   "page": 18,
+   "start": 34035,
+   "in_table": false,
+   "text": "Part of the monitoring process includes the management of mu",
+   "y": 84.0
+  },
+  {
+   "i": 861,
+   "page": 18,
+   "start": 34492,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 862,
+   "page": 18,
+   "start": 34493,
+   "in_table": false,
+   "text": "RO Certification and Submission to CO",
+   "y": 173.8
+  },
+  {
+   "i": 863,
+   "page": 18,
+   "start": 34531,
+   "in_table": false,
+   "text": "Once all SDO certifications are completed, the RO SGC Focal",
+   "y": 186.8
+  },
+  {
+   "i": 864,
+   "page": 18,
+   "start": 34682,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 865,
+   "page": 18,
+   "start": 34683,
+   "in_table": false,
+   "text": "Finally, the certified document is submitted to the CO throu",
+   "y": 225.5
+  },
+  {
+   "i": 866,
+   "page": 18,
+   "start": 34831,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 867,
+   "page": 18,
+   "start": 34832,
+   "in_table": false,
+   "text": "Overall, the RO serves as the coordinating and quality-assur",
+   "y": 264.3
+  },
+  {
+   "i": 868,
+   "page": 18,
+   "start": 34990,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 869,
+   "page": 18,
+   "start": 34991,
+   "in_table": false,
+   "text": "Continuous Provision of TA to SDO",
+   "y": 303.0
+  },
+  {
+   "i": 870,
+   "page": 18,
+   "start": 35025,
+   "in_table": false,
+   "text": "Throughout the entire process, the RO SGC Composite Team con",
+   "y": 315.9
+  },
+  {
+   "i": 871,
+   "page": 18,
+   "start": 35432,
+   "in_table": false,
+   "text": "School Division Office",
+   "y": 406.3
+  },
+  {
+   "i": 872,
+   "page": 18,
+   "start": 35456,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 873,
+   "page": 18,
+   "start": 35457,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 874,
+   "page": 18,
+   "start": 35458,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 875,
+   "page": 18,
+   "start": 35459,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 876,
+   "page": 18,
+   "start": 35460,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 877,
+   "page": 18,
+   "start": 35461,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 878,
+   "page": 18,
+   "start": 35462,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 879,
+   "page": 18,
+   "start": 35463,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 880,
+   "page": 18,
+   "start": 35464,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 881,
+   "page": 18,
+   "start": 35465,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 882,
+   "page": 18,
+   "start": 35466,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 883,
+   "page": 18,
+   "start": 35467,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 884,
+   "page": 18,
+   "start": 35468,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 885,
+   "page": 18,
+   "start": 35469,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 886,
+   "page": 18,
+   "start": 35470,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 887,
+   "page": 18,
+   "start": 35471,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 888,
+   "page": 18,
+   "start": 35472,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 889,
+   "page": 18,
+   "start": 35473,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 890,
+   "page": 18,
+   "start": 35474,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 891,
+   "page": 18,
+   "start": 35475,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 892,
+   "page": 18,
+   "start": 35476,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 893,
+   "page": 18,
+   "start": 35477,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 894,
+   "page": 18,
+   "start": 35478,
+   "in_table": false,
+   "text": "The process flow highlights the role of the SDO in implement",
+   "y": 713.8
+  },
+  {
+   "i": 895,
+   "page": 18,
+   "start": 35673,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 896,
+   "page": 19,
+   "start": 35674,
+   "in_table": false,
+   "text": "Familiarization of User Guide Volume 1 and 2",
+   "y": 71.1
+  },
+  {
+   "i": 897,
+   "page": 19,
+   "start": 35722,
+   "in_table": false,
+   "text": "The process begins with Read and Understand. The SDO is enco",
+   "y": 84.1
+  },
+  {
+   "i": 898,
+   "page": 19,
+   "start": 36045,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 899,
+   "page": 19,
+   "start": 36046,
+   "in_table": false,
+   "text": "Dissemination",
+   "y": 161.5
+  },
+  {
+   "i": 900,
+   "page": 19,
+   "start": 36060,
+   "in_table": false,
+   "text": "Next is Dissemination. The SDO disseminates the official Goo",
+   "y": 174.4
+  },
+  {
+   "i": 901,
+   "page": 19,
+   "start": 36433,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 902,
+   "page": 19,
+   "start": 36434,
+   "in_table": false,
+   "text": "SDO SGC Composite Team",
+   "y": 252.0
+  },
+  {
+   "i": 903,
+   "page": 19,
+   "start": 36457,
+   "in_table": false,
+   "text": "The SDO SGC Composite Team may be composed of three (3) to s",
+   "y": 264.9
+  },
+  {
+   "i": 904,
+   "page": 19,
+   "start": 36856,
+   "in_table": false,
+   "text": "Monitoring",
+   "y": 355.3
+  },
+  {
+   "i": 905,
+   "page": 19,
+   "start": 36867,
+   "in_table": false,
+   "text": "The third step is Monitoring. The SDO SGC Composite Team tra",
+   "y": 368.3
+  },
+  {
+   "i": 906,
+   "page": 19,
+   "start": 37092,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 907,
+   "page": 19,
+   "start": 37093,
+   "in_table": false,
+   "text": "Validation",
+   "y": 226.1
+  },
+  {
+   "i": 908,
+   "page": 19,
+   "start": 37104,
+   "in_table": false,
+   "text": "Following monitoring is Validation. The submitted data is va",
+   "y": 432.8
+  },
+  {
+   "i": 909,
+   "page": 19,
+   "start": 37379,
+   "in_table": false,
+   "text": "Provision of TA to Schools",
+   "y": 497.4
+  },
+  {
+   "i": 910,
+   "page": 19,
+   "start": 37406,
+   "in_table": false,
+   "text": "Parallel to validation is the provision of Technical Assista",
+   "y": 510.4
+  },
+  {
+   "i": 911,
+   "page": 19,
+   "start": 37992,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 912,
+   "page": 19,
+   "start": 37993,
+   "in_table": false,
+   "text": "Updated data on the Functionality Status of SGCs in Secondar",
+   "y": 626.5
+  },
+  {
+   "i": 913,
+   "page": 19,
+   "start": 38063,
+   "in_table": false,
+   "text": "The next step is Update. The SDO SGC Composite Team provides",
+   "y": 639.5
+  },
+  {
+   "i": 914,
+   "page": 19,
+   "start": 38335,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 915,
+   "page": 19,
+   "start": 38336,
+   "in_table": false,
+   "text": "Submission of SDO Certification to RO",
+   "y": 704.1
+  },
+  {
+   "i": 916,
+   "page": 19,
+   "start": 38374,
+   "in_table": false,
+   "text": "Finally, once all validated SGC data are confirmed as comple",
+   "y": 717.0
+  },
+  {
+   "i": 917,
+   "page": 19,
+   "start": 38604,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 918,
+   "page": 20,
+   "start": 38605,
+   "in_table": false,
+   "text": "Overall, the SDO SGC Composite Team plays a central coordina",
+   "y": 84.1
+  },
+  {
+   "i": 919,
+   "page": 20,
+   "start": 38871,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 920,
+   "page": 20,
+   "start": 38872,
+   "in_table": false,
+   "text": "Public Elementary Schools",
+   "y": 148.6
+  },
+  {
+   "i": 921,
+   "page": 20,
+   "start": 38898,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 922,
+   "page": 20,
+   "start": 38900,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 923,
+   "page": 20,
+   "start": 38901,
+   "in_table": false,
+   "text": "The process flow outlines the process at the school level, s",
+   "y": 356.1
+  },
+  {
+   "i": 924,
+   "page": 20,
+   "start": 39068,
+   "in_table": false,
+   "text": "Read the Materials and Prepare the Documents",
+   "y": 407.8
+  },
+  {
+   "i": 925,
+   "page": 20,
+   "start": 39113,
+   "in_table": false,
+   "text": "The process begins with Read and Prepare. SGCs are expected",
+   "y": 421.8
+  },
+  {
+   "i": 926,
+   "page": 20,
+   "start": 39619,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 927,
+   "page": 20,
+   "start": 39620,
+   "in_table": false,
+   "text": "Facilitation of Accomplishment of the SGCFAT",
+   "y": 525.6
+  },
+  {
+   "i": 928,
+   "page": 20,
+   "start": 39665,
+   "in_table": false,
+   "text": "During this stage, the School Head plays a key role in facil",
+   "y": 538.6
+  },
+  {
+   "i": 929,
+   "page": 20,
+   "start": 39979,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 930,
+   "page": 20,
+   "start": 39980,
+   "in_table": false,
+   "text": "Uploading of MOVs",
+   "y": 603.1
+  },
+  {
+   "i": 931,
+   "page": 20,
+   "start": 39998,
+   "in_table": false,
+   "text": "The next step is Upload. The School Head, together with the",
+   "y": 616.1
+  },
+  {
+   "i": 932,
+   "page": 20,
+   "start": 40383,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 933,
+   "page": 20,
+   "start": 40384,
+   "in_table": false,
+   "text": "Accomplishment of the SGCFAT",
+   "y": 693.5
+  },
+  {
+   "i": 934,
+   "page": 20,
+   "start": 40413,
+   "in_table": false,
+   "text": "Finally, the SGC proceeds to Accomplish the SGC Functionalit",
+   "y": 706.5
+  },
+  {
+   "i": 935,
+   "page": 20,
+   "start": 40656,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 936,
+   "page": 21,
+   "start": 40657,
+   "in_table": false,
+   "text": "folder must be provided in the designated section of the for",
+   "y": 71.1
+  },
+  {
+   "i": 937,
+   "page": 21,
+   "start": 40887,
+   "in_table": false,
+   "text": "Overall, the school-level process ensures that submissions a",
+   "y": 122.7
+  },
+  {
+   "i": 938,
+   "page": 21,
+   "start": 41110,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 939,
+   "page": 22,
+   "start": 41111,
+   "in_table": false,
+   "text": "Enclosure No. 4 to DM-OUHRODI-2026- 3750_",
+   "y": 67.8
+  },
+  {
+   "i": 940,
+   "page": 22,
+   "start": 41156,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 941,
+   "page": 22,
+   "start": 41157,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES PER GOVERNANCE LEVEL AS MANDATED",
+   "y": 97.0
+  },
+  {
+   "i": 942,
+   "page": 22,
+   "start": 41248,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 943,
+   "page": 22,
+   "start": 41249,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES OF THE SCHOOL HEAD",
+   "y": null
+  },
+  {
+   "i": 944,
+   "page": 22,
+   "start": 41295,
+   "in_table": false,
+   "text": "The School Head shall ensure that all decisions, directions,",
+   "y": 162.1
+  },
+  {
+   "i": 945,
+   "page": 22,
+   "start": 41467,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 946,
+   "page": 22,
+   "start": 41468,
+   "in_table": false,
+   "text": "Inform SGC members of the reasons, risks, and implications o",
+   "y": null
+  },
+  {
+   "i": 947,
+   "page": 22,
+   "start": 41633,
+   "in_table": false,
+   "text": "Implement policies in partnership with SGC that are in accor",
+   "y": null
+  },
+  {
+   "i": 948,
+   "page": 22,
+   "start": 41777,
+   "in_table": false,
+   "text": "Provide accurate and timely updates on the progress of activ",
+   "y": null
+  },
+  {
+   "i": 949,
+   "page": 22,
+   "start": 41863,
+   "in_table": false,
+   "text": "Build inclusive school and community networks by ensuring pa",
+   "y": null
+  },
+  {
+   "i": 950,
+   "page": 22,
+   "start": 42015,
+   "in_table": false,
+   "text": "Forward approved SGC recommendations to the appropriate comm",
+   "y": null
+  },
+  {
+   "i": 951,
+   "page": 22,
+   "start": 42144,
+   "in_table": false,
+   "text": "Orient the designated and elected co-chairpersons on SGC upd",
+   "y": null
+  },
+  {
+   "i": 952,
+   "page": 22,
+   "start": 42323,
+   "in_table": false,
+   "text": "Oversee the SGC elections for Co-Chairperson and Secretary a",
+   "y": null
+  },
+  {
+   "i": 953,
+   "page": 22,
+   "start": 42428,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES OF THE SCHOOLS DIVISION OFFICE",
+   "y": null
+  },
+  {
+   "i": 954,
+   "page": 22,
+   "start": 42486,
+   "in_table": false,
+   "text": "(Through the Schools Governance and Operations Division – SG",
+   "y": 433.3
+  },
+  {
+   "i": 955,
+   "page": 22,
+   "start": 42550,
+   "in_table": false,
+   "text": "The SDO shall provide technical assistance to schools for th",
+   "y": 459.1
+  },
+  {
+   "i": 956,
+   "page": 22,
+   "start": 42708,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 957,
+   "page": 22,
+   "start": 42709,
+   "in_table": false,
+   "text": "Orient and conduct capacity-building activities for school h",
+   "y": null
+  },
+  {
+   "i": 958,
+   "page": 22,
+   "start": 42789,
+   "in_table": false,
+   "text": "Conduct situational assessments and needs analyses of school",
+   "y": null
+  },
+  {
+   "i": 959,
+   "page": 22,
+   "start": 42883,
+   "in_table": false,
+   "text": "Develop operational guidelines and implementation plans alig",
+   "y": null
+  },
+  {
+   "i": 960,
+   "page": 22,
+   "start": 42989,
+   "in_table": false,
+   "text": "Provide timely and appropriate technical assistance to schoo",
+   "y": null
+  },
+  {
+   "i": 961,
+   "page": 22,
+   "start": 43161,
+   "in_table": false,
+   "text": "Maintain and update a database of SGC officers-elect and a l",
+   "y": null
+  },
+  {
+   "i": 962,
+   "page": 22,
+   "start": 43264,
+   "in_table": false,
+   "text": "Ensure compliance with procedures for the removal of SGC mem",
+   "y": null
+  },
+  {
+   "i": 963,
+   "page": 22,
+   "start": 43330,
+   "in_table": false,
+   "text": "Monitor SGC performance in implementing council programs, pr",
+   "y": null
+  },
+  {
+   "i": 964,
+   "page": 22,
+   "start": 43414,
+   "in_table": false,
+   "text": "Track and analyze the implementation and results of technica",
+   "y": null
+  },
+  {
+   "i": 965,
+   "page": 22,
+   "start": 43502,
+   "in_table": false,
+   "text": "Monitor compliance with and implementation of the guidelines",
+   "y": null
+  },
+  {
+   "i": 966,
+   "page": 22,
+   "start": 43564,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 967,
+   "page": 23,
+   "start": 43565,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES OF THE REGIONAL OFFICE",
+   "y": null
+  },
+  {
+   "i": 968,
+   "page": 23,
+   "start": 43618,
+   "in_table": false,
+   "text": "(Through the Field Technical Assistance Division- FTAD)",
+   "y": 83.9
+  },
+  {
+   "i": 969,
+   "page": 23,
+   "start": 43674,
+   "in_table": false,
+   "text": "The RO shall provide technical assistance to SDO for the pro",
+   "y": 109.9
+  },
+  {
+   "i": 970,
+   "page": 23,
+   "start": 43808,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 971,
+   "page": 23,
+   "start": 43809,
+   "in_table": false,
+   "text": "Ensure regional compliance with the provisions of DepEd Orde",
+   "y": null
+  },
+  {
+   "i": 972,
+   "page": 23,
+   "start": 43888,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 973,
+   "page": 23,
+   "start": 43889,
+   "in_table": false,
+   "text": "Develop operational guidelines and implementation plans alig",
+   "y": null
+  },
+  {
+   "i": 974,
+   "page": 23,
+   "start": 43976,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 975,
+   "page": 23,
+   "start": 43977,
+   "in_table": false,
+   "text": "Conduct needs analyses of SDOs to strengthen supervision of",
+   "y": null
+  },
+  {
+   "i": 976,
+   "page": 23,
+   "start": 44060,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 977,
+   "page": 23,
+   "start": 44061,
+   "in_table": false,
+   "text": "Facilitate quality assurance by ensuring that guidelines are",
+   "y": null
+  },
+  {
+   "i": 978,
+   "page": 23,
+   "start": 44189,
+   "in_table": false,
+   "text": "Maintain records and regional database documenting program i",
+   "y": null
+  },
+  {
+   "i": 979,
+   "page": 23,
+   "start": 44307,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 980,
+   "page": 23,
+   "start": 44308,
+   "in_table": false,
+   "text": "Provide relevant, timely, and needs-based technical assistan",
+   "y": null
+  },
+  {
+   "i": 981,
+   "page": 23,
+   "start": 44380,
+   "in_table": false,
+   "text": "Monitor and evaluate the implementation of technical assista",
+   "y": null
+  },
+  {
+   "i": 982,
+   "page": 23,
+   "start": 44533,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 983,
+   "page": 23,
+   "start": 44534,
+   "in_table": false,
+   "text": "Consolidate and submit regional reports to the CO within pre",
+   "y": null
+  },
+  {
+   "i": 984,
+   "page": 23,
+   "start": 44613,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 985,
+   "page": 23,
+   "start": 44614,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES OF THE CENTRAL OFFICE",
+   "y": null
+  },
+  {
+   "i": 986,
+   "page": 23,
+   "start": 44663,
+   "in_table": false,
+   "text": "(Through Bureau of Human Resources and Organizational Develo",
+   "y": 471.6
+  },
+  {
+   "i": 987,
+   "page": 23,
+   "start": 44770,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 988,
+   "page": 23,
+   "start": 44771,
+   "in_table": false,
+   "text": "The CO shall provide technical assistance to RO for the prop",
+   "y": 510.4
+  },
+  {
+   "i": 989,
+   "page": 23,
+   "start": 44905,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 990,
+   "page": 23,
+   "start": 44906,
+   "in_table": false,
+   "text": "Provide policy direction and technical guidance on SGC imple",
+   "y": null
+  },
+  {
+   "i": 991,
+   "page": 23,
+   "start": 45006,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 992,
+   "page": 23,
+   "start": 45007,
+   "in_table": false,
+   "text": "Orient focal persons on policy implementation.",
+   "y": null
+  },
+  {
+   "i": 993,
+   "page": 23,
+   "start": 45054,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 994,
+   "page": 23,
+   "start": 45055,
+   "in_table": false,
+   "text": "Conduct capacity-building activities to support effective an",
+   "y": null
+  },
+  {
+   "i": 995,
+   "page": 23,
+   "start": 45150,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 996,
+   "page": 23,
+   "start": 45151,
+   "in_table": false,
+   "text": "Facilitate periodic monitoring and evaluation of policy impl",
+   "y": null
+  },
+  {
+   "i": 997,
+   "page": 23,
+   "start": 45223,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 998,
+   "page": 23,
+   "start": 45224,
+   "in_table": false,
+   "text": "Undertake policy reviews to strengthen the effectiveness of",
+   "y": null
+  },
+  {
+   "i": 999,
+   "page": 23,
+   "start": 45300,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1000,
+   "page": 23,
+   "start": 45301,
+   "in_table": false,
+   "text": "Provide technical assistance to RO and other governance leve",
+   "y": null
+  },
+  {
+   "i": 1001,
+   "page": 23,
+   "start": 45365,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1002,
+   "page": 24,
+   "start": 45366,
+   "in_table": false,
+   "text": "Develop and disseminate advocacy and communication materials",
+   "y": null
+  },
+  {
+   "i": 1003,
+   "page": 24,
+   "start": 45580,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1004,
+   "page": 25,
+   "start": 45581,
+   "in_table": false,
+   "text": "Enclosure No. 5 to DM-OUHROD-2026- 3750",
+   "y": 68.3
+  },
+  {
+   "i": 1005,
+   "page": 25,
+   "start": 45624,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1006,
+   "page": 25,
+   "start": 45625,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES PER GOVERNANCE LEVEL IN THE IMPLE",
+   "y": null
+  },
+  {
+   "i": 1007,
+   "page": 25,
+   "start": 45736,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1008,
+   "page": 25,
+   "start": 45737,
+   "in_table": false,
+   "text": "ROLES\tAND\tRESPONSIBILITIES\tOF\tTHE\tSCHOOL\tHEAD\tAND\tSGC",
+   "y": null
+  },
+  {
+   "i": 1009,
+   "page": 25,
+   "start": 45791,
+   "in_table": false,
+   "text": "The School Head shall oversee and facilitate the completion",
+   "y": 150.5
+  },
+  {
+   "i": 1010,
+   "page": 25,
+   "start": 46036,
+   "in_table": false,
+   "text": "Specifically, the School Head, in collaboration with the SGC",
+   "y": 201.3
+  },
+  {
+   "i": 1011,
+   "page": 25,
+   "start": 46105,
+   "in_table": false,
+   "text": "Follow the User Guide Volume 1: Prepare and Respond when com",
+   "y": null
+  },
+  {
+   "i": 1012,
+   "page": 25,
+   "start": 46280,
+   "in_table": false,
+   "text": "Organize and label all MOVs, create a dedicated Google Drive",
+   "y": null
+  },
+  {
+   "i": 1013,
+   "page": 25,
+   "start": 46418,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1014,
+   "page": 25,
+   "start": 46419,
+   "in_table": false,
+   "text": "Prior to submission, conduct a school-level quality assuranc",
+   "y": null
+  },
+  {
+   "i": 1015,
+   "page": 25,
+   "start": 46593,
+   "in_table": false,
+   "text": "Prepare links for all submitted MOVs and copy-paste them und",
+   "y": null
+  },
+  {
+   "i": 1016,
+   "page": 25,
+   "start": 46705,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1017,
+   "page": 25,
+   "start": 46706,
+   "in_table": false,
+   "text": "Double-check the status of validated MOVs to ensure accuracy",
+   "y": null
+  },
+  {
+   "i": 1018,
+   "page": 25,
+   "start": 46798,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1019,
+   "page": 25,
+   "start": 46799,
+   "in_table": false,
+   "text": "Address and respond promptly to follow-up communications or",
+   "y": null
+  },
+  {
+   "i": 1020,
+   "page": 25,
+   "start": 47021,
+   "in_table": false,
+   "text": "In the event of a reassignment or transfer, the school head",
+   "y": null
+  },
+  {
+   "i": 1021,
+   "page": 25,
+   "start": 47347,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES OF THE SCHOOL DIVISION OFFICE",
+   "y": null
+  },
+  {
+   "i": 1022,
+   "page": 25,
+   "start": 47404,
+   "in_table": false,
+   "text": "(Through the Schools Governance and Operations Division – SG",
+   "y": 585.0
+  },
+  {
+   "i": 1023,
+   "page": 25,
+   "start": 47514,
+   "in_table": false,
+   "text": "The SDO shall provide technical assistance to schools in the",
+   "y": 623.8
+  },
+  {
+   "i": 1024,
+   "page": 25,
+   "start": 47689,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1025,
+   "page": 25,
+   "start": 47690,
+   "in_table": false,
+   "text": "Specifically, the SDO shall:",
+   "y": 677.4
+  },
+  {
+   "i": 1026,
+   "page": 25,
+   "start": 47719,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1027,
+   "page": 25,
+   "start": 47720,
+   "in_table": false,
+   "text": "Organize an SDO SGC Composite Team chaired by the Assistant",
+   "y": null
+  },
+  {
+   "i": 1028,
+   "page": 25,
+   "start": 48004,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1029,
+   "page": 26,
+   "start": 48005,
+   "in_table": false,
+   "text": "as deemed appropriate, to ensure objectivity and efficiency",
+   "y": 71.1
+  },
+  {
+   "i": 1030,
+   "page": 26,
+   "start": 48121,
+   "in_table": false,
+   "text": "Coordinate and provide guidance and technical support to sch",
+   "y": null
+  },
+  {
+   "i": 1031,
+   "page": 26,
+   "start": 48447,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1032,
+   "page": 26,
+   "start": 48448,
+   "in_table": false,
+   "text": "Follow User Guide Volume 2: Validate and Monitor in validati",
+   "y": null
+  },
+  {
+   "i": 1033,
+   "page": 26,
+   "start": 48661,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1034,
+   "page": 26,
+   "start": 48662,
+   "in_table": false,
+   "text": "Coordinate with the RO SGC focal person to obtain access to",
+   "y": null
+  },
+  {
+   "i": 1035,
+   "page": 26,
+   "start": 48785,
+   "in_table": false,
+   "text": "Validate the submitted MOVs and coordinate with the schools",
+   "y": null
+  },
+  {
+   "i": 1036,
+   "page": 26,
+   "start": 48898,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1037,
+   "page": 26,
+   "start": 48899,
+   "in_table": false,
+   "text": "Double-check the status of validated MOVs to ensure accuracy",
+   "y": null
+  },
+  {
+   "i": 1038,
+   "page": 26,
+   "start": 48991,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1039,
+   "page": 26,
+   "start": 48992,
+   "in_table": false,
+   "text": "Provide guidance to schools regarding the updating or correc",
+   "y": null
+  },
+  {
+   "i": 1040,
+   "page": 26,
+   "start": 49263,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1041,
+   "page": 26,
+   "start": 49264,
+   "in_table": false,
+   "text": "Update and accomplish the SDO Spreadsheet in a timely manner",
+   "y": null
+  },
+  {
+   "i": 1042,
+   "page": 26,
+   "start": 49326,
+   "in_table": false,
+   "text": "Disseminate the directions and advocacy materials produced b",
+   "y": null
+  },
+  {
+   "i": 1043,
+   "page": 26,
+   "start": 49513,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1044,
+   "page": 26,
+   "start": 49514,
+   "in_table": false,
+   "text": "Submit a certification to the RO for confirmation and offici",
+   "y": null
+  },
+  {
+   "i": 1045,
+   "page": 26,
+   "start": 49609,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES OF THE REGIONAL OFFICE",
+   "y": null
+  },
+  {
+   "i": 1046,
+   "page": 26,
+   "start": 49659,
+   "in_table": false,
+   "text": "(Through the Field Technical Assistance Division- FTAD and m",
+   "y": 548.2
+  },
+  {
+   "i": 1047,
+   "page": 26,
+   "start": 49756,
+   "in_table": false,
+   "text": "The RO shall provide technical assistance to the SDO in the",
+   "y": 586.8
+  },
+  {
+   "i": 1048,
+   "page": 26,
+   "start": 49901,
+   "in_table": false,
+   "text": "Organize an RO SGC Composite Team chaired by the Assistant R",
+   "y": null
+  },
+  {
+   "i": 1049,
+   "page": 26,
+   "start": 50282,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1050,
+   "page": 26,
+   "start": 50283,
+   "in_table": false,
+   "text": "Coordinate and provide guidance and technical support to SDO",
+   "y": null
+  },
+  {
+   "i": 1051,
+   "page": 26,
+   "start": 50512,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1052,
+   "page": 27,
+   "start": 50513,
+   "in_table": false,
+   "text": "of the policy requirements under DepEd Order No. 26, s. 2022",
+   "y": 71.1
+  },
+  {
+   "i": 1053,
+   "page": 27,
+   "start": 50649,
+   "in_table": false,
+   "text": "Refer to User Guide Volume 2: Validate and Monitor to monito",
+   "y": null
+  },
+  {
+   "i": 1054,
+   "page": 27,
+   "start": 50775,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1055,
+   "page": 27,
+   "start": 50776,
+   "in_table": false,
+   "text": "Monitor the functionality and response rate of schools withi",
+   "y": null
+  },
+  {
+   "i": 1056,
+   "page": 27,
+   "start": 51150,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1057,
+   "page": 27,
+   "start": 51151,
+   "in_table": false,
+   "text": "Monitor, manage, and track multiple submissions from schools",
+   "y": null
+  },
+  {
+   "i": 1058,
+   "page": 27,
+   "start": 51213,
+   "in_table": false,
+   "text": "Disseminate the directions and advocacy materials produced b",
+   "y": null
+  },
+  {
+   "i": 1059,
+   "page": 27,
+   "start": 51420,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1060,
+   "page": 27,
+   "start": 51421,
+   "in_table": false,
+   "text": "Submit a certification of finalized results to the CO via Go",
+   "y": null
+  },
+  {
+   "i": 1061,
+   "page": 27,
+   "start": 51492,
+   "in_table": false,
+   "text": "Ensure that access to the SGC Functionality Assessment Tool",
+   "y": null
+  },
+  {
+   "i": 1062,
+   "page": 27,
+   "start": 51863,
+   "in_table": false,
+   "text": "ROLES AND RESPONSIBILITIES OF THE CENTRAL OFFICE",
+   "y": null
+  },
+  {
+   "i": 1063,
+   "page": 27,
+   "start": 51912,
+   "in_table": false,
+   "text": "(Through Bureau of Human Resources and Organizational Develo",
+   "y": 415.9
+  },
+  {
+   "i": 1064,
+   "page": 27,
+   "start": 52019,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1065,
+   "page": 27,
+   "start": 52020,
+   "in_table": false,
+   "text": "The CO shall facilitate the implementation of the SGC Functi",
+   "y": 454.7
+  },
+  {
+   "i": 1066,
+   "page": 27,
+   "start": 52148,
+   "in_table": false,
+   "text": "Specifically, the CO shall:",
+   "y": 488.5
+  },
+  {
+   "i": 1067,
+   "page": 27,
+   "start": 52176,
+   "in_table": false,
+   "text": "Develop and roll out the SGC Functionality Assessment Tool (",
+   "y": null
+  },
+  {
+   "i": 1068,
+   "page": 27,
+   "start": 52303,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1069,
+   "page": 27,
+   "start": 52304,
+   "in_table": false,
+   "text": "Develop User Guide Volume 1: Prepare and Respond and User Gu",
+   "y": null
+  },
+  {
+   "i": 1070,
+   "page": 27,
+   "start": 52466,
+   "in_table": false,
+   "text": "Coordinate regularly with RO SGC focal person to monitor the",
+   "y": null
+  },
+  {
+   "i": 1071,
+   "page": 27,
+   "start": 52583,
+   "in_table": false,
+   "text": "Conduct monthly progress check-ins with RO SGC focal person",
+   "y": null
+  },
+  {
+   "i": 1072,
+   "page": 27,
+   "start": 52765,
+   "in_table": false,
+   "text": "Develop and disseminate advocacy and communication materials",
+   "y": null
+  },
+  {
+   "i": 1073,
+   "page": 27,
+   "start": 52925,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1074,
+   "page": 28,
+   "start": 52926,
+   "in_table": false,
+   "text": "Consolidate all Certifications and official submissions from",
+   "y": null
+  },
+  {
+   "i": 1075,
+   "page": 28,
+   "start": 53033,
+   "in_table": false,
+   "text": "Conduct a comprehensive analysis of the final validated data",
+   "y": null
+  },
+  {
+   "i": 1076,
+   "page": 28,
+   "start": 53233,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1077,
+   "page": 29,
+   "start": 53234,
+   "in_table": false,
+   "text": "Enclosure No. 6 to DM-OUHRODI-2026- 3750_ SDO SPREADSHEET",
+   "y": 69.4
+  },
+  {
+   "i": 1078,
+   "page": 29,
+   "start": 53295,
+   "in_table": false,
+   "text": "SDO VALIDATION SHEET",
+   "y": 122.7
+  },
+  {
+   "i": 1079,
+   "page": 29,
+   "start": 53316,
+   "in_table": false,
+   "text": "The SDO Validation Sheet is used by the SDO SGC Composite Te",
+   "y": 148.5
+  },
+  {
+   "i": 1080,
+   "page": 29,
+   "start": 53665,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1081,
+   "page": 29,
+   "start": 53666,
+   "in_table": false,
+   "text": "The SDO Validation Sheet may be accessed through the link to",
+   "y": 226.0
+  },
+  {
+   "i": 1082,
+   "page": 29,
+   "start": 53764,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1083,
+   "page": 29,
+   "start": 53766,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1084,
+   "page": 29,
+   "start": 53767,
+   "in_table": false,
+   "text": "SDO MONITORING SHEET",
+   "y": 394.7
+  },
+  {
+   "i": 1085,
+   "page": 29,
+   "start": 53788,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1086,
+   "page": 29,
+   "start": 53789,
+   "in_table": false,
+   "text": "The SDO Monitoring Sheet is used by the SDO SGC Composite Te",
+   "y": 421.2
+  },
+  {
+   "i": 1087,
+   "page": 29,
+   "start": 54084,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1088,
+   "page": 29,
+   "start": 54085,
+   "in_table": false,
+   "text": "The SDO Monitoring Sheet may be accessed through the link to",
+   "y": 485.8
+  },
+  {
+   "i": 1089,
+   "page": 29,
+   "start": 54183,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1090,
+   "page": 29,
+   "start": 54185,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1091,
+   "page": 30,
+   "start": 54186,
+   "in_table": false,
+   "text": "Enclosure No. 7 to DM-OUHRODI-2026- 3750_ RO SPREADSHEET",
+   "y": 68.4
+  },
+  {
+   "i": 1092,
+   "page": 30,
+   "start": 54246,
+   "in_table": false,
+   "text": "RO MONITORING SHEET",
+   "y": 122.7
+  },
+  {
+   "i": 1093,
+   "page": 30,
+   "start": 54266,
+   "in_table": false,
+   "text": "The RO Monitoring Sheet is used by the RO SGC Composite Team",
+   "y": 148.5
+  },
+  {
+   "i": 1094,
+   "page": 30,
+   "start": 54510,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1095,
+   "page": 30,
+   "start": 54511,
+   "in_table": false,
+   "text": "The RO Monitoring Sheet may be accessed through the link pro",
+   "y": 213.1
+  },
+  {
+   "i": 1096,
+   "page": 30,
+   "start": 54660,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1097,
+   "page": 30,
+   "start": 54662,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1098,
+   "page": 30,
+   "start": 54663,
+   "in_table": false,
+   "text": "MULTIPLE SUBMISSION DELETION LOG",
+   "y": 419.0
+  },
+  {
+   "i": 1099,
+   "page": 30,
+   "start": 54696,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1100,
+   "page": 30,
+   "start": 54697,
+   "in_table": false,
+   "text": "The Multiple Submission Deletion Log serves as a reference f",
+   "y": 445.6
+  },
+  {
+   "i": 1101,
+   "page": 30,
+   "start": 55067,
+   "in_table": false,
+   "text": "The Multiple Submission Deletion Log may be accessed through",
+   "y": 522.1
+  },
+  {
+   "i": 1102,
+   "page": 30,
+   "start": 55236,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1103,
+   "page": 30,
+   "start": 55238,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1104,
+   "page": 31,
+   "start": 55239,
+   "in_table": false,
+   "text": "Enclosure No. 8 to DM-OUHRODI-2026- 3750_",
+   "y": 69.2
+  },
+  {
+   "i": 1105,
+   "page": 31,
+   "start": 55285,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1106,
+   "page": 31,
+   "start": 55286,
+   "in_table": false,
+   "text": "TIMELINE OF ACTIVITIES RELATIVE TO THE ROLL-OUT OF THE SGC F",
+   "y": 97.0
+  },
+  {
+   "i": 1107,
+   "page": 31,
+   "start": 55375,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1108,
+   "page": 31,
+   "start": 55376,
+   "in_table": true,
+   "text": "Date\r\u0007",
+   "y": 136.1
+  },
+  {
+   "i": 1109,
+   "page": 31,
+   "start": 55381,
+   "in_table": true,
+   "text": "Activity\r\u0007",
+   "y": 136.1
+  },
+  {
+   "i": 1110,
+   "page": 31,
+   "start": 55390,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1111,
+   "page": 31,
+   "start": 55391,
+   "in_table": true,
+   "text": "March-April 2026\r\u0007",
+   "y": null
+  },
+  {
+   "i": 1112,
+   "page": 31,
+   "start": 55408,
+   "in_table": true,
+   "text": "Online Consultation on the Development of the SGC Functional",
+   "y": 157.6
+  },
+  {
+   "i": 1113,
+   "page": 31,
+   "start": 55488,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1114,
+   "page": 31,
+   "start": 55489,
+   "in_table": true,
+   "text": "May 2026\r\u0007",
+   "y": 191.8
+  },
+  {
+   "i": 1115,
+   "page": 31,
+   "start": 55498,
+   "in_table": true,
+   "text": "Pilot Testing of the SGC Functionality Assessment Tool\r\u0007",
+   "y": 191.8
+  },
+  {
+   "i": 1116,
+   "page": 31,
+   "start": 55553,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1117,
+   "page": 31,
+   "start": 55554,
+   "in_table": true,
+   "text": "June-August 2026\r\u0007",
+   "y": null
+  },
+  {
+   "i": 1118,
+   "page": 31,
+   "start": 55571,
+   "in_table": true,
+   "text": "Technical Assistance Workshop on the SGC Functionality Asses",
+   "y": 213.3
+  },
+  {
+   "i": 1119,
+   "page": 31,
+   "start": 55662,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1120,
+   "page": 31,
+   "start": 55663,
+   "in_table": true,
+   "text": "September 29 , 2026\r\u0007",
+   "y": 247.7
+  },
+  {
+   "i": 1121,
+   "page": 31,
+   "start": 55684,
+   "in_table": true,
+   "text": "Roll-Out of the SGC Functionality Assessment Tool for Elemen",
+   "y": null
+  },
+  {
+   "i": 1122,
+   "page": 31,
+   "start": 55756,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1123,
+   "page": 31,
+   "start": 55757,
+   "in_table": true,
+   "text": "October 2026 (3rd Week)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 1124,
+   "page": 31,
+   "start": 55781,
+   "in_table": true,
+   "text": "Monthly Progress Checking with RO SGC Focal person\r\u0007",
+   "y": 281.9
+  },
+  {
+   "i": 1125,
+   "page": 31,
+   "start": 55832,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1126,
+   "page": 31,
+   "start": 55833,
+   "in_table": true,
+   "text": "November 2026 (3rd Week)\r\u0007",
+   "y": 316.3
+  },
+  {
+   "i": 1127,
+   "page": 31,
+   "start": 55858,
+   "in_table": true,
+   "text": "Monthly Progress Checking with RO SGC Focal person\r\u0007",
+   "y": 316.2
+  },
+  {
+   "i": 1128,
+   "page": 31,
+   "start": 55909,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1129,
+   "page": 31,
+   "start": 55910,
+   "in_table": true,
+   "text": "December 2026 ( 3rd Week)\r\u0007",
+   "y": 350.6
+  },
+  {
+   "i": 1130,
+   "page": 31,
+   "start": 55936,
+   "in_table": true,
+   "text": "Monthly Progress Checking with RO SGC Focal person\r\u0007",
+   "y": 350.5
+  },
+  {
+   "i": 1131,
+   "page": 31,
+   "start": 55987,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1132,
+   "page": 31,
+   "start": 55988,
+   "in_table": true,
+   "text": "January 2027 (3rd Week)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 1133,
+   "page": 31,
+   "start": 56012,
+   "in_table": true,
+   "text": "Monthly Progress Checking with RO SGC Focal person\r\u0007",
+   "y": 384.7
+  },
+  {
+   "i": 1134,
+   "page": 31,
+   "start": 56063,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1135,
+   "page": 31,
+   "start": 56064,
+   "in_table": true,
+   "text": "February 2027 (3rd Week)\r\u0007",
+   "y": 419.2
+  },
+  {
+   "i": 1136,
+   "page": 31,
+   "start": 56089,
+   "in_table": true,
+   "text": "Monthly Progress Checking with RO SGC Focal person\r\u0007",
+   "y": 419.0
+  },
+  {
+   "i": 1137,
+   "page": 31,
+   "start": 56140,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1138,
+   "page": 31,
+   "start": 56141,
+   "in_table": true,
+   "text": "March 2027 (3rd Week)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 1139,
+   "page": 31,
+   "start": 56163,
+   "in_table": true,
+   "text": "Monthly Progress Checking with RO SGC Focal person\r\u0007",
+   "y": 453.4
+  },
+  {
+   "i": 1140,
+   "page": 31,
+   "start": 56214,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1141,
+   "page": 31,
+   "start": 56215,
+   "in_table": true,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1142,
+   "page": 31,
+   "start": 56216,
+   "in_table": true,
+   "text": "March 31, 2027\r\u0007",
+   "y": 508.7
+  },
+  {
+   "i": 1143,
+   "page": 31,
+   "start": 56231,
+   "in_table": true,
+   "text": "Closure of the Multiple Submission Deletion Log",
+   "y": 499.8
+  },
+  {
+   "i": 1144,
+   "page": 31,
+   "start": 56279,
+   "in_table": true,
+   "text": "(This signifies that deletion of multiple submissions will n",
+   "y": 512.8
+  },
+  {
+   "i": 1145,
+   "page": 31,
+   "start": 56523,
+   "in_table": true,
+   "text": "SDOs must also properly reiterate to all concerned schools t",
+   "y": 589.3
+  },
+  {
+   "i": 1146,
+   "page": 31,
+   "start": 56648,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1147,
+   "page": 31,
+   "start": 56649,
+   "in_table": true,
+   "text": "March 31, 2027\r\u0007",
+   "y": 640.5
+  },
+  {
+   "i": 1148,
+   "page": 31,
+   "start": 56664,
+   "in_table": true,
+   "text": "Closure of the SGC Functionality Assessment Tool (Online For",
+   "y": 640.6
+  },
+  {
+   "i": 1149,
+   "page": 31,
+   "start": 56727,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1150,
+   "page": 31,
+   "start": 56728,
+   "in_table": true,
+   "text": "April 2027 (3rd Week)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 1151,
+   "page": 31,
+   "start": 56750,
+   "in_table": true,
+   "text": "Monthly Progress Checking with RO SGC Focal person\r\u0007",
+   "y": 674.8
+  },
+  {
+   "i": 1152,
+   "page": 31,
+   "start": 56801,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1153,
+   "page": 31,
+   "start": 56802,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1154,
+   "page": 32,
+   "start": 56803,
+   "in_table": true,
+   "text": "April 30, 2027\r\u0007",
+   "y": 70.6
+  },
+  {
+   "i": 1155,
+   "page": 32,
+   "start": 56818,
+   "in_table": true,
+   "text": "Closure of the SGC RO and SDO Spreadsheets",
+   "y": 82.6
+  },
+  {
+   "i": 1156,
+   "page": 32,
+   "start": 56861,
+   "in_table": true,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1157,
+   "page": 32,
+   "start": 56862,
+   "in_table": true,
+   "text": "(SDOs must properly reiterate to all concerned schools that",
+   "y": 120.4
+  },
+  {
+   "i": 1158,
+   "page": 32,
+   "start": 57036,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1159,
+   "page": 32,
+   "start": 57037,
+   "in_table": true,
+   "text": "May 5, 2027\r\u0007",
+   "y": 205.4
+  },
+  {
+   "i": 1160,
+   "page": 32,
+   "start": 57049,
+   "in_table": true,
+   "text": "Deadline for submission of SDO Certifications to the RO.\r\u0007",
+   "y": 205.4
+  },
+  {
+   "i": 1161,
+   "page": 32,
+   "start": 57106,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1162,
+   "page": 32,
+   "start": 57107,
+   "in_table": true,
+   "text": "May 14, 2027\r\u0007",
+   "y": 226.9
+  },
+  {
+   "i": 1163,
+   "page": 32,
+   "start": 57120,
+   "in_table": true,
+   "text": "Deadline for submission of RO Certifications to the CO.\r\u0007",
+   "y": 226.9
+  },
+  {
+   "i": 1164,
+   "page": 32,
+   "start": 57176,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1165,
+   "page": 32,
+   "start": 57177,
+   "in_table": true,
+   "text": "May 2027",
+   "y": 269.1
+  },
+  {
+   "i": 1166,
+   "page": 32,
+   "start": 57186,
+   "in_table": true,
+   "text": "(3rd Week)\r\u0007",
+   "y": 282.0
+  },
+  {
+   "i": 1167,
+   "page": 32,
+   "start": 57197,
+   "in_table": true,
+   "text": "Monthly Progress Checking with RO SGC Focal person\r\u0007",
+   "y": 269.1
+  },
+  {
+   "i": 1168,
+   "page": 32,
+   "start": 57248,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 1169,
+   "page": 32,
+   "start": 57249,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 1170,
+   "page": 32,
+   "start": 57253,
+   "in_table": false,
+   "text": "Note: Each governance level is highly encouraged to use the",
+   "y": 317.6
+  }
+ ]
+}

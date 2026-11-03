@@ -1,0 +1,5466 @@
+{
+ "schema": 2,
+ "name": "0200725_[research]_9569504b",
+ "sha256": "19562e8ee679cd4675a1ee600a059774800a167fedb5aed4f6f482769461ab6e",
+ "word_version": "16.0",
+ "word_build": "16.0.20326",
+ "pages": 14,
+ "page_starts": [
+  0,
+  1943,
+  5878,
+  9496,
+  13101,
+  15937,
+  18337,
+  22950,
+  26290,
+  28808,
+  31678,
+  35901,
+  38889,
+  41705
+ ],
+ "paragraphs": [
+  {
+   "i": 1,
+   "page": 1,
+   "start": 0,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 2,
+   "page": 1,
+   "start": 2,
+   "in_table": false,
+   "text": "Received: 10 OCT 2025\t|\tAccepted: 09 DEC 2025\t|\tPublished On",
+   "y": 35.5
+  },
+  {
+   "i": 3,
+   "page": 1,
+   "start": 150,
+   "in_table": false,
+   "text": "DOI: https://doi.org/10.5281/zenodo.19175586",
+   "y": 61.4
+  },
+  {
+   "i": 4,
+   "page": 1,
+   "start": 253,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 5,
+   "page": 1,
+   "start": 254,
+   "in_table": false,
+   "text": "Evaluating Customer Satisfaction of Junior High School Stude",
+   "y": 93.6
+  },
+  {
+   "i": 6,
+   "page": 1,
+   "start": 394,
+   "in_table": false,
+   "text": "Gloria P. Deniega¹*/, Rafael M. Bachanicha²/, Kingie G. Mica",
+   "y": 127.0
+  },
+  {
+   "i": 7,
+   "page": 1,
+   "start": 487,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 8,
+   "page": 1,
+   "start": 488,
+   "in_table": false,
+   "text": "ABSTRACT",
+   "y": 156.3
+  },
+  {
+   "i": 9,
+   "page": 1,
+   "start": 500,
+   "in_table": false,
+   "text": "1gdeniega@uc.edu.ph",
+   "y": 171.3
+  },
+  {
+   "i": 10,
+   "page": 1,
+   "start": 566,
+   "in_table": false,
+   "text": "University of Cebu Lapu-lapu and Mandaue",
+   "y": 109.8
+  },
+  {
+   "i": 11,
+   "page": 1,
+   "start": 607,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 12,
+   "page": 1,
+   "start": 608,
+   "in_table": false,
+   "text": "2rbachanicha@uc.edu.ph",
+   "y": 213.4
+  },
+  {
+   "i": 13,
+   "page": 1,
+   "start": 679,
+   "in_table": false,
+   "text": "University of Cebu Lapu-lapu and Mandaue",
+   "y": 181.8
+  },
+  {
+   "i": 14,
+   "page": 1,
+   "start": 720,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 15,
+   "page": 1,
+   "start": 721,
+   "in_table": false,
+   "text": "3kmicabalo@uc.edu.ph",
+   "y": 255.4
+  },
+  {
+   "i": 16,
+   "page": 1,
+   "start": 788,
+   "in_table": false,
+   "text": "University of Cebu Lapu-lapu and Mandaue",
+   "y": 223.8
+  },
+  {
+   "i": 17,
+   "page": 1,
+   "start": 829,
+   "in_table": false,
+   "text": "4kendorte@uc.edu.ph",
+   "y": 296.5
+  },
+  {
+   "i": 18,
+   "page": 1,
+   "start": 894,
+   "in_table": false,
+   "text": "University of Cebu Lapu-lapu and Mandaue",
+   "y": 266.0
+  },
+  {
+   "i": 19,
+   "page": 1,
+   "start": 935,
+   "in_table": false,
+   "text": "*Correspondence",
+   "y": 338.2
+  },
+  {
+   "i": 20,
+   "page": 1,
+   "start": 951,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 21,
+   "page": 1,
+   "start": 952,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 22,
+   "page": 1,
+   "start": 953,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 23,
+   "page": 1,
+   "start": 954,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 24,
+   "page": 1,
+   "start": 955,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 25,
+   "page": 1,
+   "start": 956,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 26,
+   "page": 1,
+   "start": 957,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 27,
+   "page": 1,
+   "start": 958,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 28,
+   "page": 1,
+   "start": 959,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 29,
+   "page": 1,
+   "start": 960,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 30,
+   "page": 1,
+   "start": 961,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 31,
+   "page": 1,
+   "start": 962,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 32,
+   "page": 1,
+   "start": 964,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 33,
+   "page": 1,
+   "start": 965,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 34,
+   "page": 1,
+   "start": 966,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 35,
+   "page": 1,
+   "start": 967,
+   "in_table": false,
+   "text": "INTRODUCTION",
+   "y": 563.6
+  },
+  {
+   "i": 36,
+   "page": 1,
+   "start": 980,
+   "in_table": false,
+   "text": "Student satisfaction is a critical indicator of the quality",
+   "y": 183.5
+  },
+  {
+   "i": 37,
+   "page": 1,
+   "start": 1678,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 38,
+   "page": 1,
+   "start": 1679,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 39,
+   "page": 1,
+   "start": 1680,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 40,
+   "page": 1,
+   "start": 1681,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 41,
+   "page": 1,
+   "start": 1682,
+   "in_table": false,
+   "text": "Copyright: ©2026 The Authors. UCLM Journal of Research and I",
+   "y": 723.2
+  },
+  {
+   "i": 42,
+   "page": 1,
+   "start": 1807,
+   "in_table": false,
+   "text": "This is an open-access journal licensed under the Creative C",
+   "y": 733.0
+  },
+  {
+   "i": 43,
+   "page": 1,
+   "start": 1942,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 44,
+   "page": 2,
+   "start": 1943,
+   "in_table": false,
+   "text": "Research has highlighted several factors that influence stud",
+   "y": 72.6
+  },
+  {
+   "i": 45,
+   "page": 2,
+   "start": 3044,
+   "in_table": false,
+   "text": "Despite these insights, a noticeable gap remains in the lite",
+   "y": 230.8
+  },
+  {
+   "i": 46,
+   "page": 2,
+   "start": 4041,
+   "in_table": false,
+   "text": "Previous research provides a foundation for the present stud",
+   "y": 375.3
+  },
+  {
+   "i": 47,
+   "page": 2,
+   "start": 5072,
+   "in_table": false,
+   "text": "In response to this research gap, the current study aims to",
+   "y": 519.7
+  },
+  {
+   "i": 48,
+   "page": 2,
+   "start": 5877,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 49,
+   "page": 3,
+   "start": 5878,
+   "in_table": false,
+   "text": "Related Studies",
+   "y": 72.9
+  },
+  {
+   "i": 50,
+   "page": 3,
+   "start": 5894,
+   "in_table": false,
+   "text": "Mohamad (2023) explored the relationship between the learnin",
+   "y": 94.5
+  },
+  {
+   "i": 51,
+   "page": 3,
+   "start": 6361,
+   "in_table": false,
+   "text": "Averion and Caleja (2020) investigated the work commitment a",
+   "y": 170.5
+  },
+  {
+   "i": 52,
+   "page": 3,
+   "start": 6763,
+   "in_table": false,
+   "text": "Cinches et al. (2016) examined the relationship between stud",
+   "y": 233.2
+  },
+  {
+   "i": 53,
+   "page": 3,
+   "start": 7111,
+   "in_table": false,
+   "text": "Galvez (2022) evaluated the effectiveness of student affairs",
+   "y": 295.7
+  },
+  {
+   "i": 54,
+   "page": 3,
+   "start": 7431,
+   "in_table": false,
+   "text": "Marasigan (2020) assessed the status of science laboratory f",
+   "y": 358.3
+  },
+  {
+   "i": 55,
+   "page": 3,
+   "start": 7762,
+   "in_table": false,
+   "text": "Synthesis",
+   "y": 421.0
+  },
+  {
+   "i": 56,
+   "page": 3,
+   "start": 7772,
+   "in_table": false,
+   "text": "The reviewed Philippine studies collectively illustrate that",
+   "y": 442.5
+  },
+  {
+   "i": 57,
+   "page": 3,
+   "start": 8272,
+   "in_table": false,
+   "text": "Similarly, the learning environment, including peer interact",
+   "y": 518.8
+  },
+  {
+   "i": 58,
+   "page": 3,
+   "start": 8578,
+   "in_table": false,
+   "text": "Moreover, the availability and quality of student support se",
+   "y": 567.8
+  },
+  {
+   "i": 59,
+   "page": 3,
+   "start": 8839,
+   "in_table": false,
+   "text": "Despite these findings, a notable gap remains in research th",
+   "y": 616.7
+  },
+  {
+   "i": 60,
+   "page": 3,
+   "start": 9297,
+   "in_table": false,
+   "text": "The present study addresses this gap by evaluating student s",
+   "y": 693.0
+  },
+  {
+   "i": 61,
+   "page": 3,
+   "start": 9495,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 62,
+   "page": 4,
+   "start": 9496,
+   "in_table": false,
+   "text": "how these factors collectively contribute to the overall sat",
+   "y": 72.6
+  },
+  {
+   "i": 63,
+   "page": 4,
+   "start": 9816,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 64,
+   "page": 4,
+   "start": 9817,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 65,
+   "page": 4,
+   "start": 9818,
+   "in_table": false,
+   "text": "METHODOLOGY",
+   "y": 143.4
+  },
+  {
+   "i": 66,
+   "page": 4,
+   "start": 9830,
+   "in_table": false,
+   "text": "This study employed a quantitative descriptive-correlational",
+   "y": 165.0
+  },
+  {
+   "i": 67,
+   "page": 4,
+   "start": 10478,
+   "in_table": false,
+   "text": "The study was conducted within the Junior High School Depart",
+   "y": 268.4
+  },
+  {
+   "i": 68,
+   "page": 4,
+   "start": 11020,
+   "in_table": false,
+   "text": "Data were gathered through a structured survey questionnaire",
+   "y": 358.4
+  },
+  {
+   "i": 69,
+   "page": 4,
+   "start": 11839,
+   "in_table": false,
+   "text": "For the treatment of data, descriptive statistics, including",
+   "y": 475.5
+  },
+  {
+   "i": 70,
+   "page": 4,
+   "start": 12314,
+   "in_table": false,
+   "text": "Ethical considerations were strictly observed throughout the",
+   "y": 551.7
+  },
+  {
+   "i": 71,
+   "page": 4,
+   "start": 13100,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 72,
+   "page": 5,
+   "start": 13101,
+   "in_table": false,
+   "text": "RESULTS AND DISCUSSION",
+   "y": 72.9
+  },
+  {
+   "i": 73,
+   "page": 5,
+   "start": 13124,
+   "in_table": false,
+   "text": "This section presents the analysis of data gathered from jun",
+   "y": 94.3
+  },
+  {
+   "i": 74,
+   "page": 5,
+   "start": 13658,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 75,
+   "page": 5,
+   "start": 13659,
+   "in_table": false,
+   "text": "Table 1",
+   "y": 183.1
+  },
+  {
+   "i": 76,
+   "page": 5,
+   "start": 13667,
+   "in_table": false,
+   "text": "Profile of the Respondents",
+   "y": 196.8
+  },
+  {
+   "i": 77,
+   "page": 5,
+   "start": 13694,
+   "in_table": true,
+   "text": "Variable\r\u0007",
+   "y": 210.9
+  },
+  {
+   "i": 78,
+   "page": 5,
+   "start": 13703,
+   "in_table": true,
+   "text": "Category\r\u0007",
+   "y": 210.9
+  },
+  {
+   "i": 79,
+   "page": 5,
+   "start": 13712,
+   "in_table": true,
+   "text": "Frequency (n)\r\u0007",
+   "y": 210.9
+  },
+  {
+   "i": 80,
+   "page": 5,
+   "start": 13726,
+   "in_table": true,
+   "text": "Percent (%)\r\u0007",
+   "y": 210.9
+  },
+  {
+   "i": 81,
+   "page": 5,
+   "start": 13738,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 82,
+   "page": 5,
+   "start": 13739,
+   "in_table": true,
+   "text": "Age\r\u0007",
+   "y": null
+  },
+  {
+   "i": 83,
+   "page": 5,
+   "start": 13743,
+   "in_table": true,
+   "text": "5 to 7 years old\r\u0007",
+   "y": 225.6
+  },
+  {
+   "i": 84,
+   "page": 5,
+   "start": 13760,
+   "in_table": true,
+   "text": "350\r\u0007",
+   "y": null
+  },
+  {
+   "i": 85,
+   "page": 5,
+   "start": 13764,
+   "in_table": true,
+   "text": "70.1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 86,
+   "page": 5,
+   "start": 13769,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 87,
+   "page": 5,
+   "start": 13770,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 88,
+   "page": 5,
+   "start": 13771,
+   "in_table": true,
+   "text": "8 to 10 years old\r\u0007",
+   "y": 239.5
+  },
+  {
+   "i": 89,
+   "page": 5,
+   "start": 13789,
+   "in_table": true,
+   "text": "148\r\u0007",
+   "y": null
+  },
+  {
+   "i": 90,
+   "page": 5,
+   "start": 13793,
+   "in_table": true,
+   "text": "29.7\r\u0007",
+   "y": null
+  },
+  {
+   "i": 91,
+   "page": 5,
+   "start": 13798,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 92,
+   "page": 5,
+   "start": 13799,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 93,
+   "page": 5,
+   "start": 13800,
+   "in_table": true,
+   "text": "11 to 13 years old\r\u0007",
+   "y": 254.1
+  },
+  {
+   "i": 94,
+   "page": 5,
+   "start": 13819,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 95,
+   "page": 5,
+   "start": 13821,
+   "in_table": true,
+   "text": "0.2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 96,
+   "page": 5,
+   "start": 13825,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 97,
+   "page": 5,
+   "start": 13826,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 98,
+   "page": 5,
+   "start": 13827,
+   "in_table": true,
+   "text": "Total\r\u0007",
+   "y": 268.7
+  },
+  {
+   "i": 99,
+   "page": 5,
+   "start": 13833,
+   "in_table": true,
+   "text": "499\r\u0007",
+   "y": null
+  },
+  {
+   "i": 100,
+   "page": 5,
+   "start": 13837,
+   "in_table": true,
+   "text": "100.0\r\u0007",
+   "y": 268.7
+  },
+  {
+   "i": 101,
+   "page": 5,
+   "start": 13843,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 102,
+   "page": 5,
+   "start": 13844,
+   "in_table": true,
+   "text": "Gender\r\u0007",
+   "y": 283.5
+  },
+  {
+   "i": 103,
+   "page": 5,
+   "start": 13851,
+   "in_table": true,
+   "text": "Male\r\u0007",
+   "y": 283.1
+  },
+  {
+   "i": 104,
+   "page": 5,
+   "start": 13856,
+   "in_table": true,
+   "text": "230\r\u0007",
+   "y": null
+  },
+  {
+   "i": 105,
+   "page": 5,
+   "start": 13860,
+   "in_table": true,
+   "text": "46.1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 106,
+   "page": 5,
+   "start": 13865,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 107,
+   "page": 5,
+   "start": 13866,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 108,
+   "page": 5,
+   "start": 13867,
+   "in_table": true,
+   "text": "Female\r\u0007",
+   "y": 297.7
+  },
+  {
+   "i": 109,
+   "page": 5,
+   "start": 13874,
+   "in_table": true,
+   "text": "260\r\u0007",
+   "y": null
+  },
+  {
+   "i": 110,
+   "page": 5,
+   "start": 13878,
+   "in_table": true,
+   "text": "52.1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 111,
+   "page": 5,
+   "start": 13883,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 112,
+   "page": 5,
+   "start": 13884,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 113,
+   "page": 5,
+   "start": 13885,
+   "in_table": true,
+   "text": "Prefer not to say\r\u0007",
+   "y": 312.2
+  },
+  {
+   "i": 114,
+   "page": 5,
+   "start": 13903,
+   "in_table": true,
+   "text": "9\r\u0007",
+   "y": null
+  },
+  {
+   "i": 115,
+   "page": 5,
+   "start": 13905,
+   "in_table": true,
+   "text": "1.8\r\u0007",
+   "y": null
+  },
+  {
+   "i": 116,
+   "page": 5,
+   "start": 13909,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 117,
+   "page": 5,
+   "start": 13910,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 118,
+   "page": 5,
+   "start": 13911,
+   "in_table": true,
+   "text": "Total\r\u0007",
+   "y": 326.9
+  },
+  {
+   "i": 119,
+   "page": 5,
+   "start": 13917,
+   "in_table": true,
+   "text": "499\r\u0007",
+   "y": null
+  },
+  {
+   "i": 120,
+   "page": 5,
+   "start": 13921,
+   "in_table": true,
+   "text": "100.0\r\u0007",
+   "y": 326.9
+  },
+  {
+   "i": 121,
+   "page": 5,
+   "start": 13927,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 122,
+   "page": 5,
+   "start": 13928,
+   "in_table": true,
+   "text": "Grade\r\u0007",
+   "y": 341.2
+  },
+  {
+   "i": 123,
+   "page": 5,
+   "start": 13934,
+   "in_table": true,
+   "text": "Grade 1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 124,
+   "page": 5,
+   "start": 13942,
+   "in_table": true,
+   "text": "73\r\u0007",
+   "y": null
+  },
+  {
+   "i": 125,
+   "page": 5,
+   "start": 13945,
+   "in_table": true,
+   "text": "14.6\r\u0007",
+   "y": null
+  },
+  {
+   "i": 126,
+   "page": 5,
+   "start": 13950,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 127,
+   "page": 5,
+   "start": 13951,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 128,
+   "page": 5,
+   "start": 13952,
+   "in_table": true,
+   "text": "Grade 2\r\u0007",
+   "y": 355.7
+  },
+  {
+   "i": 129,
+   "page": 5,
+   "start": 13960,
+   "in_table": true,
+   "text": "173\r\u0007",
+   "y": null
+  },
+  {
+   "i": 130,
+   "page": 5,
+   "start": 13964,
+   "in_table": true,
+   "text": "34.7\r\u0007",
+   "y": null
+  },
+  {
+   "i": 131,
+   "page": 5,
+   "start": 13969,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 132,
+   "page": 5,
+   "start": 13970,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 133,
+   "page": 5,
+   "start": 13971,
+   "in_table": true,
+   "text": "Grade 3\r\u0007",
+   "y": 370.3
+  },
+  {
+   "i": 134,
+   "page": 5,
+   "start": 13979,
+   "in_table": true,
+   "text": "106\r\u0007",
+   "y": null
+  },
+  {
+   "i": 135,
+   "page": 5,
+   "start": 13983,
+   "in_table": true,
+   "text": "21.2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 136,
+   "page": 5,
+   "start": 13988,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 137,
+   "page": 5,
+   "start": 13989,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 138,
+   "page": 5,
+   "start": 13990,
+   "in_table": true,
+   "text": "Grade 4\r\u0007",
+   "y": 384.8
+  },
+  {
+   "i": 139,
+   "page": 5,
+   "start": 13998,
+   "in_table": true,
+   "text": "147\r\u0007",
+   "y": null
+  },
+  {
+   "i": 140,
+   "page": 5,
+   "start": 14002,
+   "in_table": true,
+   "text": "29.5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 141,
+   "page": 5,
+   "start": 14007,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 142,
+   "page": 5,
+   "start": 14008,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 143,
+   "page": 5,
+   "start": 14009,
+   "in_table": true,
+   "text": "Total\r\u0007",
+   "y": 399.7
+  },
+  {
+   "i": 144,
+   "page": 5,
+   "start": 14015,
+   "in_table": true,
+   "text": "499\r\u0007",
+   "y": null
+  },
+  {
+   "i": 145,
+   "page": 5,
+   "start": 14019,
+   "in_table": true,
+   "text": "100.0\r\u0007",
+   "y": 399.7
+  },
+  {
+   "i": 146,
+   "page": 5,
+   "start": 14025,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 147,
+   "page": 5,
+   "start": 14026,
+   "in_table": false,
+   "text": "Table 1 shows that the highest proportion of respondents was",
+   "y": 427.3
+  },
+  {
+   "i": 148,
+   "page": 5,
+   "start": 14569,
+   "in_table": false,
+   "text": "This distribution implies that educational planning must foc",
+   "y": 503.1
+  },
+  {
+   "i": 149,
+   "page": 5,
+   "start": 15151,
+   "in_table": false,
+   "text": "The gender distribution also aligns with the findings of Car",
+   "y": 579.2
+  },
+  {
+   "i": 150,
+   "page": 5,
+   "start": 15386,
+   "in_table": false,
+   "text": "Furthermore, the literature on school climate emphasizes tha",
+   "y": 617.1
+  },
+  {
+   "i": 151,
+   "page": 5,
+   "start": 15936,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 152,
+   "page": 6,
+   "start": 15937,
+   "in_table": false,
+   "text": "Table 2",
+   "y": 72.9
+  },
+  {
+   "i": 153,
+   "page": 6,
+   "start": 15945,
+   "in_table": false,
+   "text": "The Level of Satisfaction as Perceived by the Students in th",
+   "y": 86.8
+  },
+  {
+   "i": 154,
+   "page": 6,
+   "start": 16035,
+   "in_table": true,
+   "text": "Indicators\r\u0007",
+   "y": 100.0
+  },
+  {
+   "i": 155,
+   "page": 6,
+   "start": 16046,
+   "in_table": true,
+   "text": "Mean\r\u0007",
+   "y": 100.0
+  },
+  {
+   "i": 156,
+   "page": 6,
+   "start": 16051,
+   "in_table": true,
+   "text": "Interpretation\r\u0007",
+   "y": null
+  },
+  {
+   "i": 157,
+   "page": 6,
+   "start": 16066,
+   "in_table": true,
+   "text": "Rank\r\u0007",
+   "y": 100.0
+  },
+  {
+   "i": 158,
+   "page": 6,
+   "start": 16071,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 159,
+   "page": 6,
+   "start": 16072,
+   "in_table": true,
+   "text": "A. Teacher Quality and Instruction Delivery\r\u0007",
+   "y": 112.8
+  },
+  {
+   "i": 160,
+   "page": 6,
+   "start": 16116,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 161,
+   "page": 6,
+   "start": 16117,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 162,
+   "page": 6,
+   "start": 16118,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 163,
+   "page": 6,
+   "start": 16119,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 164,
+   "page": 6,
+   "start": 16120,
+   "in_table": true,
+   "text": "My teachers treat students with respect.\r\u0007",
+   "y": 126.0
+  },
+  {
+   "i": 165,
+   "page": 6,
+   "start": 16161,
+   "in_table": true,
+   "text": "4.32\r\u0007",
+   "y": null
+  },
+  {
+   "i": 166,
+   "page": 6,
+   "start": 16166,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 167,
+   "page": 6,
+   "start": 16181,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 168,
+   "page": 6,
+   "start": 16183,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 169,
+   "page": 6,
+   "start": 16184,
+   "in_table": true,
+   "text": "My teachers respond to student concerns and questions.\r\u0007",
+   "y": 139.2
+  },
+  {
+   "i": 170,
+   "page": 6,
+   "start": 16239,
+   "in_table": true,
+   "text": "4.32\r\u0007",
+   "y": null
+  },
+  {
+   "i": 171,
+   "page": 6,
+   "start": 16244,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 172,
+   "page": 6,
+   "start": 16259,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 173,
+   "page": 6,
+   "start": 16261,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 174,
+   "page": 6,
+   "start": 16262,
+   "in_table": true,
+   "text": "My teachers explain lessons clearly.\r\u0007",
+   "y": 152.7
+  },
+  {
+   "i": 175,
+   "page": 6,
+   "start": 16299,
+   "in_table": true,
+   "text": "4.17\r\u0007",
+   "y": null
+  },
+  {
+   "i": 176,
+   "page": 6,
+   "start": 16304,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 177,
+   "page": 6,
+   "start": 16314,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 178,
+   "page": 6,
+   "start": 16316,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 179,
+   "page": 6,
+   "start": 16317,
+   "in_table": true,
+   "text": "My teachers make learning an engaging and enjoyable experien",
+   "y": 166.3
+  },
+  {
+   "i": 180,
+   "page": 6,
+   "start": 16381,
+   "in_table": true,
+   "text": "4.16\r\u0007",
+   "y": null
+  },
+  {
+   "i": 181,
+   "page": 6,
+   "start": 16386,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 182,
+   "page": 6,
+   "start": 16396,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 183,
+   "page": 6,
+   "start": 16398,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 184,
+   "page": 6,
+   "start": 16399,
+   "in_table": true,
+   "text": "My teachers grade and assess fairly.\r\u0007",
+   "y": 192.5
+  },
+  {
+   "i": 185,
+   "page": 6,
+   "start": 16436,
+   "in_table": true,
+   "text": "4.08\r\u0007",
+   "y": null
+  },
+  {
+   "i": 186,
+   "page": 6,
+   "start": 16441,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 187,
+   "page": 6,
+   "start": 16451,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 188,
+   "page": 6,
+   "start": 16453,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 189,
+   "page": 6,
+   "start": 16454,
+   "in_table": true,
+   "text": "Aggregate Mean\r\u0007",
+   "y": 205.6
+  },
+  {
+   "i": 190,
+   "page": 6,
+   "start": 16469,
+   "in_table": true,
+   "text": "4.21\r\u0007",
+   "y": null
+  },
+  {
+   "i": 191,
+   "page": 6,
+   "start": 16474,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 192,
+   "page": 6,
+   "start": 16489,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 193,
+   "page": 6,
+   "start": 16490,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 194,
+   "page": 6,
+   "start": 16491,
+   "in_table": true,
+   "text": "B. Curriculum and Academic Workload\r\u0007",
+   "y": 218.3
+  },
+  {
+   "i": 195,
+   "page": 6,
+   "start": 16527,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 196,
+   "page": 6,
+   "start": 16528,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 197,
+   "page": 6,
+   "start": 16529,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 198,
+   "page": 6,
+   "start": 16530,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 199,
+   "page": 6,
+   "start": 16531,
+   "in_table": true,
+   "text": "The subjects I take are relevant and valuable.\r\u0007",
+   "y": 231.6
+  },
+  {
+   "i": 200,
+   "page": 6,
+   "start": 16578,
+   "in_table": true,
+   "text": "4.20\r\u0007",
+   "y": null
+  },
+  {
+   "i": 201,
+   "page": 6,
+   "start": 16583,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 202,
+   "page": 6,
+   "start": 16593,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 203,
+   "page": 6,
+   "start": 16595,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 204,
+   "page": 6,
+   "start": 16596,
+   "in_table": true,
+   "text": "I have opportunities for project-based or hands-on learning.",
+   "y": 245.2
+  },
+  {
+   "i": 205,
+   "page": 6,
+   "start": 16657,
+   "in_table": true,
+   "text": "4.19\r\u0007",
+   "y": null
+  },
+  {
+   "i": 206,
+   "page": 6,
+   "start": 16662,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 207,
+   "page": 6,
+   "start": 16672,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 208,
+   "page": 6,
+   "start": 16674,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 209,
+   "page": 6,
+   "start": 16675,
+   "in_table": true,
+   "text": "I am satisfied with the variety of subjects and electives.\r\u0007",
+   "y": 271.1
+  },
+  {
+   "i": 210,
+   "page": 6,
+   "start": 16734,
+   "in_table": true,
+   "text": "4.06\r\u0007",
+   "y": null
+  },
+  {
+   "i": 211,
+   "page": 6,
+   "start": 16739,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 212,
+   "page": 6,
+   "start": 16749,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 213,
+   "page": 6,
+   "start": 16751,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 214,
+   "page": 6,
+   "start": 16752,
+   "in_table": true,
+   "text": "The lessons match my abilities and readiness.\r\u0007",
+   "y": 284.6
+  },
+  {
+   "i": 215,
+   "page": 6,
+   "start": 16798,
+   "in_table": true,
+   "text": "4.05\r\u0007",
+   "y": null
+  },
+  {
+   "i": 216,
+   "page": 6,
+   "start": 16803,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 217,
+   "page": 6,
+   "start": 16813,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 218,
+   "page": 6,
+   "start": 16815,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 219,
+   "page": 6,
+   "start": 16816,
+   "in_table": true,
+   "text": "The academic workload is appropriate for my level.\r\u0007",
+   "y": 298.4
+  },
+  {
+   "i": 220,
+   "page": 6,
+   "start": 16867,
+   "in_table": true,
+   "text": "3.93\r\u0007",
+   "y": null
+  },
+  {
+   "i": 221,
+   "page": 6,
+   "start": 16872,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 222,
+   "page": 6,
+   "start": 16882,
+   "in_table": true,
+   "text": "5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 223,
+   "page": 6,
+   "start": 16884,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 224,
+   "page": 6,
+   "start": 16885,
+   "in_table": true,
+   "text": "Aggregate Mean\r\u0007",
+   "y": 311.5
+  },
+  {
+   "i": 225,
+   "page": 6,
+   "start": 16900,
+   "in_table": true,
+   "text": "4.08\r\u0007",
+   "y": null
+  },
+  {
+   "i": 226,
+   "page": 6,
+   "start": 16905,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 227,
+   "page": 6,
+   "start": 16915,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 228,
+   "page": 6,
+   "start": 16916,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 229,
+   "page": 6,
+   "start": 16917,
+   "in_table": true,
+   "text": "C.Learning Environment and Peer Interaction\r\u0007",
+   "y": 324.2
+  },
+  {
+   "i": 230,
+   "page": 6,
+   "start": 16961,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 231,
+   "page": 6,
+   "start": 16962,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 232,
+   "page": 6,
+   "start": 16963,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 233,
+   "page": 6,
+   "start": 16964,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 234,
+   "page": 6,
+   "start": 16965,
+   "in_table": true,
+   "text": "I have opportunities to work with others in groups.\r\u0007",
+   "y": 337.4
+  },
+  {
+   "i": 235,
+   "page": 6,
+   "start": 17017,
+   "in_table": true,
+   "text": "4.13\r\u0007",
+   "y": null
+  },
+  {
+   "i": 236,
+   "page": 6,
+   "start": 17022,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 237,
+   "page": 6,
+   "start": 17032,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 238,
+   "page": 6,
+   "start": 17034,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 239,
+   "page": 6,
+   "start": 17035,
+   "in_table": true,
+   "text": "I have supportive and friendly classmates.\r\u0007",
+   "y": 350.8
+  },
+  {
+   "i": 240,
+   "page": 6,
+   "start": 17078,
+   "in_table": true,
+   "text": "4.06\r\u0007",
+   "y": null
+  },
+  {
+   "i": 241,
+   "page": 6,
+   "start": 17083,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 242,
+   "page": 6,
+   "start": 17093,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 243,
+   "page": 6,
+   "start": 17095,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 244,
+   "page": 6,
+   "start": 17096,
+   "in_table": true,
+   "text": "My classroom atmosphere supports learning.\r\u0007",
+   "y": 364.4
+  },
+  {
+   "i": 245,
+   "page": 6,
+   "start": 17139,
+   "in_table": true,
+   "text": "4.04\r\u0007",
+   "y": null
+  },
+  {
+   "i": 246,
+   "page": 6,
+   "start": 17144,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 247,
+   "page": 6,
+   "start": 17154,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 248,
+   "page": 6,
+   "start": 17156,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 249,
+   "page": 6,
+   "start": 17157,
+   "in_table": true,
+   "text": "I\tfeel\tcomfortable\tand\tincluded\tin\tmy school environment.\r\u0007",
+   "y": 377.8
+  },
+  {
+   "i": 250,
+   "page": 6,
+   "start": 17215,
+   "in_table": true,
+   "text": "4.00\r\u0007",
+   "y": null
+  },
+  {
+   "i": 251,
+   "page": 6,
+   "start": 17220,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 252,
+   "page": 6,
+   "start": 17230,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 253,
+   "page": 6,
+   "start": 17232,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 254,
+   "page": 6,
+   "start": 17233,
+   "in_table": true,
+   "text": "The school protects students from bullying and discriminatio",
+   "y": 404.1
+  },
+  {
+   "i": 255,
+   "page": 6,
+   "start": 17296,
+   "in_table": true,
+   "text": "3.94\r\u0007",
+   "y": null
+  },
+  {
+   "i": 256,
+   "page": 6,
+   "start": 17301,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 257,
+   "page": 6,
+   "start": 17311,
+   "in_table": true,
+   "text": "5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 258,
+   "page": 6,
+   "start": 17313,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 259,
+   "page": 6,
+   "start": 17314,
+   "in_table": true,
+   "text": "Aggregate Mean\r\u0007",
+   "y": 429.9
+  },
+  {
+   "i": 260,
+   "page": 6,
+   "start": 17329,
+   "in_table": true,
+   "text": "4.03\r\u0007",
+   "y": null
+  },
+  {
+   "i": 261,
+   "page": 6,
+   "start": 17334,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 262,
+   "page": 6,
+   "start": 17344,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 263,
+   "page": 6,
+   "start": 17345,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 264,
+   "page": 6,
+   "start": 17346,
+   "in_table": true,
+   "text": "D. School Facilities and Resources\r\u0007",
+   "y": 442.4
+  },
+  {
+   "i": 265,
+   "page": 6,
+   "start": 17381,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 266,
+   "page": 6,
+   "start": 17382,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 267,
+   "page": 6,
+   "start": 17383,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 268,
+   "page": 6,
+   "start": 17384,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 269,
+   "page": 6,
+   "start": 17385,
+   "in_table": true,
+   "text": "The library, laboratories, and technology resources are acce",
+   "y": 455.8
+  },
+  {
+   "i": 270,
+   "page": 6,
+   "start": 17453,
+   "in_table": true,
+   "text": "4.35\r\u0007",
+   "y": null
+  },
+  {
+   "i": 271,
+   "page": 6,
+   "start": 17458,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 272,
+   "page": 6,
+   "start": 17473,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 273,
+   "page": 6,
+   "start": 17475,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 274,
+   "page": 6,
+   "start": 17476,
+   "in_table": true,
+   "text": "The school maintains a secure and safe environment for its s",
+   "y": 481.8
+  },
+  {
+   "i": 275,
+   "page": 6,
+   "start": 17545,
+   "in_table": true,
+   "text": "4.32\r\u0007",
+   "y": null
+  },
+  {
+   "i": 276,
+   "page": 6,
+   "start": 17550,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 277,
+   "page": 6,
+   "start": 17560,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 278,
+   "page": 6,
+   "start": 17562,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 279,
+   "page": 6,
+   "start": 17563,
+   "in_table": true,
+   "text": "The school provides good sports and recreational facilities.",
+   "y": 507.8
+  },
+  {
+   "i": 280,
+   "page": 6,
+   "start": 17624,
+   "in_table": true,
+   "text": "4.17\r\u0007",
+   "y": null
+  },
+  {
+   "i": 281,
+   "page": 6,
+   "start": 17629,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 282,
+   "page": 6,
+   "start": 17639,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 283,
+   "page": 6,
+   "start": 17641,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 284,
+   "page": 6,
+   "start": 17642,
+   "in_table": true,
+   "text": "Classrooms, chairs, and tables are adequate.\r\u0007",
+   "y": 533.7
+  },
+  {
+   "i": 285,
+   "page": 6,
+   "start": 17687,
+   "in_table": true,
+   "text": "4.05\r\u0007",
+   "y": null
+  },
+  {
+   "i": 286,
+   "page": 6,
+   "start": 17692,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 287,
+   "page": 6,
+   "start": 17702,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 288,
+   "page": 6,
+   "start": 17704,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 289,
+   "page": 6,
+   "start": 17705,
+   "in_table": true,
+   "text": "The comfort rooms are clean and safe to use.\r\u0007",
+   "y": 547.5
+  },
+  {
+   "i": 290,
+   "page": 6,
+   "start": 17750,
+   "in_table": true,
+   "text": "3.73\r\u0007",
+   "y": null
+  },
+  {
+   "i": 291,
+   "page": 6,
+   "start": 17755,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 292,
+   "page": 6,
+   "start": 17765,
+   "in_table": true,
+   "text": "5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 293,
+   "page": 6,
+   "start": 17767,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 294,
+   "page": 6,
+   "start": 17768,
+   "in_table": true,
+   "text": "Aggregate Mean\r\u0007",
+   "y": 560.6
+  },
+  {
+   "i": 295,
+   "page": 6,
+   "start": 17783,
+   "in_table": true,
+   "text": "4.13\r\u0007",
+   "y": null
+  },
+  {
+   "i": 296,
+   "page": 6,
+   "start": 17788,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 297,
+   "page": 6,
+   "start": 17798,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 298,
+   "page": 6,
+   "start": 17799,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 299,
+   "page": 6,
+   "start": 17800,
+   "in_table": true,
+   "text": "E. Student Support Services and Extracurricular Activities\r\u0007",
+   "y": 573.3
+  },
+  {
+   "i": 300,
+   "page": 6,
+   "start": 17859,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 301,
+   "page": 6,
+   "start": 17860,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 302,
+   "page": 6,
+   "start": 17861,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 303,
+   "page": 6,
+   "start": 17862,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 304,
+   "page": 6,
+   "start": 17863,
+   "in_table": true,
+   "text": "Guidance counseling and mental health support are available",
+   "y": 587.6
+  },
+  {
+   "i": 305,
+   "page": 6,
+   "start": 17936,
+   "in_table": true,
+   "text": "4.32\r\u0007",
+   "y": null
+  },
+  {
+   "i": 306,
+   "page": 6,
+   "start": 17941,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 307,
+   "page": 6,
+   "start": 17956,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 308,
+   "page": 6,
+   "start": 17958,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 309,
+   "page": 6,
+   "start": 17959,
+   "in_table": true,
+   "text": "I am encouraged to join clubs, organizations, or leadership",
+   "y": 612.8
+  },
+  {
+   "i": 310,
+   "page": 6,
+   "start": 18029,
+   "in_table": true,
+   "text": "4.26\r\u0007",
+   "y": null
+  },
+  {
+   "i": 311,
+   "page": 6,
+   "start": 18034,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 312,
+   "page": 6,
+   "start": 18049,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 313,
+   "page": 6,
+   "start": 18051,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 314,
+   "page": 6,
+   "start": 18052,
+   "in_table": true,
+   "text": "I have access to sports, arts, and cultural activities.\r\u0007",
+   "y": 638.7
+  },
+  {
+   "i": 315,
+   "page": 6,
+   "start": 18108,
+   "in_table": true,
+   "text": "4.25\r\u0007",
+   "y": null
+  },
+  {
+   "i": 316,
+   "page": 6,
+   "start": 18113,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 317,
+   "page": 6,
+   "start": 18128,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 318,
+   "page": 6,
+   "start": 18130,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 319,
+   "page": 6,
+   "start": 18131,
+   "in_table": true,
+   "text": "Academic tutoring or remedial programs are provided when nec",
+   "y": 652.3
+  },
+  {
+   "i": 320,
+   "page": 6,
+   "start": 18199,
+   "in_table": true,
+   "text": "4.14\r\u0007",
+   "y": null
+  },
+  {
+   "i": 321,
+   "page": 6,
+   "start": 18204,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 322,
+   "page": 6,
+   "start": 18214,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 323,
+   "page": 6,
+   "start": 18216,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 324,
+   "page": 6,
+   "start": 18217,
+   "in_table": true,
+   "text": "The school recognizes and supports my talents and achievemen",
+   "y": 679.3
+  },
+  {
+   "i": 325,
+   "page": 6,
+   "start": 18281,
+   "in_table": true,
+   "text": "4.10\r\u0007",
+   "y": null
+  },
+  {
+   "i": 326,
+   "page": 6,
+   "start": 18286,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 327,
+   "page": 6,
+   "start": 18296,
+   "in_table": true,
+   "text": "5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 328,
+   "page": 6,
+   "start": 18298,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 329,
+   "page": 6,
+   "start": 18299,
+   "in_table": true,
+   "text": "Aggregate Mean\r\u0007",
+   "y": 704.0
+  },
+  {
+   "i": 330,
+   "page": 6,
+   "start": 18314,
+   "in_table": true,
+   "text": "4.21\r\u0007",
+   "y": null
+  },
+  {
+   "i": 331,
+   "page": 6,
+   "start": 18319,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 332,
+   "page": 6,
+   "start": 18334,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 333,
+   "page": 6,
+   "start": 18335,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 334,
+   "page": 6,
+   "start": 18336,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 335,
+   "page": 7,
+   "start": 18337,
+   "in_table": false,
+   "text": "Table 2 presents the level of student satisfaction in the El",
+   "y": 72.6
+  },
+  {
+   "i": 336,
+   "page": 7,
+   "start": 18657,
+   "in_table": false,
+   "text": "For Teacher Quality and Instruction Delivery, the highest-ra",
+   "y": 123.1
+  },
+  {
+   "i": 337,
+   "page": 7,
+   "start": 19001,
+   "in_table": false,
+   "text": "In terms of Curriculum and Academic Workload, the highest sa",
+   "y": 173.9
+  },
+  {
+   "i": 338,
+   "page": 7,
+   "start": 19282,
+   "in_table": false,
+   "text": "For Learning Environment and Peer Interaction, the highest r",
+   "y": 211.8
+  },
+  {
+   "i": 339,
+   "page": 7,
+   "start": 19589,
+   "in_table": false,
+   "text": "Regarding School Facilities and Resources, the accessibility",
+   "y": 249.8
+  },
+  {
+   "i": 340,
+   "page": 7,
+   "start": 19899,
+   "in_table": false,
+   "text": "Lastly, for Student Support Services and Extracurricular Act",
+   "y": 287.7
+  },
+  {
+   "i": 341,
+   "page": 7,
+   "start": 20279,
+   "in_table": false,
+   "text": "Overall, the aggregate means reveal that students are Very S",
+   "y": 338.3
+  },
+  {
+   "i": 342,
+   "page": 7,
+   "start": 20963,
+   "in_table": false,
+   "text": "The results suggest that students highly value teachers who",
+   "y": 426.9
+  },
+  {
+   "i": 343,
+   "page": 7,
+   "start": 21575,
+   "in_table": false,
+   "text": "Recent studies reinforce these findings. Teacher quality and",
+   "y": 502.8
+  },
+  {
+   "i": 344,
+   "page": 7,
+   "start": 22040,
+   "in_table": false,
+   "text": "In terms of curriculum and workload, research by Castillo et",
+   "y": 566.0
+  },
+  {
+   "i": 345,
+   "page": 7,
+   "start": 22519,
+   "in_table": false,
+   "text": "Moreover, access to facilities and resources, especially lib",
+   "y": 629.4
+  },
+  {
+   "i": 346,
+   "page": 7,
+   "start": 22949,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 347,
+   "page": 8,
+   "start": 22950,
+   "in_table": false,
+   "text": "Table 3",
+   "y": 72.9
+  },
+  {
+   "i": 348,
+   "page": 8,
+   "start": 22958,
+   "in_table": false,
+   "text": "Summarized Data: The Level of Satisfaction as Perceived by t",
+   "y": 86.8
+  },
+  {
+   "i": 349,
+   "page": 8,
+   "start": 23065,
+   "in_table": true,
+   "text": "Variables\r\u0007",
+   "y": 113.5
+  },
+  {
+   "i": 350,
+   "page": 8,
+   "start": 23075,
+   "in_table": true,
+   "text": "Mean\r\u0007",
+   "y": 113.5
+  },
+  {
+   "i": 351,
+   "page": 8,
+   "start": 23080,
+   "in_table": true,
+   "text": "Interpretation\r\u0007",
+   "y": null
+  },
+  {
+   "i": 352,
+   "page": 8,
+   "start": 23095,
+   "in_table": true,
+   "text": "Rank\r\u0007",
+   "y": 113.5
+  },
+  {
+   "i": 353,
+   "page": 8,
+   "start": 23100,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 354,
+   "page": 8,
+   "start": 23101,
+   "in_table": true,
+   "text": "A. Teacher Quality and Instruction Delivery\r\u0007",
+   "y": 126.5
+  },
+  {
+   "i": 355,
+   "page": 8,
+   "start": 23145,
+   "in_table": true,
+   "text": "4.21\r\u0007",
+   "y": null
+  },
+  {
+   "i": 356,
+   "page": 8,
+   "start": 23150,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 357,
+   "page": 8,
+   "start": 23165,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 358,
+   "page": 8,
+   "start": 23167,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 359,
+   "page": 8,
+   "start": 23168,
+   "in_table": true,
+   "text": "B. Curriculum and Academic Workload\r\u0007",
+   "y": 139.7
+  },
+  {
+   "i": 360,
+   "page": 8,
+   "start": 23204,
+   "in_table": true,
+   "text": "4.08\r\u0007",
+   "y": null
+  },
+  {
+   "i": 361,
+   "page": 8,
+   "start": 23209,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 362,
+   "page": 8,
+   "start": 23219,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 363,
+   "page": 8,
+   "start": 23221,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 364,
+   "page": 8,
+   "start": 23222,
+   "in_table": true,
+   "text": "C.Learning Environment and Peer Interaction\r\u0007",
+   "y": 155.3
+  },
+  {
+   "i": 365,
+   "page": 8,
+   "start": 23266,
+   "in_table": true,
+   "text": "4.03\r\u0007",
+   "y": null
+  },
+  {
+   "i": 366,
+   "page": 8,
+   "start": 23271,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 367,
+   "page": 8,
+   "start": 23281,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 368,
+   "page": 8,
+   "start": 23283,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 369,
+   "page": 8,
+   "start": 23284,
+   "in_table": true,
+   "text": "D. School Facilities and Resources\r\u0007",
+   "y": 170.7
+  },
+  {
+   "i": 370,
+   "page": 8,
+   "start": 23319,
+   "in_table": true,
+   "text": "4.13\r\u0007",
+   "y": null
+  },
+  {
+   "i": 371,
+   "page": 8,
+   "start": 23324,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 372,
+   "page": 8,
+   "start": 23334,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 373,
+   "page": 8,
+   "start": 23336,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 374,
+   "page": 8,
+   "start": 23337,
+   "in_table": true,
+   "text": "E. Student Support Services and Extracurricular Activities\r\u0007",
+   "y": 186.0
+  },
+  {
+   "i": 375,
+   "page": 8,
+   "start": 23396,
+   "in_table": true,
+   "text": "4.21\r\u0007",
+   "y": null
+  },
+  {
+   "i": 376,
+   "page": 8,
+   "start": 23401,
+   "in_table": true,
+   "text": "Very Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 377,
+   "page": 8,
+   "start": 23416,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 378,
+   "page": 8,
+   "start": 23418,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 379,
+   "page": 8,
+   "start": 23419,
+   "in_table": true,
+   "text": "Overall Aggregate Mean\r\u0007",
+   "y": 200.9
+  },
+  {
+   "i": 380,
+   "page": 8,
+   "start": 23442,
+   "in_table": true,
+   "text": "4.13\r\u0007",
+   "y": null
+  },
+  {
+   "i": 381,
+   "page": 8,
+   "start": 23447,
+   "in_table": true,
+   "text": "Satisfied\r\u0007",
+   "y": null
+  },
+  {
+   "i": 382,
+   "page": 8,
+   "start": 23457,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 383,
+   "page": 8,
+   "start": 23458,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 384,
+   "page": 8,
+   "start": 23459,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 385,
+   "page": 8,
+   "start": 23460,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 386,
+   "page": 8,
+   "start": 23461,
+   "in_table": false,
+   "text": "Table 3 presents the summarized data on the level of student",
+   "y": 242.5
+  },
+  {
+   "i": 387,
+   "page": 8,
+   "start": 23986,
+   "in_table": false,
+   "text": "On the other hand, the lowest satisfaction level was found i",
+   "y": 318.3
+  },
+  {
+   "i": 388,
+   "page": 8,
+   "start": 24576,
+   "in_table": false,
+   "text": "Overall, the aggregate mean of 4.13 indicates that students",
+   "y": 394.3
+  },
+  {
+   "i": 389,
+   "page": 8,
+   "start": 24845,
+   "in_table": false,
+   "text": "The findings highlight the crucial role of teacher quality a",
+   "y": 432.2
+  },
+  {
+   "i": 390,
+   "page": 8,
+   "start": 25218,
+   "in_table": false,
+   "text": "However, the relatively lower rating for the learning enviro",
+   "y": 482.8
+  },
+  {
+   "i": 391,
+   "page": 8,
+   "start": 25612,
+   "in_table": false,
+   "text": "Research supports the strong influence of teaching quality o",
+   "y": 533.5
+  },
+  {
+   "i": 392,
+   "page": 8,
+   "start": 26289,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 393,
+   "page": 9,
+   "start": 26290,
+   "in_table": false,
+   "text": "Table 4",
+   "y": 72.9
+  },
+  {
+   "i": 394,
+   "page": 9,
+   "start": 26298,
+   "in_table": false,
+   "text": "Significant Relationship Between the Profile of the Responde",
+   "y": 86.8
+  },
+  {
+   "i": 395,
+   "page": 9,
+   "start": 26450,
+   "in_table": false,
+   "text": "( = 0.05)",
+   "y": null
+  },
+  {
+   "i": 396,
+   "page": 9,
+   "start": 26461,
+   "in_table": true,
+   "text": "Dimension\r\u0007",
+   "y": 128.8
+  },
+  {
+   "i": 397,
+   "page": 9,
+   "start": 26471,
+   "in_table": true,
+   "text": "Variable\r\u0007",
+   "y": 128.8
+  },
+  {
+   "i": 398,
+   "page": 9,
+   "start": 26480,
+   "in_table": true,
+   "text": "χ² Value\r\u0007",
+   "y": 141.4
+  },
+  {
+   "i": 399,
+   "page": 9,
+   "start": 26489,
+   "in_table": true,
+   "text": "df\r\u0007",
+   "y": null
+  },
+  {
+   "i": 400,
+   "page": 9,
+   "start": 26492,
+   "in_table": true,
+   "text": "p-value\r\u0007",
+   "y": null
+  },
+  {
+   "i": 401,
+   "page": 9,
+   "start": 26500,
+   "in_table": true,
+   "text": "Cramer’s V\r\u0007",
+   "y": null
+  },
+  {
+   "i": 402,
+   "page": 9,
+   "start": 26511,
+   "in_table": true,
+   "text": "Interpretation\r\u0007",
+   "y": 128.8
+  },
+  {
+   "i": 403,
+   "page": 9,
+   "start": 26526,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 404,
+   "page": 9,
+   "start": 26527,
+   "in_table": true,
+   "text": "Teacher Quality and Instruction Delivery\r\u0007",
+   "y": 154.6
+  },
+  {
+   "i": 405,
+   "page": 9,
+   "start": 26568,
+   "in_table": true,
+   "text": "Age\r\u0007",
+   "y": null
+  },
+  {
+   "i": 406,
+   "page": 9,
+   "start": 26572,
+   "in_table": true,
+   "text": "32.923\r\u0007",
+   "y": 154.3
+  },
+  {
+   "i": 407,
+   "page": 9,
+   "start": 26579,
+   "in_table": true,
+   "text": "34\r\u0007",
+   "y": null
+  },
+  {
+   "i": 408,
+   "page": 9,
+   "start": 26582,
+   "in_table": true,
+   "text": ".520\r\u0007",
+   "y": null
+  },
+  {
+   "i": 409,
+   "page": 9,
+   "start": 26587,
+   "in_table": true,
+   "text": ".182\r\u0007",
+   "y": null
+  },
+  {
+   "i": 410,
+   "page": 9,
+   "start": 26592,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 154.3
+  },
+  {
+   "i": 411,
+   "page": 9,
+   "start": 26608,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 412,
+   "page": 9,
+   "start": 26609,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 413,
+   "page": 9,
+   "start": 26610,
+   "in_table": true,
+   "text": "Gender\r\u0007",
+   "y": 179.7
+  },
+  {
+   "i": 414,
+   "page": 9,
+   "start": 26617,
+   "in_table": true,
+   "text": "58.299\r\u0007",
+   "y": 179.7
+  },
+  {
+   "i": 415,
+   "page": 9,
+   "start": 26624,
+   "in_table": true,
+   "text": "51\r\u0007",
+   "y": null
+  },
+  {
+   "i": 416,
+   "page": 9,
+   "start": 26627,
+   "in_table": true,
+   "text": ".225\r\u0007",
+   "y": null
+  },
+  {
+   "i": 417,
+   "page": 9,
+   "start": 26632,
+   "in_table": true,
+   "text": ".197\r\u0007",
+   "y": null
+  },
+  {
+   "i": 418,
+   "page": 9,
+   "start": 26637,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 179.7
+  },
+  {
+   "i": 419,
+   "page": 9,
+   "start": 26653,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 420,
+   "page": 9,
+   "start": 26654,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 421,
+   "page": 9,
+   "start": 26655,
+   "in_table": true,
+   "text": "Grade\r\u0007",
+   "y": 194.1
+  },
+  {
+   "i": 422,
+   "page": 9,
+   "start": 26661,
+   "in_table": true,
+   "text": "50.864\r\u0007",
+   "y": 194.1
+  },
+  {
+   "i": 423,
+   "page": 9,
+   "start": 26668,
+   "in_table": true,
+   "text": "34\r\u0007",
+   "y": null
+  },
+  {
+   "i": 424,
+   "page": 9,
+   "start": 26671,
+   "in_table": true,
+   "text": ".032*\r\u0007",
+   "y": null
+  },
+  {
+   "i": 425,
+   "page": 9,
+   "start": 26677,
+   "in_table": true,
+   "text": ".226\r\u0007",
+   "y": null
+  },
+  {
+   "i": 426,
+   "page": 9,
+   "start": 26682,
+   "in_table": true,
+   "text": "Significant\r\u0007",
+   "y": 194.1
+  },
+  {
+   "i": 427,
+   "page": 9,
+   "start": 26694,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 428,
+   "page": 9,
+   "start": 26695,
+   "in_table": true,
+   "text": "Curriculum and Academic Workload\r\u0007",
+   "y": 207.7
+  },
+  {
+   "i": 429,
+   "page": 9,
+   "start": 26728,
+   "in_table": true,
+   "text": "Age\r\u0007",
+   "y": null
+  },
+  {
+   "i": 430,
+   "page": 9,
+   "start": 26732,
+   "in_table": true,
+   "text": "41.598\r\u0007",
+   "y": 208.3
+  },
+  {
+   "i": 431,
+   "page": 9,
+   "start": 26739,
+   "in_table": true,
+   "text": "34\r\u0007",
+   "y": null
+  },
+  {
+   "i": 432,
+   "page": 9,
+   "start": 26742,
+   "in_table": true,
+   "text": ".174\r\u0007",
+   "y": null
+  },
+  {
+   "i": 433,
+   "page": 9,
+   "start": 26747,
+   "in_table": true,
+   "text": ".204\r\u0007",
+   "y": null
+  },
+  {
+   "i": 434,
+   "page": 9,
+   "start": 26752,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 208.3
+  },
+  {
+   "i": 435,
+   "page": 9,
+   "start": 26768,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 436,
+   "page": 9,
+   "start": 26769,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 437,
+   "page": 9,
+   "start": 26770,
+   "in_table": true,
+   "text": "Gender\r\u0007",
+   "y": 233.7
+  },
+  {
+   "i": 438,
+   "page": 9,
+   "start": 26777,
+   "in_table": true,
+   "text": "73.317\r\u0007",
+   "y": 233.7
+  },
+  {
+   "i": 439,
+   "page": 9,
+   "start": 26784,
+   "in_table": true,
+   "text": "51\r\u0007",
+   "y": null
+  },
+  {
+   "i": 440,
+   "page": 9,
+   "start": 26787,
+   "in_table": true,
+   "text": ".022*\r\u0007",
+   "y": null
+  },
+  {
+   "i": 441,
+   "page": 9,
+   "start": 26793,
+   "in_table": true,
+   "text": ".221\r\u0007",
+   "y": null
+  },
+  {
+   "i": 442,
+   "page": 9,
+   "start": 26798,
+   "in_table": true,
+   "text": "Significant\r\u0007",
+   "y": 233.7
+  },
+  {
+   "i": 443,
+   "page": 9,
+   "start": 26810,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 444,
+   "page": 9,
+   "start": 26811,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 445,
+   "page": 9,
+   "start": 26812,
+   "in_table": true,
+   "text": "Grade\r\u0007",
+   "y": 248.0
+  },
+  {
+   "i": 446,
+   "page": 9,
+   "start": 26818,
+   "in_table": true,
+   "text": "53.649\r\u0007",
+   "y": 248.0
+  },
+  {
+   "i": 447,
+   "page": 9,
+   "start": 26825,
+   "in_table": true,
+   "text": "34\r\u0007",
+   "y": null
+  },
+  {
+   "i": 448,
+   "page": 9,
+   "start": 26828,
+   "in_table": true,
+   "text": ".017*\r\u0007",
+   "y": null
+  },
+  {
+   "i": 449,
+   "page": 9,
+   "start": 26834,
+   "in_table": true,
+   "text": ".232\r\u0007",
+   "y": null
+  },
+  {
+   "i": 450,
+   "page": 9,
+   "start": 26839,
+   "in_table": true,
+   "text": "Significant\r\u0007",
+   "y": 248.0
+  },
+  {
+   "i": 451,
+   "page": 9,
+   "start": 26851,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 452,
+   "page": 9,
+   "start": 26852,
+   "in_table": true,
+   "text": "Learning Environment and Peer Interaction\r\u0007",
+   "y": 261.8
+  },
+  {
+   "i": 453,
+   "page": 9,
+   "start": 26894,
+   "in_table": true,
+   "text": "Age\r\u0007",
+   "y": null
+  },
+  {
+   "i": 454,
+   "page": 9,
+   "start": 26898,
+   "in_table": true,
+   "text": "24.722\r\u0007",
+   "y": 262.5
+  },
+  {
+   "i": 455,
+   "page": 9,
+   "start": 26905,
+   "in_table": true,
+   "text": "36\r\u0007",
+   "y": null
+  },
+  {
+   "i": 456,
+   "page": 9,
+   "start": 26908,
+   "in_table": true,
+   "text": ".922\r\u0007",
+   "y": null
+  },
+  {
+   "i": 457,
+   "page": 9,
+   "start": 26913,
+   "in_table": true,
+   "text": ".157\r\u0007",
+   "y": null
+  },
+  {
+   "i": 458,
+   "page": 9,
+   "start": 26918,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 262.5
+  },
+  {
+   "i": 459,
+   "page": 9,
+   "start": 26934,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 460,
+   "page": 9,
+   "start": 26935,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 461,
+   "page": 9,
+   "start": 26936,
+   "in_table": true,
+   "text": "Gender\r\u0007",
+   "y": 287.8
+  },
+  {
+   "i": 462,
+   "page": 9,
+   "start": 26943,
+   "in_table": true,
+   "text": "38.610\r\u0007",
+   "y": 287.8
+  },
+  {
+   "i": 463,
+   "page": 9,
+   "start": 26950,
+   "in_table": true,
+   "text": "54\r\u0007",
+   "y": null
+  },
+  {
+   "i": 464,
+   "page": 9,
+   "start": 26953,
+   "in_table": true,
+   "text": ".944\r\u0007",
+   "y": null
+  },
+  {
+   "i": 465,
+   "page": 9,
+   "start": 26958,
+   "in_table": true,
+   "text": ".161\r\u0007",
+   "y": null
+  },
+  {
+   "i": 466,
+   "page": 9,
+   "start": 26963,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 287.8
+  },
+  {
+   "i": 467,
+   "page": 9,
+   "start": 26979,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 468,
+   "page": 9,
+   "start": 26980,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 469,
+   "page": 9,
+   "start": 26981,
+   "in_table": true,
+   "text": "Grade\r\u0007",
+   "y": 302.9
+  },
+  {
+   "i": 470,
+   "page": 9,
+   "start": 26987,
+   "in_table": true,
+   "text": "42.252\r\u0007",
+   "y": 302.9
+  },
+  {
+   "i": 471,
+   "page": 9,
+   "start": 26994,
+   "in_table": true,
+   "text": "36\r\u0007",
+   "y": null
+  },
+  {
+   "i": 472,
+   "page": 9,
+   "start": 26997,
+   "in_table": true,
+   "text": ".219\r\u0007",
+   "y": null
+  },
+  {
+   "i": 473,
+   "page": 9,
+   "start": 27002,
+   "in_table": true,
+   "text": ".206\r\u0007",
+   "y": null
+  },
+  {
+   "i": 474,
+   "page": 9,
+   "start": 27007,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 302.9
+  },
+  {
+   "i": 475,
+   "page": 9,
+   "start": 27023,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 476,
+   "page": 9,
+   "start": 27024,
+   "in_table": true,
+   "text": "School Facilities and Resources\r\u0007",
+   "y": 316.6
+  },
+  {
+   "i": 477,
+   "page": 9,
+   "start": 27056,
+   "in_table": true,
+   "text": "Age\r\u0007",
+   "y": null
+  },
+  {
+   "i": 478,
+   "page": 9,
+   "start": 27060,
+   "in_table": true,
+   "text": "24.896\r\u0007",
+   "y": 317.3
+  },
+  {
+   "i": 479,
+   "page": 9,
+   "start": 27067,
+   "in_table": true,
+   "text": "36\r\u0007",
+   "y": null
+  },
+  {
+   "i": 480,
+   "page": 9,
+   "start": 27070,
+   "in_table": true,
+   "text": ".918\r\u0007",
+   "y": null
+  },
+  {
+   "i": 481,
+   "page": 9,
+   "start": 27075,
+   "in_table": true,
+   "text": ".158\r\u0007",
+   "y": null
+  },
+  {
+   "i": 482,
+   "page": 9,
+   "start": 27080,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 317.3
+  },
+  {
+   "i": 483,
+   "page": 9,
+   "start": 27096,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 484,
+   "page": 9,
+   "start": 27097,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 485,
+   "page": 9,
+   "start": 27098,
+   "in_table": true,
+   "text": "Gender\r\u0007",
+   "y": 342.7
+  },
+  {
+   "i": 486,
+   "page": 9,
+   "start": 27105,
+   "in_table": true,
+   "text": "72.691\r\u0007",
+   "y": 342.7
+  },
+  {
+   "i": 487,
+   "page": 9,
+   "start": 27112,
+   "in_table": true,
+   "text": "54\r\u0007",
+   "y": null
+  },
+  {
+   "i": 488,
+   "page": 9,
+   "start": 27115,
+   "in_table": true,
+   "text": ".046*\r\u0007",
+   "y": null
+  },
+  {
+   "i": 489,
+   "page": 9,
+   "start": 27121,
+   "in_table": true,
+   "text": ".220\r\u0007",
+   "y": null
+  },
+  {
+   "i": 490,
+   "page": 9,
+   "start": 27126,
+   "in_table": true,
+   "text": "Significant\r\u0007",
+   "y": 342.7
+  },
+  {
+   "i": 491,
+   "page": 9,
+   "start": 27138,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 492,
+   "page": 9,
+   "start": 27139,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 493,
+   "page": 9,
+   "start": 27140,
+   "in_table": true,
+   "text": "Grade\r\u0007",
+   "y": 357.1
+  },
+  {
+   "i": 494,
+   "page": 9,
+   "start": 27146,
+   "in_table": true,
+   "text": "40.002\r\u0007",
+   "y": 357.1
+  },
+  {
+   "i": 495,
+   "page": 9,
+   "start": 27153,
+   "in_table": true,
+   "text": "36\r\u0007",
+   "y": null
+  },
+  {
+   "i": 496,
+   "page": 9,
+   "start": 27156,
+   "in_table": true,
+   "text": ".297\r\u0007",
+   "y": null
+  },
+  {
+   "i": 497,
+   "page": 9,
+   "start": 27161,
+   "in_table": true,
+   "text": ".200\r\u0007",
+   "y": null
+  },
+  {
+   "i": 498,
+   "page": 9,
+   "start": 27166,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 357.1
+  },
+  {
+   "i": 499,
+   "page": 9,
+   "start": 27182,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 500,
+   "page": 9,
+   "start": 27183,
+   "in_table": true,
+   "text": "Student Support Services and Extracurricular",
+   "y": 372.4
+  },
+  {
+   "i": 501,
+   "page": 9,
+   "start": 27228,
+   "in_table": true,
+   "text": "Activities\r\u0007",
+   "y": 396.9
+  },
+  {
+   "i": 502,
+   "page": 9,
+   "start": 27239,
+   "in_table": true,
+   "text": "Age\r\u0007",
+   "y": null
+  },
+  {
+   "i": 503,
+   "page": 9,
+   "start": 27243,
+   "in_table": true,
+   "text": "22.477\r\u0007",
+   "y": 372.2
+  },
+  {
+   "i": 504,
+   "page": 9,
+   "start": 27250,
+   "in_table": true,
+   "text": "30\r\u0007",
+   "y": null
+  },
+  {
+   "i": 505,
+   "page": 9,
+   "start": 27253,
+   "in_table": true,
+   "text": ".836\r\u0007",
+   "y": null
+  },
+  {
+   "i": 506,
+   "page": 9,
+   "start": 27258,
+   "in_table": true,
+   "text": ".150\r\u0007",
+   "y": null
+  },
+  {
+   "i": 507,
+   "page": 9,
+   "start": 27263,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 372.2
+  },
+  {
+   "i": 508,
+   "page": 9,
+   "start": 27279,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 509,
+   "page": 9,
+   "start": 27280,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 510,
+   "page": 9,
+   "start": 27281,
+   "in_table": true,
+   "text": "Gender\r\u0007",
+   "y": 410.1
+  },
+  {
+   "i": 511,
+   "page": 9,
+   "start": 27288,
+   "in_table": true,
+   "text": "53.674\r\u0007",
+   "y": 410.1
+  },
+  {
+   "i": 512,
+   "page": 9,
+   "start": 27295,
+   "in_table": true,
+   "text": "45\r\u0007",
+   "y": null
+  },
+  {
+   "i": 513,
+   "page": 9,
+   "start": 27298,
+   "in_table": true,
+   "text": ".176\r\u0007",
+   "y": null
+  },
+  {
+   "i": 514,
+   "page": 9,
+   "start": 27303,
+   "in_table": true,
+   "text": ".189\r\u0007",
+   "y": null
+  },
+  {
+   "i": 515,
+   "page": 9,
+   "start": 27308,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 410.1
+  },
+  {
+   "i": 516,
+   "page": 9,
+   "start": 27324,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 517,
+   "page": 9,
+   "start": 27325,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 518,
+   "page": 9,
+   "start": 27326,
+   "in_table": true,
+   "text": "Grade\r\u0007",
+   "y": 424.5
+  },
+  {
+   "i": 519,
+   "page": 9,
+   "start": 27332,
+   "in_table": true,
+   "text": "40.785\r\u0007",
+   "y": 424.5
+  },
+  {
+   "i": 520,
+   "page": 9,
+   "start": 27339,
+   "in_table": true,
+   "text": "30\r\u0007",
+   "y": null
+  },
+  {
+   "i": 521,
+   "page": 9,
+   "start": 27342,
+   "in_table": true,
+   "text": ".091\r\u0007",
+   "y": null
+  },
+  {
+   "i": 522,
+   "page": 9,
+   "start": 27347,
+   "in_table": true,
+   "text": ".202\r\u0007",
+   "y": null
+  },
+  {
+   "i": 523,
+   "page": 9,
+   "start": 27352,
+   "in_table": true,
+   "text": "Not significant\r\u0007",
+   "y": 424.5
+  },
+  {
+   "i": 524,
+   "page": 9,
+   "start": 27368,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 525,
+   "page": 9,
+   "start": 27369,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 526,
+   "page": 9,
+   "start": 27370,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 527,
+   "page": 9,
+   "start": 27371,
+   "in_table": false,
+   "text": "Table 4 presents the test of significant relationships betwe",
+   "y": 467.2
+  },
+  {
+   "i": 528,
+   "page": 9,
+   "start": 27605,
+   "in_table": false,
+   "text": "For Teacher Quality and Instruction Delivery, age and gender",
+   "y": 505.3
+  },
+  {
+   "i": 529,
+   "page": 9,
+   "start": 27908,
+   "in_table": false,
+   "text": "In the case of Curriculum and Academic Workload, both gender",
+   "y": 543.2
+  },
+  {
+   "i": 530,
+   "page": 9,
+   "start": 28161,
+   "in_table": false,
+   "text": "For Learning Environment and Peer Interaction, none of the p",
+   "y": 581.1
+  },
+  {
+   "i": 531,
+   "page": 9,
+   "start": 28362,
+   "in_table": false,
+   "text": "Under School Facilities and Resources, gender emerged as a s",
+   "y": 606.5
+  },
+  {
+   "i": 532,
+   "page": 9,
+   "start": 28583,
+   "in_table": false,
+   "text": "Finally, for Student Support Services and Extracurricular Ac",
+   "y": 644.5
+  },
+  {
+   "i": 533,
+   "page": 9,
+   "start": 28807,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 534,
+   "page": 10,
+   "start": 28808,
+   "in_table": false,
+   "text": "The findings suggest that grade level is the most influentia",
+   "y": 72.6
+  },
+  {
+   "i": 535,
+   "page": 10,
+   "start": 29114,
+   "in_table": false,
+   "text": "The significance of gender in curriculum workload and school",
+   "y": 110.7
+  },
+  {
+   "i": 536,
+   "page": 10,
+   "start": 29423,
+   "in_table": false,
+   "text": "The lack of significant results for age across most dimensio",
+   "y": 161.2
+  },
+  {
+   "i": 537,
+   "page": 10,
+   "start": 29690,
+   "in_table": false,
+   "text": "Overall, these findings highlight the importance of inclusiv",
+   "y": 199.2
+  },
+  {
+   "i": 538,
+   "page": 10,
+   "start": 29910,
+   "in_table": false,
+   "text": "Research underscores that grade level influences perceptions",
+   "y": 237.2
+  },
+  {
+   "i": 539,
+   "page": 10,
+   "start": 30588,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 540,
+   "page": 10,
+   "start": 30589,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 541,
+   "page": 10,
+   "start": 30590,
+   "in_table": false,
+   "text": "Table 5",
+   "y": 353.6
+  },
+  {
+   "i": 542,
+   "page": 10,
+   "start": 30598,
+   "in_table": false,
+   "text": "Significant Predictors of Student Satisfaction Among the Stu",
+   "y": 367.4
+  },
+  {
+   "i": 543,
+   "page": 10,
+   "start": 30700,
+   "in_table": false,
+   "text": "( = 0.05)",
+   "y": null
+  },
+  {
+   "i": 544,
+   "page": 10,
+   "start": 30711,
+   "in_table": true,
+   "text": "Predictor Variable\r\u0007",
+   "y": 409.5
+  },
+  {
+   "i": 545,
+   "page": 10,
+   "start": 30730,
+   "in_table": true,
+   "text": "B",
+   "y": null
+  },
+  {
+   "i": 546,
+   "page": 10,
+   "start": 30732,
+   "in_table": true,
+   "text": "(Unstandardized Coefficient)\r\u0007",
+   "y": 422.1
+  },
+  {
+   "i": 547,
+   "page": 10,
+   "start": 30761,
+   "in_table": true,
+   "text": "β (Standardized Coefficient)\r\u0007",
+   "y": 409.6
+  },
+  {
+   "i": 548,
+   "page": 10,
+   "start": 30790,
+   "in_table": true,
+   "text": "p-value\r\u0007",
+   "y": null
+  },
+  {
+   "i": 549,
+   "page": 10,
+   "start": 30798,
+   "in_table": true,
+   "text": "Significance\r\u0007",
+   "y": 409.5
+  },
+  {
+   "i": 550,
+   "page": 10,
+   "start": 30811,
+   "in_table": true,
+   "text": "Decision\r\u0007",
+   "y": 409.5
+  },
+  {
+   "i": 551,
+   "page": 10,
+   "start": 30820,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 552,
+   "page": 10,
+   "start": 30821,
+   "in_table": true,
+   "text": "Student Support Services and",
+   "y": 448.2
+  },
+  {
+   "i": 553,
+   "page": 10,
+   "start": 30850,
+   "in_table": true,
+   "text": "Extracurricular Activities\r\u0007",
+   "y": 473.2
+  },
+  {
+   "i": 554,
+   "page": 10,
+   "start": 30877,
+   "in_table": true,
+   "text": "0.200\r\u0007",
+   "y": 447.8
+  },
+  {
+   "i": 555,
+   "page": 10,
+   "start": 30883,
+   "in_table": true,
+   "text": "0.217\r\u0007",
+   "y": 447.8
+  },
+  {
+   "i": 556,
+   "page": 10,
+   "start": 30889,
+   "in_table": true,
+   "text": "<.001\r\u0007",
+   "y": null
+  },
+  {
+   "i": 557,
+   "page": 10,
+   "start": 30895,
+   "in_table": true,
+   "text": "Significant",
+   "y": 447.8
+  },
+  {
+   "i": 558,
+   "page": 10,
+   "start": 30907,
+   "in_table": true,
+   "text": "**\r\u0007",
+   "y": null
+  },
+  {
+   "i": 559,
+   "page": 10,
+   "start": 30910,
+   "in_table": true,
+   "text": "Ho Rejected\r\u0007",
+   "y": 447.8
+  },
+  {
+   "i": 560,
+   "page": 10,
+   "start": 30922,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 561,
+   "page": 10,
+   "start": 30923,
+   "in_table": true,
+   "text": "Learning Environment and",
+   "y": null
+  },
+  {
+   "i": 562,
+   "page": 10,
+   "start": 30948,
+   "in_table": true,
+   "text": "Peer Interaction\r\u0007",
+   "y": 523.2
+  },
+  {
+   "i": 563,
+   "page": 10,
+   "start": 30965,
+   "in_table": true,
+   "text": "0.200\r\u0007",
+   "y": 498.3
+  },
+  {
+   "i": 564,
+   "page": 10,
+   "start": 30971,
+   "in_table": true,
+   "text": "0.255\r\u0007",
+   "y": 498.3
+  },
+  {
+   "i": 565,
+   "page": 10,
+   "start": 30977,
+   "in_table": true,
+   "text": "<.001\r\u0007",
+   "y": null
+  },
+  {
+   "i": 566,
+   "page": 10,
+   "start": 30983,
+   "in_table": true,
+   "text": "Significant",
+   "y": 498.3
+  },
+  {
+   "i": 567,
+   "page": 10,
+   "start": 30995,
+   "in_table": true,
+   "text": "**\r\u0007",
+   "y": null
+  },
+  {
+   "i": 568,
+   "page": 10,
+   "start": 30998,
+   "in_table": true,
+   "text": "Ho Rejected\r\u0007",
+   "y": 498.3
+  },
+  {
+   "i": 569,
+   "page": 10,
+   "start": 31010,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 570,
+   "page": 10,
+   "start": 31011,
+   "in_table": true,
+   "text": "Curriculum and",
+   "y": 536.2
+  },
+  {
+   "i": 571,
+   "page": 10,
+   "start": 31026,
+   "in_table": true,
+   "text": "Academic Workload\r\u0007",
+   "y": null
+  },
+  {
+   "i": 572,
+   "page": 10,
+   "start": 31044,
+   "in_table": true,
+   "text": "0.200\r\u0007",
+   "y": 536.2
+  },
+  {
+   "i": 573,
+   "page": 10,
+   "start": 31050,
+   "in_table": true,
+   "text": "0.228\r\u0007",
+   "y": 536.2
+  },
+  {
+   "i": 574,
+   "page": 10,
+   "start": 31056,
+   "in_table": true,
+   "text": "<.001\r\u0007",
+   "y": null
+  },
+  {
+   "i": 575,
+   "page": 10,
+   "start": 31062,
+   "in_table": true,
+   "text": "Significant",
+   "y": 536.2
+  },
+  {
+   "i": 576,
+   "page": 10,
+   "start": 31074,
+   "in_table": true,
+   "text": "**\r\u0007",
+   "y": null
+  },
+  {
+   "i": 577,
+   "page": 10,
+   "start": 31077,
+   "in_table": true,
+   "text": "Ho Rejected\r\u0007",
+   "y": 536.2
+  },
+  {
+   "i": 578,
+   "page": 10,
+   "start": 31089,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 579,
+   "page": 10,
+   "start": 31090,
+   "in_table": true,
+   "text": "School Facilities",
+   "y": 574.2
+  },
+  {
+   "i": 580,
+   "page": 10,
+   "start": 31108,
+   "in_table": true,
+   "text": "and Resources\r\u0007",
+   "y": 586.1
+  },
+  {
+   "i": 581,
+   "page": 10,
+   "start": 31122,
+   "in_table": true,
+   "text": "0.200\r\u0007",
+   "y": 574.2
+  },
+  {
+   "i": 582,
+   "page": 10,
+   "start": 31128,
+   "in_table": true,
+   "text": "0.235\r\u0007",
+   "y": 574.2
+  },
+  {
+   "i": 583,
+   "page": 10,
+   "start": 31134,
+   "in_table": true,
+   "text": "<.001\r\u0007",
+   "y": null
+  },
+  {
+   "i": 584,
+   "page": 10,
+   "start": 31140,
+   "in_table": true,
+   "text": "Significant",
+   "y": 574.2
+  },
+  {
+   "i": 585,
+   "page": 10,
+   "start": 31152,
+   "in_table": true,
+   "text": "**\r\u0007",
+   "y": null
+  },
+  {
+   "i": 586,
+   "page": 10,
+   "start": 31155,
+   "in_table": true,
+   "text": "Ho Rejected\r\u0007",
+   "y": 574.2
+  },
+  {
+   "i": 587,
+   "page": 10,
+   "start": 31167,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 588,
+   "page": 10,
+   "start": 31168,
+   "in_table": true,
+   "text": "Teacher Quality and Instruction",
+   "y": 599.7
+  },
+  {
+   "i": 589,
+   "page": 10,
+   "start": 31200,
+   "in_table": true,
+   "text": "Delivery\t\r\u0007",
+   "y": 624.2
+  },
+  {
+   "i": 590,
+   "page": 10,
+   "start": 31211,
+   "in_table": true,
+   "text": "0.200\r\u0007",
+   "y": 599.5
+  },
+  {
+   "i": 591,
+   "page": 10,
+   "start": 31217,
+   "in_table": true,
+   "text": "0.215\r\u0007",
+   "y": 599.5
+  },
+  {
+   "i": 592,
+   "page": 10,
+   "start": 31223,
+   "in_table": true,
+   "text": "<.001\r\u0007",
+   "y": null
+  },
+  {
+   "i": 593,
+   "page": 10,
+   "start": 31229,
+   "in_table": true,
+   "text": "Significant",
+   "y": 599.5
+  },
+  {
+   "i": 594,
+   "page": 10,
+   "start": 31241,
+   "in_table": true,
+   "text": "**\r\u0007",
+   "y": null
+  },
+  {
+   "i": 595,
+   "page": 10,
+   "start": 31244,
+   "in_table": true,
+   "text": "Ho Rejected\r\u0007",
+   "y": 599.5
+  },
+  {
+   "i": 596,
+   "page": 10,
+   "start": 31256,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 597,
+   "page": 10,
+   "start": 31257,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 598,
+   "page": 10,
+   "start": 31258,
+   "in_table": false,
+   "text": "Table 5 presents the significant predictors of student satis",
+   "y": 659.7
+  },
+  {
+   "i": 599,
+   "page": 10,
+   "start": 31677,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 600,
+   "page": 11,
+   "start": 31678,
+   "in_table": false,
+   "text": "that the holistic academic experience, spanning instruction,",
+   "y": 72.6
+  },
+  {
+   "i": 601,
+   "page": 11,
+   "start": 32139,
+   "in_table": false,
+   "text": "These findings suggest that student satisfaction is not depe",
+   "y": 135.9
+  },
+  {
+   "i": 602,
+   "page": 11,
+   "start": 32913,
+   "in_table": false,
+   "text": "Recent studies support these findings, affirming that multip",
+   "y": 237.1
+  },
+  {
+   "i": 603,
+   "page": 11,
+   "start": 33739,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 604,
+   "page": 11,
+   "start": 33740,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 605,
+   "page": 11,
+   "start": 33741,
+   "in_table": false,
+   "text": "Conclusion",
+   "y": 363.9
+  },
+  {
+   "i": 606,
+   "page": 11,
+   "start": 33752,
+   "in_table": false,
+   "text": "Student satisfaction is a multidimensional construct that re",
+   "y": 110.5
+  },
+  {
+   "i": 607,
+   "page": 11,
+   "start": 34893,
+   "in_table": false,
+   "text": "The study concluded that these key dimensions collectively s",
+   "y": 524.5
+  },
+  {
+   "i": 608,
+   "page": 11,
+   "start": 35204,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 609,
+   "page": 11,
+   "start": 35205,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 610,
+   "page": 11,
+   "start": 35206,
+   "in_table": false,
+   "text": "Recommendation",
+   "y": 588.0
+  },
+  {
+   "i": 611,
+   "page": 11,
+   "start": 35221,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 612,
+   "page": 11,
+   "start": 35222,
+   "in_table": false,
+   "text": "The results revealed that the lowest-rated aspects of satisf",
+   "y": 615.3
+  },
+  {
+   "i": 613,
+   "page": 11,
+   "start": 35489,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 614,
+   "page": 11,
+   "start": 35490,
+   "in_table": false,
+   "text": "First, in terms of the curriculum and academic workload, the",
+   "y": 666.0
+  },
+  {
+   "i": 615,
+   "page": 11,
+   "start": 35900,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 616,
+   "page": 12,
+   "start": 35901,
+   "in_table": false,
+   "text": "distribution across subjects is also encouraged to promote a",
+   "y": 72.6
+  },
+  {
+   "i": 617,
+   "page": 12,
+   "start": 36014,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 618,
+   "page": 12,
+   "start": 36015,
+   "in_table": false,
+   "text": "Second, regarding the learning environment and peer interact",
+   "y": 110.7
+  },
+  {
+   "i": 619,
+   "page": 12,
+   "start": 36468,
+   "in_table": false,
+   "text": "Third, particular attention should be given to the maintenan",
+   "y": 186.5
+  },
+  {
+   "i": 620,
+   "page": 12,
+   "start": 36875,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 621,
+   "page": 12,
+   "start": 36876,
+   "in_table": false,
+   "text": "Overall, addressing these lowest-rated dimensions will not o",
+   "y": 249.8
+  },
+  {
+   "i": 622,
+   "page": 12,
+   "start": 37279,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 623,
+   "page": 12,
+   "start": 37280,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 624,
+   "page": 12,
+   "start": 37281,
+   "in_table": false,
+   "text": "REFERENCES",
+   "y": 336.3
+  },
+  {
+   "i": 625,
+   "page": 12,
+   "start": 37292,
+   "in_table": false,
+   "text": "Al-Kumaim, N. H., Alhazmi, A. K., Mohammed, F., Gazem, N. A.",
+   "y": 357.7
+  },
+  {
+   "i": 626,
+   "page": 12,
+   "start": 37593,
+   "in_table": false,
+   "text": "Anit, J. (2024). Customer Satisfaction of Students with Fron",
+   "y": 420.9
+  },
+  {
+   "i": 627,
+   "page": 12,
+   "start": 37776,
+   "in_table": false,
+   "text": "Averion, R. F., & Caleja, H. B. F. (2020). International Jou",
+   "y": 459.0
+  },
+  {
+   "i": 628,
+   "page": 12,
+   "start": 37967,
+   "in_table": false,
+   "text": "Trainee” program of the university. JPAIR Multidisciplinary",
+   "y": 496.8
+  },
+  {
+   "i": 629,
+   "page": 12,
+   "start": 38053,
+   "in_table": false,
+   "text": "Bachanicha, R. M., Micabalo, K. G., & Lauron, R. P. (2025).",
+   "y": 517.5
+  },
+  {
+   "i": 630,
+   "page": 12,
+   "start": 38324,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 631,
+   "page": 12,
+   "start": 38325,
+   "in_table": false,
+   "text": "Barrot, J. S. (2021). Social media use and academic performa",
+   "y": 568.0
+  },
+  {
+   "i": 632,
+   "page": 12,
+   "start": 38421,
+   "in_table": false,
+   "text": "Computers & Education, 172, 104665.",
+   "y": 580.7
+  },
+  {
+   "i": 633,
+   "page": 12,
+   "start": 38457,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 634,
+   "page": 12,
+   "start": 38458,
+   "in_table": false,
+   "text": "Bironia, M., & Ecat, J. E. (2023). Students' Level of Satisf",
+   "y": 606.0
+  },
+  {
+   "i": 635,
+   "page": 12,
+   "start": 38661,
+   "in_table": false,
+   "text": "Cardenal, F., Sandoval-Hernández, A., & Yoon, E. S. (2024).",
+   "y": 651.9
+  },
+  {
+   "i": 636,
+   "page": 12,
+   "start": 38888,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 637,
+   "page": 13,
+   "start": 38889,
+   "in_table": false,
+   "text": "Castillo, R., Miranda, D., & Figueroa, C. (2021). Academic w",
+   "y": 72.6
+  },
+  {
+   "i": 638,
+   "page": 13,
+   "start": 39072,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 639,
+   "page": 13,
+   "start": 39073,
+   "in_table": false,
+   "text": "Cinches, M. F. C., Russell, R. L. V., Chavez, J. C., & Ortiz",
+   "y": 110.7
+  },
+  {
+   "i": 640,
+   "page": 13,
+   "start": 39282,
+   "in_table": false,
+   "text": "Deniega, G., Micabalo, K., & Bachanicha, R. (2026). Parental",
+   "y": 156.6
+  },
+  {
+   "i": 641,
+   "page": 13,
+   "start": 39475,
+   "in_table": false,
+   "text": "El-Hamamsy, L., Berga, D., & Pons, X. (2023). Equity and inc",
+   "y": 194.4
+  },
+  {
+   "i": 642,
+   "page": 13,
+   "start": 39687,
+   "in_table": false,
+   "text": "Elshami, W., Taha, M. H., Abuzaid, M., Saravanan, C., Al Kaw",
+   "y": 245.1
+  },
+  {
+   "i": 643,
+   "page": 13,
+   "start": 39952,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 644,
+   "page": 13,
+   "start": 39953,
+   "in_table": false,
+   "text": "Espelage, D. L., Hong, J. S., & Mebane, S. E. (2020). School",
+   "y": 295.6
+  },
+  {
+   "i": 645,
+   "page": 13,
+   "start": 40129,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 646,
+   "page": 13,
+   "start": 40130,
+   "in_table": false,
+   "text": "Galvez, R. (2018). Student Affairs and Services of La Consol",
+   "y": 333.7
+  },
+  {
+   "i": 647,
+   "page": 13,
+   "start": 40297,
+   "in_table": false,
+   "text": "Garrett, M. D., & Poock, M. C. (2021). Student satisfaction",
+   "y": 371.6
+  },
+  {
+   "i": 648,
+   "page": 13,
+   "start": 40497,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 649,
+   "page": 13,
+   "start": 40498,
+   "in_table": false,
+   "text": "García-Moya, I., Brooks, F., & Moreno, C. (2019). The relati",
+   "y": 422.2
+  },
+  {
+   "i": 650,
+   "page": 13,
+   "start": 40698,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 651,
+   "page": 13,
+   "start": 40699,
+   "in_table": false,
+   "text": "García, E., & Weiss, E. (2020). COVID-19 and student perform",
+   "y": 472.8
+  },
+  {
+   "i": 652,
+   "page": 13,
+   "start": 40831,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 653,
+   "page": 13,
+   "start": 40832,
+   "in_table": false,
+   "text": "Gorospe, M. A., Rabanal, M. A. S., & Talosa, A. D. (2021). S",
+   "y": 510.8
+  },
+  {
+   "i": 654,
+   "page": 13,
+   "start": 41084,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 655,
+   "page": 13,
+   "start": 41085,
+   "in_table": false,
+   "text": "Hattie, J. (2015). Visible learning: A synthesis of over 800",
+   "y": 561.3
+  },
+  {
+   "i": 656,
+   "page": 13,
+   "start": 41185,
+   "in_table": false,
+   "text": "Routledge.",
+   "y": 573.9
+  },
+  {
+   "i": 657,
+   "page": 13,
+   "start": 41196,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 658,
+   "page": 13,
+   "start": 41197,
+   "in_table": false,
+   "text": "Kim, H., & Park, J. (2022). Gender differences in student pe",
+   "y": 599.3
+  },
+  {
+   "i": 659,
+   "page": 13,
+   "start": 41374,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 660,
+   "page": 13,
+   "start": 41375,
+   "in_table": false,
+   "text": "Lardier, D. T., Barrios, V. R., & Garcia-Reid, P. (2022). Th",
+   "y": 637.3
+  },
+  {
+   "i": 661,
+   "page": 13,
+   "start": 41568,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 662,
+   "page": 13,
+   "start": 41569,
+   "in_table": false,
+   "text": "Marasigan, A. C., & De Borja, J. M. A. (2020). Status of Sci",
+   "y": 675.2
+  },
+  {
+   "i": 663,
+   "page": 13,
+   "start": 41704,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 664,
+   "page": 14,
+   "start": 41705,
+   "in_table": false,
+   "text": "Micabalo, K. G., Cano, J. B., & Montilla, R. D. (2020). Univ",
+   "y": 72.6
+  },
+  {
+   "i": 665,
+   "page": 14,
+   "start": 41902,
+   "in_table": false,
+   "text": "35. https://doi.org/10.51983/ajeat-2020.9.2.1088",
+   "y": 97.8
+  },
+  {
+   "i": 666,
+   "page": 14,
+   "start": 42014,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 667,
+   "page": 14,
+   "start": 42015,
+   "in_table": false,
+   "text": "Montebon, Richie L., and Rafael M. Bachanicha. \"Assessment o",
+   "y": 123.1
+  },
+  {
+   "i": 668,
+   "page": 14,
+   "start": 42192,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 669,
+   "page": 14,
+   "start": 42193,
+   "in_table": false,
+   "text": "Mohamad, Stephen L. \"Learning Environment and Academic Engag",
+   "y": 161.2
+  },
+  {
+   "i": 670,
+   "page": 14,
+   "start": 42349,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 671,
+   "page": 14,
+   "start": 42350,
+   "in_table": false,
+   "text": "Nguyen, T. D., Cannata, M., & Miller, J. (2021). Understandi",
+   "y": 199.1
+  },
+  {
+   "i": 672,
+   "page": 14,
+   "start": 42530,
+   "in_table": false,
+   "text": "Richardson, J. T. E., Charlesworth, Z., & Darby, J. (2022).",
+   "y": 237.1
+  },
+  {
+   "i": 673,
+   "page": 14,
+   "start": 42763,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 674,
+   "page": 14,
+   "start": 42764,
+   "in_table": false,
+   "text": "Tinto, V. (2017). Through the eyes of students. Journal of C",
+   "y": 287.7
+  },
+  {
+   "i": 675,
+   "page": 14,
+   "start": 42895,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 676,
+   "page": 14,
+   "start": 42896,
+   "in_table": false,
+   "text": "Torres, J., & Alieto, E. (2019). English learning motivation",
+   "y": 325.6
+  },
+  {
+   "i": 677,
+   "page": 14,
+   "start": 43049,
+   "in_table": false,
+   "text": "Pianta, R. C., Belsky, J., Vandergrift, N., Houts, R., & Mor",
+   "y": 363.5
+  },
+  {
+   "i": 678,
+   "page": 14,
+   "start": 43264,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 679,
+   "page": 14,
+   "start": 43265,
+   "in_table": false,
+   "text": "UNESCO. (2021). Behind the numbers: Ending school violence a",
+   "y": 414.3
+  },
+  {
+   "i": 680,
+   "page": 14,
+   "start": 43357,
+   "in_table": false,
+   "text": "Wang, M. T., Degol, J. L., & Amemiya, J. (2021). A conceptua",
+   "y": 439.5
+  }
+ ]
+}

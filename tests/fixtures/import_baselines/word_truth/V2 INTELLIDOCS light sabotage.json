@@ -1,0 +1,5299 @@
+{
+ "schema": 2,
+ "name": "V2 INTELLIDOCS light sabotage",
+ "sha256": "69a943fb98c51a77b9b4a5e283ee1789c5f9a81f18130bcd80026efdc2b850eb",
+ "word_version": "16.0",
+ "word_build": "16.0.20326",
+ "pages": 31,
+ "page_starts": [
+  0,
+  485,
+  1562,
+  3429,
+  5012,
+  5875,
+  6558,
+  7359,
+  8123,
+  8733,
+  11393,
+  14237,
+  14684,
+  16324,
+  18473,
+  21266,
+  21484,
+  23106,
+  24872,
+  26569,
+  29344,
+  31765,
+  33529,
+  34612,
+  35822,
+  36952,
+  38167,
+  39772,
+  41137,
+  42054,
+  43588
+ ],
+ "paragraphs": [
+  {
+   "i": 1,
+   "page": 1,
+   "start": 0,
+   "in_table": false,
+   "text": "INTELLIDOCS: AN INTELLIGENT DOCUMENT EDITING SYSTEM WITH BEH",
+   "y": 72.5
+  },
+  {
+   "i": 2,
+   "page": 1,
+   "start": 102,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 3,
+   "page": 1,
+   "start": 103,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 4,
+   "page": 1,
+   "start": 104,
+   "in_table": false,
+   "text": "A Proposal Project",
+   "y": 148.3
+  },
+  {
+   "i": 5,
+   "page": 1,
+   "start": 123,
+   "in_table": false,
+   "text": "presented to the Faculty of the College of Computer Studies,",
+   "y": 167.4
+  },
+  {
+   "i": 6,
+   "page": 1,
+   "start": 184,
+   "in_table": false,
+   "text": "University of Cebu Lapu-Lapu and Mandaue",
+   "y": 186.4
+  },
+  {
+   "i": 7,
+   "page": 1,
+   "start": 225,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 8,
+   "page": 1,
+   "start": 226,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 9,
+   "page": 1,
+   "start": 227,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 10,
+   "page": 1,
+   "start": 228,
+   "in_table": false,
+   "text": "In partial Fulfillment of the Requirements",
+   "y": 262.3
+  },
+  {
+   "i": 11,
+   "page": 1,
+   "start": 272,
+   "in_table": false,
+   "text": "for the Degree of Bachelor of Science in Information Technol",
+   "y": 281.2
+  },
+  {
+   "i": 12,
+   "page": 1,
+   "start": 336,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 13,
+   "page": 1,
+   "start": 337,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 14,
+   "page": 1,
+   "start": 338,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 15,
+   "page": 1,
+   "start": 339,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 16,
+   "page": 1,
+   "start": 340,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 17,
+   "page": 1,
+   "start": 341,
+   "in_table": false,
+   "text": "By:",
+   "y": null
+  },
+  {
+   "i": 18,
+   "page": 1,
+   "start": 345,
+   "in_table": false,
+   "text": "Amamence, Marjun A.",
+   "y": 414.1
+  },
+  {
+   "i": 19,
+   "page": 1,
+   "start": 365,
+   "in_table": false,
+   "text": "Asingua, Joshua",
+   "y": 433.0
+  },
+  {
+   "i": 20,
+   "page": 1,
+   "start": 382,
+   "in_table": false,
+   "text": "Alenton, Rj",
+   "y": 452.0
+  },
+  {
+   "i": 21,
+   "page": 1,
+   "start": 394,
+   "in_table": false,
+   "text": "Dagupan, Christian Paulo",
+   "y": 471.0
+  },
+  {
+   "i": 22,
+   "page": 1,
+   "start": 419,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 23,
+   "page": 1,
+   "start": 420,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 24,
+   "page": 1,
+   "start": 421,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 25,
+   "page": 1,
+   "start": 422,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 26,
+   "page": 1,
+   "start": 423,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 27,
+   "page": 1,
+   "start": 424,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 28,
+   "page": 1,
+   "start": 425,
+   "in_table": false,
+   "text": "Ms. Gian S. Mahusay",
+   "y": 603.8
+  },
+  {
+   "i": 29,
+   "page": 1,
+   "start": 445,
+   "in_table": false,
+   "text": "Adviser",
+   "y": 622.8
+  },
+  {
+   "i": 30,
+   "page": 1,
+   "start": 453,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 31,
+   "page": 1,
+   "start": 454,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 32,
+   "page": 1,
+   "start": 455,
+   "in_table": false,
+   "text": "December 2026",
+   "y": 679.8
+  },
+  {
+   "i": 33,
+   "page": 1,
+   "start": 470,
+   "in_table": false,
+   "text": "APPROVAL SHEET",
+   "y": 698.7
+  },
+  {
+   "i": 34,
+   "page": 2,
+   "start": 485,
+   "in_table": false,
+   "text": "This Capstone Project study titled IntelliDocs: An Intellige",
+   "y": 72.5
+  },
+  {
+   "i": 35,
+   "page": 2,
+   "start": 791,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 36,
+   "page": 2,
+   "start": 792,
+   "in_table": false,
+   "text": "RECOMMENDED:",
+   "y": 167.4
+  },
+  {
+   "i": 37,
+   "page": 2,
+   "start": 805,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 38,
+   "page": 2,
+   "start": 806,
+   "in_table": false,
+   "text": "MS. GIAN S. MAHUSAY",
+   "y": 205.3
+  },
+  {
+   "i": 39,
+   "page": 2,
+   "start": 899,
+   "in_table": false,
+   "text": "Adviser\t\t\t\t\t\t\tIT Research Coordinator",
+   "y": null
+  },
+  {
+   "i": 40,
+   "page": 2,
+   "start": 944,
+   "in_table": false,
+   "text": "/\u000bAPPROVED by the Examining Tribunal on Proposal Hearing wi",
+   "y": 281.2
+  },
+  {
+   "i": 41,
+   "page": 2,
+   "start": 1057,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 42,
+   "page": 2,
+   "start": 1058,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 43,
+   "page": 2,
+   "start": 1059,
+   "in_table": false,
+   "text": "ALEXANDER Y. BUCOL, ED. D.EM",
+   "y": 357.2
+  },
+  {
+   "i": 44,
+   "page": 2,
+   "start": 1088,
+   "in_table": false,
+   "text": "Chairman",
+   "y": 376.1
+  },
+  {
+   "i": 45,
+   "page": 2,
+   "start": 1097,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 46,
+   "page": 2,
+   "start": 1098,
+   "in_table": false,
+   "text": "GLENDE P. BRAZIL, MIT",
+   "y": 414.1
+  },
+  {
+   "i": 47,
+   "page": 2,
+   "start": 1196,
+   "in_table": false,
+   "text": "Member",
+   "y": 433.0
+  },
+  {
+   "i": 48,
+   "page": 2,
+   "start": 1280,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 49,
+   "page": 2,
+   "start": 1281,
+   "in_table": false,
+   "text": "ACCEPTED and APPROVED in partial fulfillment of the requirem",
+   "y": 471.0
+  },
+  {
+   "i": 50,
+   "page": 2,
+   "start": 1401,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 51,
+   "page": 2,
+   "start": 1514,
+   "in_table": false,
+   "text": "Dean, CCS",
+   "y": 528.0
+  },
+  {
+   "i": 52,
+   "page": 2,
+   "start": 1527,
+   "in_table": false,
+   "text": "Date:____________________",
+   "y": 546.9
+  },
+  {
+   "i": 53,
+   "page": 2,
+   "start": 1560,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 54,
+   "page": 3,
+   "start": 1562,
+   "in_table": false,
+   "text": "ACKNOWLEDGEMENT",
+   "y": 72.5
+  },
+  {
+   "i": 55,
+   "page": 3,
+   "start": 1578,
+   "in_table": false,
+   "text": "This capstone project would not have been possible without",
+   "y": 91.5
+  },
+  {
+   "i": 56,
+   "page": 3,
+   "start": 1788,
+   "in_table": false,
+   "text": "Most of all, the researchers extend their most heartfelt th",
+   "y": 148.3
+  },
+  {
+   "i": 57,
+   "page": 3,
+   "start": 2085,
+   "in_table": false,
+   "text": "The researchers are also deeply grateful for the guidance r",
+   "y": 224.3
+  },
+  {
+   "i": 58,
+   "page": 3,
+   "start": 2475,
+   "in_table": false,
+   "text": "Special thanks go to Ms. Gian S. Mahusay, our dedicated res",
+   "y": 319.1
+  },
+  {
+   "i": 59,
+   "page": 3,
+   "start": 2871,
+   "in_table": false,
+   "text": "The researchers also thank Dr. Janette Q. Tanquis, the resp",
+   "y": 414.1
+  },
+  {
+   "i": 60,
+   "page": 3,
+   "start": 3055,
+   "in_table": false,
+   "text": "The researchers are also grateful to their fellow researche",
+   "y": 452.0
+  },
+  {
+   "i": 61,
+   "page": 3,
+   "start": 3211,
+   "in_table": false,
+   "text": "Finally, the researchers express their deepest appreciation",
+   "y": 489.9
+  },
+  {
+   "i": 62,
+   "page": 3,
+   "start": 3405,
+   "in_table": false,
+   "text": "The Researchers",
+   "y": 546.9
+  },
+  {
+   "i": 63,
+   "page": 3,
+   "start": 3421,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 64,
+   "page": 3,
+   "start": 3422,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 65,
+   "page": 3,
+   "start": 3423,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 66,
+   "page": 3,
+   "start": 3424,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 67,
+   "page": 3,
+   "start": 3425,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 68,
+   "page": 3,
+   "start": 3426,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 69,
+   "page": 3,
+   "start": 3427,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 70,
+   "page": 3,
+   "start": 3428,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 71,
+   "page": 4,
+   "start": 3429,
+   "in_table": false,
+   "text": "DEDICATION",
+   "y": 72.5
+  },
+  {
+   "i": 72,
+   "page": 4,
+   "start": 3440,
+   "in_table": false,
+   "text": "This study is dedicated first to Almighty God. The research",
+   "y": 91.5
+  },
+  {
+   "i": 73,
+   "page": 4,
+   "start": 3678,
+   "in_table": false,
+   "text": "The dedication also extends to students, professionals, and",
+   "y": 148.3
+  },
+  {
+   "i": 74,
+   "page": 4,
+   "start": 4214,
+   "in_table": false,
+   "text": "This work is further dedicated to the researchers’ beloved",
+   "y": 262.3
+  },
+  {
+   "i": 75,
+   "page": 4,
+   "start": 4552,
+   "in_table": false,
+   "text": "Above all, this project is dedicated to the researchers’ pa",
+   "y": 338.2
+  },
+  {
+   "i": 76,
+   "page": 4,
+   "start": 4893,
+   "in_table": false,
+   "text": "Without the support of all these individuals and institutio",
+   "y": 414.1
+  },
+  {
+   "i": 77,
+   "page": 4,
+   "start": 4996,
+   "in_table": false,
+   "text": "The Researchers",
+   "y": 452.0
+  },
+  {
+   "i": 78,
+   "page": 5,
+   "start": 5012,
+   "in_table": false,
+   "text": "TABLE OF CONTENTS",
+   "y": 72.5
+  },
+  {
+   "i": 79,
+   "page": 5,
+   "start": 5030,
+   "in_table": false,
+   "text": "PAGES",
+   "y": 93.1
+  },
+  {
+   "i": 80,
+   "page": 5,
+   "start": 5037,
+   "in_table": false,
+   "text": "TITLE PAGE\ti",
+   "y": null
+  },
+  {
+   "i": 81,
+   "page": 5,
+   "start": 5144,
+   "in_table": false,
+   "text": "APPROVAL SHEET\tii",
+   "y": 131.2
+  },
+  {
+   "i": 82,
+   "page": 5,
+   "start": 5162,
+   "in_table": false,
+   "text": "ACKNOWLEDGEMENT\tiii",
+   "y": 150.1
+  },
+  {
+   "i": 83,
+   "page": 5,
+   "start": 5182,
+   "in_table": false,
+   "text": "DEDICATION\tiv",
+   "y": null
+  },
+  {
+   "i": 84,
+   "page": 5,
+   "start": 5196,
+   "in_table": false,
+   "text": "TABLE OF CONTENTS\tv",
+   "y": 188.1
+  },
+  {
+   "i": 85,
+   "page": 5,
+   "start": 5216,
+   "in_table": false,
+   "text": "LIST OF TABLES\tvii",
+   "y": 207.0
+  },
+  {
+   "i": 86,
+   "page": 5,
+   "start": 5235,
+   "in_table": false,
+   "text": "LIST OF FIGURES\tviii",
+   "y": 226.0
+  },
+  {
+   "i": 87,
+   "page": 5,
+   "start": 5256,
+   "in_table": false,
+   "text": "CHAPTER I: INTRODUCTION\t1",
+   "y": 245.0
+  },
+  {
+   "i": 88,
+   "page": 5,
+   "start": 5282,
+   "in_table": false,
+   "text": "Rationale of the Study\t1",
+   "y": 263.9
+  },
+  {
+   "i": 89,
+   "page": 5,
+   "start": 5307,
+   "in_table": false,
+   "text": "Objectives of the Study\t4",
+   "y": 283.0
+  },
+  {
+   "i": 90,
+   "page": 5,
+   "start": 5333,
+   "in_table": false,
+   "text": "Scope and Limitations\t5",
+   "y": 302.0
+  },
+  {
+   "i": 91,
+   "page": 5,
+   "start": 5357,
+   "in_table": false,
+   "text": "Significance of the Study\t6",
+   "y": 320.9
+  },
+  {
+   "i": 92,
+   "page": 5,
+   "start": 5385,
+   "in_table": false,
+   "text": "Definition of Terms\t8",
+   "y": 339.9
+  },
+  {
+   "i": 93,
+   "page": 5,
+   "start": 5407,
+   "in_table": false,
+   "text": "CHAPTER II: REVIEW OF RELATED LITERATURE AND STUDIES\t11",
+   "y": 358.9
+  },
+  {
+   "i": 94,
+   "page": 5,
+   "start": 5463,
+   "in_table": false,
+   "text": "Related Literature\t11",
+   "y": 377.8
+  },
+  {
+   "i": 95,
+   "page": 5,
+   "start": 5485,
+   "in_table": false,
+   "text": "Conceptual Framework\t14",
+   "y": 396.8
+  },
+  {
+   "i": 96,
+   "page": 5,
+   "start": 5509,
+   "in_table": false,
+   "text": "Related Studies\t16",
+   "y": 415.8
+  },
+  {
+   "i": 97,
+   "page": 5,
+   "start": 5528,
+   "in_table": false,
+   "text": "Comparative Matrix\t22",
+   "y": 434.7
+  },
+  {
+   "i": 98,
+   "page": 5,
+   "start": 5550,
+   "in_table": false,
+   "text": "CHAPTER III: RESEARCH METHODOLOGY\t24",
+   "y": 453.8
+  },
+  {
+   "i": 99,
+   "page": 5,
+   "start": 5587,
+   "in_table": false,
+   "text": "Research Design\t24",
+   "y": 472.8
+  },
+  {
+   "i": 100,
+   "page": 5,
+   "start": 5606,
+   "in_table": false,
+   "text": "Method\t24",
+   "y": null
+  },
+  {
+   "i": 101,
+   "page": 5,
+   "start": 5616,
+   "in_table": false,
+   "text": "Flow of the Study\t26",
+   "y": 510.7
+  },
+  {
+   "i": 102,
+   "page": 5,
+   "start": 5637,
+   "in_table": false,
+   "text": "Research Environment\t28",
+   "y": 529.6
+  },
+  {
+   "i": 103,
+   "page": 5,
+   "start": 5661,
+   "in_table": false,
+   "text": "Respondents\t29",
+   "y": null
+  },
+  {
+   "i": 104,
+   "page": 5,
+   "start": 5676,
+   "in_table": false,
+   "text": "Research Instrument\t29",
+   "y": 567.6
+  },
+  {
+   "i": 105,
+   "page": 5,
+   "start": 5699,
+   "in_table": false,
+   "text": "Research Procedure\t29",
+   "y": 586.5
+  },
+  {
+   "i": 106,
+   "page": 5,
+   "start": 5721,
+   "in_table": false,
+   "text": "Data Gathering\t30",
+   "y": 605.5
+  },
+  {
+   "i": 107,
+   "page": 5,
+   "start": 5739,
+   "in_table": false,
+   "text": "Treatment of Data\t30",
+   "y": 624.6
+  },
+  {
+   "i": 108,
+   "page": 5,
+   "start": 5760,
+   "in_table": false,
+   "text": "Software Engineering Methodology\t32",
+   "y": 643.5
+  },
+  {
+   "i": 109,
+   "page": 5,
+   "start": 5796,
+   "in_table": false,
+   "text": "Planning Conception-Initiation\t35",
+   "y": 662.5
+  },
+  {
+   "i": 110,
+   "page": 5,
+   "start": 5830,
+   "in_table": false,
+   "text": "Business Model Canvas\t36",
+   "y": 681.5
+  },
+  {
+   "i": 111,
+   "page": 5,
+   "start": 5855,
+   "in_table": false,
+   "text": "Program Workflow\t38",
+   "y": 700.4
+  },
+  {
+   "i": 112,
+   "page": 6,
+   "start": 5875,
+   "in_table": false,
+   "text": "Validation Board (Stages 1 and 2)\t39",
+   "y": 72.5
+  },
+  {
+   "i": 113,
+   "page": 6,
+   "start": 5912,
+   "in_table": false,
+   "text": "Business Roadmap\t41",
+   "y": 91.5
+  },
+  {
+   "i": 114,
+   "page": 6,
+   "start": 5932,
+   "in_table": false,
+   "text": "Functional Decomposition Diagram\t42",
+   "y": 110.4
+  },
+  {
+   "i": 115,
+   "page": 6,
+   "start": 5968,
+   "in_table": false,
+   "text": "Gantt Chart\t43",
+   "y": null
+  },
+  {
+   "i": 116,
+   "page": 6,
+   "start": 5983,
+   "in_table": false,
+   "text": "Analysis-Design Phase\t44",
+   "y": 148.3
+  },
+  {
+   "i": 117,
+   "page": 6,
+   "start": 6008,
+   "in_table": false,
+   "text": "AI System Architecture\t44",
+   "y": 167.4
+  },
+  {
+   "i": 118,
+   "page": 6,
+   "start": 6034,
+   "in_table": false,
+   "text": "Use Case Diagram\t46",
+   "y": 186.4
+  },
+  {
+   "i": 119,
+   "page": 6,
+   "start": 6054,
+   "in_table": false,
+   "text": "Storyboard\t60",
+   "y": null
+  },
+  {
+   "i": 120,
+   "page": 6,
+   "start": 6068,
+   "in_table": false,
+   "text": "Database Design\t74",
+   "y": 224.3
+  },
+  {
+   "i": 121,
+   "page": 6,
+   "start": 6087,
+   "in_table": false,
+   "text": "Entity-Relationship Diagram\t77",
+   "y": 243.3
+  },
+  {
+   "i": 122,
+   "page": 6,
+   "start": 6131,
+   "in_table": false,
+   "text": "Data Dictionary\t78",
+   "y": 262.3
+  },
+  {
+   "i": 123,
+   "page": 6,
+   "start": 6163,
+   "in_table": false,
+   "text": "Network Design\t98",
+   "y": 281.2
+  },
+  {
+   "i": 124,
+   "page": 6,
+   "start": 6181,
+   "in_table": false,
+   "text": "Network Model\t98",
+   "y": 300.2
+  },
+  {
+   "i": 125,
+   "page": 6,
+   "start": 6198,
+   "in_table": false,
+   "text": "Network Topology\t99",
+   "y": 319.1
+  },
+  {
+   "i": 126,
+   "page": 6,
+   "start": 6218,
+   "in_table": false,
+   "text": "Development / Construction / Build Phase\t100",
+   "y": 338.2
+  },
+  {
+   "i": 127,
+   "page": 6,
+   "start": 6263,
+   "in_table": false,
+   "text": "Technology Stack Diagram\t100",
+   "y": 357.2
+  },
+  {
+   "i": 128,
+   "page": 6,
+   "start": 6292,
+   "in_table": false,
+   "text": "Hardware Specification\t101",
+   "y": 376.1
+  },
+  {
+   "i": 129,
+   "page": 6,
+   "start": 6319,
+   "in_table": false,
+   "text": "Software Specification\t102",
+   "y": 395.1
+  },
+  {
+   "i": 130,
+   "page": 6,
+   "start": 6346,
+   "in_table": false,
+   "text": "Program Specification\t103",
+   "y": 414.1
+  },
+  {
+   "i": 131,
+   "page": 6,
+   "start": 6372,
+   "in_table": false,
+   "text": "List of Modules\t104",
+   "y": 433.0
+  },
+  {
+   "i": 132,
+   "page": 6,
+   "start": 6392,
+   "in_table": false,
+   "text": "REFERENCES\t105",
+   "y": null
+  },
+  {
+   "i": 133,
+   "page": 6,
+   "start": 6407,
+   "in_table": false,
+   "text": "CURRICULUM VITAE\t107",
+   "y": 471.0
+  },
+  {
+   "i": 134,
+   "page": 6,
+   "start": 6428,
+   "in_table": false,
+   "text": "APPENDICES\t113",
+   "y": null
+  },
+  {
+   "i": 135,
+   "page": 6,
+   "start": 6443,
+   "in_table": false,
+   "text": "A. Transmittal Letter\t113",
+   "y": 509.0
+  },
+  {
+   "i": 136,
+   "page": 6,
+   "start": 6482,
+   "in_table": false,
+   "text": "B. Research Environment\t114",
+   "y": 528.0
+  },
+  {
+   "i": 137,
+   "page": 6,
+   "start": 6510,
+   "in_table": false,
+   "text": "C. Survey Questionnaire\t115",
+   "y": 546.9
+  },
+  {
+   "i": 138,
+   "page": 6,
+   "start": 6540,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 139,
+   "page": 6,
+   "start": 6541,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 140,
+   "page": 6,
+   "start": 6556,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 141,
+   "page": 6,
+   "start": 6557,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 142,
+   "page": 7,
+   "start": 6558,
+   "in_table": false,
+   "text": "LIST OF TABLES",
+   "y": 72.5
+  },
+  {
+   "i": 143,
+   "page": 7,
+   "start": 6573,
+   "in_table": true,
+   "text": "Table No.\r\u0007",
+   "y": 98.2
+  },
+  {
+   "i": 144,
+   "page": 7,
+   "start": 6583,
+   "in_table": true,
+   "text": "Name\r\u0007",
+   "y": 98.2
+  },
+  {
+   "i": 145,
+   "page": 7,
+   "start": 6588,
+   "in_table": true,
+   "text": "Page No.\r\u0007",
+   "y": 98.2
+  },
+  {
+   "i": 146,
+   "page": 7,
+   "start": 6597,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 147,
+   "page": 7,
+   "start": 6598,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 148,
+   "page": 7,
+   "start": 6600,
+   "in_table": true,
+   "text": "COMPARATIVE MATRIX\r\u0007",
+   "y": 126.1
+  },
+  {
+   "i": 149,
+   "page": 7,
+   "start": 6619,
+   "in_table": true,
+   "text": "22\r\u0007",
+   "y": null
+  },
+  {
+   "i": 150,
+   "page": 7,
+   "start": 6622,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 151,
+   "page": 7,
+   "start": 6623,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 152,
+   "page": 7,
+   "start": 6625,
+   "in_table": true,
+   "text": "FLOW OF THE STUDY OF INTELLIDOCS\r\u0007",
+   "y": 153.1
+  },
+  {
+   "i": 153,
+   "page": 7,
+   "start": 6658,
+   "in_table": true,
+   "text": "26\r\u0007",
+   "y": null
+  },
+  {
+   "i": 154,
+   "page": 7,
+   "start": 6661,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 155,
+   "page": 7,
+   "start": 6662,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 156,
+   "page": 7,
+   "start": 6664,
+   "in_table": true,
+   "text": "SCORING POINTS\r\u0007",
+   "y": 180.1
+  },
+  {
+   "i": 157,
+   "page": 7,
+   "start": 6679,
+   "in_table": true,
+   "text": "31\r\u0007",
+   "y": null
+  },
+  {
+   "i": 158,
+   "page": 7,
+   "start": 6682,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 159,
+   "page": 7,
+   "start": 6683,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 160,
+   "page": 7,
+   "start": 6685,
+   "in_table": true,
+   "text": "VALIDATION BOARD\r\u0007",
+   "y": 207.1
+  },
+  {
+   "i": 161,
+   "page": 7,
+   "start": 6702,
+   "in_table": true,
+   "text": "39\r\u0007",
+   "y": null
+  },
+  {
+   "i": 162,
+   "page": 7,
+   "start": 6705,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 163,
+   "page": 7,
+   "start": 6706,
+   "in_table": true,
+   "text": "5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 164,
+   "page": 7,
+   "start": 6708,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF USERS\r\u0007",
+   "y": 234.0
+  },
+  {
+   "i": 165,
+   "page": 7,
+   "start": 6733,
+   "in_table": true,
+   "text": "78\r\u0007",
+   "y": null
+  },
+  {
+   "i": 166,
+   "page": 7,
+   "start": 6736,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 167,
+   "page": 7,
+   "start": 6737,
+   "in_table": true,
+   "text": "6\r\u0007",
+   "y": null
+  },
+  {
+   "i": 168,
+   "page": 7,
+   "start": 6739,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF FOLDERS\r\u0007",
+   "y": 261.1
+  },
+  {
+   "i": 169,
+   "page": 7,
+   "start": 6766,
+   "in_table": true,
+   "text": "80\r\u0007",
+   "y": null
+  },
+  {
+   "i": 170,
+   "page": 7,
+   "start": 6769,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 171,
+   "page": 7,
+   "start": 6770,
+   "in_table": true,
+   "text": "7\r\u0007",
+   "y": null
+  },
+  {
+   "i": 172,
+   "page": 7,
+   "start": 6772,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF DOCUMENTS\r\u0007",
+   "y": 288.1
+  },
+  {
+   "i": 173,
+   "page": 7,
+   "start": 6801,
+   "in_table": true,
+   "text": "81\r\u0007",
+   "y": null
+  },
+  {
+   "i": 174,
+   "page": 7,
+   "start": 6804,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 175,
+   "page": 7,
+   "start": 6805,
+   "in_table": true,
+   "text": "8\r\u0007",
+   "y": null
+  },
+  {
+   "i": 176,
+   "page": 7,
+   "start": 6807,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF FOLDER_DOCUMENTS\r\u0007",
+   "y": 315.1
+  },
+  {
+   "i": 177,
+   "page": 7,
+   "start": 6843,
+   "in_table": true,
+   "text": "83\r\u0007",
+   "y": null
+  },
+  {
+   "i": 178,
+   "page": 7,
+   "start": 6846,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 179,
+   "page": 7,
+   "start": 6847,
+   "in_table": true,
+   "text": "9\r\u0007",
+   "y": null
+  },
+  {
+   "i": 180,
+   "page": 7,
+   "start": 6849,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF FORMATTING_ACTIONS\r\u0007",
+   "y": 341.9
+  },
+  {
+   "i": 181,
+   "page": 7,
+   "start": 6887,
+   "in_table": true,
+   "text": "84\r\u0007",
+   "y": null
+  },
+  {
+   "i": 182,
+   "page": 7,
+   "start": 6890,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 183,
+   "page": 7,
+   "start": 6891,
+   "in_table": true,
+   "text": "10\r\u0007",
+   "y": null
+  },
+  {
+   "i": 184,
+   "page": 7,
+   "start": 6894,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF AI_SUGGESTIONS\r\u0007",
+   "y": 368.9
+  },
+  {
+   "i": 185,
+   "page": 7,
+   "start": 6928,
+   "in_table": true,
+   "text": "86\r\u0007",
+   "y": null
+  },
+  {
+   "i": 186,
+   "page": 7,
+   "start": 6931,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 187,
+   "page": 7,
+   "start": 6932,
+   "in_table": true,
+   "text": "11\r\u0007",
+   "y": null
+  },
+  {
+   "i": 188,
+   "page": 7,
+   "start": 6935,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF SUGGESTION_FEEDBACK\r\u0007",
+   "y": 395.9
+  },
+  {
+   "i": 189,
+   "page": 7,
+   "start": 6974,
+   "in_table": true,
+   "text": "88\r\u0007",
+   "y": null
+  },
+  {
+   "i": 190,
+   "page": 7,
+   "start": 6977,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 191,
+   "page": 7,
+   "start": 6978,
+   "in_table": true,
+   "text": "12\r\u0007",
+   "y": null
+  },
+  {
+   "i": 192,
+   "page": 7,
+   "start": 6981,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF GRAMMAR_ISSUES\r\u0007",
+   "y": 423.0
+  },
+  {
+   "i": 193,
+   "page": 7,
+   "start": 7015,
+   "in_table": true,
+   "text": "89\r\u0007",
+   "y": null
+  },
+  {
+   "i": 194,
+   "page": 7,
+   "start": 7018,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 195,
+   "page": 7,
+   "start": 7019,
+   "in_table": true,
+   "text": "13\r\u0007",
+   "y": null
+  },
+  {
+   "i": 196,
+   "page": 7,
+   "start": 7022,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF GOOGLE_TOKENS\r\u0007",
+   "y": 450.0
+  },
+  {
+   "i": 197,
+   "page": 7,
+   "start": 7055,
+   "in_table": true,
+   "text": "91\r\u0007",
+   "y": null
+  },
+  {
+   "i": 198,
+   "page": 7,
+   "start": 7058,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 199,
+   "page": 7,
+   "start": 7059,
+   "in_table": true,
+   "text": "14\r\u0007",
+   "y": null
+  },
+  {
+   "i": 200,
+   "page": 7,
+   "start": 7062,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF REDIS_BEHAVIOR_BUFFER\r\u0007",
+   "y": 476.8
+  },
+  {
+   "i": 201,
+   "page": 7,
+   "start": 7103,
+   "in_table": true,
+   "text": "92\r\u0007",
+   "y": null
+  },
+  {
+   "i": 202,
+   "page": 7,
+   "start": 7106,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 203,
+   "page": 7,
+   "start": 7107,
+   "in_table": true,
+   "text": "15\r\u0007",
+   "y": null
+  },
+  {
+   "i": 204,
+   "page": 7,
+   "start": 7110,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF REDIS_SUGGESTION_CACHE\r\u0007",
+   "y": 503.8
+  },
+  {
+   "i": 205,
+   "page": 7,
+   "start": 7152,
+   "in_table": true,
+   "text": "93\r\u0007",
+   "y": null
+  },
+  {
+   "i": 206,
+   "page": 7,
+   "start": 7155,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 207,
+   "page": 7,
+   "start": 7156,
+   "in_table": true,
+   "text": "16\r\u0007",
+   "y": null
+  },
+  {
+   "i": 208,
+   "page": 7,
+   "start": 7159,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF REDIS_QUOTA_TRACKER\r\u0007",
+   "y": 530.8
+  },
+  {
+   "i": 209,
+   "page": 7,
+   "start": 7198,
+   "in_table": true,
+   "text": "94\r\u0007",
+   "y": null
+  },
+  {
+   "i": 210,
+   "page": 7,
+   "start": 7201,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 211,
+   "page": 7,
+   "start": 7202,
+   "in_table": true,
+   "text": "17\r\u0007",
+   "y": null
+  },
+  {
+   "i": 212,
+   "page": 7,
+   "start": 7205,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF DUCKDB_BEHAVIOR_EVENTS\r\u0007",
+   "y": 557.8
+  },
+  {
+   "i": 213,
+   "page": 7,
+   "start": 7247,
+   "in_table": true,
+   "text": "95\r\u0007",
+   "y": null
+  },
+  {
+   "i": 214,
+   "page": 7,
+   "start": 7250,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 215,
+   "page": 7,
+   "start": 7251,
+   "in_table": true,
+   "text": "18\r\u0007",
+   "y": null
+  },
+  {
+   "i": 216,
+   "page": 7,
+   "start": 7254,
+   "in_table": true,
+   "text": "DATA DICTIONARY OF DUCKDB_FORMATTING_FEATURES\r\u0007",
+   "y": 584.7
+  },
+  {
+   "i": 217,
+   "page": 7,
+   "start": 7300,
+   "in_table": true,
+   "text": "96\r\u0007",
+   "y": null
+  },
+  {
+   "i": 218,
+   "page": 7,
+   "start": 7303,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 219,
+   "page": 7,
+   "start": 7304,
+   "in_table": true,
+   "text": "19\r\u0007",
+   "y": null
+  },
+  {
+   "i": 220,
+   "page": 7,
+   "start": 7307,
+   "in_table": true,
+   "text": "SOFTWARE SPECIFICATION\r\u0007",
+   "y": 630.7
+  },
+  {
+   "i": 221,
+   "page": 7,
+   "start": 7330,
+   "in_table": true,
+   "text": "102\r\u0007",
+   "y": null
+  },
+  {
+   "i": 222,
+   "page": 7,
+   "start": 7334,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 223,
+   "page": 7,
+   "start": 7335,
+   "in_table": true,
+   "text": "20\r\u0007",
+   "y": null
+  },
+  {
+   "i": 224,
+   "page": 7,
+   "start": 7338,
+   "in_table": true,
+   "text": "LIST OF MODULES\r\u0007",
+   "y": 657.7
+  },
+  {
+   "i": 225,
+   "page": 7,
+   "start": 7354,
+   "in_table": true,
+   "text": "104\r\u0007",
+   "y": null
+  },
+  {
+   "i": 226,
+   "page": 7,
+   "start": 7358,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 227,
+   "page": 8,
+   "start": 7359,
+   "in_table": false,
+   "text": "LIST OF FIGURES",
+   "y": 72.5
+  },
+  {
+   "i": 228,
+   "page": 8,
+   "start": 7375,
+   "in_table": true,
+   "text": "Figure No.\r\u0007",
+   "y": 98.2
+  },
+  {
+   "i": 229,
+   "page": 8,
+   "start": 7386,
+   "in_table": true,
+   "text": "Name\r\u0007",
+   "y": 98.2
+  },
+  {
+   "i": 230,
+   "page": 8,
+   "start": 7391,
+   "in_table": true,
+   "text": "Page No.\r\u0007",
+   "y": 98.2
+  },
+  {
+   "i": 231,
+   "page": 8,
+   "start": 7400,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 232,
+   "page": 8,
+   "start": 7401,
+   "in_table": true,
+   "text": "1\r\u0007",
+   "y": null
+  },
+  {
+   "i": 233,
+   "page": 8,
+   "start": 7403,
+   "in_table": true,
+   "text": "CONCEPTUAL FRAMEWORK\r\u0007",
+   "y": 126.1
+  },
+  {
+   "i": 234,
+   "page": 8,
+   "start": 7424,
+   "in_table": true,
+   "text": "14\r\u0007",
+   "y": null
+  },
+  {
+   "i": 235,
+   "page": 8,
+   "start": 7427,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 236,
+   "page": 8,
+   "start": 7428,
+   "in_table": true,
+   "text": "2\r\u0007",
+   "y": null
+  },
+  {
+   "i": 237,
+   "page": 8,
+   "start": 7430,
+   "in_table": true,
+   "text": "SCHOLARFORMAT\r\u0007",
+   "y": 153.1
+  },
+  {
+   "i": 238,
+   "page": 8,
+   "start": 7444,
+   "in_table": true,
+   "text": "16\r\u0007",
+   "y": null
+  },
+  {
+   "i": 239,
+   "page": 8,
+   "start": 7447,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 240,
+   "page": 8,
+   "start": 7448,
+   "in_table": true,
+   "text": "3\r\u0007",
+   "y": null
+  },
+  {
+   "i": 241,
+   "page": 8,
+   "start": 7450,
+   "in_table": true,
+   "text": "AUTOSCI\r\u0007",
+   "y": 180.1
+  },
+  {
+   "i": 242,
+   "page": 8,
+   "start": 7458,
+   "in_table": true,
+   "text": "18\r\u0007",
+   "y": null
+  },
+  {
+   "i": 243,
+   "page": 8,
+   "start": 7461,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 244,
+   "page": 8,
+   "start": 7462,
+   "in_table": true,
+   "text": "4\r\u0007",
+   "y": null
+  },
+  {
+   "i": 245,
+   "page": 8,
+   "start": 7464,
+   "in_table": true,
+   "text": "ORBIT\r\u0007",
+   "y": 207.1
+  },
+  {
+   "i": 246,
+   "page": 8,
+   "start": 7470,
+   "in_table": true,
+   "text": "19\r\u0007",
+   "y": null
+  },
+  {
+   "i": 247,
+   "page": 8,
+   "start": 7473,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 248,
+   "page": 8,
+   "start": 7474,
+   "in_table": true,
+   "text": "5\r\u0007",
+   "y": null
+  },
+  {
+   "i": 249,
+   "page": 8,
+   "start": 7476,
+   "in_table": true,
+   "text": "KNOWLEDGELAKE\r\u0007",
+   "y": 234.0
+  },
+  {
+   "i": 250,
+   "page": 8,
+   "start": 7490,
+   "in_table": true,
+   "text": "20\r\u0007",
+   "y": null
+  },
+  {
+   "i": 251,
+   "page": 8,
+   "start": 7493,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 252,
+   "page": 8,
+   "start": 7494,
+   "in_table": true,
+   "text": "6\r\u0007",
+   "y": null
+  },
+  {
+   "i": 253,
+   "page": 8,
+   "start": 7496,
+   "in_table": true,
+   "text": "EVERTEAM\r\u0007",
+   "y": 269.3
+  },
+  {
+   "i": 254,
+   "page": 8,
+   "start": 7505,
+   "in_table": true,
+   "text": "21\r\u0007",
+   "y": null
+  },
+  {
+   "i": 255,
+   "page": 8,
+   "start": 7508,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 256,
+   "page": 8,
+   "start": 7509,
+   "in_table": true,
+   "text": "7\r\u0007",
+   "y": null
+  },
+  {
+   "i": 257,
+   "page": 8,
+   "start": 7511,
+   "in_table": true,
+   "text": "RESEARCH ENVIRONMENT IN UNIVERSITY OF CEBU LAPU-LAPU AND MAN",
+   "y": 296.2
+  },
+  {
+   "i": 258,
+   "page": 8,
+   "start": 7576,
+   "in_table": true,
+   "text": "28\r\u0007",
+   "y": null
+  },
+  {
+   "i": 259,
+   "page": 8,
+   "start": 7579,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 260,
+   "page": 8,
+   "start": 7580,
+   "in_table": true,
+   "text": "8\r\u0007",
+   "y": null
+  },
+  {
+   "i": 261,
+   "page": 8,
+   "start": 7582,
+   "in_table": true,
+   "text": "AGILE (ITERATIVE-INCREMENTAL) DEVELOPMENT METHODOLOGY\r\u0007",
+   "y": 342.2
+  },
+  {
+   "i": 262,
+   "page": 8,
+   "start": 7636,
+   "in_table": true,
+   "text": "32\r\u0007",
+   "y": null
+  },
+  {
+   "i": 263,
+   "page": 8,
+   "start": 7639,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 264,
+   "page": 8,
+   "start": 7640,
+   "in_table": true,
+   "text": "9\r\u0007",
+   "y": null
+  },
+  {
+   "i": 265,
+   "page": 8,
+   "start": 7642,
+   "in_table": true,
+   "text": "BUSINESS MODEL CANVAS OF INTELLIDOCS\r\u0007",
+   "y": 388.1
+  },
+  {
+   "i": 266,
+   "page": 8,
+   "start": 7679,
+   "in_table": true,
+   "text": "36\r\u0007",
+   "y": null
+  },
+  {
+   "i": 267,
+   "page": 8,
+   "start": 7682,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 268,
+   "page": 8,
+   "start": 7683,
+   "in_table": true,
+   "text": "10\r\u0007",
+   "y": null
+  },
+  {
+   "i": 269,
+   "page": 8,
+   "start": 7686,
+   "in_table": true,
+   "text": "PROGRAM WORKFLOW OF INTELLIDOCS\r\u0007",
+   "y": 415.2
+  },
+  {
+   "i": 270,
+   "page": 8,
+   "start": 7718,
+   "in_table": true,
+   "text": "38\r\u0007",
+   "y": null
+  },
+  {
+   "i": 271,
+   "page": 8,
+   "start": 7721,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 272,
+   "page": 8,
+   "start": 7722,
+   "in_table": true,
+   "text": "11\r\u0007",
+   "y": null
+  },
+  {
+   "i": 273,
+   "page": 8,
+   "start": 7725,
+   "in_table": true,
+   "text": "BUSINESS MODEL CANVAS\r\u0007",
+   "y": 442.2
+  },
+  {
+   "i": 274,
+   "page": 8,
+   "start": 7747,
+   "in_table": true,
+   "text": "41\r\u0007",
+   "y": null
+  },
+  {
+   "i": 275,
+   "page": 8,
+   "start": 7750,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 276,
+   "page": 8,
+   "start": 7751,
+   "in_table": true,
+   "text": "12\r\u0007",
+   "y": null
+  },
+  {
+   "i": 277,
+   "page": 8,
+   "start": 7754,
+   "in_table": true,
+   "text": "FUNCTIONAL DECOMPOSITION DIAGRAM OF INTELLIDOCS\r\u0007",
+   "y": 469.2
+  },
+  {
+   "i": 278,
+   "page": 8,
+   "start": 7802,
+   "in_table": true,
+   "text": "42\r\u0007",
+   "y": null
+  },
+  {
+   "i": 279,
+   "page": 8,
+   "start": 7805,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 280,
+   "page": 8,
+   "start": 7806,
+   "in_table": true,
+   "text": "13\r\u0007",
+   "y": null
+  },
+  {
+   "i": 281,
+   "page": 8,
+   "start": 7809,
+   "in_table": true,
+   "text": "GANTT CHART OF PROJECT ACTIVITIES\r\u0007",
+   "y": 515.0
+  },
+  {
+   "i": 282,
+   "page": 8,
+   "start": 7843,
+   "in_table": true,
+   "text": "43\r\u0007",
+   "y": null
+  },
+  {
+   "i": 283,
+   "page": 8,
+   "start": 7846,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 284,
+   "page": 8,
+   "start": 7847,
+   "in_table": true,
+   "text": "14\r\u0007",
+   "y": null
+  },
+  {
+   "i": 285,
+   "page": 8,
+   "start": 7850,
+   "in_table": true,
+   "text": "AI SYSTEM ARCHITECTURE OF INTELLIDOCS\r\u0007",
+   "y": 542.0
+  },
+  {
+   "i": 286,
+   "page": 8,
+   "start": 7888,
+   "in_table": true,
+   "text": "44\r\u0007",
+   "y": null
+  },
+  {
+   "i": 287,
+   "page": 8,
+   "start": 7891,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 288,
+   "page": 8,
+   "start": 7892,
+   "in_table": true,
+   "text": "15\r\u0007",
+   "y": null
+  },
+  {
+   "i": 289,
+   "page": 8,
+   "start": 7895,
+   "in_table": true,
+   "text": "USE CASE DIAGRAM OF INTELLIDOCS\r\u0007",
+   "y": 569.0
+  },
+  {
+   "i": 290,
+   "page": 8,
+   "start": 7927,
+   "in_table": true,
+   "text": "46\r\u0007",
+   "y": null
+  },
+  {
+   "i": 291,
+   "page": 8,
+   "start": 7930,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 292,
+   "page": 8,
+   "start": 7931,
+   "in_table": true,
+   "text": "16\r\u0007",
+   "y": null
+  },
+  {
+   "i": 293,
+   "page": 8,
+   "start": 7934,
+   "in_table": true,
+   "text": "SYSTEM USE CASE MODEL – AUTHENTICATE ACCOUNT\r\u0007",
+   "y": 596.0
+  },
+  {
+   "i": 294,
+   "page": 8,
+   "start": 7979,
+   "in_table": true,
+   "text": "47\r\u0007",
+   "y": null
+  },
+  {
+   "i": 295,
+   "page": 8,
+   "start": 7982,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 296,
+   "page": 8,
+   "start": 7983,
+   "in_table": true,
+   "text": "17\r\u0007",
+   "y": null
+  },
+  {
+   "i": 297,
+   "page": 8,
+   "start": 7986,
+   "in_table": true,
+   "text": "SYSTEM USE CASE MODEL – MANAGE ACCOUNT\r\u0007",
+   "y": 623.0
+  },
+  {
+   "i": 298,
+   "page": 8,
+   "start": 8025,
+   "in_table": true,
+   "text": "48\r\u0007",
+   "y": null
+  },
+  {
+   "i": 299,
+   "page": 8,
+   "start": 8028,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 300,
+   "page": 8,
+   "start": 8029,
+   "in_table": true,
+   "text": "18\r\u0007",
+   "y": null
+  },
+  {
+   "i": 301,
+   "page": 8,
+   "start": 8032,
+   "in_table": true,
+   "text": "SYSTEM USE CASE MODEL – VIEW DOCUMENTS\r\u0007",
+   "y": 649.9
+  },
+  {
+   "i": 302,
+   "page": 8,
+   "start": 8071,
+   "in_table": true,
+   "text": "51\r\u0007",
+   "y": null
+  },
+  {
+   "i": 303,
+   "page": 8,
+   "start": 8074,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 304,
+   "page": 8,
+   "start": 8075,
+   "in_table": true,
+   "text": "19\r\u0007",
+   "y": null
+  },
+  {
+   "i": 305,
+   "page": 8,
+   "start": 8078,
+   "in_table": true,
+   "text": "SYSTEM USE CASE MODEL – MANAGE DOCUMENTS\r\u0007",
+   "y": 676.9
+  },
+  {
+   "i": 306,
+   "page": 8,
+   "start": 8119,
+   "in_table": true,
+   "text": "53\r\u0007",
+   "y": null
+  },
+  {
+   "i": 307,
+   "page": 8,
+   "start": 8122,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 308,
+   "page": 9,
+   "start": 8123,
+   "in_table": true,
+   "text": "20\r\u0007",
+   "y": null
+  },
+  {
+   "i": 309,
+   "page": 9,
+   "start": 8126,
+   "in_table": true,
+   "text": "SYSTEM USE CASE MODEL – ENGAGE CHATBOT\r\u0007",
+   "y": 76.5
+  },
+  {
+   "i": 310,
+   "page": 9,
+   "start": 8165,
+   "in_table": true,
+   "text": "55\r\u0007",
+   "y": null
+  },
+  {
+   "i": 311,
+   "page": 9,
+   "start": 8168,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 312,
+   "page": 9,
+   "start": 8169,
+   "in_table": true,
+   "text": "21\r\u0007",
+   "y": null
+  },
+  {
+   "i": 313,
+   "page": 9,
+   "start": 8172,
+   "in_table": true,
+   "text": "SYSTEM USE CASE MODEL – EDIT DOCUMENT CONTENT\r\u0007",
+   "y": 103.5
+  },
+  {
+   "i": 314,
+   "page": 9,
+   "start": 8218,
+   "in_table": true,
+   "text": "57\r\u0007",
+   "y": null
+  },
+  {
+   "i": 315,
+   "page": 9,
+   "start": 8221,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 316,
+   "page": 9,
+   "start": 8222,
+   "in_table": true,
+   "text": "22\r\u0007",
+   "y": null
+  },
+  {
+   "i": 317,
+   "page": 9,
+   "start": 8225,
+   "in_table": true,
+   "text": "LANDING PAGE\r\u0007",
+   "y": 130.5
+  },
+  {
+   "i": 318,
+   "page": 9,
+   "start": 8238,
+   "in_table": true,
+   "text": "60\r\u0007",
+   "y": null
+  },
+  {
+   "i": 319,
+   "page": 9,
+   "start": 8241,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 320,
+   "page": 9,
+   "start": 8242,
+   "in_table": true,
+   "text": "23\r\u0007",
+   "y": null
+  },
+  {
+   "i": 321,
+   "page": 9,
+   "start": 8245,
+   "in_table": true,
+   "text": "LOGIN\r\u0007",
+   "y": 157.5
+  },
+  {
+   "i": 322,
+   "page": 9,
+   "start": 8251,
+   "in_table": true,
+   "text": "62\r\u0007",
+   "y": null
+  },
+  {
+   "i": 323,
+   "page": 9,
+   "start": 8254,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 324,
+   "page": 9,
+   "start": 8255,
+   "in_table": true,
+   "text": "24\r\u0007",
+   "y": null
+  },
+  {
+   "i": 325,
+   "page": 9,
+   "start": 8258,
+   "in_table": true,
+   "text": "REGISTER\r\u0007",
+   "y": 184.3
+  },
+  {
+   "i": 326,
+   "page": 9,
+   "start": 8267,
+   "in_table": true,
+   "text": "64\r\u0007",
+   "y": null
+  },
+  {
+   "i": 327,
+   "page": 9,
+   "start": 8270,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 328,
+   "page": 9,
+   "start": 8271,
+   "in_table": true,
+   "text": "25\r\u0007",
+   "y": null
+  },
+  {
+   "i": 329,
+   "page": 9,
+   "start": 8274,
+   "in_table": true,
+   "text": "DASHBOARD\r\u0007",
+   "y": 211.3
+  },
+  {
+   "i": 330,
+   "page": 9,
+   "start": 8284,
+   "in_table": true,
+   "text": "66\r\u0007",
+   "y": null
+  },
+  {
+   "i": 331,
+   "page": 9,
+   "start": 8287,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 332,
+   "page": 9,
+   "start": 8288,
+   "in_table": true,
+   "text": "26\r\u0007",
+   "y": null
+  },
+  {
+   "i": 333,
+   "page": 9,
+   "start": 8291,
+   "in_table": true,
+   "text": "MY DOCUMENTS\r\u0007",
+   "y": 238.4
+  },
+  {
+   "i": 334,
+   "page": 9,
+   "start": 8304,
+   "in_table": true,
+   "text": "68\r\u0007",
+   "y": null
+  },
+  {
+   "i": 335,
+   "page": 9,
+   "start": 8307,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 336,
+   "page": 9,
+   "start": 8308,
+   "in_table": true,
+   "text": "27\r\u0007",
+   "y": null
+  },
+  {
+   "i": 337,
+   "page": 9,
+   "start": 8311,
+   "in_table": true,
+   "text": "DOCUMENT EDITOR\r\u0007",
+   "y": 265.4
+  },
+  {
+   "i": 338,
+   "page": 9,
+   "start": 8327,
+   "in_table": true,
+   "text": "70\r\u0007",
+   "y": null
+  },
+  {
+   "i": 339,
+   "page": 9,
+   "start": 8330,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 340,
+   "page": 9,
+   "start": 8331,
+   "in_table": true,
+   "text": "28\r\u0007",
+   "y": null
+  },
+  {
+   "i": 341,
+   "page": 9,
+   "start": 8334,
+   "in_table": true,
+   "text": "TRASH\r\u0007",
+   "y": 292.4
+  },
+  {
+   "i": 342,
+   "page": 9,
+   "start": 8340,
+   "in_table": true,
+   "text": "72\r\u0007",
+   "y": null
+  },
+  {
+   "i": 343,
+   "page": 9,
+   "start": 8343,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 344,
+   "page": 9,
+   "start": 8344,
+   "in_table": true,
+   "text": "29\r\u0007",
+   "y": null
+  },
+  {
+   "i": 345,
+   "page": 9,
+   "start": 8347,
+   "in_table": true,
+   "text": "SUPABASE DATABASE DESIGN\r\u0007",
+   "y": 319.3
+  },
+  {
+   "i": 346,
+   "page": 9,
+   "start": 8372,
+   "in_table": true,
+   "text": "74\r\u0007",
+   "y": null
+  },
+  {
+   "i": 347,
+   "page": 9,
+   "start": 8375,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 348,
+   "page": 9,
+   "start": 8376,
+   "in_table": true,
+   "text": "30\r\u0007",
+   "y": null
+  },
+  {
+   "i": 349,
+   "page": 9,
+   "start": 8379,
+   "in_table": true,
+   "text": "REDIS DATABASE DESIGN\r\u0007",
+   "y": 346.3
+  },
+  {
+   "i": 350,
+   "page": 9,
+   "start": 8401,
+   "in_table": true,
+   "text": "75\r\u0007",
+   "y": null
+  },
+  {
+   "i": 351,
+   "page": 9,
+   "start": 8404,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 352,
+   "page": 9,
+   "start": 8405,
+   "in_table": true,
+   "text": "31\r\u0007",
+   "y": null
+  },
+  {
+   "i": 353,
+   "page": 9,
+   "start": 8408,
+   "in_table": true,
+   "text": "DUCKDB DATABASE DESIGN\r\u0007",
+   "y": 373.3
+  },
+  {
+   "i": 354,
+   "page": 9,
+   "start": 8431,
+   "in_table": true,
+   "text": "75\r\u0007",
+   "y": null
+  },
+  {
+   "i": 355,
+   "page": 9,
+   "start": 8434,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 356,
+   "page": 9,
+   "start": 8435,
+   "in_table": true,
+   "text": "32\r\u0007",
+   "y": null
+  },
+  {
+   "i": 357,
+   "page": 9,
+   "start": 8438,
+   "in_table": true,
+   "text": "ENTITY-RELATIONSHIP DIAGRAM OF INTELLIDOCS\r\u0007",
+   "y": 400.3
+  },
+  {
+   "i": 358,
+   "page": 9,
+   "start": 8481,
+   "in_table": true,
+   "text": "77\r\u0007",
+   "y": null
+  },
+  {
+   "i": 359,
+   "page": 9,
+   "start": 8484,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 360,
+   "page": 9,
+   "start": 8485,
+   "in_table": true,
+   "text": "33\r\u0007",
+   "y": null
+  },
+  {
+   "i": 361,
+   "page": 9,
+   "start": 8488,
+   "in_table": true,
+   "text": "NETWORK DESIGN OF INTELLIDOCS\r\u0007",
+   "y": 427.2
+  },
+  {
+   "i": 362,
+   "page": 9,
+   "start": 8518,
+   "in_table": true,
+   "text": "98\r\u0007",
+   "y": null
+  },
+  {
+   "i": 363,
+   "page": 9,
+   "start": 8523,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 364,
+   "page": 9,
+   "start": 8524,
+   "in_table": true,
+   "text": "34\r\u0007",
+   "y": null
+  },
+  {
+   "i": 365,
+   "page": 9,
+   "start": 8527,
+   "in_table": true,
+   "text": "NETWORK MODEL OF INTELLIDOCS\r\u0007",
+   "y": 454.2
+  },
+  {
+   "i": 366,
+   "page": 9,
+   "start": 8556,
+   "in_table": true,
+   "text": "98\r\u0007",
+   "y": null
+  },
+  {
+   "i": 367,
+   "page": 9,
+   "start": 8559,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 368,
+   "page": 9,
+   "start": 8560,
+   "in_table": true,
+   "text": "35\r\u0007",
+   "y": null
+  },
+  {
+   "i": 369,
+   "page": 9,
+   "start": 8563,
+   "in_table": true,
+   "text": "NETWORK TOPOLOGY OF INTELLIDOCS\r\u0007",
+   "y": 481.2
+  },
+  {
+   "i": 370,
+   "page": 9,
+   "start": 8595,
+   "in_table": true,
+   "text": "99\r\u0007",
+   "y": null
+  },
+  {
+   "i": 371,
+   "page": 9,
+   "start": 8598,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 372,
+   "page": 9,
+   "start": 8599,
+   "in_table": true,
+   "text": "36\r\u0007",
+   "y": null
+  },
+  {
+   "i": 373,
+   "page": 9,
+   "start": 8602,
+   "in_table": true,
+   "text": "TECHNOLOGIES USED IN THE DEVELOPMENT OF INTELLIDOCS\r\u0007",
+   "y": 508.2
+  },
+  {
+   "i": 374,
+   "page": 9,
+   "start": 8654,
+   "in_table": true,
+   "text": "100\r\u0007",
+   "y": null
+  },
+  {
+   "i": 375,
+   "page": 9,
+   "start": 8658,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 376,
+   "page": 9,
+   "start": 8659,
+   "in_table": true,
+   "text": "37\r\u0007",
+   "y": null
+  },
+  {
+   "i": 377,
+   "page": 9,
+   "start": 8662,
+   "in_table": true,
+   "text": "RESEARCH ENVIRONMENT IN UNIVERSITY OF CEBU LAPU-LAPU AND MAN",
+   "y": 554.1
+  },
+  {
+   "i": 378,
+   "page": 9,
+   "start": 8727,
+   "in_table": true,
+   "text": "114\r\u0007",
+   "y": null
+  },
+  {
+   "i": 379,
+   "page": 9,
+   "start": 8731,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 380,
+   "page": 9,
+   "start": 8732,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 381,
+   "page": 10,
+   "start": 8733,
+   "in_table": false,
+   "text": "CHAPTER I",
+   "y": 72.5
+  },
+  {
+   "i": 382,
+   "page": 10,
+   "start": 8743,
+   "in_table": false,
+   "text": "INTRODUCTION",
+   "y": 93.1
+  },
+  {
+   "i": 383,
+   "page": 10,
+   "start": 8756,
+   "in_table": false,
+   "text": "Rationale of the Study",
+   "y": 113.9
+  },
+  {
+   "i": 384,
+   "page": 10,
+   "start": 8779,
+   "in_table": false,
+   "text": "Document creation is a cornerstone of academic, professional",
+   "y": 134.5
+  },
+  {
+   "i": 385,
+   "page": 10,
+   "start": 9366,
+   "in_table": false,
+   "text": "A review of manuscript submission practices found that refor",
+   "y": 267.4
+  },
+  {
+   "i": 386,
+   "page": 10,
+   "start": 10051,
+   "in_table": false,
+   "text": "The digitalization of education and work has further highlig",
+   "y": 419.2
+  },
+  {
+   "i": 387,
+   "page": 10,
+   "start": 10868,
+   "in_table": false,
+   "text": "Despite the availability of powerful document editing platfo",
+   "y": 590.0
+  },
+  {
+   "i": 388,
+   "page": 11,
+   "start": 11504,
+   "in_table": false,
+   "text": "Advancements in artificial intelligence (AI) and machine lea",
+   "y": 110.4
+  },
+  {
+   "i": 389,
+   "page": 11,
+   "start": 12275,
+   "in_table": false,
+   "text": "These restrictions are especially noticeable in the Philippi",
+   "y": 281.2
+  },
+  {
+   "i": 390,
+   "page": 11,
+   "start": 12995,
+   "in_table": false,
+   "text": "The productivity implications of this issue are significant.",
+   "y": 433.0
+  },
+  {
+   "i": 391,
+   "page": 11,
+   "start": 13675,
+   "in_table": false,
+   "text": "Given these challenges and opportunities, this study propose",
+   "y": 584.9
+  },
+  {
+   "i": 392,
+   "page": 12,
+   "start": 14358,
+   "in_table": false,
+   "text": "By embedding these features in a user-friendly, locally rele",
+   "y": 122.4
+  },
+  {
+   "i": 393,
+   "page": 12,
+   "start": 14456,
+   "in_table": false,
+   "text": "Reduce wasted time and cognitive load associated with manual",
+   "y": 153.2
+  },
+  {
+   "i": 394,
+   "page": 12,
+   "start": 14529,
+   "in_table": false,
+   "text": "Enhance compliance with academic and professional standards,",
+   "y": 172.2
+  },
+  {
+   "i": 395,
+   "page": 12,
+   "start": 14590,
+   "in_table": false,
+   "text": "Increase productivity and satisfaction for Filipino students",
+   "y": 191.3
+  },
+  {
+   "i": 396,
+   "page": 12,
+   "start": 14682,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 397,
+   "page": 13,
+   "start": 14684,
+   "in_table": false,
+   "text": "Objectives of the Study",
+   "y": 72.5
+  },
+  {
+   "i": 398,
+   "page": 13,
+   "start": 14708,
+   "in_table": false,
+   "text": "General Objective",
+   "y": 91.5
+  },
+  {
+   "i": 399,
+   "page": 13,
+   "start": 14726,
+   "in_table": false,
+   "text": "To design, develop, and implement a web-based intelligent do",
+   "y": 110.4
+  },
+  {
+   "i": 400,
+   "page": 13,
+   "start": 15060,
+   "in_table": false,
+   "text": "Specific Objectives",
+   "y": 186.4
+  },
+  {
+   "i": 401,
+   "page": 13,
+   "start": 15080,
+   "in_table": false,
+   "text": "1.  \tAnalyze existing document editing systems by evaluating",
+   "y": 205.3
+  },
+  {
+   "i": 402,
+   "page": 13,
+   "start": 15142,
+   "in_table": false,
+   "text": "1.1.     current formatting processes and workflow structure",
+   "y": 224.3
+  },
+  {
+   "i": 403,
+   "page": 13,
+   "start": 15209,
+   "in_table": false,
+   "text": "1.2. common challenges, including repetitive manual formatti",
+   "y": 243.3
+  },
+  {
+   "i": 404,
+   "page": 13,
+   "start": 15334,
+   "in_table": false,
+   "text": "2.  \tIdentify and integrate key mechanisms and techniques fo",
+   "y": 281.2
+  },
+  {
+   "i": 405,
+   "page": 13,
+   "start": 15431,
+   "in_table": false,
+   "text": "2.1.  behavioral tracking of user formatting actions as sequ",
+   "y": 319.1
+  },
+  {
+   "i": 406,
+   "page": 13,
+   "start": 15508,
+   "in_table": false,
+   "text": "2.2. machine learning-based prediction of formatting actions",
+   "y": 338.2
+  },
+  {
+   "i": 407,
+   "page": 13,
+   "start": 15594,
+   "in_table": false,
+   "text": "2.3. a natural language command interface to enable efficien",
+   "y": 376.1
+  },
+  {
+   "i": 408,
+   "page": 13,
+   "start": 15688,
+   "in_table": false,
+   "text": "2.4. continuous improvement through reinforcement learning f",
+   "y": 414.1
+  },
+  {
+   "i": 409,
+   "page": 13,
+   "start": 15808,
+   "in_table": false,
+   "text": "3.  \tDetermine the most effective features to be included in",
+   "y": 452.0
+  },
+  {
+   "i": 410,
+   "page": 13,
+   "start": 15923,
+   "in_table": false,
+   "text": "3.1 Core document management capabilities and;",
+   "y": 489.9
+  },
+  {
+   "i": 411,
+   "page": 13,
+   "start": 15972,
+   "in_table": false,
+   "text": "3.2 behavioral learning and automated formatting.",
+   "y": 509.0
+  },
+  {
+   "i": 412,
+   "page": 13,
+   "start": 16024,
+   "in_table": false,
+   "text": "4.\tImplement a web-based Intelligent Document Editing System",
+   "y": 528.0
+  },
+  {
+   "i": 413,
+   "page": 13,
+   "start": 16230,
+   "in_table": false,
+   "text": "5.  \tAssess the acceptability and effectiveness of the propo",
+   "y": 584.9
+  },
+  {
+   "i": 414,
+   "page": 13,
+   "start": 16321,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 415,
+   "page": 13,
+   "start": 16322,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 416,
+   "page": 14,
+   "start": 16324,
+   "in_table": false,
+   "text": "Scope and Limitations of the Study",
+   "y": 72.5
+  },
+  {
+   "i": 417,
+   "page": 14,
+   "start": 16359,
+   "in_table": false,
+   "text": "The system scope of IntelliDocs encompasses a fully integrat",
+   "y": 93.1
+  },
+  {
+   "i": 418,
+   "page": 14,
+   "start": 17178,
+   "in_table": false,
+   "text": "To handle larger design changes efficiently, the platform in",
+   "y": 263.9
+  },
+  {
+   "i": 419,
+   "page": 14,
+   "start": 17853,
+   "in_table": false,
+   "text": "There are a few practical constraints to consider with the c",
+   "y": 415.8
+  },
+  {
+   "i": 420,
+   "page": 14,
+   "start": 18471,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 421,
+   "page": 15,
+   "start": 18473,
+   "in_table": false,
+   "text": "Significance of the Study",
+   "y": 72.5
+  },
+  {
+   "i": 422,
+   "page": 15,
+   "start": 18499,
+   "in_table": false,
+   "text": "The significance of this research lies in its potential to",
+   "y": 91.5
+  },
+  {
+   "i": 423,
+   "page": 15,
+   "start": 19186,
+   "in_table": false,
+   "text": "The findings and proposed system are expected to impact the",
+   "y": 249.3
+  },
+  {
+   "i": 424,
+   "page": 15,
+   "start": 19275,
+   "in_table": false,
+   "text": "Students. Will benefit from an automated, readily available",
+   "y": 274.3
+  },
+  {
+   "i": 425,
+   "page": 15,
+   "start": 19724,
+   "in_table": false,
+   "text": "Professionals and Organizations. Can utilize the system's bu",
+   "y": 369.2
+  },
+  {
+   "i": 426,
+   "page": 15,
+   "start": 20137,
+   "in_table": false,
+   "text": "Academic Researchers and Writers. Can more easily organize a",
+   "y": 464.0
+  },
+  {
+   "i": 427,
+   "page": 15,
+   "start": 20557,
+   "in_table": false,
+   "text": "Researchers. Will gain invaluable practical experience in de",
+   "y": 558.9
+  },
+  {
+   "i": 428,
+   "page": 15,
+   "start": 20992,
+   "in_table": false,
+   "text": "Future Researchers. Will have access to empirical data, meth",
+   "y": 653.7
+  },
+  {
+   "i": 429,
+   "page": 16,
+   "start": 21479,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 430,
+   "page": 16,
+   "start": 21480,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 431,
+   "page": 16,
+   "start": 21482,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 432,
+   "page": 17,
+   "start": 21484,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 433,
+   "page": 17,
+   "start": 21485,
+   "in_table": false,
+   "text": "DEFINITION OF TERMS",
+   "y": 93.1
+  },
+  {
+   "i": 434,
+   "page": 17,
+   "start": 21505,
+   "in_table": true,
+   "text": "Term\r\u0007",
+   "y": 125.2
+  },
+  {
+   "i": 435,
+   "page": 17,
+   "start": 21510,
+   "in_table": true,
+   "text": "Definition\r\u0007",
+   "y": 125.2
+  },
+  {
+   "i": 436,
+   "page": 17,
+   "start": 21521,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 437,
+   "page": 17,
+   "start": 21522,
+   "in_table": true,
+   "text": "Artificial Intelligence (AI) \r\u0007",
+   "y": 158.2
+  },
+  {
+   "i": 438,
+   "page": 17,
+   "start": 21552,
+   "in_table": true,
+   "text": "Refers to the technology that enables the system to analyze",
+   "y": 158.2
+  },
+  {
+   "i": 439,
+   "page": 17,
+   "start": 21779,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 440,
+   "page": 17,
+   "start": 21780,
+   "in_table": true,
+   "text": "Behavioral Tracking\r\u0007",
+   "y": 242.1
+  },
+  {
+   "i": 441,
+   "page": 17,
+   "start": 21800,
+   "in_table": true,
+   "text": "The process of recording the sequence of formatting actions",
+   "y": 242.1
+  },
+  {
+   "i": 442,
+   "page": 17,
+   "start": 21968,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 443,
+   "page": 17,
+   "start": 21969,
+   "in_table": true,
+   "text": "Bulk Formatting Operations\r\u0007",
+   "y": 307.0
+  },
+  {
+   "i": 444,
+   "page": 17,
+   "start": 21996,
+   "in_table": true,
+   "text": "Formatting changes applied to multiple document elements at",
+   "y": 307.0
+  },
+  {
+   "i": 445,
+   "page": 17,
+   "start": 22151,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 446,
+   "page": 17,
+   "start": 22152,
+   "in_table": true,
+   "text": "Cognitive Load\r\u0007",
+   "y": 371.9
+  },
+  {
+   "i": 447,
+   "page": 17,
+   "start": 22167,
+   "in_table": true,
+   "text": "The mental effort a user exerts during document editing, par",
+   "y": 371.9
+  },
+  {
+   "i": 448,
+   "page": 17,
+   "start": 22337,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 449,
+   "page": 17,
+   "start": 22338,
+   "in_table": true,
+   "text": "Cold Start Problem\r\u0007",
+   "y": 436.9
+  },
+  {
+   "i": 450,
+   "page": 17,
+   "start": 22357,
+   "in_table": true,
+   "text": "The initial phase of an intelligent system where insufficien",
+   "y": 436.9
+  },
+  {
+   "i": 451,
+   "page": 17,
+   "start": 22530,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 452,
+   "page": 17,
+   "start": 22531,
+   "in_table": true,
+   "text": "Confidence Score\r\u0007",
+   "y": 507.9
+  },
+  {
+   "i": 453,
+   "page": 17,
+   "start": 22548,
+   "in_table": true,
+   "text": "A percentage value displayed alongside a formatting suggesti",
+   "y": 507.9
+  },
+  {
+   "i": 454,
+   "page": 17,
+   "start": 22699,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 455,
+   "page": 17,
+   "start": 22700,
+   "in_table": true,
+   "text": "Contextual Features\r\u0007",
+   "y": 572.9
+  },
+  {
+   "i": 456,
+   "page": 17,
+   "start": 22720,
+   "in_table": true,
+   "text": "The surrounding information captured when a formatting actio",
+   "y": 572.9
+  },
+  {
+   "i": 457,
+   "page": 17,
+   "start": 22916,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 458,
+   "page": 17,
+   "start": 22917,
+   "in_table": true,
+   "text": "Continuous Improvement\r\u0007",
+   "y": 656.7
+  },
+  {
+   "i": 459,
+   "page": 17,
+   "start": 22940,
+   "in_table": true,
+   "text": "The ongoing process by which a system refines its formatting",
+   "y": 656.7
+  },
+  {
+   "i": 460,
+   "page": 17,
+   "start": 23105,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 461,
+   "page": 18,
+   "start": 23106,
+   "in_table": true,
+   "text": "Document Editor\r\u0007",
+   "y": 76.5
+  },
+  {
+   "i": 462,
+   "page": 18,
+   "start": 23122,
+   "in_table": true,
+   "text": "The core interface of IntelliDocs where users create, view,",
+   "y": 76.5
+  },
+  {
+   "i": 463,
+   "page": 18,
+   "start": 23280,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 464,
+   "page": 18,
+   "start": 23281,
+   "in_table": true,
+   "text": "Embedding\r\u0007",
+   "y": 141.4
+  },
+  {
+   "i": 465,
+   "page": 18,
+   "start": 23291,
+   "in_table": true,
+   "text": "A numerical vector representation of text used by the retrie",
+   "y": 141.4
+  },
+  {
+   "i": 466,
+   "page": 18,
+   "start": 23474,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 467,
+   "page": 18,
+   "start": 23475,
+   "in_table": true,
+   "text": "Feature Extraction\r\u0007",
+   "y": 206.3
+  },
+  {
+   "i": 468,
+   "page": 18,
+   "start": 23494,
+   "in_table": true,
+   "text": "The step in which relevant signals are identified and isolat",
+   "y": 206.3
+  },
+  {
+   "i": 469,
+   "page": 18,
+   "start": 23677,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 470,
+   "page": 18,
+   "start": 23678,
+   "in_table": true,
+   "text": "Formatting Automation\r\u0007",
+   "y": 277.4
+  },
+  {
+   "i": 471,
+   "page": 18,
+   "start": 23700,
+   "in_table": true,
+   "text": "The automatic application of formatting styles based on pred",
+   "y": 277.4
+  },
+  {
+   "i": 472,
+   "page": 18,
+   "start": 23865,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 473,
+   "page": 18,
+   "start": 23866,
+   "in_table": true,
+   "text": "Google Drive \r\u0007",
+   "y": 342.3
+  },
+  {
+   "i": 474,
+   "page": 18,
+   "start": 23880,
+   "in_table": true,
+   "text": "Refers to the cloud storage service integrated into IntelliD",
+   "y": 342.3
+  },
+  {
+   "i": 475,
+   "page": 18,
+   "start": 24053,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 476,
+   "page": 18,
+   "start": 24054,
+   "in_table": true,
+   "text": "Hybrid Machine Learning\r\u0007",
+   "y": 407.2
+  },
+  {
+   "i": 477,
+   "page": 18,
+   "start": 24078,
+   "in_table": true,
+   "text": "A prediction approach that combines rule-based pattern detec",
+   "y": 407.2
+  },
+  {
+   "i": 478,
+   "page": 18,
+   "start": 24239,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 479,
+   "page": 18,
+   "start": 24240,
+   "in_table": true,
+   "text": "IntelliDocs\r\u0007",
+   "y": 472.2
+  },
+  {
+   "i": 480,
+   "page": 18,
+   "start": 24252,
+   "in_table": true,
+   "text": "A web-based intelligent document editor that learns a user's",
+   "y": 472.2
+  },
+  {
+   "i": 481,
+   "page": 18,
+   "start": 24501,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 482,
+   "page": 18,
+   "start": 24502,
+   "in_table": true,
+   "text": "Intent Recognition\r\u0007",
+   "y": 556.0
+  },
+  {
+   "i": 483,
+   "page": 18,
+   "start": 24521,
+   "in_table": true,
+   "text": "The ability of a natural language command interface to under",
+   "y": 556.0
+  },
+  {
+   "i": 484,
+   "page": 18,
+   "start": 24674,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 485,
+   "page": 18,
+   "start": 24675,
+   "in_table": true,
+   "text": "Isolation Manager \r\u0007",
+   "y": 621.0
+  },
+  {
+   "i": 486,
+   "page": 18,
+   "start": 24694,
+   "in_table": true,
+   "text": "A privacy control component that allows users to manually de",
+   "y": 621.0
+  },
+  {
+   "i": 487,
+   "page": 18,
+   "start": 24871,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 488,
+   "page": 19,
+   "start": 24872,
+   "in_table": true,
+   "text": "LSTM (Long Short-Term Memory)\r\u0007",
+   "y": 76.5
+  },
+  {
+   "i": 489,
+   "page": 19,
+   "start": 24902,
+   "in_table": true,
+   "text": "A type of neural network suited for sequential data, enablin",
+   "y": 76.5
+  },
+  {
+   "i": 490,
+   "page": 19,
+   "start": 25052,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 491,
+   "page": 19,
+   "start": 25053,
+   "in_table": true,
+   "text": "Machine Learning\r\u0007",
+   "y": 141.4
+  },
+  {
+   "i": 492,
+   "page": 19,
+   "start": 25070,
+   "in_table": true,
+   "text": "A branch of artificial intelligence that enables a system to",
+   "y": 141.4
+  },
+  {
+   "i": 493,
+   "page": 19,
+   "start": 25264,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 494,
+   "page": 19,
+   "start": 25265,
+   "in_table": true,
+   "text": "Natural Language Command Interface\r\u0007",
+   "y": 225.3
+  },
+  {
+   "i": 495,
+   "page": 19,
+   "start": 25300,
+   "in_table": true,
+   "text": "A system feature that allows users to give formatting instru",
+   "y": 225.3
+  },
+  {
+   "i": 496,
+   "page": 19,
+   "start": 25462,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 497,
+   "page": 19,
+   "start": 25463,
+   "in_table": true,
+   "text": "Neural Network\r\u0007",
+   "y": 290.2
+  },
+  {
+   "i": 498,
+   "page": 19,
+   "start": 25478,
+   "in_table": true,
+   "text": "A computational model that learns patterns from data through",
+   "y": 290.2
+  },
+  {
+   "i": 499,
+   "page": 19,
+   "start": 25659,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 500,
+   "page": 19,
+   "start": 25660,
+   "in_table": true,
+   "text": "Personalization\r\u0007",
+   "y": 361.3
+  },
+  {
+   "i": 501,
+   "page": 19,
+   "start": 25676,
+   "in_table": true,
+   "text": "The process by which a system adapts its formatting suggesti",
+   "y": 361.3
+  },
+  {
+   "i": 502,
+   "page": 19,
+   "start": 25837,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 503,
+   "page": 19,
+   "start": 25838,
+   "in_table": true,
+   "text": "Personalized Model\r\u0007",
+   "y": 426.2
+  },
+  {
+   "i": 504,
+   "page": 19,
+   "start": 25857,
+   "in_table": true,
+   "text": "A machine learning model trained exclusively on a single use",
+   "y": 426.2
+  },
+  {
+   "i": 505,
+   "page": 19,
+   "start": 26019,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 506,
+   "page": 19,
+   "start": 26020,
+   "in_table": true,
+   "text": "Query \r\u0007",
+   "y": 491.1
+  },
+  {
+   "i": 507,
+   "page": 19,
+   "start": 26027,
+   "in_table": true,
+   "text": "A user's input, whether typed as a natural language command",
+   "y": 491.1
+  },
+  {
+   "i": 508,
+   "page": 19,
+   "start": 26185,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 509,
+   "page": 19,
+   "start": 26186,
+   "in_table": true,
+   "text": "Rule-Based System\r\u0007",
+   "y": 556.0
+  },
+  {
+   "i": 510,
+   "page": 19,
+   "start": 26204,
+   "in_table": true,
+   "text": "A component of a hybrid prediction engine that applies fixed",
+   "y": 556.0
+  },
+  {
+   "i": 511,
+   "page": 19,
+   "start": 26365,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 512,
+   "page": 19,
+   "start": 26366,
+   "in_table": true,
+   "text": "Sequential Pattern\r\u0007",
+   "y": 621.0
+  },
+  {
+   "i": 513,
+   "page": 19,
+   "start": 26385,
+   "in_table": true,
+   "text": "A series of formatting actions performed by a user in a spec",
+   "y": 621.0
+  },
+  {
+   "i": 514,
+   "page": 19,
+   "start": 26566,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 515,
+   "page": 19,
+   "start": 26567,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 516,
+   "page": 20,
+   "start": 26569,
+   "in_table": false,
+   "text": "CHAPTER II",
+   "y": 72.5
+  },
+  {
+   "i": 517,
+   "page": 20,
+   "start": 26580,
+   "in_table": false,
+   "text": "REVIEW OF RELATED LITERATURE AND STUDIES",
+   "y": 93.1
+  },
+  {
+   "i": 518,
+   "page": 20,
+   "start": 26621,
+   "in_table": false,
+   "text": "This section examines existing research related to the core",
+   "y": 113.9
+  },
+  {
+   "i": 519,
+   "page": 20,
+   "start": 26957,
+   "in_table": false,
+   "text": "Behavioral Tracking & Feature Extraction",
+   "y": 132.9
+  },
+  {
+   "i": 520,
+   "page": 20,
+   "start": 26998,
+   "in_table": false,
+   "text": "Recent scholarship underscores the critical role of tracking",
+   "y": 208.8
+  },
+  {
+   "i": 521,
+   "page": 20,
+   "start": 27933,
+   "in_table": false,
+   "text": "Machine Learning Prediction Engine",
+   "y": 398.6
+  },
+  {
+   "i": 522,
+   "page": 20,
+   "start": 27968,
+   "in_table": false,
+   "text": "The literature strongly supports the integration of machine",
+   "y": 417.6
+  },
+  {
+   "i": 523,
+   "page": 20,
+   "start": 28919,
+   "in_table": false,
+   "text": "User Transparency & Suggestion Presentation",
+   "y": 626.3
+  },
+  {
+   "i": 524,
+   "page": 20,
+   "start": 28963,
+   "in_table": false,
+   "text": "User trust and engagement are central to the successful adop",
+   "y": 645.2
+  },
+  {
+   "i": 525,
+   "page": 21,
+   "start": 29784,
+   "in_table": false,
+   "text": "Natural Language Command Interface",
+   "y": 167.4
+  },
+  {
+   "i": 526,
+   "page": 21,
+   "start": 29819,
+   "in_table": false,
+   "text": "Efficiency in document editing can be markedly improved by i",
+   "y": 186.4
+  },
+  {
+   "i": 527,
+   "page": 21,
+   "start": 30376,
+   "in_table": false,
+   "text": "Continuous Improvement & System Learning",
+   "y": 300.2
+  },
+  {
+   "i": 528,
+   "page": 21,
+   "start": 30417,
+   "in_table": false,
+   "text": "Continuous learning and adaptation are recognized as essenti",
+   "y": 319.1
+  },
+  {
+   "i": 529,
+   "page": 21,
+   "start": 31153,
+   "in_table": false,
+   "text": "User Outcomes & Productivity Benefits",
+   "y": 471.0
+  },
+  {
+   "i": 530,
+   "page": 21,
+   "start": 31191,
+   "in_table": false,
+   "text": "Empirical evidence consistently demonstrates the productivit",
+   "y": 489.9
+  },
+  {
+   "i": 531,
+   "page": 21,
+   "start": 31762,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 532,
+   "page": 21,
+   "start": 31763,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 533,
+   "page": 22,
+   "start": 31765,
+   "in_table": false,
+   "text": "Conceptual Framework.",
+   "y": 72.5
+  },
+  {
+   "i": 534,
+   "page": 22,
+   "start": 31788,
+   "in_table": false,
+   "text": "The conceptual framework for IntelliDocs focuses on deliveri",
+   "y": 93.1
+  },
+  {
+   "i": 535,
+   "page": 22,
+   "start": 32467,
+   "in_table": false,
+   "text": "/",
+   "y": null
+  },
+  {
+   "i": 536,
+   "page": 22,
+   "start": 32469,
+   "in_table": false,
+   "text": "Figure 1: Conceptual Framework",
+   "y": 498.1
+  },
+  {
+   "i": 537,
+   "page": 22,
+   "start": 32500,
+   "in_table": false,
+   "text": "The conceptual framework of IntelliDocs: An Intelligent Docu",
+   "y": 517.0
+  },
+  {
+   "i": 538,
+   "page": 23,
+   "start": 34599,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 539,
+   "page": 23,
+   "start": 34600,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 540,
+   "page": 23,
+   "start": 34601,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 541,
+   "page": 23,
+   "start": 34602,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 542,
+   "page": 23,
+   "start": 34603,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 543,
+   "page": 23,
+   "start": 34604,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 544,
+   "page": 23,
+   "start": 34605,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 545,
+   "page": 23,
+   "start": 34606,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 546,
+   "page": 23,
+   "start": 34607,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 547,
+   "page": 23,
+   "start": 34608,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 548,
+   "page": 23,
+   "start": 34609,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 549,
+   "page": 23,
+   "start": 34610,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 550,
+   "page": 24,
+   "start": 34612,
+   "in_table": false,
+   "text": "RELATED STUDIES",
+   "y": 72.5
+  },
+  {
+   "i": 551,
+   "page": 24,
+   "start": 34628,
+   "in_table": false,
+   "text": "IntelliDocs is an AI-powered document automation platform th",
+   "y": 91.5
+  },
+  {
+   "i": 552,
+   "page": 24,
+   "start": 35146,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 553,
+   "page": 24,
+   "start": 35147,
+   "in_table": false,
+   "text": "Comet",
+   "y": 224.3
+  },
+  {
+   "i": 554,
+   "page": 24,
+   "start": 35153,
+   "in_table": false,
+   "text": "Figure 2: Comet",
+   "y": 468.2
+  },
+  {
+   "i": 555,
+   "page": 24,
+   "start": 35170,
+   "in_table": false,
+   "text": "Cornet is a system developed by Singh et al. (2023) that aut",
+   "y": 501.2
+  },
+  {
+   "i": 556,
+   "page": 24,
+   "start": 35819,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 557,
+   "page": 24,
+   "start": 35820,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 558,
+   "page": 24,
+   "start": 35821,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 559,
+   "page": 25,
+   "start": 35822,
+   "in_table": false,
+   "text": "In contrast, IntelliDocs applies behavioral learning to free",
+   "y": 72.5
+  },
+  {
+   "i": 560,
+   "page": 25,
+   "start": 36374,
+   "in_table": false,
+   "text": "Talk-To-Your-Slides",
+   "y": 194.4
+  },
+  {
+   "i": 561,
+   "page": 25,
+   "start": 36395,
+   "in_table": false,
+   "text": "Figure 3: Talk-To-Your-Slides",
+   "y": 444.9
+  },
+  {
+   "i": 562,
+   "page": 25,
+   "start": 36425,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 563,
+   "page": 25,
+   "start": 36426,
+   "in_table": false,
+   "text": "Talk-to-Your-Slides is a hierarchical, LLM-powered agent dev",
+   "y": 487.0
+  },
+  {
+   "i": 564,
+   "page": 26,
+   "start": 37104,
+   "in_table": false,
+   "text": "In contrast, IntelliDocs extends this language-driven editin",
+   "y": 155.3
+  },
+  {
+   "i": 565,
+   "page": 26,
+   "start": 37611,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 566,
+   "page": 26,
+   "start": 37612,
+   "in_table": false,
+   "text": "CoEdIT",
+   "y": 299.3
+  },
+  {
+   "i": 567,
+   "page": 26,
+   "start": 37619,
+   "in_table": false,
+   "text": "/Figure 4: CoEdIT",
+   "y": 547.2
+  },
+  {
+   "i": 568,
+   "page": 26,
+   "start": 37637,
+   "in_table": false,
+   "text": "CoEdIT is an instruction-tuned large language model develope",
+   "y": 566.1
+  },
+  {
+   "i": 569,
+   "page": 27,
+   "start": 38167,
+   "in_table": false,
+   "text": "In contrast, IntelliDocs focuses specifically on structural",
+   "y": 72.5
+  },
+  {
+   "i": 570,
+   "page": 27,
+   "start": 38696,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 571,
+   "page": 27,
+   "start": 38697,
+   "in_table": false,
+   "text": "DocEdit-v2",
+   "y": 215.7
+  },
+  {
+   "i": 572,
+   "page": 27,
+   "start": 38708,
+   "in_table": false,
+   "text": "/",
+   "y": null
+  },
+  {
+   "i": 573,
+   "page": 27,
+   "start": 38710,
+   "in_table": false,
+   "text": "Figure 5: DocEdit-v2",
+   "y": 462.0
+  },
+  {
+   "i": 574,
+   "page": 27,
+   "start": 38731,
+   "in_table": false,
+   "text": "DocEdit-v2 is a framework developed by Suri et al. (2024) th",
+   "y": 480.9
+  },
+  {
+   "i": 575,
+   "page": 27,
+   "start": 39489,
+   "in_table": false,
+   "text": "In contrast, IntelliDocs resolves natural language formattin",
+   "y": 651.7
+  },
+  {
+   "i": 576,
+   "page": 28,
+   "start": 40021,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 577,
+   "page": 28,
+   "start": 40022,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 578,
+   "page": 28,
+   "start": 40023,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 579,
+   "page": 28,
+   "start": 40024,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 580,
+   "page": 28,
+   "start": 40025,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 581,
+   "page": 28,
+   "start": 40026,
+   "in_table": false,
+   "text": "ReWriteLM",
+   "y": 224.3
+  },
+  {
+   "i": 582,
+   "page": 28,
+   "start": 40036,
+   "in_table": false,
+   "text": "/",
+   "y": null
+  },
+  {
+   "i": 583,
+   "page": 28,
+   "start": 40038,
+   "in_table": false,
+   "text": "Figure 6: ReWriteLM",
+   "y": 469.2
+  },
+  {
+   "i": 584,
+   "page": 28,
+   "start": 40058,
+   "in_table": false,
+   "text": "RewriteLM is an instruction-tuned large language model devel",
+   "y": 488.1
+  },
+  {
+   "i": 585,
+   "page": 28,
+   "start": 40777,
+   "in_table": false,
+   "text": "In contrast, IntelliDocs is not concerned with rewriting the",
+   "y": 639.9
+  },
+  {
+   "i": 586,
+   "page": 29,
+   "start": 41331,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 587,
+   "page": 29,
+   "start": 41332,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 588,
+   "page": 29,
+   "start": 41333,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 589,
+   "page": 29,
+   "start": 41334,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 590,
+   "page": 29,
+   "start": 41335,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 591,
+   "page": 29,
+   "start": 41336,
+   "in_table": false,
+   "text": "COMPARATIVE MATRIX",
+   "y": 205.3
+  },
+  {
+   "i": 592,
+   "page": 29,
+   "start": 41355,
+   "in_table": false,
+   "text": "This comparative matrix presents an overview of all the int",
+   "y": 224.3
+  },
+  {
+   "i": 593,
+   "page": 29,
+   "start": 41610,
+   "in_table": false,
+   "text": "Table 1",
+   "y": 281.2
+  },
+  {
+   "i": 594,
+   "page": 29,
+   "start": 41618,
+   "in_table": false,
+   "text": "COMPARATIVE MATRIX",
+   "y": 300.2
+  },
+  {
+   "i": 595,
+   "page": 29,
+   "start": 41637,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 596,
+   "page": 29,
+   "start": 41638,
+   "in_table": true,
+   "text": "Features\r\u0007",
+   "y": 378.7
+  },
+  {
+   "i": 597,
+   "page": 29,
+   "start": 41647,
+   "in_table": true,
+   "text": "IntelliDocs\r\u0007",
+   "y": 378.7
+  },
+  {
+   "i": 598,
+   "page": 29,
+   "start": 41659,
+   "in_table": true,
+   "text": "Cornet (Singh et al., 2023)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 599,
+   "page": 29,
+   "start": 41687,
+   "in_table": true,
+   "text": "Talk-To-Your-Slides (Jung et al., 2026)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 600,
+   "page": 29,
+   "start": 41727,
+   "in_table": true,
+   "text": "CoEdIT (Raheja et al., 2023)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 601,
+   "page": 29,
+   "start": 41756,
+   "in_table": true,
+   "text": "DocEdit-v2 (Suri et al., 2024)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 602,
+   "page": 29,
+   "start": 41787,
+   "in_table": true,
+   "text": "RewriteLM (Shu et al., 2023)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 603,
+   "page": 29,
+   "start": 41816,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 604,
+   "page": 29,
+   "start": 41817,
+   "in_table": true,
+   "text": "Behavioral Tracking & Feature Extraction (Barkan et al., 202",
+   "y": null
+  },
+  {
+   "i": 605,
+   "page": 29,
+   "start": 41897,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 606,
+   "page": 29,
+   "start": 41899,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 607,
+   "page": 29,
+   "start": 41901,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 608,
+   "page": 29,
+   "start": 41903,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 609,
+   "page": 29,
+   "start": 41905,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 610,
+   "page": 29,
+   "start": 41907,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 611,
+   "page": 29,
+   "start": 41909,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 612,
+   "page": 29,
+   "start": 41910,
+   "in_table": true,
+   "text": "Machine Learning Prediction Engine (Singh et al. (2023)\r\u0007",
+   "y": 549.1
+  },
+  {
+   "i": 613,
+   "page": 29,
+   "start": 41966,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 614,
+   "page": 29,
+   "start": 41968,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 615,
+   "page": 29,
+   "start": 41970,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 616,
+   "page": 29,
+   "start": 41972,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 617,
+   "page": 29,
+   "start": 41974,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 618,
+   "page": 29,
+   "start": 41976,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 619,
+   "page": 29,
+   "start": 41978,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 620,
+   "page": 29,
+   "start": 41979,
+   "in_table": true,
+   "text": "User Transparency & Suggestion Presentation (Wang & Yin 2021",
+   "y": 625.4
+  },
+  {
+   "i": 621,
+   "page": 29,
+   "start": 42041,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 622,
+   "page": 29,
+   "start": 42043,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 623,
+   "page": 29,
+   "start": 42045,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 624,
+   "page": 29,
+   "start": 42047,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 625,
+   "page": 29,
+   "start": 42049,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 626,
+   "page": 29,
+   "start": 42051,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 627,
+   "page": 29,
+   "start": 42053,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 628,
+   "page": 30,
+   "start": 42054,
+   "in_table": true,
+   "text": "Natural Language Command Interface (Zamani & Kraus, 2022)\r\u0007",
+   "y": null
+  },
+  {
+   "i": 629,
+   "page": 30,
+   "start": 42112,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 630,
+   "page": 30,
+   "start": 42114,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 631,
+   "page": 30,
+   "start": 42116,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 632,
+   "page": 30,
+   "start": 42118,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 633,
+   "page": 30,
+   "start": 42120,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 634,
+   "page": 30,
+   "start": 42122,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 635,
+   "page": 30,
+   "start": 42124,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 636,
+   "page": 30,
+   "start": 42125,
+   "in_table": true,
+   "text": "Continuous Improvement & System Learning (Park & Nakamura, 2",
+   "y": null
+  },
+  {
+   "i": 637,
+   "page": 30,
+   "start": 42198,
+   "in_table": true,
+   "text": "Martinez, 2023; Heo",
+   "y": 285.1
+  },
+  {
+   "i": 638,
+   "page": 30,
+   "start": 42218,
+   "in_table": true,
+   "text": "& Lee, 2023)\r\u0007",
+   "y": 308.6
+  },
+  {
+   "i": 639,
+   "page": 30,
+   "start": 42231,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 640,
+   "page": 30,
+   "start": 42233,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 641,
+   "page": 30,
+   "start": 42235,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 642,
+   "page": 30,
+   "start": 42237,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 643,
+   "page": 30,
+   "start": 42239,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 644,
+   "page": 30,
+   "start": 42241,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 645,
+   "page": 30,
+   "start": 42243,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 646,
+   "page": 30,
+   "start": 42244,
+   "in_table": true,
+   "text": "User Outcomes & Productivity Benefits (Wang et al., 2023)\r\u0007",
+   "y": 332.2
+  },
+  {
+   "i": 647,
+   "page": 30,
+   "start": 42302,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 648,
+   "page": 30,
+   "start": 42304,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 649,
+   "page": 30,
+   "start": 42306,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 650,
+   "page": 30,
+   "start": 42308,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 651,
+   "page": 30,
+   "start": 42310,
+   "in_table": true,
+   "text": "⨯\r\u0007",
+   "y": null
+  },
+  {
+   "i": 652,
+   "page": 30,
+   "start": 42312,
+   "in_table": true,
+   "text": "✓\r\u0007",
+   "y": null
+  },
+  {
+   "i": 653,
+   "page": 30,
+   "start": 42314,
+   "in_table": true,
+   "text": "\u0007",
+   "y": null
+  },
+  {
+   "i": 654,
+   "page": 30,
+   "start": 42315,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 655,
+   "page": 30,
+   "start": 42316,
+   "in_table": false,
+   "text": "IntelliDocs introduces an adaptive approach to word processi",
+   "y": 423.9
+  },
+  {
+   "i": 656,
+   "page": 31,
+   "start": 43588,
+   "in_table": false,
+   "text": "",
+   "y": null
+  },
+  {
+   "i": 657,
+   "page": 31,
+   "start": 43589,
+   "in_table": false,
+   "text": "",
+   "y": null
+  }
+ ]
+}
