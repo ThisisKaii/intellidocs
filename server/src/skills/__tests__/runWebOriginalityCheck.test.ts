@@ -95,10 +95,25 @@ describe('runWebOriginalityCheck', () => {
     expect(result.passages).toEqual([])
   })
 
-  it('compares at most 12 sources, keeping the ones found most often', async () => {
-    const many: SourceCandidate[] = Array.from({ length: 20 }, (_, i) => ({ url: `https://m.test/${i}`, title: `S${i}`, kind: 'wikipedia' as const, text: `${SOURCE_TEXT} ${i}`.padEnd(300, ' filler') }))
-    const result = await runWebOriginalityCheck({ documentHtml: DOCUMENT, providers: [provider({ candidates: many })] })
+  it('downloads at most 12 pages', async () => {
+    const pages: SourceCandidate[] = Array.from({ length: 20 }, (_, i) => ({ url: `https://m.test/${i}`, title: `S${i}`, kind: 'web' as const }))
+    const loadText = jest.fn(async () => SOURCE_TEXT)
+    const result = await runWebOriginalityCheck({ documentHtml: DOCUMENT, providers: [provider({ kind: 'web', candidates: pages, loadText })] })
+    expect(loadText).toHaveBeenCalledTimes(12)
     expect(result.sources).toHaveLength(12)
+  })
+
+  it('compares at most 30 abstracts, without crowding out pages that need downloading', async () => {
+    const abstracts: SourceCandidate[] = Array.from({ length: 40 }, (_, i) => ({ url: `https://abs.test/${i}`, title: `A${i}`, kind: 'crossref' as const, text: `${SOURCE_TEXT} ${i}` }))
+    const result = await runWebOriginalityCheck({
+      documentHtml: DOCUMENT,
+      providers: [
+        provider({ name: 'Scholarly', kind: 'crossref', candidates: abstracts }),
+        provider({ name: 'Web', kind: 'web', candidates: [{ url: 'https://w.test/page', title: 'Page', kind: 'web' }], loadText: async () => SOURCE_TEXT }),
+      ],
+    })
+    expect(result.sources.filter((source) => source.kind === 'crossref')).toHaveLength(30)
+    expect(result.sources.filter((source) => source.kind === 'web')).toHaveLength(1)
   })
 
   it('stops searching when the time budget is spent', async () => {

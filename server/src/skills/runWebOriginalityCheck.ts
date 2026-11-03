@@ -6,6 +6,8 @@ import { documentParagraphs, pickQueryPhrases } from '../utils/webText'
 const MAX_QUERY_PHRASES = 8
 /** Pages downloaded and compared per check. */
 const MAX_SOURCES = 12
+/** Abstracts compared per check; they arrive with the search, so they cost no further requests. */
+const MAX_ABSTRACT_SOURCES = 30
 /** A source with less text than this cannot be compared meaningfully. */
 const MIN_SOURCE_CHARS = 200
 /** A document with fewer words than this is too short to search for. */
@@ -132,8 +134,13 @@ export async function runWebOriginalityCheck(input: CheckInput): Promise<WebOrig
     })
   )
 
-  // Keep the pages found most often, and download the text of those that came without any.
-  const top = Array.from(found.values()).sort((a, b) => b.hits - a.hits).slice(0, MAX_SOURCES)
+  // Keep the pages found most often, and download the text of those that came without any. Texts
+  // already in hand have their own limit so that abstracts never crowd out web pages.
+  const ranked = Array.from(found.values()).sort((a, b) => b.hits - a.hits)
+  const top = [
+    ...ranked.filter(({ candidate }) => candidate.text).slice(0, MAX_ABSTRACT_SOURCES),
+    ...ranked.filter(({ candidate }) => !candidate.text).slice(0, MAX_SOURCES),
+  ]
   const loaded = await inPool(top, CONCURRENCY, async ({ candidate, provider }) => {
     if (candidate.text) return candidate.text
     if (!provider.loadText || now() > deadline) {

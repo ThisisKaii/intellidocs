@@ -604,7 +604,7 @@ export interface OriginalityResult {
 }
 
 /** Where a published text comes from. */
-export type WebSourceKind = 'wikipedia' | 'arxiv' | 'openalex' | 'web'
+export type WebSourceKind = 'wikipedia' | 'arxiv' | 'openalex' | 'crossref' | 'semanticscholar' | 'web'
 
 /** One paragraph of the document that shares text with a published source. */
 export interface WebOriginalityPassage {
@@ -612,7 +612,7 @@ export interface WebOriginalityPassage {
   text: string
   /** Share of the paragraph found in the source, 0-100. */
   similarity: number
-  match_type: 'verbatim' | 'partial'
+  match_type: 'verbatim' | 'partial' | 'paraphrased'
   source_url: string
   source_title: string
   source_kind: WebSourceKind

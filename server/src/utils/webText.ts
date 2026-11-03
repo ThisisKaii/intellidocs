@@ -1,3 +1,5 @@
+import { STOPWORDS } from './shingleMatch'
+
 /** Longest page text kept for comparison (characters); the rest of a very long page is ignored. */
 const MAX_PAGE_CHARS = 200000
 
@@ -258,8 +260,63 @@ function isPoorQuery(sentence: string): boolean {
   return digits / sentence.length > 0.12
 }
 
+/** Academic filler that appears in every field, so it says nothing about what a passage is about. */
+const GENERIC_ACADEMIC_WORDS = new Set(
+  `according addition additionally analysis approach based certain common conclusion context data different
+  discussed example fact following found general given however important including information introduction
+  issue issues known large likely literature many method methods needed number often overall paper people
+  possible present problem process provide provides purpose related research researchers result results role
+  several shown significant similar specific students study studies system systems thesis things through
+  understanding used using various ways well within without work works world years`.split(/\s+/)
+)
+
+/** How much a word says about the subject: technical forms count most, stopwords and filler not at all. */
+function termWeight(word: string, startsSentence: boolean): number {
+  const lower = word.toLowerCase()
+  if (STOPWORDS.has(lower) || GENERIC_ACADEMIC_WORDS.has(lower) || /^\d+$/.test(word)) return 0
+  if (/^[A-Z0-9]{2,}s?$/.test(word) || /[a-z][A-Z]/.test(word)) return 4
+  if (word.includes('-')) return 3
+  if (/^[A-Z]/.test(word) && !startsSentence) return 3
+  if (lower.length >= 10) return 3
+  if (lower.length >= 7) return 2
+  return lower.length >= 5 ? 1 : 0
+}
+
+/** The words of a text in reading order, keeping hyphenated terms whole. */
+function wordsOf(text: string): string[] {
+  return text.match(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu) ?? []
+}
+
+/** Average weight per word: how densely a passage is packed with subject terms. */
+function termDensity(text: string): number {
+  const words = wordsOf(text)
+  if (words.length === 0) return 0
+  return words.reduce((sum, word, index) => sum + termWeight(word, index === 0), 0) / words.length
+}
+
 /**
- * Pick sentences spread evenly through the document and cut each to a short phrase. Exact-phrase
+ * The most telling words of a text, in their original order. Services without phrase search need
+ * these keywords: given a whole phrase they return little or nothing.
+ */
+export function distinctiveTerms(text: string, limit: number): string[] {
+  const seen = new Set<string>()
+  const ranked = wordsOf(text).flatMap((word, index) => {
+    const lower = word.toLowerCase()
+    if (seen.has(lower)) return []
+    seen.add(lower)
+    const weight = termWeight(word, index === 0)
+    return weight > 0 ? [{ word, index, weight }] : []
+  })
+  return ranked
+    .sort((a, b) => b.weight - a.weight || a.index - b.index)
+    .slice(0, limit)
+    .sort((a, b) => a.index - b.index)
+    .map((term) => term.word)
+}
+
+/**
+ * Pick the most distinctive phrase from each of several equal stretches of the document, so the
+ * phrases stay spread evenly but favour dense technical wording over generic sentences. Exact-phrase
  * searches on a few distinctive passages are how copied text is found on the web.
  */
 export function pickQueryPhrases(paragraphs: string[], count: number, words: number = 12): string[] {
@@ -271,18 +328,23 @@ export function pickQueryPhrases(paragraphs: string[], count: number, words: num
     })
   if (candidates.length === 0) return []
 
-  const picked: string[] = []
-  const step = candidates.length / Math.min(count, candidates.length)
-  for (let i = 0; i < Math.min(count, candidates.length); i += 1) {
-    const sentence = candidates[Math.floor(i * step)]
-    // Skip the first two words: sentence openers are the least distinctive part.
-    const phrase = sentence
+  // Skip the first two words: sentence openers are the least distinctive part.
+  const phrases = candidates.map((sentence) =>
+    sentence
       .replace(/["“”]/g, '')
       .split(/\s+/)
       .slice(2, 2 + words)
       .join(' ')
       .replace(/[.,;:!?]+$/, '')
-    if (!picked.includes(phrase)) picked.push(phrase)
+  )
+
+  const picked: string[] = []
+  const buckets = Math.min(count, phrases.length)
+  const step = phrases.length / buckets
+  for (let i = 0; i < buckets; i += 1) {
+    const stretch = phrases.slice(Math.floor(i * step), Math.floor((i + 1) * step))
+    const densest = stretch.reduce((best, phrase) => (termDensity(phrase) > termDensity(best) ? phrase : best))
+    if (!picked.includes(densest)) picked.push(densest)
   }
   return picked
 }

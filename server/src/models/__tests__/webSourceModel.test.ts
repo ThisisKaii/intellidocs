@@ -3,8 +3,10 @@ import {
   getSearchProviders,
   parseArxivFeed,
   parseBraveResults,
+  parseCrossrefWorks,
   parseDuckDuckGoResults,
   parseOpenAlexWorks,
+  parseSemanticScholarPapers,
   parseWikipediaExtract,
   parseWikipediaSearch,
 } from '../webSourceModel'
@@ -40,6 +42,47 @@ describe('parsers', () => {
     expect(works).toEqual([{ url: 'https://doi.org/10.1/x', title: 'A', kind: 'openalex', text: 'Some text' }])
   })
 
+  it('gives a DOI one spelling so a paper found by two services counts once', () => {
+    const openAlex = parseOpenAlexWorks({ results: [{ doi: 'https://doi.org/10.1/ABC', title: 'A', abstract_inverted_index: { Some: [0] } }] })
+    const crossref = parseCrossrefWorks({ message: { items: [{ DOI: '10.1/ABC', title: ['A'], abstract: 'Some' }] } })
+    const scholar = parseSemanticScholarPapers({ data: [{ title: 'A', abstract: 'Some', externalIds: { DOI: '10.1/abc' } }] })
+    expect(new Set([openAlex[0].url, crossref[0].url, scholar[0].url])).toEqual(new Set(['https://doi.org/10.1/abc']))
+  })
+
+  it('reads CrossRef works, cleaning JATS abstracts and skipping works without one', () => {
+    const works = parseCrossrefWorks({
+      message: {
+        items: [
+          { DOI: '10.1/x', title: ['A paper'], 'container-title': ['A Journal'], abstract: '<jats:title>Abstract</jats:title>\n  <jats:p>Sea levels &amp; floods.</jats:p>' },
+          { DOI: '10.1/y', title: ['No journal'], 'container-title': [], abstract: '<jats:p>Text.</jats:p>' },
+          { DOI: '10.1/z', title: ['No abstract'] },
+        ],
+      },
+    })
+    expect(works).toEqual([
+      { url: 'https://doi.org/10.1/x', title: 'A paper — A Journal', kind: 'crossref', text: 'Abstract Sea levels & floods.' },
+      { url: 'https://doi.org/10.1/y', title: 'No journal', kind: 'crossref', text: 'Text.' },
+    ])
+    expect(parseCrossrefWorks({ status: 'failed' })).toEqual([])
+  })
+
+  it('reads Semantic Scholar papers, preferring the DOI, then the open copy, then the paper page', () => {
+    const papers = parseSemanticScholarPapers({
+      data: [
+        { title: 'With DOI', abstract: 'One.', url: 'https://s2.test/1', externalIds: { DOI: '10.1/A' }, openAccessPdf: { url: 'https://open.test/1.pdf' } },
+        { title: 'Open only', abstract: 'Two.', url: 'https://s2.test/2', externalIds: {}, openAccessPdf: { url: 'https://open.test/2.pdf' } },
+        { title: 'Page only', abstract: 'Three.', url: 'https://s2.test/3', externalIds: null, openAccessPdf: null },
+        { title: 'No abstract', abstract: null, url: 'https://s2.test/4' },
+      ],
+    })
+    expect(papers).toEqual([
+      { url: 'https://doi.org/10.1/a', title: 'With DOI', kind: 'semanticscholar', text: 'One.' },
+      { url: 'https://open.test/2.pdf', title: 'Open only', kind: 'semanticscholar', text: 'Two.' },
+      { url: 'https://s2.test/3', title: 'Page only', kind: 'semanticscholar', text: 'Three.' },
+    ])
+    expect(parseSemanticScholarPapers({ total: 0, offset: 0 })).toEqual([])
+  })
+
   it('reads Brave web results', () => {
     expect(parseBraveResults({ web: { results: [{ url: 'https://a.test/x', title: 'A' }, { title: 'no url' }] } })).toEqual([
       { url: 'https://a.test/x', title: 'A', kind: 'web' },
@@ -73,6 +116,8 @@ describe('getSearchProviders', () => {
       ['Wikipedia', true],
       ['arXiv', true],
       ['OpenAlex', true],
+      ['CrossRef', true],
+      ['Semantic Scholar', true],
       ['Web (DuckDuckGo)', true],
     ])
     const keyed = getSearchProviders({ BRAVE_SEARCH_API_KEY: 'k2' })
@@ -80,6 +125,8 @@ describe('getSearchProviders', () => {
       ['Wikipedia', true],
       ['arXiv', true],
       ['OpenAlex', true],
+      ['CrossRef', true],
+      ['Semantic Scholar', true],
       ['Web (Brave Search)', true],
     ])
   })

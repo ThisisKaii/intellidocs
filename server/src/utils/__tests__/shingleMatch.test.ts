@@ -68,6 +68,47 @@ describe('comparePassages', () => {
     expect(result.passages.map((p) => p.paragraph_index)).toEqual([0])
   })
 
+  it('reports one copied sentence inside a long paragraph of original writing', () => {
+    const own = Array.from({ length: 6 }, (_, i) => `In my own words, section ${i} of this chapter records what our village elders told us about their harvest during that year.`).join(' ')
+    const result = comparePassages([`${own} ${COPIED}`], [WIKI])
+    expect(result.passages).toHaveLength(1)
+    expect(result.passages[0].match_type).toBe('partial')
+    expect(result.passages[0].similarity).toBeLessThan(30)
+  })
+
+  describe('reworded text', () => {
+    const ABSTRACT: ComparisonSource = {
+      url: 'https://doi.org/10.1/abstract',
+      title: 'Coastal adaptation',
+      kind: 'crossref',
+      text: 'Background sentence about something else entirely. Rising sea levels threaten fishing villages, and local governments must fund protective infrastructure to reduce flood damage. Later work considers other regions of the country.',
+    }
+
+    it('flags a synonym-swapped sentence and quotes the sentence it restates', () => {
+      const swapped = 'Rising sea levels endanger fishing villages, so local governments need to finance protective infrastructure that lowers flood damage.'
+      const result = comparePassages([swapped], [ABSTRACT])
+      expect(result.passages).toHaveLength(1)
+      expect(result.passages[0]).toMatchObject({ match_type: 'paraphrased', source_url: ABSTRACT.url, source_kind: 'crossref' })
+      expect(result.passages[0].source_excerpt).toMatch(/^Rising sea levels threaten/)
+      expect(result.overlap_percent).toBeGreaterThan(0)
+    })
+
+    it('flags a sentence whose clauses were reordered', () => {
+      const reordered = 'To reduce flood damage, local governments must fund protective infrastructure, because rising sea levels threaten fishing villages.'
+      expect(comparePassages([reordered], [ABSTRACT]).passages[0]?.match_type).toBe('paraphrased')
+    })
+
+    it('does not flag original writing on the same topic', () => {
+      const own = 'Fishing villages in our province rarely trust local governments, since flood warnings arrive late and infrastructure budgets favour the capital.'
+      expect(comparePassages([own], [ABSTRACT]).passages).toEqual([])
+    })
+
+    it('prefers a shared run of words over a reworded match', () => {
+      const result = comparePassages([COPIED], [ABSTRACT, WIKI])
+      expect(result.passages[0].match_type).toBe('verbatim')
+    })
+  })
+
   it('picks the source that shares the most of the paragraph', () => {
     const partial: ComparisonSource = { ...UNRELATED, url: 'https://example.com/partial', text: `Some lead in text. ${COPIED.slice(0, 80)} and then it ends.` }
     const result = comparePassages([COPIED], [partial, WIKI])

@@ -6,6 +6,7 @@ import {
   api,
   type DocumentRecord,
   type WebCheckOptions,
+  type WebOriginalityPassage,
   type WebOriginalityResult,
   type WebSourceKind,
 } from '@/services/api'
@@ -32,10 +33,18 @@ const VIEW_EXTENSIONS = [
   OriginalityHighlightExtension,
 ]
 
+const MATCH_LABEL: Record<WebOriginalityPassage['match_type'], string> = {
+  verbatim: 'Verbatim',
+  partial: 'Partial',
+  paraphrased: 'Paraphrased',
+}
+
 const SOURCE_LABEL: Record<WebSourceKind, string> = {
   wikipedia: 'Wikipedia',
   arxiv: 'arXiv',
   openalex: 'OpenAlex',
+  crossref: 'CrossRef',
+  semanticscholar: 'Semantic Scholar',
   web: 'Web',
 }
 
@@ -48,7 +57,7 @@ type CheckScope = 'all' | 'chapter' | 'pages'
 
 /**
  * View-only page: compares the document (or a targeted chapter/page range) against
- * Wikipedia, scholarly sources (OpenAlex, arXiv) and the web, highlighting matches.
+ * Wikipedia, scholarly sources (OpenAlex, arXiv, CrossRef, Semantic Scholar) and the web, highlighting matches.
  */
 export default function Originality(): JSX.Element {
   const { id = '' } = useParams<{ id: string }>()
@@ -180,7 +189,7 @@ export default function Originality(): JSX.Element {
           title="Online Originality Check"
           description={
             document
-              ? `${document.title || 'Untitled document'} — Search Wikipedia, arXiv, OpenAlex, and the web for matching sources.`
+              ? `${document.title || 'Untitled document'} — Search Wikipedia, arXiv, OpenAlex, CrossRef, Semantic Scholar, and the web for matching sources.`
               : undefined
           }
           actions={
@@ -358,7 +367,7 @@ export default function Originality(): JSX.Element {
                       passage.match_type === 'verbatim' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
                     }`}
                   >
-                    {passage.match_type === 'verbatim' ? 'Verbatim' : 'Paraphrased'} · {Math.round(passage.similarity)}%
+                    {MATCH_LABEL[passage.match_type]} · {Math.round(passage.similarity)}%
                   </span>
                   <span className="text-muted-foreground text-[10px] uppercase tracking-wider">{SOURCE_LABEL[passage.source_kind]}</span>
                 </div>

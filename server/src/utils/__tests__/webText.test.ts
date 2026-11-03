@@ -1,4 +1,4 @@
-import { documentParagraphs, pageText, pickQueryPhrases, sliceDocumentContent } from '../webText'
+import { distinctiveTerms, documentParagraphs, pageText, pickQueryPhrases, sliceDocumentContent } from '../webText'
 
 const SENTENCE_A = 'The quick brown fox jumps over the lazy dog while the farmer watches the river flow slowly past.'
 const SENTENCE_B = 'Renewable energy adoption in coastal communities depends heavily on reliable funding and local training programs.'
@@ -100,9 +100,39 @@ describe('pickQueryPhrases', () => {
     expect(pickQueryPhrases(poor, 5, 8)).toEqual([])
   })
 
+  it('prefers technical wording over a generic sentence from the same stretch', () => {
+    const generic = 'It is important to note that the results of this study were very good for all of the people.'
+    const technical = 'We trained a convolutional autoencoder with BiLSTM layers on hyperspectral satellite imagery from Sentinel-2 across several agricultural seasons.'
+    expect(pickQueryPhrases([generic, technical], 1, 8)).toEqual(['a convolutional autoencoder with BiLSTM layers on hyperspectral'])
+  })
+
+  it('keeps one phrase from each stretch so the spread survives dense passages', () => {
+    const dense = 'We trained a convolutional autoencoder with BiLSTM layers on hyperspectral satellite imagery from Sentinel-2 across several agricultural seasons.'
+    const phrases = pickQueryPhrases([dense, SENTENCE_B, SENTENCE_C, SENTENCE_A], 2, 8)
+    expect(phrases).toHaveLength(2)
+    expect(phrases[0]).toContain('convolutional')
+    expect(phrases[1]).not.toContain('convolutional')
+  })
+
+  it('never lets a dense but excluded line win', () => {
+    const spec = 'Storyboard 2: The BiLSTM autoencoder hyperspectral Sentinel-2 convolutional panel shows the OAuth2 PostgreSQL dashboard wireframe today.'
+    expect(pickQueryPhrases([spec, SENTENCE_A], 1, 8)).toEqual(['brown fox jumps over the lazy dog while'])
+  })
+
   it('strips quotation marks that would break an exact-phrase query', () => {
     const phrases = pickQueryPhrases(['He said “the quick brown fox jumps over the lazy dog” and then left the room quietly.'], 1, 8)
     expect(phrases[0]).not.toMatch(/[“”"]/)
+  })
+})
+
+describe('distinctiveTerms', () => {
+  it('keeps the most telling words in their original order', () => {
+    expect(distinctiveTerms('the results of this study show that hyperspectral BiLSTM models beat Sentinel-2 baselines', 3)).toEqual(['hyperspectral', 'BiLSTM', 'Sentinel-2'])
+  })
+
+  it('counts a repeated word once and returns nothing for pure filler', () => {
+    expect(distinctiveTerms('autoencoder autoencoder autoencoder', 5)).toEqual(['autoencoder'])
+    expect(distinctiveTerms('it is one of the most of all', 5)).toEqual([])
   })
 })
 

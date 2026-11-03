@@ -1,6 +1,7 @@
+import { z } from 'zod'
 import type { SourceKind } from '../utils/shingleMatch'
 import { fetchPublicPage } from '../utils/safeFetch'
-import { pageText } from '../utils/webText'
+import { distinctiveTerms, pageText } from '../utils/webText'
 
 /** A published text that may contain the phrase searched for. */
 export interface SourceCandidate {
@@ -26,6 +27,15 @@ export interface SearchProvider {
 
 /** How long one search request may take. */
 const REQUEST_TIMEOUT_MS = 8000
+
+/** Keywords sent to services without phrase search; more than this and they find less, not more. */
+const KEYWORD_LIMIT = 5
+
+/** Contact for CrossRef's polite pool when WEB_CHECK_CONTACT holds no email address. */
+const DEFAULT_CONTACT_EMAIL = 'admin@intellidocs.edu'
+
+/** Semantic Scholar allows about one request a second; a little slower avoids being turned away. */
+const SEMANTIC_SCHOLAR_SPACING_MS = 1100
 
 /** Who is asking, as Wikimedia and arXiv require: the app name and a way to reach its operator. */
 function userAgent(env: NodeJS.ProcessEnv): string {
@@ -153,7 +163,7 @@ export function parseOpenAlexWorks(json: unknown): SourceCandidate[] {
   const results = (json as { results?: { id?: string; doi?: string | null; title?: string | null; abstract_inverted_index?: Record<string, number[]> | null }[] })?.results ?? []
   return results.flatMap((work) => {
     const text = abstractFromInvertedIndex(work.abstract_inverted_index)
-    const url = work.doi || work.id
+    const url = work.doi ? doiUrl(work.doi) : work.id
     if (!text || !url) return []
     return [{ url, title: work.title ?? url, kind: 'openalex' as const, text }]
   })
@@ -170,6 +180,114 @@ function openAlexProvider(env: NodeJS.ProcessEnv): SearchProvider {
       const apiKeyParam = env.OPENALEX_API_KEY ? `&api_key=${encodeURIComponent(env.OPENALEX_API_KEY)}` : ''
       const url = `https://api.openalex.org/works?search=${encodeURIComponent(exact(phrase))}&per_page=3&select=id,doi,title,abstract_inverted_index${apiKeyParam}`
       return parseOpenAlexWorks(JSON.parse(await getText(url, headers)))
+    },
+  }
+}
+
+// ── CrossRef ─────────────────────────────────────────────────────────────────
+
+/** The link a DOI resolves at, in one spelling so a paper found twice counts once. */
+function doiUrl(doi: string): string {
+  return `https://doi.org/${doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').toLowerCase()}`
+}
+
+const crossrefWorksSchema = z.object({
+  message: z.object({
+    items: z.array(
+      z.object({
+        DOI: z.string().optional(),
+        title: z.array(z.string()).optional(),
+        'container-title': z.array(z.string()).optional(),
+        abstract: z.string().optional(),
+      })
+    ),
+  }),
+})
+
+/** The works (DOI link, title with journal, abstract) in a CrossRef answer. Abstracts arrive as JATS XML. */
+export function parseCrossrefWorks(json: unknown): SourceCandidate[] {
+  const parsed = crossrefWorksSchema.safeParse(json)
+  if (!parsed.success) return []
+  return parsed.data.message.items.flatMap((work) => {
+    const text = work.abstract ? pageText(work.abstract).replace(/\s+/g, ' ').trim() : ''
+    if (!work.DOI || !text) return []
+    const url = doiUrl(work.DOI)
+    const title = work.title?.[0] ?? url
+    const container = work['container-title']?.[0]
+    return [{ url, title: container ? `${title} — ${container}` : title, kind: 'crossref' as const, text }]
+  })
+}
+
+/**
+ * CrossRef: free, no key. It has no phrase search and did not reach abstract text when tested, so it
+ * is sent keywords and finds on-topic abstracts rather than the exact source of a sentence.
+ */
+function crossrefProvider(env: NodeJS.ProcessEnv): SearchProvider {
+  const contact = env.WEB_CHECK_CONTACT?.includes('@') ? env.WEB_CHECK_CONTACT : DEFAULT_CONTACT_EMAIL
+  const headers = { 'User-Agent': `IntelliDocs-Originality/1.0 (mailto:${contact})`, Accept: 'application/json' }
+  return {
+    name: 'CrossRef',
+    kind: 'crossref',
+    isConfigured: () => true,
+    async search(phrase) {
+      const terms = distinctiveTerms(phrase, KEYWORD_LIMIT).join(' ')
+      if (!terms) return []
+      const url = `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(terms)}&rows=5&filter=has-abstract:true&select=DOI,title,container-title,abstract`
+      return parseCrossrefWorks(JSON.parse(await getText(url, headers)))
+    },
+  }
+}
+
+// ── Semantic Scholar ─────────────────────────────────────────────────────────
+
+const semanticScholarSearchSchema = z.object({
+  data: z
+    .array(
+      z.object({
+        title: z.string().nullish(),
+        abstract: z.string().nullish(),
+        url: z.string().nullish(),
+        externalIds: z.object({ DOI: z.string().nullish() }).nullish(),
+        openAccessPdf: z.object({ url: z.string().nullish() }).nullish(),
+      })
+    )
+    .optional(),
+})
+
+/** The papers (best link, title, abstract) in a Semantic Scholar answer. */
+export function parseSemanticScholarPapers(json: unknown): SourceCandidate[] {
+  const parsed = semanticScholarSearchSchema.safeParse(json)
+  if (!parsed.success) return []
+  return (parsed.data.data ?? []).flatMap((paper) => {
+    const doi = paper.externalIds?.DOI
+    const url = (doi && doiUrl(doi)) || paper.openAccessPdf?.url || paper.url
+    if (!url || !paper.abstract) return []
+    return [{ url, title: paper.title ?? url, kind: 'semanticscholar' as const, text: paper.abstract }]
+  })
+}
+
+/**
+ * Semantic Scholar: works without a key on a shared, often busy pool; SEMANTIC_SCHOLAR_API_KEY gives
+ * it a dedicated limit. A whole phrase finds nothing there, so it is sent keywords, which do find
+ * papers by their abstract.
+ */
+function semanticScholarProvider(env: NodeJS.ProcessEnv): SearchProvider {
+  const headers: Record<string, string> = { 'User-Agent': userAgent(env), Accept: 'application/json' }
+  if (env.SEMANTIC_SCHOLAR_API_KEY) headers['x-api-key'] = env.SEMANTIC_SCHOLAR_API_KEY
+  let nextRequestAt = 0
+  return {
+    name: 'Semantic Scholar',
+    kind: 'semanticscholar',
+    isConfigured: () => true,
+    async search(phrase) {
+      // Its search returns nothing for hyphenated terms.
+      const terms = distinctiveTerms(phrase, KEYWORD_LIMIT).join(' ').replace(/-/g, ' ')
+      if (!terms) return []
+      const wait = nextRequestAt - Date.now()
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+      nextRequestAt = Date.now() + SEMANTIC_SCHOLAR_SPACING_MS
+      const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(terms)}&limit=5&fields=title,abstract,url,externalIds,openAccessPdf`
+      return parseSemanticScholarPapers(JSON.parse(await getText(url, headers)))
     },
   }
 }
@@ -254,5 +372,5 @@ function braveProvider(env: NodeJS.ProcessEnv): SearchProvider {
 /** Every place the online check can search, in the order they are tried. */
 export function getSearchProviders(env: NodeJS.ProcessEnv = process.env): SearchProvider[] {
   const webProvider = env.BRAVE_SEARCH_API_KEY ? braveProvider(env) : duckDuckGoProvider(env)
-  return [wikipediaProvider(env), arxivProvider(env), openAlexProvider(env), webProvider]
+  return [wikipediaProvider(env), arxivProvider(env), openAlexProvider(env), crossrefProvider(env), semanticScholarProvider(env), webProvider]
 }
