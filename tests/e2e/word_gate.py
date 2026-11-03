@@ -137,6 +137,19 @@ def platform_fonts(context, page) -> dict[str, dict]:
     return used
 
 
+# Section breaks the editor holds: each must carry the section properties the converter wrote (Python
+# writes them, frontend/src/lib/sectionProps.ts reads them; a mismatch would silently become null).
+JS_SECTION_BREAKS = """() => {
+  const out = [];
+  window.__editor.state.doc.descendants((node) => {
+    if ((node.type.name === 'pageBreak' || node.type.name === 'sectionMark') && node.attrs.section !== null) {
+      out.push({ type: node.type.name, section: node.attrs.section, props: node.attrs.sectionProps !== null });
+    }
+  });
+  return out;
+}"""
+
+
 class GateError(Exception):
     """The gate could not measure: a reason to stop, not a regression."""
 
@@ -190,6 +203,9 @@ def measure(
         page.evaluate("document.fonts.ready.then(() => true)")
         layout = fr.wait_for_layout(page)
         rows = page.evaluate(JS_ROWS, layout["pageH"] + 40)
+        unreadable = [b for b in page.evaluate(JS_SECTION_BREAKS) if not b["props"]]
+        if unreadable:
+            raise GateError(f"section breaks reached the editor without readable section properties: {unreadable[:5]}")
         if rejected:
             raise GateError(f"the saved JSON was rejected on reopen: {rejected[0]}")
         saved = page.evaluate("window.__editor.getJSON()") if keep_json else None

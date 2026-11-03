@@ -1,6 +1,7 @@
 import { Node } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
+import { parseSectionPropsAttribute, sectionPropsAttribute, type SectionProps } from '@/lib/sectionProps'
 
 const PAGE_BREAK_SELECTOR = '.intellidocs-page-break'
 const BREAKER_SELECTOR = '.breaker'
@@ -100,6 +101,13 @@ export const PageBreak = Node.create({
         },
         renderHTML: () => ({}),
       },
+      // The properties of the section this break starts (page size, margins, columns, header and
+      // footer parts, numbering): see lib/sectionProps. Null for an ordinary page break.
+      sectionProps: {
+        default: null,
+        parseHTML: (element: HTMLElement) => parseSectionPropsAttribute(element),
+        renderHTML: () => ({}),
+      },
     }
   },
 
@@ -115,7 +123,8 @@ export const PageBreak = Node.create({
 
   renderHTML({ node }) {
     const section = typeof node.attrs.section === 'number' ? { 'data-section': String(node.attrs.section) } : {}
-    return ['div', { class: 'intellidocs-page-break', style: `height:${node.attrs.height}px`, ...section }]
+    const props = sectionPropsAttribute(node.attrs.sectionProps as SectionProps | null)
+    return ['div', { class: 'intellidocs-page-break', style: `height:${node.attrs.height}px`, ...section, ...props }]
   },
 
   // A node view keeps the same DOM element across paginator redraws, so the

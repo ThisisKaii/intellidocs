@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Editor, type JSONContent } from '@tiptap/core'
 import { editorExtensions } from '../TiptapEditor'
 import { loadEditorContent } from '@/lib/loadEditorContent'
+import { SAMPLE_SECTION } from '@/lib/sectionProps.fixture'
 
 // The page-break plugin watches for layout changes; jsdom has no layout to watch.
 globalThis.ResizeObserver = class {
@@ -90,5 +91,38 @@ describe('saving and reopening as editor JSON', () => {
     })
     expect(loaded).toBe('html')
     expect(editor.getText()).toBe('From the HTML.')
+  })
+})
+
+describe('saving and reopening section breaks', () => {
+  const props = JSON.stringify(SAMPLE_SECTION).replace(/"/g, '&quot;')
+  const html =
+    '<p>Section one.</p>' +
+    `<div class="intellidocs-page-break" data-section="1" data-section-props="${props}"></div>` +
+    '<p>Section two starts a page.</p>' +
+    `<div class="intellidocs-section-mark" data-section="2" data-section-props="${props.replace('nextPage', 'continuous')}"></div>` +
+    '<p>Section three runs on.</p>'
+
+  it('keeps a page break and a section mark with their properties, through HTML', () => {
+    const { editor } = openedFrom(reopened(html))
+    const nodes = editor.getJSON().content ?? []
+    const pageBreak = nodes.find((node) => node.type === 'pageBreak')
+    const mark = nodes.find((node) => node.type === 'sectionMark')
+    expect(pageBreak?.attrs).toMatchObject({ section: 1, sectionProps: SAMPLE_SECTION })
+    expect(mark?.attrs).toMatchObject({ section: 2, sectionProps: { ...SAMPLE_SECTION, kind: 'continuous' } })
+  })
+
+  it('keeps them exactly through editor JSON', () => {
+    const first = openedFrom(html)
+    const saved = first.editor.getJSON()
+    const second = openedFrom('', saved)
+    expect(second.loaded).toBe('json')
+    expect(second.editor.getJSON()).toEqual(saved)
+  })
+
+  it('drops unreadable section properties instead of keeping half of them', () => {
+    const { editor } = openedFrom('<div class="intellidocs-section-mark" data-section="3" data-section-props="{&quot;kind&quot;:&quot;continuous&quot;}"></div><p>x</p>')
+    const mark = (editor.getJSON().content ?? []).find((node) => node.type === 'sectionMark')
+    expect(mark?.attrs).toMatchObject({ section: 3, sectionProps: null })
   })
 })

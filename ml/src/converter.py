@@ -35,6 +35,8 @@ TWIPS_PER_PX = 96.0 / 1440.0
 # Marks a column break inside a paragraph until the section's columns are built.
 _COLUMN_MARK = ""
 _PAGE_BREAK_HTML = '<hr class="page-break" data-page-break="true" />'
+# Where a continuous section starts (frontend SectionMark): takes no room and never breaks a page.
+_SECTION_MARK_HTML = '<div class="intellidocs-section-mark" data-section="{index}"></div>'
 
 DEFAULT_PAGE_SETUP: Dict[str, Any] = {
     "page_size": "letter",
@@ -2801,8 +2803,85 @@ def _body_to_html(
     section_starts[section_no + 1] = len(out)
     _wrap_columns(doc, out, section_starts)
     _shift_sections(doc, out, section_starts)
+    _mark_continuous_sections(doc, out, section_starts)
     _group_wrapped_pictures(out)
     return "\n".join(out).replace(_COLUMN_MARK, "")
+
+
+def _section_kind(sect_pr: Any) -> str:
+    """How a section starts: nextPage (Word's default), continuous, evenPage or oddPage."""
+    start = sect_pr.find(qn("w:type")) if sect_pr is not None else None
+    kind = start.get(qn("w:val")) if start is not None else None
+    return kind if kind in ("nextPage", "continuous", "evenPage", "oddPage") else "nextPage"
+
+
+def _mark_continuous_sections(doc: docx.Document, out: List[str], starts: Dict[int, int]) -> None:
+    """Put a section mark where each continuous section starts, top level, before its first block.
+
+    Runs after the column wrapping and margin shifts, which index `out` by section start: a mark added
+    earlier would be wrapped into a column or take the section's first-block shift.
+    """
+    sections = list(doc.sections)
+    for index in sorted(starts, reverse=True):
+        if 0 < index < len(sections) and _section_kind(sections[index]._sectPr) == "continuous":
+            out.insert(min(starts[index], len(out)), _SECTION_MARK_HTML.format(index=index))
+
+
+def _section_props(section: Any, described: Dict[str, Any]) -> Dict[str, Any]:
+    """One section's properties as the editor's SectionProps (frontend/src/lib/sectionProps.ts), in px."""
+    sect_pr = section._sectPr
+
+    def px(emu: Any, fallback: float) -> float:
+        return round((emu if emu is not None else fallback) / EMU_PER_PX, 1)
+
+    cols = sect_pr.find(qn("w:cols"))
+    count, gap, widths = 1, 48.0, None
+    if cols is not None:
+        count = max(1, int(cols.get(qn("w:num")) or 1))
+        space = cols.get(qn("w:space"))
+        gap = round(int(space) * TWIPS_PER_PX, 1) if space and space.isdigit() else 48.0
+        explicit = [c.get(qn("w:w")) for c in cols.findall(qn("w:col"))]
+        if cols.get(qn("w:equalWidth")) in ("0", "false") and len(explicit) == count and all(w and w.isdigit() for w in explicit):
+            widths = [round(int(w) * TWIPS_PER_PX, 1) for w in explicit]
+    width, height = px(section.page_width, 7772400), px(section.page_height, 10058400)
+    return {
+        "kind": _section_kind(sect_pr),
+        "page": {"width": width, "height": height},
+        "orientation": "landscape" if width > height else "portrait",
+        "margins": {
+            "top": px(section.top_margin, 914400),
+            "right": px(section.right_margin, 914400),
+            "bottom": px(section.bottom_margin, 914400),
+            "left": px(section.left_margin, 914400),
+            "header": px(section.header_distance, 457200),
+            "footer": px(section.footer_distance, 457200),
+            "gutter": px(section.gutter, 0),
+        },
+        "columns": {"count": count, "gap": gap, "widths": widths},
+        "headers": {"default": described.get("header"), "first": described.get("first_header"), "even": None},
+        "footers": {"default": described.get("footer"), "first": described.get("first_footer"), "even": None},
+        "titlePage": bool(described.get("title_pg")),
+        "numbering": {"start": described.get("number_start"), "format": described.get("number_format") or "decimal"},
+    }
+
+
+_SECTION_TAG = re.compile(r'<(?:hr class="page-break"|div class="intellidocs-section-mark")[^>]*\bdata-section="(\d+)"[^>]*?/?>')
+
+
+def _attach_section_props(html: str, doc: docx.Document, hf: Dict[str, Any]) -> str:
+    """Give every section break the properties of the section it starts (data-section-props, JSON)."""
+    sections = list(doc.sections)
+    described = {entry["index"]: entry for entry in hf.get("sections", [])}
+
+    def attach(match: re.Match) -> str:
+        tag, index = match.group(0), int(match.group(1))
+        if index >= len(sections) or "data-section-props" in tag:
+            return tag
+        props = _html_escape(json.dumps(_section_props(sections[index], described.get(index, {})), separators=(",", ":")), quote=True)
+        closing = " />" if tag.endswith("/>") else ">"
+        return tag[: -len(closing)] + f' data-section-props="{props}"' + closing
+
+    return _SECTION_TAG.sub(attach, html)
 
 
 def _block_height_px(html: str, width_px: float) -> float:
@@ -3414,11 +3493,13 @@ def _docx_document_to_result(
     html += _notes_html(doc, doc_parts)
     header, footer, header_number_format, footer_number_format = _extract_header_footer(doc)
     page_setup = _extract_page_setup(doc)
+    hf = _extract_sections(doc)
+    html = _attach_section_props(html, doc, hf)
 
     return {
         "html": html,
         "page_art": _group_page_art(body_art),
-        "hf": _extract_sections(doc),
+        "hf": hf,
         "page_setup": page_setup,
         "header": header,
         "footer": footer,
