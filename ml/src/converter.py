@@ -97,26 +97,21 @@ def _clean_font_name(name: str) -> str:
     return cleaned.strip() or name
 
 
-# Free fonts with the same character widths as the Word fonts; the editor bundles them.
-_METRIC_TWINS = {
-    "times new roman": "Tinos", "times": "Tinos",
-    "arial": "Arimo", "helvetica": "Arimo",
-    "calibri": "Carlito", "cambria": "Caladea",
-    "courier new": "Cousine", "courier": "Cousine",
-    # Not an exact twin (TeX Gyre Bonum follows ITC Bookman), but the closest free font.
-    "bookman old style": "'TeX Gyre Bonum'", "bookman": "'TeX Gyre Bonum'",
-}
+# Word font names the editor draws itself on every computer (frontend/src/styles/wordFontAliases.css,
+# made by tests/e2e/tools/make_font_metrics.py), one per kind. A font the computer lacks falls back to
+# one of these, never to the browser's generic family: that differs by system (Times New Roman on
+# Windows, DejaVu on Linux), and so would the layout.
+_SHIPPED_FALLBACK = {"serif": "'Times New Roman'", "sans-serif": "Arial", "monospace": "'Courier New'"}
 
 
 def _generic_family(name: str) -> str:
-    """What follows a font in its CSS stack: its metric twin (when one is bundled), then the generic family."""
+    """What follows a font in its CSS stack: the shipped font of its kind, then the generic family."""
     lowered = name.lower()
     if "mono" in lowered or "courier" in lowered or "consolas" in lowered:
         generic = "monospace"
     else:
         generic = "sans-serif" if any(sans in lowered for sans in _SANS_FAMILIES) else "serif"
-    twin = _METRIC_TWINS.get(lowered)
-    return f"{twin}, {generic}" if twin else generic
+    return f"{_SHIPPED_FALLBACK[generic]}, {generic}"
 
 
 def _style_flag(style: Any, attribute: str) -> Optional[bool]:

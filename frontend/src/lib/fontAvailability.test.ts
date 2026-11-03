@@ -29,7 +29,7 @@ describe('missingFonts', () => {
   it('reports an uninstalled font but not an installed one or one with a bundled twin', async () => {
     stubCanvas(['Georgia'])
     const fresh = await import('./fontAvailability')
-    expect(fresh.missingFonts(['Bookman Old Style', 'Georgia', 'Times New Roman', 'serif'])).toEqual(['Bookman Old Style'])
+    expect(fresh.missingFonts(['Book Antiqua', 'Georgia', 'Times New Roman', 'Bookman Old Style', 'serif'])).toEqual(['Book Antiqua'])
   })
 
   it('stays silent when the browser cannot measure text', () => {

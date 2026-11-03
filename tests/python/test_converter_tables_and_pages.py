@@ -118,10 +118,11 @@ class TestFonts:
     def test_pdf_font_names_lose_their_style_suffix(self, raw, clean):
         assert _clean_font_name(raw) == clean
 
-    def test_unavailable_sans_fonts_fall_back_to_sans(self):
-        assert _generic_family("Arial") == "Arimo, sans-serif"
-        assert _generic_family("Times New Roman") == "Tinos, serif"
-        assert _generic_family("Courier New") == "Cousine, monospace"
+    def test_a_missing_font_falls_back_to_a_shipped_font_of_its_kind(self):
+        # Never straight to the generic family, which differs by system.
+        assert _generic_family("Tahoma") == "Arial, sans-serif"
+        assert _generic_family("Cardo") == "'Times New Roman', serif"
+        assert _generic_family("Consolas") == "'Courier New', monospace"
 
     def test_a_run_without_a_font_uses_the_document_default(self):
         document = docx.Document()
@@ -134,7 +135,7 @@ class TestFonts:
             fonts.attrib.pop(qn(f"w:{attribute}"), None)
         fonts.set(qn("w:ascii"), "Verdana")
         fonts.set(qn("w:hAnsi"), "Verdana")
-        assert "font-family:'Verdana', sans-serif" in _html(document)
+        assert "font-family:'Verdana', Arial, sans-serif" in _html(document)
 
 
 class TestTabs:

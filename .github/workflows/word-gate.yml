@@ -1,0 +1,77 @@
+# Import fidelity gate on a machine with no Microsoft Office fonts: every committed Word fixture is
+# converted, laid out in the real paged editor, and scored against Word's own layout
+# (tests/fixtures/import_baselines/word_truth). See tests/e2e/tools/README.md.
+#
+# --shipped-fonts-only keeps only the fonts the editor ships and fails if more than a sliver of the
+# text is drawn by installed fonts; --roundtrip reopens each fixture from its saved editor JSON.
+name: Word gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: word-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  word-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # The dev editor harness needs no backend, but the app refuses to start without these.
+      VITE_SUPABASE_URL: http://127.0.0.1:54321
+      VITE_SUPABASE_ANON_KEY: ci-placeholder-not-a-key
+      VITE_API_URL: /api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: tests/e2e/requirements-gate.txt
+
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install gate dependencies and Chrome
+        run: |
+          python -m pip install -r tests/e2e/requirements-gate.txt
+          python -m playwright install --with-deps chrome
+
+      - name: Start the frontend dev server
+        working-directory: frontend
+        run: |
+          nohup npx vite --port 5173 --strictPort > "$RUNNER_TEMP/vite.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:5173/dev/editor-harness > /dev/null && exit 0
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/vite.log"
+          exit 1
+
+      - name: Word gate
+        run: python tests/e2e/word_gate.py --shipped-fonts-only --roundtrip --out "$RUNNER_TEMP/word_gate"
+
+      - name: Keep the scores
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: word-gate
+          path: |
+            ${{ runner.temp }}/word_gate
+            ${{ runner.temp }}/vite.log
+          if-no-files-found: ignore

@@ -66,6 +66,24 @@ The tools below explain a drop the gate reports.
      and its page break.
    - `compare_fid.py <before.json> <after.json>` compares two `fidelity_run.py` summaries.
 
+## Fonts
+
+The editor draws the common Word fonts itself on every computer. `frontend/src/styles/wordFontAliases.css`
+declares each Word name (Times New Roman, Arial, Calibri, Cambria, Courier New, Bookman Old Style,
+Arial Narrow, Segoe UI Symbol) as a web font that points at its free stand-in, with the Word font's
+line metrics. `make_font_metrics.py` generates it on Windows with the Word fonts installed; never edit
+it by hand:
+
+```powershell
+ml\venv\Scripts\python tests\e2e\tools\make_font_metrics.py           # measure and write
+ml\venv\Scripts\python tests\e2e\tools\make_font_metrics.py --check   # exit 1 when stale
+```
+
+`word_gate.py --shipped-fonts-only` lays every fixture out as a computer without those fonts would.
+It keeps only the families the editor ships, and it fails when installed fonts draw more than 0.5% of
+a document's glyphs (only rare symbols should). CI runs this mode on Linux
+(`.github/workflows/word-gate.yml`) with only `tests/e2e/requirements-gate.txt` installed.
+
 ## Pitfalls
 
 - Measure where the first line of text is drawn (a `Range`), never a block's own box: the

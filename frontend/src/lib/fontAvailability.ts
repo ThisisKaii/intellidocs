@@ -1,7 +1,8 @@
-/** Fonts the editor ships a same-width twin for (mirrors the converter's metric twins): no warning needed. */
+/** Fonts the editor draws itself under their Word name (styles/wordFontAliases.css): no warning needed. */
 const COVERED_FAMILIES = new Set([
   'times new roman', 'times', 'arial', 'helvetica', 'calibri', 'cambria', 'courier new', 'courier',
-  'tinos', 'arimo', 'carlito', 'caladea', 'cousine',
+  'bookman old style', 'bookman', 'arial narrow', 'segoe ui symbol',
+  'tinos', 'arimo', 'carlito', 'caladea', 'cousine', 'tex gyre bonum',
 ])
 
 /** CSS generic names: never reported as missing. */

@@ -1,0 +1,9 @@
+# What tests/e2e/word_gate.py needs, and nothing else: the in-process converter (ml/src/converter.py),
+# the shared fidelity helpers, and Playwright. Pinned to the versions the committed baseline was
+# measured with. The full ML stack (ml/requirements.txt) is not needed.
+python-docx==1.2.0
+lxml==6.1.1
+PyMuPDF==2.0
+numpy==2.5.1
+opencv-python-headless==5.0.0.93
+playwright==1.63.0
