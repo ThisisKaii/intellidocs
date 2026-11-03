@@ -136,7 +136,8 @@ Each stage is independent and testable, and none needs a canvas rewrite. A canva
   - **Correction 3, fallbacks:** a font the computer lacks now falls back to a shipped font of its kind ('Times New Roman', Arial or 'Courier New'), never to the browser's generic family, which differs by system.
   - **Kerning:** Word doesn't kern by default, but turning kerning and ligatures off in the editor changed no fixture's layout, so it wasn't adopted.
   - **Gate:** `word_gate.py --shipped-fonts-only` lays every fixture out with only shipped fonts and passes the baseline. A DevTools check confirms the fonts that actually drew the text; at most 0.15% of glyphs came from installed fonts, all rare symbols.
-  - **CI:** `.github/workflows/word-gate.yml` runs that mode with `--roundtrip` on Linux. It hasn't run yet, because the branch hasn't been pushed.
+  - **CI:** `.github/workflows/word-gate.yml` runs that mode with `--roundtrip` on Linux. The first run matched Windows on five fixtures and failed DM_0440 (17/31) over one 🌐.
+  - **Emoji:** what matters for emoji is width, not line height. Word draws them with Segoe UI Symbol at 1.0 em; colour emoji fonts draw them 1.27–1.37 em wide, which rewraps the line. Emoji in Segoe UI Symbol runs are now drawn from shipped Noto Emoji (`@fontsource/noto-emoji`, OFL), scaled with `size-adjust` to exactly 1.0 em. The spaces in those runs come from Arimo scaled to Segoe's space width.
   - **Open:**
     - Symbols outside every shipped font (✓, □, ⨯, and private-use Symbol/Wingdings characters) still come from the system.
     - The private-use characters should be mapped to Unicode in the converter.

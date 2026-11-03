@@ -18,6 +18,7 @@
     "@fontsource/caladea": "^5.3.0",
     "@fontsource/carlito": "^5.3.0",
     "@fontsource/cousine": "^5.3.0",
+    "@fontsource/noto-emoji": "^5.3.2",
     "@fontsource/tinos": "^5.3.0",
     "@openreplay/tracker": "^19.0.1",
     "@radix-ui/react-dropdown-menu": "^2.1.2",

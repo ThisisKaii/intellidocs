@@ -44,8 +44,22 @@ FILE_FACES = {
     ],
 }
 
-# Emoji and symbol fonts per platform. Their glyphs differ, but the line they make never will.
+# Emoji and symbol fonts per platform, for the symbols that are not emoji. Their glyphs differ, but the
+# line they make never will.
 SYMBOL_SOURCES = ["Segoe UI Symbol", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Noto Sans Symbols 2"]
+
+# Emoji in a Segoe UI Symbol run are drawn from one shipped font everywhere, scaled so each is exactly as
+# wide as Segoe UI Symbol draws it (1.0 em). Width is what matters: a colour emoji font draws them 1.27 to
+# 1.37 em wide, which rewraps the line (DM_0440 went from 2 pages to 3 on Linux over one globe).
+EMOJI_PACKAGE = "noto-emoji"
+EMOJI_BLOCK = (0x1F000, 0x1FAFF)  # emoji only: the package's subsets also hold digits, '#' and arrows
+EMOJI_PROBE = "\U0001F310"
+
+# Spaces in a Segoe UI Symbol run (Word puts the space after a symbol in the symbol's font): drawn from
+# shipped Arimo scaled to Segoe UI Symbol's space width, so they are the same width everywhere.
+SPACE_PACKAGE = "arimo"
+SPACE_RANGE = "U+20,U+A0"
+SPACE_KEY = ("Segoe UI Symbol", 0, "space")
 
 
 @dataclass(frozen=True)
@@ -87,6 +101,21 @@ def local_src(name: str, index: int) -> str:
 
 # Measured at a large size so a pixel is a tenth of a percent of the em.
 PROBE_PX = 1000
+EMOJI_KEY = ("Segoe UI Symbol", 0, "emoji")
+
+# Line metrics and width of arbitrary text in a family, at PROBE_PX.
+JS_TEXT = """([family, text]) => {
+  const box = document.createElement('div');
+  box.style.cssText = `position:absolute;top:0;left:0;white-space:pre;line-height:normal;font-size:%dpx;font-family:${family}`;
+  box.innerHTML = '<span class="t"></span><span class="b" style="display:inline-block;width:0;height:0;vertical-align:baseline"></span>';
+  box.querySelector('.t').textContent = text;
+  document.body.appendChild(box);
+  const t = box.querySelector('.t').getBoundingClientRect();
+  const baseline = box.querySelector('.b').getBoundingClientRect().bottom;
+  const out = { ascent: baseline - t.top, descent: t.bottom - baseline, line: box.getBoundingClientRect().height, width: t.width };
+  box.remove();
+  return out;
+}""" % 1000
 JS_MEASURE = """(family) => {
   const box = document.createElement('div');
   box.style.cssText = `position:absolute;top:0;left:0;white-space:nowrap;line-height:normal;font-size:%dpx;font-family:${family}`;
@@ -124,12 +153,41 @@ def probe_src(alias: Alias, weight: int, style: str, index: int) -> str:
     return f"url('{(FONTSOURCE / alias.stand_in / 'files' / latin).as_uri()}')"
 
 
-def overrides(metrics: dict) -> str:
-    pct = lambda px: f"{px / PROBE_PX * 100:.2f}%"  # noqa: E731
+def overrides(metrics: dict, scale: float = 1.0) -> str:
+    """Line-metric descriptors that reproduce `metrics`. Chrome multiplies them by size-adjust, so a face
+    scaled by `scale` gets them divided by it."""
+    pct = lambda px: f"{px / scale / PROBE_PX * 100:.2f}%"  # noqa: E731
     return (
         f"ascent-override: {pct(metrics['ascent'])}; descent-override: {pct(metrics['descent'])}; "
         f"line-gap-override: {pct(max(0.0, metrics['line'] - metrics['ascent'] - metrics['descent']))};"
     )
+
+
+def parse_ranges(text: str) -> list[tuple[int, int]]:
+    ranges = []
+    for part in text.split(","):
+        first, _, last = part.strip()[2:].partition("-")
+        ranges.append((int(first, 16), int(last or first, 16)))
+    return ranges
+
+
+def emoji_faces() -> list[tuple[str, str]]:
+    """(file, unicode-range) of each Noto Emoji subset, cut down to the emoji block; empty ones dropped."""
+    out = []
+    low, high = EMOJI_BLOCK
+    for file, ranges in fontsource_faces(EMOJI_PACKAGE, 400, "normal"):
+        kept = [(max(a, low), min(b, high)) for a, b in parse_ranges(ranges) if b >= low and a <= high]
+        if kept:
+            out.append((file, ",".join(f"U+{a:X}" if a == b else f"U+{a:X}-{b:X}" for a, b in kept)))
+    return out
+
+
+def emoji_file_for(char: str) -> str:
+    code = ord(char)
+    for file, ranges in emoji_faces():
+        if any(a <= code <= b for a, b in parse_ranges(ranges)):
+            return file
+    raise SystemExit(f"no {EMOJI_PACKAGE} subset holds U+{code:X}")
 
 
 def measure_all() -> dict[tuple[str, int, str], dict]:
@@ -167,9 +225,37 @@ def measure_all() -> dict[tuple[str, int, str], dict]:
             stand_in = run(f"'{key}', monospace", weight, style)
             results[(alias.name, weight, style)] = {**word[key], "stand_in_width": stand_in["width"]}
 
+        # Emoji: Noto Emoji scaled to Segoe UI Symbol's emoji width, with its line.
+        emoji_url = (FONTSOURCE / EMOJI_PACKAGE / "files" / emoji_file_for(EMOJI_PROBE)).as_uri()
+        load(f"@font-face {{ font-family: 'emoji-probe'; src: url('{emoji_url}'); }}")
+        page.evaluate("([t]) => document.fonts.load(\"20px 'emoji-probe'\", t)", [EMOJI_PROBE])
+        emoji_word = page.evaluate(JS_TEXT, ["'Segoe UI Symbol'", EMOJI_PROBE])
+        emoji_plain = page.evaluate(JS_TEXT, ["'emoji-probe'", EMOJI_PROBE])
+        scale = emoji_word["width"] / emoji_plain["width"]
+        results[EMOJI_KEY] = {**emoji_word, "scale": scale, "stand_in_width": emoji_plain["width"] * scale}
+
+        space_url = (FONTSOURCE / SPACE_PACKAGE / "files" / f"{SPACE_PACKAGE}-latin-400-normal.woff2").as_uri()
+        load(f"@font-face {{ font-family: 'space-probe'; src: url('{space_url}'); }}")
+        page.evaluate("document.fonts.load(\"20px 'space-probe'\")")
+        space_word = page.evaluate(JS_TEXT, ["'Segoe UI Symbol'", " "])
+        space_plain = page.evaluate(JS_TEXT, ["'space-probe'", " "])
+        space_scale = space_word["width"] / space_plain["width"]
+        results[SPACE_KEY] = {**space_word, "scale": space_scale, "stand_in_width": space_plain["width"] * space_scale}
+
         # Check: the stand-in with its overrides must reproduce the Word font's line.
         checked = [line[:-2] + f" {overrides(word[f[4]])} }}" for line, f in zip(css, faces)]
+        checked.append(f"@font-face {{ font-family: 'emoji-probe'; src: url('{emoji_url}'); "
+                       f"size-adjust: {scale * 100:.2f}%; {overrides(emoji_word, scale)} }}")
+        checked.append(f"@font-face {{ font-family: 'space-probe'; src: url('{space_url}'); "
+                       f"size-adjust: {space_scale * 100:.2f}%; {overrides(space_word, space_scale)} }}")
         load("\n".join(checked))
+        page.evaluate("([t]) => document.fonts.load(\"20px 'emoji-probe'\", t)", [EMOJI_PROBE])
+        page.evaluate("document.fonts.load(\"20px 'space-probe'\")")
+        for family, text, want in (("emoji-probe", EMOJI_PROBE, emoji_word), ("space-probe", " ", space_word)):
+            again = page.evaluate(JS_TEXT, [f"'{family}'", text])
+            for field in ("ascent", "descent", "line", "width"):
+                if abs(again[field] - want[field]) > 1.0:
+                    raise SystemExit(f"{family}: {field} {again[field]:.1f}px scaled, Segoe UI Symbol {want[field]:.1f}px")
         for alias, weight, style, _, key in faces:
             again = run(f"'{key}', monospace", weight, style)
             want = word[key]
@@ -199,6 +285,20 @@ def css_text(results: dict[tuple[str, int, str], dict]) -> str:
             if alias.stand_in == "symbols":
                 src = ", ".join(f"local('{name}')" for name in SYMBOL_SOURCES)
                 lines.append(f"@font-face {{ {head}; src: {src}; {metric} }}")
+                # Defined after the face above, so these are tried first for the characters they cover.
+                space = results[SPACE_KEY]
+                lines.append(
+                    f"@font-face {{ {head}; src: url('@fontsource/{SPACE_PACKAGE}/files/{SPACE_PACKAGE}-latin-400-normal.woff2') "
+                    f"format('woff2'); unicode-range: {SPACE_RANGE}; size-adjust: {space['scale'] * 100:.2f}%; "
+                    f"{overrides(space, space['scale'])} }}"
+                )
+                emoji = results[EMOJI_KEY]
+                scaled = f"size-adjust: {emoji['scale'] * 100:.2f}%; {overrides(emoji, emoji['scale'])}"
+                for file, ranges in emoji_faces():
+                    lines.append(
+                        f"@font-face {{ {head}; src: url('@fontsource/{EMOJI_PACKAGE}/files/{file}') format('woff2'); "
+                        f"unicode-range: {ranges}; {scaled} }}"
+                    )
             elif alias.stand_in in FILE_FACES:
                 file = FILE_FACES[alias.stand_in][index]
                 fmt = "opentype" if file.endswith(".otf") else "truetype"
@@ -220,7 +320,11 @@ def main(argv: list[str] | None = None) -> int:
     results = measure_all()
     for (name, weight, style), m in results.items():
         width = f"width {m['stand_in_width'] / m['width'] * 100 - 100:+.2f}%" if m["width"] else ""
-        print(f"{name:18} {weight} {style:6}  ascent {m['ascent'] / 10:6.2f}%  descent {m['descent'] / 10:6.2f}%  "
+        label = {
+            "emoji": f"{name} emoji (Noto Emoji at {m.get('scale', 1) * 100:.2f}%)",
+            "space": f"{name} space (Arimo at {m.get('scale', 1) * 100:.2f}%)",
+        }.get(style, f"{name} {weight} {style}")
+        print(f"{label:46} ascent {m['ascent'] / 10:6.2f}%  descent {m['descent'] / 10:6.2f}%  "
               f"line {m['line'] / 10:6.2f}%  stand-in {width}")
     text = css_text(results)
     if args.check:
