@@ -206,6 +206,13 @@ def measure(
         unreadable = [b for b in page.evaluate(JS_SECTION_BREAKS) if not b["props"]]
         if unreadable:
             raise GateError(f"section breaks reached the editor without readable section properties: {unreadable[:5]}")
+        # Headers, footers and numbering now come from those properties: they must say what the
+        # converter's page_layout.sections says, section for section.
+        stored = {entry["index"]: entry for entry in ((payload.get("pageLayout") or {}).get("sections") or [])}
+        for derived in page.evaluate("window.__documentLayoutSections()"):
+            expected = stored.get(derived["index"])
+            if expected is not None and {k: expected.get(k) for k in derived} != derived:
+                raise GateError(f"section {derived['index']}: the document's break says {derived}, page_layout says {expected}")
         if rejected:
             raise GateError(f"the saved JSON was rejected on reopen: {rejected[0]}")
         saved = page.evaluate("window.__editor.getJSON()") if keep_json else None

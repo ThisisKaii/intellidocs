@@ -89,3 +89,24 @@ def test_a_one_section_document_has_no_section_breaks():
     buffer = io.BytesIO()
     document.save(buffer)
     assert breaks(convert_docx_bytes_to_html(buffer.getvalue())) == []
+
+
+def test_section_properties_give_the_same_headers_and_numbering_as_page_layout():
+    """The editor reads headers, footers and numbering from the breaks: they must say what hf says."""
+    document = docx.Document(io.BytesIO(three_sections()))
+    document.sections[1].header_distance = 0  # Word allows it; page_layout has always read it as 0.5in
+    buffer = io.BytesIO()
+    document.save(buffer)
+    result = convert_docx_bytes_to_html(buffer.getvalue())
+    stored = {entry["index"]: entry for entry in result["hf"]["sections"]}
+    for tag in TAG.findall(result["html"]):
+        index = int(re.search(r'data-section="(\d+)"', tag).group(1))
+        props = json.loads(html.unescape(re.search(r'data-section-props="([^"]+)"', tag).group(1)))
+        entry = stored[index]
+        assert props["margins"]["header"] == entry["header_distance"]
+        assert props["margins"]["footer"] == entry["footer_distance"]
+        assert props["headers"]["default"] == entry["header"] and props["footers"]["default"] == entry["footer"]
+        assert props["headers"]["first"] == entry["first_header"] and props["footers"]["first"] == entry["first_footer"]
+        assert props["titlePage"] == entry["title_pg"]
+        assert props["numbering"] == {"start": entry["number_start"], "format": entry["number_format"]}
+    assert stored[1]["header_distance"] == 48.0

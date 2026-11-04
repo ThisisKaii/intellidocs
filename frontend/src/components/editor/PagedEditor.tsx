@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useEditor, type Editor } from '@tiptap/react'
 import { PaginationPlus } from 'tiptap-pagination-plus'
 import { ColumnsDraft } from './ColumnsDraft'
@@ -20,7 +20,17 @@ import type { BehaviorEventPayload } from './behaviorListener'
 import type { GrammarIssue } from './GrammarPanel'
 import { loadEditorContent } from '@/lib/loadEditorContent'
 import type { EditorJson } from '@/services/api'
-import { lastLineSlackPx, measureKey, numberingCss, pageZones, type PageLayoutData, type PageMeasure } from '@/lib/pageLayout'
+import {
+  lastLineSlackPx,
+  measureKey,
+  mergeLayoutSections,
+  numberingCss,
+  pageZones,
+  type DocumentSectionBreak,
+  type PageLayoutData,
+  type PageMeasure,
+} from '@/lib/pageLayout'
+import { documentSectionBreaks } from './SectionLayout'
 import { sanitizeHeaderHtml } from '@/lib/sanitizeHeaderHtml'
 
 /** Vertical gap between stacked page sheets, in px. */
@@ -497,6 +507,29 @@ export function PagedEditor({
     }
   }, [editor, pageLayout, page.height])
 
+  // The document's own section breaks decide each section's header, footer and numbering; the list
+  // stored with the import (page_layout.sections) covers documents whose breaks carry no properties.
+  const [sectionBreaks, setSectionBreaks] = useState<DocumentSectionBreak[]>([])
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    const read = (): void => {
+      const next = documentSectionBreaks(editor.state.doc)
+      setSectionBreaks((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next))
+    }
+    const onTransaction = ({ transaction }: { transaction: { docChanged: boolean } }): void => {
+      if (transaction.docChanged) read()
+    }
+    read()
+    editor.on('transaction', onTransaction)
+    return () => {
+      editor.off('transaction', onTransaction)
+    }
+  }, [editor])
+  const layout = useMemo<PageLayoutData | null>(
+    () => (pageLayout ? { ...pageLayout, sections: mergeLayoutSections(pageLayout.sections, sectionBreaks) } : null),
+    [pageLayout, sectionBreaks],
+  )
+
   // Boxes Word hangs beside a paragraph are placed from that paragraph's top, so they follow the text
   // wherever it flows. Positions are re-measured whenever the layout settles.
   const overlayLayerRef = useRef<HTMLDivElement | null>(null)
@@ -551,16 +584,16 @@ export function PagedEditor({
 
   // Give every page the header and footer of its section: art, text and page numbers.
   useEffect(() => {
-    if (!editor || editor.isDestroyed || !pageLayout) return
+    if (!editor || editor.isDestroyed || !layout) return
     const chain = editor.chain()
     for (let pageNumber = 1; pageNumber <= measure.pageCount; pageNumber += 1) {
-      const zones = pageZones(pageLayout, measure, pageNumber)
+      const zones = pageZones(layout, measure, pageNumber)
       chain
         .updateHeaderContent(sanitizeHeaderHtml(zones.header), '', pageNumber)
         .updateFooterContent(sanitizeHeaderHtml(zones.footer), '', pageNumber)
     }
     chain.updateHeaderContent('', '').updateFooterContent('', '').run()
-  }, [editor, pageLayout, measure, page.width, page.height, topPx, bottomPx, leftPx, rightPx, headerFooterConfig])
+  }, [editor, layout, measure, page.width, page.height, topPx, bottomPx, leftPx, rightPx, headerFooterConfig])
 
   // Grammar underlines — rebuild when the issue set OR the underline style changes.
   useEffect(() => {
@@ -819,7 +852,7 @@ export function PagedEditor({
           .ProseMirror.ieee-columns-draft .ieee-span {
             column-span: all;
           }
-          ${pageLayout ? numberingCss(pageLayout, measure) : romanStyle}
+          ${layout ? numberingCss(layout, measure) : romanStyle}
           ${spreadPreview ? spreadStyle : ''}
           ${pageLabel === null ? '' : '.intellidocs-page-editor--spread .rm-pages-wrapper { counter-reset: spread-page; }'}`}
       </style>

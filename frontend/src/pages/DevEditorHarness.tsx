@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { PagedEditor } from '@/components/editor/PagedEditor'
 import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
-import type { PageLayoutData } from '@/lib/pageLayout'
+import { layoutSectionFromProps, type PageLayoutData } from '@/lib/pageLayout'
+import { documentSectionBreaks } from '@/components/editor/SectionLayout'
 import { applyIeeeNumbering } from '@/components/editor/ieeeNumberingCommand'
 import { convertToIeee } from '@/components/editor/ieeeConvertCommand'
 import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
@@ -110,8 +111,19 @@ export default function DevEditorHarness() {
 
   // Test hook: the real IEEE print preview, opened on the editor's own saved HTML (what the toolbar button does).
   useEffect(() => {
-    const hooks = window as unknown as { __editor?: Editor | null; __showIeeePreview?: () => void }
+    const hooks = window as unknown as {
+      __editor?: Editor | null
+      __showIeeePreview?: () => void
+      __documentLayoutSections?: () => unknown[]
+    }
     hooks.__editor = editor
+    // Test hook: the header/footer and numbering sections the document's own section breaks give.
+    hooks.__documentLayoutSections = () =>
+      editor
+        ? documentSectionBreaks(editor.state.doc).flatMap((entry) =>
+            entry.props ? [layoutSectionFromProps(entry.section, entry.props)] : [],
+          )
+        : []
     hooks.__showIeeePreview = () => setPreviewHtml(editor?.getHTML() ?? '')
   }, [editor])
 

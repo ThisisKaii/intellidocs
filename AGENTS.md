@@ -437,6 +437,10 @@ intellidocs/
   block exactly where the old baked shifts did. A section mark must never start a formatting context
   (no `overflow`): margins have to collapse through it. PDF imports, and documents imported before
   this, keep the baked shifts below and carry no section properties; never apply both.
+  Headers, footers and page numbering also come from the breaks' properties: `PagedEditor` merges the
+  document's sections over `page_layout.sections` (the document wins per section index; older documents
+  keep the stored list). The Word gate fails if a fixture's breaks disagree with `page_layout.sections`.
+  Distances follow `_extract_sections`: a 0 header/footer distance reads as 0.5in.
 - Baked section margin shifts (PDF imports, older documents) also cover tables and numbered items: a table carries `data-inset="left,right,top"`
   (px; the `TableInset` extension draws it as a node decoration because the table node view drops inline
   style), and a list item's `data-mx` moves by the section's left difference.

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { lastLineSlackPx, numberingCss, pageZones, sectionForPage, type PageLayoutData, type PageLayoutSection } from './pageLayout'
+import {
+  lastLineSlackPx,
+  layoutSectionFromProps,
+  mergeLayoutSections,
+  numberingCss,
+  pageZones,
+  sectionForPage,
+  type PageLayoutData,
+  type PageLayoutSection,
+} from './pageLayout'
+import { SAMPLE_SECTION } from './sectionProps.fixture'
 import { sanitizeHeaderHtml } from './sanitizeHeaderHtml'
 
 const section = (index: number, patch: Partial<PageLayoutSection> = {}): PageLayoutSection => ({
@@ -107,5 +117,35 @@ describe('pictures in a header or footer text flow', () => {
     expect(header).toContain('width:192px')
     expect(header.match(/max-height/g)).toHaveLength(1) // the art image is not capped
     expect(sanitizeHeaderHtml(zones.footer)).toContain('calc(var(--rm-margin-bottom) - 36px)')
+  })
+})
+
+describe('sections from the document', () => {
+  const stored = (index: number, footer: string | null): PageLayoutSection => ({
+    index, header: null, footer, first_header: null, first_footer: null, title_pg: false,
+    number_start: null, number_format: 'decimal', header_distance: 48, footer_distance: 48,
+  })
+
+  it('reads the header, footer and numbering of a section from the properties on its break', () => {
+    expect(layoutSectionFromProps(3, SAMPLE_SECTION)).toEqual({
+      index: 3, header: null, footer: 'footer3', first_header: null, first_footer: null, title_pg: false,
+      number_start: 1, number_format: 'lowerRoman', header_distance: 0, footer_distance: 48,
+    })
+  })
+
+  it('lets the document win section by section and keeps stored sections it does not describe', () => {
+    const merged = mergeLayoutSections([stored(0, 'a'), stored(1, 'b')], [{ section: 1, props: SAMPLE_SECTION }])
+    expect(merged.map((s) => [s.index, s.footer])).toEqual([[0, 'a'], [1, 'footer3']])
+  })
+
+  it('adds sections only the document has, in order', () => {
+    const merged = mergeLayoutSections([stored(0, 'a')], [{ section: 2, props: SAMPLE_SECTION }])
+    expect(merged.map((s) => s.index)).toEqual([0, 2])
+  })
+
+  it('keeps the stored list for documents whose breaks carry no properties', () => {
+    const list = [stored(0, 'a'), stored(1, 'b')]
+    expect(mergeLayoutSections(list, [{ section: 1, props: null }])).toBe(list)
+    expect(mergeLayoutSections(list, [])).toBe(list)
   })
 })

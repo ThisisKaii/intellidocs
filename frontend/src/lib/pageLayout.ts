@@ -1,3 +1,5 @@
+import type { SectionProps } from './sectionProps'
+
 /** One Word section's header/footer choice and page numbering (mirrors the server's PageLayoutSection). */
 export interface PageLayoutSection {
   index: number
@@ -204,6 +206,46 @@ export function numberingCss(layout: PageLayoutData, measure: PageMeasure): stri
     )
   })
   return rules.join('\n')
+}
+
+/** A section break in the document: the section it starts and that section's properties. */
+export interface DocumentSectionBreak {
+  section: number
+  props: SectionProps | null
+}
+
+/** A section's header/footer choice and numbering, read from the properties its break carries. */
+export function layoutSectionFromProps(index: number, props: SectionProps): PageLayoutSection {
+  return {
+    index,
+    header: props.headers.default,
+    footer: props.footers.default,
+    first_header: props.headers.first,
+    first_footer: props.footers.first,
+    title_pg: props.titlePage,
+    number_start: props.numbering.start,
+    number_format: props.numbering.format,
+    header_distance: props.margins.header,
+    footer_distance: props.margins.footer,
+  }
+}
+
+/**
+ * The sections pages take their headers, footers and numbering from: the document's own section
+ * breaks win, section by section, over the list stored beside it (`page_layout.sections`). Documents
+ * imported before section breaks carried properties have none and keep the stored list unchanged.
+ */
+export function mergeLayoutSections(stored: PageLayoutSection[], breaks: DocumentSectionBreak[]): PageLayoutSection[] {
+  const fromDocument = new Map<number, PageLayoutSection>()
+  for (const entry of breaks) {
+    if (entry.props) fromDocument.set(entry.section, layoutSectionFromProps(entry.section, entry.props))
+  }
+  if (fromDocument.size === 0) return stored
+  const merged = stored.map((section) => fromDocument.get(section.index) ?? section)
+  for (const [index, section] of fromDocument) {
+    if (!stored.some((entry) => entry.index === index)) merged.push(section)
+  }
+  return merged.sort((a, b) => a.index - b.index)
 }
 
 /** The measured section starts and page count as one comparable string, so state updates only on real changes. */

@@ -2868,8 +2868,10 @@ def _section_props(section: Any, described: Dict[str, Any]) -> Dict[str, Any]:
             "right": px(section.right_margin, 914400),
             "bottom": px(section.bottom_margin, 914400),
             "left": px(section.left_margin, 914400),
-            "header": px(section.header_distance, 457200),
-            "footer": px(section.footer_distance, 457200),
+            # As _extract_sections reads them (a 0 distance counts as unset, 0.5in), so the headers and
+            # footers drawn from these properties sit exactly where they did from page_layout.
+            "header": round((section.header_distance or 457200) / EMU_PER_PX, 1),
+            "footer": round((section.footer_distance or 457200) / EMU_PER_PX, 1),
             "gutter": px(section.gutter, 0),
         },
         "columns": {"count": count, "gap": gap, "widths": widths},

@@ -4,6 +4,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { readSectionProps, type SectionProps } from '@/lib/sectionProps'
 import { insetStyle } from './TableInset'
+import type { DocumentSectionBreak } from '@/lib/pageLayout'
 
 /** The document's page setup margins the paginator lays every page out with, in px. */
 export interface PageMarginsPx {
@@ -127,6 +128,17 @@ export function sectionDecorations(doc: ProseMirrorNode, page: PageMarginsPx | n
     }
   })
   return out
+}
+
+/** Every section break in the document, in order, with the properties it carries (null when unreadable). */
+export function documentSectionBreaks(doc: ProseMirrorNode): DocumentSectionBreak[] {
+  const breaks: DocumentSectionBreak[] = []
+  doc.forEach((node) => {
+    if ((node.type.name === 'pageBreak' || node.type.name === 'sectionMark') && typeof node.attrs.section === 'number') {
+      breaks.push({ section: node.attrs.section, props: readSectionProps(node.attrs.sectionProps) })
+    }
+  })
+  return breaks
 }
 
 function decorationSet(doc: ProseMirrorNode, page: PageMarginsPx | null): DecorationSet {
