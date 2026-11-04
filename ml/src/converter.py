@@ -835,7 +835,10 @@ def _extract_page_art(html: str) -> Tuple[str, List[Dict[str, Any]]]:
     art: List[Dict[str, Any]] = []
     # Block start offsets (in the original string) of the paragraphs that own a box.
     owners: Dict[int, List[int]] = {}
-    blocks = [m.start() for m in _BLOCK_START.finditer(html)]
+    # Only blocks outside the markers: a text box's own paragraphs leave with it, and counting them
+    # attached every later box to a paragraph further on (7 of 8 in DM-OUHRODI).
+    inside = [(m.start(), m.end()) for m in _PAGE_ART.finditer(html)]
+    blocks = [m.start() for m in _BLOCK_START.finditer(html) if not any(a <= m.start() < b for a, b in inside)]
 
     def take(match: "re.Match[str]") -> str:
         values: Dict[str, Any] = {key: float(value) for key, value in re.findall(r'data-(\w+)="([-\d.]+)"', match.group(1))}
@@ -850,7 +853,7 @@ def _extract_page_art(html: str) -> Tuple[str, List[Dict[str, Any]]]:
 
     cleaned = _PAGE_ART.sub(take, html)
     if owners:
-        # Block n of the original is block n of the cleaned string (markers sit inside blocks, never add or drop one).
+        # Block n outside the markers is block n of the cleaned string: removing a marker drops exactly the blocks inside it.
         starts = [m.end() for m in _BLOCK_START.finditer(cleaned)]
         for index in sorted(owners, reverse=True):
             if index < len(starts):

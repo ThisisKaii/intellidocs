@@ -340,3 +340,15 @@ class TestTables:
 
         assert _editor_style("margin:0; font-size:11pt;") == "font-size:11pt"
         assert _editor_style("padding:2px; min-height:20px; margin:0", _EDITOR_CELL_STYLE_PROPS) == "padding:2px; min-height:20px"
+
+
+def test_a_box_hangs_on_the_paragraph_it_sits_in_even_after_a_text_box():
+    """Regression: a text box's own paragraphs were counted, so later boxes landed on later paragraphs."""
+    from converter import _extract_page_art
+
+    textbox = '<page-art data-paragraph="0"><div><p>inside a text box</p><p>more</p></div></page-art>'
+    hung = '<page-art data-paragraph="1" data-id="4"><img src="x"/></page-art>'
+    html = f"<p>first{textbox}</p><p>second{hung}</p><p>third</p>"
+    cleaned, art = _extract_page_art(html)
+    assert cleaned == '<p>first</p><p data-overlay="4">second</p><p>third</p>'
+    assert len(art) == 2
