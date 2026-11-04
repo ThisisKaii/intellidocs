@@ -22,14 +22,17 @@ import omml
 from docir import (
     ColumnBreak,
     DisplayMath,
+    DrawnLine,
     Fragment,
     Hyperlink,
     Inline,
     InlineMath,
     LineBreak,
     NoteReference,
+    PageArt,
     PageBreak,
     ParagraphIndent,
+    Picture,
     ParagraphProps,
     ParagraphSpacing,
     RunProps,
@@ -958,12 +961,64 @@ def _run_picture_html(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[
     return None
 
 
+def _split_page_art(html: str, kind: str) -> List[Inline]:
+    """A fragment's HTML with its drawn-line markers as DrawnLine items and its page-art markers as
+    PageArt items; the rest stays a fragment of `kind`."""
+    items: List[Inline] = []
+    if kind in ("lines", "pictures"):
+        marks = len(html) - len(html.lstrip(_LINE_MARK))
+        items.extend(DrawnLine() for _ in range(marks))
+        html = html[marks:]
+        if kind == "lines" and not html:
+            return items
+    at = 0
+    for match in _PAGE_ART.finditer(html):
+        if match.start() > at:
+            items.append(Fragment(kind, html[at:match.start()]))
+        found = re.search(r'data-id="(\d+)"', match.group(1))
+        anchored = re.search(r'data-paragraph="1"', match.group(1))
+        items.append(PageArt(match.group(0), int(found.group(1)) if found and anchored else None))
+        at = match.end()
+    if at < len(html) or not items:
+        rest = html[at:]
+        picture = _read_picture(rest) if kind == "pictures" else None
+        if picture is not None:
+            items.append(picture)
+        elif rest or kind != "pictures":
+            items.append(Fragment(kind, rest))
+    return items
+
+
+_IMG_TAG = re.compile(r"<img\b[^>]*/>")
+
+
+def _read_picture(html: str) -> Optional[Picture]:
+    """A picture from the one <img> tag the picture placement wrote, or None when it is not one."""
+    if not _IMG_TAG.fullmatch(html):
+        return None
+
+    def attr(name: str) -> Optional[str]:
+        found = re.search(r"\s" + name + '="([^"]*)"', html)
+        return found.group(1) if found else None
+
+    width = attr("width")
+    return Picture(
+        html=html,
+        src=attr("src") or "",
+        width=int(width) if width and width.isdigit() else None,
+        alignment=attr("data-alignment") or "center",
+        container_style=attr("containerstyle"),
+        wraps=attr("data-wrap-reach") is not None,
+    )
+
+
 def _read_run_content(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[str, Any]] = None) -> List[Inline]:
-    """A run as the document model: its pictures and drawn lines (not modelled yet), or its text."""
+    """A run as the document model: its pictures and drawn lines (pictures pinned to the page as page
+    art), or its text."""
     pictures = _run_picture_html(run, doc_parts, row)
     if pictures is not None:
         kind = "lines" if pictures and not pictures.replace(_LINE_MARK, "") else "pictures"
-        return [Fragment(kind, pictures)]
+        return _split_page_art(pictures, kind)
     item = _read_run(run)
     return [item] if item is not None else []
 
@@ -1255,7 +1310,7 @@ def _read_inline(p: Paragraph, doc_parts: Dict[str, bytes]) -> List[Inline]:
                 items.extend(_read_run_content(run, doc_parts, row))
                 textboxes = _anchored_textboxes(child, p, doc_parts)
                 if textboxes:
-                    items.append(Fragment("textboxes", textboxes))
+                    items.extend(_split_page_art(textboxes, "textboxes"))
                 note = _read_note_reference(child, p)
                 if note is not None:
                     items.append(note)
@@ -1307,8 +1362,10 @@ def _write_inline_html(items: List[Inline]) -> str:
                 out.append(f'<span data-type="inline-math" data-latex="{_html_escape(item.latex, quote=True)}"></span>')
         elif isinstance(item, DisplayMath):
             out.append(_block_math_html(item.latex, item.number))
-        elif isinstance(item, Fragment):
+        elif isinstance(item, (Fragment, PageArt, Picture)):
             out.append(item.html)
+        elif isinstance(item, DrawnLine):
+            out.append(_LINE_MARK)
         elif isinstance(item, Hyperlink):
             inner = _write_inline_html(list(item.content))
             if inner:
@@ -1404,14 +1461,18 @@ def _run_marks(props: RunProps) -> List[Dict[str, Any]]:
     return [marks[name] for name in _MARK_RANK if name in marks]
 
 
-def _write_inline_json(items: List[Inline], implicit: bool = False) -> Optional[List[Dict[str, Any]]]:
+def _write_inline_json(items: List[Inline], implicit: bool = False, lines: str = "split") -> Optional[List[Dict[str, Any]]]:
     """A paragraph's content as editor JSON nodes, normalised the way ProseMirror parses HTML: spaces
     collapse; a space is dropped at the start of the paragraph, after a space, or straight after a <br>
     (only when the text is not inside a span); the paragraph's trailing space is removed; neighbouring
     text with the same marks is one node. None when the content holds something not written yet.
 
     `implicit`: the content of a paragraph ProseMirror opened itself (text the HTML parser left outside
-    any paragraph, after a page break): it drops no leading space at all."""
+    any paragraph, after a page break): it drops no leading space at all.
+
+    `lines`: what a drawn line is here. "split": the body paragraph writer splits at lines first, so
+    one left is not written; "drop": a list item's paragraph removes them; "text": a table cell keeps
+    the marker character itself (the cell writer never turns it into a rule)."""
     nodes: List[Dict[str, Any]] = []
 
     def add_text(text: str, marks: List[Dict[str, Any]], bare: bool) -> None:
@@ -1448,6 +1509,11 @@ def _write_inline_json(items: List[Inline], implicit: bool = False) -> Optional[
                 nodes.append({"type": "hardBreak"})
             elif isinstance(item, ColumnBreak):
                 continue  # only marks where a column ends; the paragraph itself is unchanged
+            elif isinstance(item, PageArt) or (isinstance(item, Fragment) and not item.html):
+                continue  # drawn by the page layout (the page layout pass takes it out of the body)
+            elif isinstance(item, DrawnLine) and lines != "split":
+                if lines == "text":
+                    add_text(_LINE_MARK, [], True)
             elif isinstance(item, NoteReference) and not link:
                 add_text(_format_number(item.number_format, item.number), [{"type": "superscript"}], False)
             elif isinstance(item, InlineMath) and not link:
@@ -1513,6 +1579,20 @@ def _with_block_marks(content: List[Dict[str, Any]], style: str) -> List[Dict[st
     return out
 
 
+def _overlay_ids(items: List[Inline]) -> Optional[str]:
+    """The `overlay` a paragraph gets: the ids of the page art hung beside it, in order."""
+    ids = [str(item.overlay_id) for item in items if isinstance(item, PageArt) and item.overlay_id is not None]
+    return " ".join(ids) if ids else None
+
+
+def _with_overlay(nodes: Optional[List[Dict[str, Any]]], items: List[Inline]) -> Optional[List[Dict[str, Any]]]:
+    """The page layout pass tags the block a box sits in, which opens with the paragraph's own tag."""
+    overlay = _overlay_ids(items)
+    if nodes and overlay and nodes[0]["type"] in ("paragraph", "heading"):
+        nodes[0]["attrs"]["overlay"] = overlay
+    return nodes
+
+
 def _write_paragraph_json(
     style: str,
     tab_attrs: Optional[Tuple[str, str]],
@@ -1538,6 +1618,64 @@ def _write_paragraph_json(
     if content:
         node["content"] = content
     return node
+
+
+def _image_container_style(alignment: str, width: Optional[int]) -> str:
+    """frontend imageContainerStyle: the image box's CSS when the HTML gives none."""
+    sizing = f"width: {width}px; height: auto; cursor: pointer;" if width else "cursor: pointer;"
+    return {
+        "left": f"{sizing} margin: 0 auto 0 0;",
+        "right": f"{sizing} margin: 0 0 0 auto;",
+        "float": f"{sizing} margin: 0.5rem 0 1rem 1.5rem; float: left;",
+    }.get(alignment, f"{sizing} margin: 0 auto;")
+
+
+def _picture_json(picture: Picture) -> Dict[str, Any]:
+    """A picture as the editor's image node (imageResize)."""
+    return {"type": "imageResize", "attrs": {
+        "span": None, "src": picture.src, "alt": None, "title": None, "width": picture.width, "height": None,
+        "containerStyle": picture.container_style or _image_container_style(picture.alignment, picture.width),
+        "wrapperStyle": "display: flex; margin: 0;", "alignment": picture.alignment, "caption": None, "wrapMode": None,
+    }}
+
+
+def _write_picture_split_json(
+    items: List[Inline],
+    style: str,
+    tab_attrs: Optional[Tuple[str, str]],
+    heading_level: Optional[int],
+    lines: str = "split",
+) -> Optional[List[Dict[str, Any]]]:
+    """A paragraph with pictures in its text, as ProseMirror splits it: an <img> does not close a
+    paragraph in HTML, so ProseMirror ends the paragraph at the picture block and puts the text after
+    it in a paragraph of its own (no attributes, the block's style marks)."""
+    segments: List[List[Inline]] = [[]]
+    pictures: List[Picture] = []
+    for item in items:
+        if isinstance(item, Picture):
+            pictures.append(item)
+            segments.append([])
+        else:
+            segments[-1].append(item)
+    first = _write_inline_json(segments[0], lines=lines)
+    if first is None:
+        return None
+    nodes = [_write_paragraph_json(style, tab_attrs, first, heading_level=heading_level)]
+    for picture, segment in zip(pictures, segments[1:]):
+        nodes.append(_picture_json(picture))
+        content = _write_inline_json(segment, implicit=True, lines=lines)
+        if content is None:
+            return None
+        if content and not _whitespace_only(content):
+            nodes.append(_write_paragraph_json("", None, _with_block_marks(content, style)))
+    return nodes
+
+
+def _without_inline_icons(items: List[Inline], inner: str) -> List[Inline]:
+    """_drop_inline_icons on the model: pictures 24px wide or less go when the paragraph has text."""
+    if not re.sub(r"<[^>]+>", "", inner).strip():
+        return items
+    return [item for item in items if not (isinstance(item, Picture) and item.width is not None and item.width <= 24)]
 
 
 _PAGE_BREAK_JSON: Dict[str, Any] = {"type": "pageBreak", "attrs": {"height": 0, "section": None, "sectionProps": None}}
@@ -1638,7 +1776,42 @@ def _record_paragraph_json(p: Paragraph, items: List[Inline]) -> None:
 
 
 def _paragraph_json(p: Paragraph, items: List[Inline]) -> Tuple[str, Optional[List[Dict[str, Any]]]]:
-    """A body paragraph as editor JSON nodes, deciding as _paragraph_html_from_inner does; with its text."""
+    """A body paragraph as editor JSON nodes, with its text: split at its drawn lines first, as
+    _paragraph_to_html_from_items does, each piece then as _paragraph_html_from_inner decides."""
+    text = "".join(item.text for item in items if isinstance(item, TextRun))
+    if not any(isinstance(item, DrawnLine) for item in items):
+        return _paragraph_piece_json(p, items)
+    lines = _line_shapes_in(p._p)
+    chunks: List[List[Inline]] = [[]]
+    for item in items:
+        if isinstance(item, DrawnLine):
+            chunks.append([])
+        else:
+            chunks[-1].append(item)
+    nodes: List[Dict[str, Any]] = []
+    for index, chunk in enumerate(chunks):
+        if index > 0:
+            line = lines[index - 1] if index - 1 < len(lines) else (5486400, 9525, "#000000")
+            rule = re.search(r'style="([^"]*)"', _line_paragraph_html(p, line, space_before=not nodes))
+            nodes.append(_write_paragraph_json(rule.group(1) if rule else "", None, []))
+            # Word's line breaks (and blank runs) right after a drawing are dropped with it.
+            while chunk and (isinstance(chunk[0], LineBreak) or (isinstance(chunk[0], TextRun) and not chunk[0].text.strip())):
+                chunk = chunk[1:]
+        html = _write_inline_html(chunk)
+        if re.sub(r"<(?!img)[^>]+>", "", html).strip():
+            piece = _paragraph_piece_json(p, chunk)[1]
+            if piece is None:
+                return text, None
+            nodes.extend(piece)
+        elif index == 0:
+            # Line breaks before a line are empty lines above it.
+            for _ in range(len(re.findall(r"<br\s*/?>", html))):
+                nodes.extend(_paragraph_piece_json(p, [])[1] or [])
+    return text, nodes
+
+
+def _paragraph_piece_json(p: Paragraph, items: List[Inline]) -> Tuple[str, Optional[List[Dict[str, Any]]]]:
+    """A paragraph (or one piece of it) as editor JSON nodes, deciding as _paragraph_html_from_inner does."""
     text = "".join(item.text for item in items if isinstance(item, TextRun))
     inner = _write_inline_html(items)
     props = _read_paragraph_props(p)
@@ -1662,11 +1835,23 @@ def _paragraph_json(p: Paragraph, items: List[Inline]) -> Tuple[str, Optional[Li
         css = "; ".join(part.rstrip("; ") for part in filter(None, [align, font_css, spacing_css, indent_css])).strip()
         style, heading_level = (f"{css};" if css else ""), None
         tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p))) if "data-tab" in inner else None
-    if any(isinstance(item, (PageBreak, DisplayMath)) for item in items):
+    if any(isinstance(item, Picture) for item in items):
+        items = _without_inline_icons(items, inner)
+    pictures = [item for item in items if isinstance(item, Picture)]
+    if any(picture.wraps for picture in pictures):
+        return text, None  # grouped into a wrap block by the body pass: whole-document assembly (2a.4)
+    if pictures and re.fullmatch(r"<img\s[^>]+/>", _write_inline_html(items).strip()):
+        return text, [_picture_json(pictures[0])]  # a paragraph that is only a picture is the picture
+    if pictures and any(isinstance(item, (PageBreak, DisplayMath)) for item in items):
+        return text, None
+    if pictures:
+        nodes = _write_picture_split_json(items, style, tabs, heading_level)
+    elif any(isinstance(item, (PageBreak, DisplayMath)) for item in items):
         nodes = _write_split_paragraph_json(items, style, tabs, heading_level)
     else:
         content = _write_inline_json(items)
         nodes = None if content is None else [_write_paragraph_json(style, tabs, content, heading_level=heading_level)]
+    nodes = _with_overlay(nodes, items)
     if nodes is None:
         return text, None
     # The text as the editor holds it (links, note numbers and all).
@@ -2813,11 +2998,17 @@ def _cell_paragraph(
     pieces = [align_style, color_style, "margin:0", _paragraph_font_css(p), _paragraph_spacing_css(p), indent]
     css = "; ".join(piece.rstrip("; ") for piece in pieces if piece) + ";"
     html = f'<p style="{css}"{_tab_attributes(p, inner)}>{inner}</p>'
-    content = _write_inline_json(items)
+    tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p))) if "data-tab" in inner else None
+    if any(isinstance(item, Picture) for item in items):
+        # A picture in a cell paragraph splits it as in the body (cells keep no picture-only shortcut).
+        if any(isinstance(item, Picture) and item.wraps for item in items):
+            return html, _NOT_WRITTEN
+        split = _write_picture_split_json(items, css, tabs, None, lines="text")
+        return html, _with_overlay(split, items) if split is not None else _NOT_WRITTEN
+    content = _write_inline_json(items, lines="text")
     if content is None:
         return html, _NOT_WRITTEN
-    tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p))) if "data-tab" in inner else None
-    return html, _write_paragraph_json(css, tabs, content)
+    return html, _with_overlay([_write_paragraph_json(css, tabs, content)], items)[0]
 
 
 def _cell_paragraph_to_html(
@@ -3125,7 +3316,12 @@ def _cell_json(style: str, span: int, blocks: List[Any]) -> Any:
     """A table cell node (or _NOT_WRITTEN). An empty cell writes &nbsp;, which the editor puts in a paragraph."""
     if any(block is _NOT_WRITTEN for block in blocks):
         return _NOT_WRITTEN
-    content = [block for block in blocks if block is not None]
+    content: List[Dict[str, Any]] = []
+    for block in blocks:  # a cell paragraph split round a picture gives several nodes
+        if isinstance(block, list):
+            content.extend(block)
+        elif block is not None:
+            content.append(block)
     if not content:
         content = [_write_paragraph_json("", None, [{"type": "text", "text": "\u00a0"}])]
     return {"type": "tableCell", "attrs": {
@@ -3457,11 +3653,11 @@ def _write_body_html(
                 json_items.append(item_node)
                 list_items, list_css = _LAST_LIST_PARAGRAPH or ([], None)
                 if list_css is not None:
-                    content = _write_inline_json(list_items)
+                    content = _write_inline_json(list_items, lines="drop")
                     if content is None:
                         json_root["ok"] = False
                     else:
-                        item_node["content"].append(_write_paragraph_json(f"{list_css};" if list_css else "", None, content))
+                        item_node["content"].extend(_with_overlay([_write_paragraph_json(f"{list_css};" if list_css else "", None, content)], list_items))
 
             out.append(item_html)
             emit_textboxes(element)

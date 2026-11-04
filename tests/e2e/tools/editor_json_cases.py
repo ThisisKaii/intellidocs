@@ -179,6 +179,51 @@ def case_nested_table(d):
     d.add_paragraph("After")
 
 
+def _png(width: int, height: int) -> io.BytesIO:
+    """A plain grey PNG of the given size (standard library only)."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    rows = b"".join(b"\x00" + b"\x80" * width for _ in range(height))
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+    return io.BytesIO(png)
+
+def case_picture_alone(d):
+    d.add_paragraph("Before")
+    d.add_paragraph().add_run().add_picture(_png(200, 100))
+    d.add_paragraph("After")
+
+
+def case_picture_between_text(d):
+    p = d.add_paragraph("Text before ")
+    p.add_run().add_picture(_png(120, 60))
+    p.add_run(" and text after")
+
+
+def case_picture_first_then_caption(d):
+    p = d.add_paragraph()
+    p.alignment = 1
+    p.add_run().add_picture(_png(300, 120))
+    p.add_run("Figure 1: a caption")
+
+
+def case_icon_in_text(d):
+    p = d.add_paragraph("Name ")
+    p.add_run().add_picture(_png(16, 16))
+    p.add_run(" with a small badge")
+
+
+def case_picture_in_a_cell(d):
+    table = d.add_table(rows=2, cols=1)
+    table.cell(0, 0).paragraphs[0].add_run().add_picture(_png(80, 40))
+    table.cell(1, 0).text = "below"
+    d.add_paragraph("After")
+
+
 CASES: dict[str, Callable] = {name[5:]: fn for name, fn in globals().items() if name.startswith("case_")}
 
 

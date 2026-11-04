@@ -100,9 +100,9 @@ def first_difference(a: Any, b: Any, path: str = "") -> str | None:
 
 
 # Differences the JSON writer cannot remove yet: the attribute, and the Stage 2a slice that removes it.
-KNOWN_DIFFERENCES = {
-    "overlay": "anchors slice: a later pass over the HTML tags the paragraph a box hangs beside",
-}
+# Empty: the last one (the overlay attribute) went when the page layout pass stopped counting a text
+# box's own paragraphs and attached every box to the paragraph it sits in.
+KNOWN_DIFFERENCES: dict[str, str] = {}
 
 
 def compare_allowing_known(reference: Any, ours: Any) -> tuple[str | None, bool]:
@@ -272,7 +272,9 @@ def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
             for position, node in enumerate(nodes):
                 if node["type"] not in ("paragraph", "heading"):
                     continue
-                written.append((node_text(node) or text if position == 0 else node_text(node), node))
+                # Each node is paired by its own text: a split paragraph's first node holds only what came
+                # before the split.
+                written.append((node_text(node), node))
                 written_html.append(html if position == 0 else None)
                 recorded_index.append(index)
     # Pair by text and style (empty paragraphs differ only in style), aligning the two sequences.

@@ -148,6 +148,40 @@ class Fragment:
 
 
 @dataclass(frozen=True)
+class PageArt:
+    """A drawing or text box Word pins to the page, or hangs beside its paragraph: it is drawn by the
+    page layout, not in the text. `html` is its marker as the converter writes it (the page layout pass
+    takes it out of the body); `overlay_id` numbers one hung beside its paragraph, which then names it."""
+
+    html: str
+    overlay_id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class DrawnLine:
+    """A straight line Word draws in the paragraph (a signature line, a divider). The paragraph writer
+    turns each into a bordered paragraph of its own, taking the lines' geometry in order."""
+
+
+@dataclass(frozen=True)
+class Picture:
+    """A picture in the text: a block of its own in the editor.
+
+    `html` is the <img> the converter's picture placement writes; the fields are what the editor
+    reads from it. (Placement itself, floats and wrapping included, moves into the model with the
+    document's anchors in Stage 2a.4.)"""
+
+    html: str
+    src: str
+    width: Optional[int] = None
+    alignment: str = "center"
+    # The image box's own CSS when the converter sets one (floats, offsets); None for the default.
+    container_style: Optional[str] = None
+    # The picture is grouped with the paragraphs beside it into a wrap block by the body pass.
+    wraps: bool = False
+
+
+@dataclass(frozen=True)
 class Hyperlink:
     """A link around some of a paragraph's content."""
 
@@ -155,4 +189,8 @@ class Hyperlink:
     content: tuple["Inline", ...]
 
 
-Inline = Union[TextRun, LineBreak, PageBreak, ColumnBreak, NoteReference, InlineMath, DisplayMath, Fragment, Hyperlink]
+Inline = Union[
+    TextRun, LineBreak, PageBreak, ColumnBreak, NoteReference, InlineMath, DisplayMath, PageArt, DrawnLine, Picture,
+    Fragment,
+    Hyperlink,
+]

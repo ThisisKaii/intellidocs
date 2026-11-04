@@ -342,6 +342,42 @@ class TestTables:
         assert _editor_style("padding:2px; min-height:20px; margin:0", _EDITOR_CELL_STYLE_PROPS) == "padding:2px; min-height:20px"
 
 
+class TestPicturesLinesAndPageArt:
+    IMG = '<img data-alignment="left" containerstyle="width: 108px; margin: 0 0 0 47.7px;" src="data:image/png;base64,AAA" width="108" style="max-width:100%" />'
+
+    def test_a_picture_is_read_from_its_tag_and_written_as_the_image_node(self):
+        from converter import _picture_json, _read_picture
+
+        picture = _read_picture(self.IMG)
+        assert picture is not None and picture.width == 108 and picture.alignment == "left" and not picture.wraps
+        node = _picture_json(picture)
+        assert node["type"] == "imageResize" and node["attrs"]["containerStyle"] == "width: 108px; margin: 0 0 0 47.7px;"
+        plain = _picture_json(_read_picture('<img src="x" width="575" />'))
+        assert plain["attrs"]["containerStyle"] == "width: 575px; height: auto; cursor: pointer; margin: 0 auto;"
+        assert plain["attrs"]["wrapperStyle"] == "display: flex; margin: 0;" and plain["attrs"]["alignment"] == "center"
+        assert _read_picture("<div>not a picture</div>") is None
+
+    def test_fragments_split_into_lines_page_art_and_pictures(self):
+        from converter import _LINE_MARK, _split_page_art
+        from docir import DrawnLine, PageArt, Picture
+
+        html = _LINE_MARK * 2 + '<page-art data-paragraph="1" data-id="7">box</page-art>' + '<img src="x" width="10" />'
+        items = _split_page_art(html, "pictures")
+        assert [type(i) for i in items] == [DrawnLine, DrawnLine, PageArt, Picture]
+        assert items[2].overlay_id == 7
+        pinned = _split_page_art('<page-art data-paragraph="0" data-id="3">x</page-art>', "textboxes")
+        assert pinned[0].overlay_id is None  # pinned to the page, not hung beside a paragraph
+
+    def test_icons_go_only_from_paragraphs_with_text_and_overlays_name_the_boxes(self):
+        from converter import _overlay_ids, _read_picture, _without_inline_icons
+        from docir import PageArt
+
+        icon = _read_picture('<img src="x" width="16" />')
+        assert _without_inline_icons([TextRun("Name", RunProps()), icon], "Name<img/>") == [TextRun("Name", RunProps())]
+        assert _without_inline_icons([icon], '<img src="x" width="16" />') == [icon]
+        assert _overlay_ids([PageArt("a", 2), TextRun("x", RunProps()), PageArt("b", None), PageArt("c", 5)]) == "2 5"
+
+
 def test_a_box_hangs_on_the_paragraph_it_sits_in_even_after_a_text_box():
     """Regression: a text box's own paragraphs were counted, so later boxes landed on later paragraphs."""
     from converter import _extract_page_art
