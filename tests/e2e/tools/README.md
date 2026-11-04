@@ -66,6 +66,20 @@ The tools below explain a drop the gate reports.
      and its page break.
    - `compare_fid.py <before.json> <after.json>` compares two `fidelity_run.py` summaries.
 
+## Editor JSON references (Stage 2a)
+
+`editor_json_reference.py` records, for every fixture (DOCX and PDF), the converter's HTML and the
+editor JSON the real import path makes from it (`tests/fixtures/import_baselines/editor_json/`,
+gzipped, pictures replaced by a hash of their data). While the converter moves onto its own model,
+`check` must keep reporting `same`: the HTML stays byte-identical, and the converter's new JSON writer
+has to reproduce the recorded editor JSON. It names the first differing character or JSON path.
+
+```powershell
+ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check              # needs the frontend on 5173
+ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check --html-only  # converter only, no browser
+ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py record             # deliberate: review the diff
+```
+
 ## Fonts
 
 The editor draws the common Word fonts itself on every computer. `frontend/src/styles/wordFontAliases.css`
