@@ -75,6 +75,9 @@ gzipped, pictures replaced by a hash of their data). While the converter moves o
 has to reproduce the recorded editor JSON. It names the first differing character or JSON path.
 `--json` pairs each body paragraph the writer produced with the reference paragraph and reports
 how many are identical; differences listed in `KNOWN_DIFFERENCES` name the slice that removes them.
+`editor_json_cases.py` (frontend on 5173) covers shapes no fixture has, such as a page break inside a
+line of text: it builds small DOCX files, loads their converted HTML in the editor, and compares the
+editor's JSON with the writer's.
 
 ```powershell
 ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check              # needs the frontend on 5173

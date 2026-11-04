@@ -1397,16 +1397,19 @@ def _run_marks(props: RunProps) -> List[Dict[str, Any]]:
     return [marks[name] for name in _MARK_RANK if name in marks]
 
 
-def _write_inline_json(items: List[Inline]) -> Optional[List[Dict[str, Any]]]:
+def _write_inline_json(items: List[Inline], implicit: bool = False) -> Optional[List[Dict[str, Any]]]:
     """A paragraph's content as editor JSON nodes, normalised the way ProseMirror parses HTML: spaces
     collapse; a space is dropped at the start of the paragraph, after a space, or straight after a <br>
     (only when the text is not inside a span); the paragraph's trailing space is removed; neighbouring
-    text with the same marks is one node. None when the content holds something not written yet."""
+    text with the same marks is one node. None when the content holds something not written yet.
+
+    `implicit`: the content of a paragraph ProseMirror opened itself (text the HTML parser left outside
+    any paragraph, after a page break): it drops no leading space at all."""
     nodes: List[Dict[str, Any]] = []
 
     def add_text(text: str, marks: List[Dict[str, Any]], bare: bool) -> None:
         text = _WHITESPACE.sub(" ", text)
-        if text.startswith(" "):
+        if text.startswith(" ") and not implicit:
             before = nodes[-1] if nodes else None
             if (
                 before is None
@@ -1436,6 +1439,8 @@ def _write_inline_json(items: List[Inline]) -> Optional[List[Dict[str, Any]]]:
                     add_text(segment, marks, bare)
             elif isinstance(item, LineBreak) and not link:
                 nodes.append({"type": "hardBreak"})
+            elif isinstance(item, ColumnBreak):
+                continue  # only marks where a column ends; the paragraph itself is unchanged
             elif isinstance(item, NoteReference) and not link:
                 add_text(_format_number(item.number_format, item.number), [{"type": "superscript"}], False)
             elif isinstance(item, InlineMath) and not link:
@@ -1528,10 +1533,67 @@ def _write_paragraph_json(
     return node
 
 
+_PAGE_BREAK_JSON: Dict[str, Any] = {"type": "pageBreak", "attrs": {"height": 0, "section": None, "sectionProps": None}}
+
+
+def _block_json(item: Inline) -> Dict[str, Any]:
+    """A page break or display equation as the editor node it becomes."""
+    if isinstance(item, PageBreak):
+        return json.loads(json.dumps(_PAGE_BREAK_JSON))
+    assert isinstance(item, DisplayMath)
+    return {"type": "blockMath", "attrs": {"latex": item.latex, "number": item.number, "span": None}}
+
+
+def _whitespace_only(nodes: List[Dict[str, Any]]) -> bool:
+    return all(node["type"] == "text" and not node["text"].strip(" ") for node in nodes)
+
+
+def _write_split_paragraph_json(
+    items: List[Inline],
+    style: str,
+    tab_attrs: Optional[Tuple[str, str]],
+    heading_level: Optional[int],
+) -> Optional[List[Dict[str, Any]]]:
+    """The editor nodes of a paragraph that holds page breaks or display equations, as the HTML the
+    converter writes for it parses today.
+
+    A <hr> or <div> closes an open <p> (HTML parsing rules): the text after it lands in a paragraph
+    ProseMirror opens itself, with no attributes, and the paragraph's own </p> then opens one more,
+    empty. Inside a heading they do not close it; ProseMirror splits it, and the text after the break
+    becomes a paragraph that keeps the heading's style marks. (Word keeps one paragraph with one style:
+    reproduced here so imports do not change; removing it is a deliberate, measured step.)
+    """
+    segments: List[List[Inline]] = [[]]
+    blocks: List[Inline] = []
+    for item in items:
+        if isinstance(item, (PageBreak, DisplayMath)):
+            blocks.append(item)
+            segments.append([])
+        else:
+            segments[-1].append(item)
+    first = _write_inline_json(segments[0])
+    if first is None:
+        return None
+    nodes = [_write_paragraph_json(style, tab_attrs, first, heading_level=heading_level)]
+    for block, segment in zip(blocks, segments[1:]):
+        nodes.append(_block_json(block))
+        content = _write_inline_json(segment, implicit=True)
+        if content is None:
+            return None
+        if content and not _whitespace_only(content):
+            if heading_level is not None:
+                content = _with_block_marks(content, style)
+            nodes.append(_write_paragraph_json("", None, content))
+    if heading_level is None:
+        nodes.append(_write_paragraph_json("", None, []))
+    return nodes
+
+
 # While editor_json_reference.py measures the JSON writer, the body's paragraphs are recorded here, in
-# order, as (plain text, JSON or None when not written yet). None the rest of the time. The paragraph's
-# HTML is recorded with it so the measurement can pair it with the right reference paragraph.
-_JSON_SINK: Optional[List[Tuple[str, Optional[Dict[str, Any]]]]] = None
+# order, as (plain text, the editor nodes it becomes, or None when not written yet). None the rest of
+# the time. The paragraph's HTML is recorded with it so the measurement can pair it with the right
+# reference paragraph.
+_JSON_SINK: Optional[List[Tuple[str, Optional[List[Dict[str, Any]]]]]] = None
 _JSON_SINK_HTML: Optional[List[str]] = None
 _IN_BODY = False
 
@@ -1539,35 +1601,44 @@ _IN_BODY = False
 def _record_paragraph_json(p: Paragraph, items: List[Inline]) -> None:
     if _JSON_SINK is None or not _IN_BODY:
         return
+    _JSON_SINK.append(_paragraph_json(p, items))
+
+
+def _paragraph_json(p: Paragraph, items: List[Inline]) -> Tuple[str, Optional[List[Dict[str, Any]]]]:
+    """A body paragraph as editor JSON nodes, deciding as _paragraph_html_from_inner does; with its text."""
     text = "".join(item.text for item in items if isinstance(item, TextRun))
+    inner = _write_inline_html(items)
     props = _read_paragraph_props(p)
-    content = _write_inline_json(items)
-    if content is None:
-        _JSON_SINK.append((text, None))
-        return
-    # The text as the editor holds it (links, note numbers and all): what the measurement pairs by.
-    text = "".join(node.get("text", "") for node in content) or text
     font_css = _write_font_css(props.font_size_pt)
     spacing_css = _write_spacing_css(props.spacing, props.font_name)
-    # A blank line is what writes no HTML (as _paragraph_html_from_inner decides): a space inside a
-    # styled run still writes its span, so that paragraph keeps its alignment and indent.
-    if not _write_inline_html(items).strip():
+    # A blank line is what writes no HTML: a space inside a styled run still writes its span, so that
+    # paragraph keeps its alignment and indent.
+    if not inner.strip():
         style = "; ".join(filter(None, [font_css, spacing_css]))
-        _JSON_SINK.append((text, _write_paragraph_json(style, None, [])))
-        return
+        return text, [_write_paragraph_json(style, None, [])]
+    # Only page breaks, or only display equations: bare blocks, no paragraph around them.
+    if re.fullmatch(r"(<hr[^>]*/>\s*)+", inner) or re.fullmatch(r'(<div data-type="block-math"[^>]*></div>\s*)+', inner):
+        return text, [_block_json(item) for item in items if isinstance(item, (PageBreak, DisplayMath))]
     align = f"text-align:{props.alignment};" if props.alignment != "left" else ""
     indent_css = _write_indent_css(props.indent)
     heading = _heading_kind(props.style_name)
     if heading is not None:
         level, size, margin, weight, italic = heading
-        css = _heading_css(font_css, spacing_css, align, indent_css, size, margin, weight, italic)
-        _JSON_SINK.append((text, _write_paragraph_json(css, None, content, heading_level=level)))
-        return
-    css = "; ".join(part.rstrip("; ") for part in filter(None, [align, font_css, spacing_css, indent_css])).strip()
-    tabs = None
-    if any(node["type"] == "tab" for node in content):
-        tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p)))
-    _JSON_SINK.append((text, _write_paragraph_json(f"{css};" if css else "", tabs, content)))
+        style, tabs, heading_level = _heading_css(font_css, spacing_css, align, indent_css, size, margin, weight, italic), None, level
+    else:
+        css = "; ".join(part.rstrip("; ") for part in filter(None, [align, font_css, spacing_css, indent_css])).strip()
+        style, heading_level = (f"{css};" if css else ""), None
+        tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p))) if "data-tab" in inner else None
+    if any(isinstance(item, (PageBreak, DisplayMath)) for item in items):
+        nodes = _write_split_paragraph_json(items, style, tabs, heading_level)
+    else:
+        content = _write_inline_json(items)
+        nodes = None if content is None else [_write_paragraph_json(style, tabs, content, heading_level=heading_level)]
+    if nodes is None:
+        return text, None
+    # The text as the editor holds it (links, note numbers and all).
+    written = "".join(child.get("text", "") for node in nodes for child in node.get("content", []))
+    return written or text, nodes
 
 
 def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:

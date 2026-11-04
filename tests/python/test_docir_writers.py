@@ -259,3 +259,37 @@ class TestEditorJsonInline:
         assert node["content"] == [{"type": "text", "text": "A B", "marks": [{"type": "bold"}, {"type": "italic"}]}]
         light = _write_paragraph_json("font-weight:400", None, [{"type": "text", "text": "x"}], heading_level=1)
         assert light["content"] == [{"type": "text", "text": "x"}]
+
+
+class TestSplitParagraphs:
+    """A page break or display equation inside a paragraph splits it the way the browser parses the
+    converter's HTML (editor_json_cases.py checks these against the real editor)."""
+
+    def test_a_paragraph_closes_at_the_break_and_the_rest_loses_its_style(self):
+        from converter import _write_split_paragraph_json
+        from docir import PageBreak
+
+        nodes = _write_split_paragraph_json([TextRun("A ", RunProps()), PageBreak(), TextRun(" B", RunProps())], "text-align:center;", None, None)
+        assert [n["type"] for n in nodes] == ["paragraph", "pageBreak", "paragraph", "paragraph"]
+        assert nodes[0]["attrs"]["textAlign"] == "center" and nodes[0]["content"] == [{"type": "text", "text": "A"}]
+        assert nodes[2]["attrs"]["style"] is None and nodes[2]["content"] == [{"type": "text", "text": " B"}]  # a leading space stays
+        assert "content" not in nodes[3]  # the paragraph's own </p> opens one more, empty
+
+    def test_a_heading_splits_without_the_extra_paragraph_and_keeps_its_style_marks(self):
+        from converter import _write_split_paragraph_json
+        from docir import PageBreak
+
+        nodes = _write_split_paragraph_json([TextRun("A", RunProps()), PageBreak(), TextRun("B", RunProps())], "font-weight:bold;", None, 2)
+        assert [n["type"] for n in nodes] == ["heading", "pageBreak", "paragraph"]
+        assert nodes[2]["content"] == [{"type": "text", "text": "B", "marks": [{"type": "bold"}]}]
+
+    def test_nothing_after_the_break_opens_no_paragraph_for_it(self):
+        from converter import _write_split_paragraph_json
+        from docir import DisplayMath
+
+        nodes = _write_split_paragraph_json([TextRun("A", RunProps()), DisplayMath("x", "2"), TextRun(" ", RunProps())], "", None, None)
+        assert [n["type"] for n in nodes] == ["paragraph", "blockMath", "paragraph"]
+        # Two spaces keep their width as a non-breaking space: that is content, so it opens a paragraph.
+        kept = _write_split_paragraph_json([TextRun("A", RunProps()), DisplayMath("x"), TextRun("  ", RunProps())], "", None, None)
+        assert [n["type"] for n in kept] == ["paragraph", "blockMath", "paragraph", "paragraph"]
+        assert nodes[1]["attrs"] == {"latex": "x", "number": "2", "span": None}

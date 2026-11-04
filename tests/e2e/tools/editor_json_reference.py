@@ -159,18 +159,26 @@ def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
     # overlays and drop blank lines before a page break, after they were recorded. The converter tags
     # each recorded paragraph (data-sink) while measuring; the tags still in the body are the survivors.
     survivors = {int(n) for n in re.findall(r'data-sink="(\d+)"', body)}
+    # One Word paragraph can become several editor nodes; each paragraph or heading among them is
+    # paired on its own. The first one is keyed by the style its HTML carries, the rest by their own.
     written, written_html, recorded_index = [], [], []
-    for index, (entry, html) in enumerate(zip(recorded, recorded_html)):
-        if entry[1] is None:
+    for index, ((text, nodes), html) in enumerate(zip(recorded, recorded_html)):
+        if nodes is None:
             counts["not written"] += 1
         elif index not in survivors:
             counts["moved out"] += 1
         else:
-            written.append(entry)
-            written_html.append(html)
-            recorded_index.append(index)
+            for position, node in enumerate(nodes):
+                if node["type"] not in ("paragraph", "heading"):
+                    continue
+                written.append((node_text(node) or text if position == 0 else node_text(node), node))
+                written_html.append(html if position == 0 else None)
+                recorded_index.append(index)
     # Pair by text and style (empty paragraphs differ only in style), aligning the two sequences.
-    ours = [(text_key(text), html_style(html)) for (text, _), html in zip(written, written_html)]
+    ours = [
+        (text_key(text), html_style(html) if html is not None else (node.get("attrs") or {}).get("style"))
+        for (text, node), html in zip(written, written_html)
+    ]
     theirs = [(text_key(node_text(node)), (node.get("attrs") or {}).get("style")) for node in paragraphs]
     pairs = {}
     for block in difflib.SequenceMatcher(None, ours, theirs, autojunk=False).get_matching_blocks():
