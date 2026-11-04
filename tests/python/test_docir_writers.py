@@ -305,3 +305,38 @@ def test_a_list_item_always_starts_with_a_paragraph():
     only_nested["content"].append({"type": "bulletList", "content": []})
     _close_list_item_json(only_nested)
     assert [n["type"] for n in only_nested["content"]] == ["paragraph", "bulletList"]
+
+
+class TestTables:
+    def _table(self, rows: int):
+        from converter import _NOT_WRITTEN, _table
+
+        document = docx.Document()
+        table = document.add_table(rows=rows, cols=2)
+        for r in range(rows):
+            table.cell(r, 0).text = f"r{r}"
+        html, node = _table(table, {})
+        assert node is not _NOT_WRITTEN
+        return html, node
+
+    def test_cells_keep_the_cell_extras_and_an_empty_cell_holds_a_no_break_space(self):
+        _, node = self._table(2)
+        first, empty = node["content"][0]["content"]
+        assert first["type"] == "tableCell" and first["attrs"]["rowspan"] == 1 and first["attrs"]["colspan"] == 1
+        assert "padding-left" in first["attrs"]["style"]
+        assert empty["content"] == [{"type": "paragraph", "attrs": empty["content"][0]["attrs"], "content": [{"type": "text", "text": "\u00a0"}]}]
+
+    def test_one_row_keeps_its_row_group_and_several_rows_do_not(self):
+        assert [n["type"] for n in self._table(1)[1]["content"]] == ["tableRowGroup"]
+        assert [n["type"] for n in self._table(3)[1]["content"]] == ["tableRow"] * 3
+
+    def test_table_attributes(self):
+        html, node = self._table(2)
+        assert node["attrs"] == {"alignment": "center", "columnSize": "50,50", "inset": None, "span": None}
+        assert 'data-column-size="50,50"' in html
+
+    def test_a_cell_paragraph_drops_margin_shorthand(self):
+        from converter import _editor_style, _EDITOR_CELL_STYLE_PROPS
+
+        assert _editor_style("margin:0; font-size:11pt;") == "font-size:11pt"
+        assert _editor_style("padding:2px; min-height:20px; margin:0", _EDITOR_CELL_STYLE_PROPS) == "padding:2px; min-height:20px"

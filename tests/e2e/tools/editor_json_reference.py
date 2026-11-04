@@ -99,10 +99,31 @@ def first_difference(a: Any, b: Any, path: str = "") -> str | None:
     return None if a == b else f"{path}: {repr(a)[:80]} vs {repr(b)[:80]}"
 
 
-# Differences the JSON writer cannot remove yet, by path, with the Stage 2a slice that removes them.
+# Differences the JSON writer cannot remove yet: the attribute, and the Stage 2a slice that removes it.
 KNOWN_DIFFERENCES = {
-    "/attrs/overlay": "anchors slice: a later pass over the HTML tags the paragraph a box hangs beside",
+    "overlay": "anchors slice: a later pass over the HTML tags the paragraph a box hangs beside",
 }
+
+
+def compare_allowing_known(reference: Any, ours: Any) -> tuple[str | None, bool]:
+    """(first difference, whether it is only known ones). Known attributes are blanked in the reference
+    and the WHOLE node compared again, so a known difference never hides a real one behind it."""
+    found = first_difference(reference, ours)
+    if not found:
+        return None, False
+
+    def blank(node: Any) -> Any:
+        if isinstance(node, list):
+            return [blank(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+        out = {key: blank(value) for key, value in node.items()}
+        if isinstance(out.get("attrs"), dict):
+            out["attrs"] = {k: (None if k in KNOWN_DIFFERENCES else v) for k, v in out["attrs"].items()}
+        return out
+
+    remaining = first_difference(blank(reference), blank(ours))
+    return (found, True) if not remaining else (remaining, False)
 
 # Paragraphs inside these are written by other parts of the converter (tables, lists, quotes).
 _OTHER_CONTAINERS = {"table", "listItem", "blockquote", "bulletList", "orderedList"}
@@ -162,46 +183,74 @@ def reference_lists(doc: dict) -> list[dict]:
     return found
 
 
-def check_lists(recorded: list[dict], body: str, reference: dict) -> tuple[dict, list[str]]:
-    """Compare the lists the writer built with the reference's, paired in order by their text."""
-    survivors = {int(n) for n in re.findall(r'data-sink-list="(\d+)"', body)}
-    counts = {"lists written": 0, "lists same": 0, "lists different": 0, "lists not written": 0, "lists unpaired": 0}
+def reference_tables(doc: dict) -> list[dict]:
+    """The body's tables in a reference document, in order (not tables nested in tables)."""
+    found: list[dict] = []
+
+    def walk(node: dict) -> None:
+        if node.get("type") == "table":
+            found.append(node)
+            return
+        for child in node.get("content", []):
+            walk(child)
+
+    walk(doc)
+    return found
+
+
+def check_blocks(kind: str, ours: list, theirs: list[dict], not_written: int) -> tuple[dict, list[str]]:
+    """Compare whole blocks the writer built (index, node) with the reference's, paired in order by text."""
+    counts = {f"{kind} written": 0, f"{kind} same": 0, f"{kind} different": 0, f"{kind} known": 0, f"{kind} not written": not_written, f"{kind} unpaired": 0}
     problems: list[str] = []
-    ours = [(i, entry["node"]) for i, entry in enumerate(recorded) if i in survivors and entry["ok"]]
-    counts["lists not written"] = sum(1 for i, entry in enumerate(recorded) if i in survivors and not entry["ok"])
-    theirs = reference_lists(reference)
     pairs = {}
     matcher = difflib.SequenceMatcher(None, [text_key(deep_text(n)) for _, n in ours], [text_key(deep_text(n)) for n in theirs], autojunk=False)
     for block in matcher.get_matching_blocks():
         for offset in range(block.size):
             pairs[block.a + offset] = block.b + offset
     for position, (index, node) in enumerate(ours):
-        counts["lists written"] += 1
+        counts[f"{kind} written"] += 1
         match = pairs.get(position)
         if match is None:
-            counts["lists unpaired"] += 1
-            problems.append(f"list {index} {deep_text(node)[:30]!r} pairs with no reference list")
+            counts[f"{kind} unpaired"] += 1
+            problems.append(f"{kind[:-1]} {index} {deep_text(node)[:30]!r} pairs with no reference {kind[:-1]}")
             continue
-        found = first_difference(strip_pictures(theirs[match]), strip_pictures(node))
-        if found:
-            counts["lists different"] += 1
-            problems.append(f"list {index} {deep_text(node)[:30]!r}: {found}")
+        found, known = compare_allowing_known(strip_pictures(theirs[match]), strip_pictures(node))
+        if known:
+            counts[f"{kind} known"] += 1
+        elif found:
+            counts[f"{kind} different"] += 1
+            problems.append(f"{kind[:-1]} {index} {deep_text(node)[:30]!r}: {found}")
         else:
-            counts["lists same"] += 1
+            counts[f"{kind} same"] += 1
     return counts, problems
+
+
+def check_tables(recorded: list, body: str, reference: dict) -> tuple[dict, list[str]]:
+    survivors = {int(n) for n in re.findall(r'data-sink-table="(\d+)"', body)}
+    ours = [(i, node) for i, node in enumerate(recorded) if i in survivors and node is not None]
+    not_written = sum(1 for i, node in enumerate(recorded) if i in survivors and node is None)
+    return check_blocks("tables", ours, reference_tables(reference), not_written)
+
+
+def check_lists(recorded: list[dict], body: str, reference: dict) -> tuple[dict, list[str]]:
+    """Compare the lists the writer built with the reference's, paired in order by their text."""
+    survivors = {int(n) for n in re.findall(r'data-sink-list="(\d+)"', body)}
+    ours = [(i, entry["node"]) for i, entry in enumerate(recorded) if i in survivors and entry["ok"]]
+    not_written = sum(1 for i, entry in enumerate(recorded) if i in survivors and not entry["ok"])
+    return check_blocks("lists", ours, reference_lists(reference), not_written)
 
 
 def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
     """Compare the converter's paragraph JSON with the reference's paragraphs, paired in order by text."""
-    converter._JSON_SINK, converter._JSON_SINK_HTML, converter._JSON_LIST_SINK = [], [], []
+    converter._JSON_SINK, converter._JSON_SINK_HTML, converter._JSON_LIST_SINK, converter._JSON_TABLE_SINK = [], [], [], []
     try:
         body = fr.convert(fixture)["html"]
         recorded, recorded_html = list(converter._JSON_SINK), list(converter._JSON_SINK_HTML)
-        recorded_lists = list(converter._JSON_LIST_SINK)
+        recorded_lists, recorded_tables = list(converter._JSON_LIST_SINK), list(converter._JSON_TABLE_SINK)
     finally:
-        converter._JSON_SINK, converter._JSON_SINK_HTML, converter._JSON_LIST_SINK = None, None, None
+        converter._JSON_SINK = converter._JSON_SINK_HTML = converter._JSON_LIST_SINK = converter._JSON_TABLE_SINK = None
     # Measuring must not change the conversion: without its tags the body is the recorded HTML.
-    untagged = strip_pictures(re.sub(r' data-sink(?:-list)?="\d+"', "", body))
+    untagged = strip_pictures(re.sub(r' data-sink(?:-list|-table)?="\d+"', "", body))
     if untagged != read_gz(REFERENCES / f"{fixture.name}.html.gz"):
         raise SystemExit(f"{fixture.name}: measuring changed the converter's HTML; the JSON check would be meaningless")
     paragraphs = reference_paragraphs(reference)
@@ -248,8 +297,7 @@ def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
             counts["not written"] += 1
             continue
         counts["written"] += 1
-        found = first_difference(strip_pictures(paragraphs[match]), strip_pictures(node))
-        known = next((why for path, why in KNOWN_DIFFERENCES.items() if found and found.startswith(path + ":")), None)
+        found, known = compare_allowing_known(strip_pictures(paragraphs[match]), strip_pictures(node))
         if known:
             counts["known"] += 1
         elif found:
@@ -258,8 +306,10 @@ def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
         else:
             counts["same"] += 1
     list_counts, list_problems = check_lists(recorded_lists, body, reference)
+    table_counts, table_problems = check_tables(recorded_tables, body, reference)
     counts.update(list_counts)
-    return counts, problems + list_problems
+    counts.update(table_counts)
+    return counts, problems + list_problems + table_problems
 
 
 def read_gz(path: Path) -> str:
@@ -289,8 +339,9 @@ def main(argv: list[str] | None = None) -> int:
             reference = json.loads(read_gz(REFERENCES / f"{fixture.name}.json.gz"))
             counts, problems = check_json(fixture, reference)
             print(f"{fixture.name[:44]:44} " + ", ".join(f"{k} {v}" for k, v in counts.items()))
-            if counts["known"]:
-                print(f"    {counts['known']} known: " + "; ".join(KNOWN_DIFFERENCES.values()))
+            known = sum(v for k, v in counts.items() if k == "known" or k.endswith(" known"))
+            if known:
+                print(f"    {known} known: " + "; ".join(KNOWN_DIFFERENCES.values()))
             for problem in problems[:6]:
                 print("   ", problem)
             failed = failed or bool(problems)

@@ -144,6 +144,41 @@ def case_formatted_list_item(d):
     p.add_run("italic").italic = True
 
 
+def case_simple_table(d):
+    table = d.add_table(rows=2, cols=3)
+    table.style = "Table Grid"
+    for r, row in enumerate(table.rows):
+        for c, cell in enumerate(row.cells):
+            cell.text = f"r{r}c{c}"
+    d.add_paragraph("After the table")
+
+
+def case_merged_and_empty_cells(d):
+    table = d.add_table(rows=2, cols=3)
+    table.style = "Table Grid"
+    table.cell(0, 0).merge(table.cell(0, 1)).text = "spans two columns"
+    table.cell(0, 2).text = "right"
+    table.cell(1, 0).text = "below"
+    d.add_paragraph("After")
+
+
+def case_numbered_paragraphs_in_a_cell(d):
+    table = d.add_table(rows=1, cols=1)
+    cell = table.cell(0, 0)
+    cell.paragraphs[0].text = "first item"
+    cell.paragraphs[0].style = "List Number"
+    cell.add_paragraph("second item", style="List Number")
+    d.add_paragraph("After")
+
+
+def case_nested_table(d):
+    table = d.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "outer"
+    inner = table.cell(0, 1).add_table(rows=1, cols=1)
+    inner.cell(0, 0).text = "inner"
+    d.add_paragraph("After")
+
+
 CASES: dict[str, Callable] = {name[5:]: fn for name, fn in globals().items() if name.startswith("case_")}
 
 
@@ -161,20 +196,20 @@ def main() -> int:
         browser = playwright.chromium.launch(headless=True, channel="chrome")
         try:
             for name, fn in CASES.items():
-                converter._JSON_SINK, converter._JSON_SINK_HTML, converter._JSON_LIST_SINK = [], [], []
+                converter._JSON_SINK, converter._JSON_SINK_HTML, converter._JSON_LIST_SINK, converter._JSON_TABLE_SINK = [], [], [], []
                 try:
                     result = converter.convert_docx_bytes_to_html(build(fn))
-                    sink, lists = list(converter._JSON_SINK), list(converter._JSON_LIST_SINK)
+                    sink, lists, tables = list(converter._JSON_SINK), list(converter._JSON_LIST_SINK), list(converter._JSON_TABLE_SINK)
                 finally:
-                    converter._JSON_SINK = converter._JSON_SINK_HTML = converter._JSON_LIST_SINK = None
-                if any(nodes is None for _, nodes in sink) or not all(entry["ok"] for entry in lists):
+                    converter._JSON_SINK = converter._JSON_SINK_HTML = converter._JSON_LIST_SINK = converter._JSON_TABLE_SINK = None
+                if any(nodes is None for _, nodes in sink) or not all(entry["ok"] for entry in lists) or None in tables:
                     print(f"NOT WRITTEN  {name}")
                     failed += 1
                     continue
                 # Paragraphs and lists are recorded apart: compare each in document order.
                 ours = [node for _, nodes in sink for node in nodes]
                 our_lists = [entry["node"] for entry in lists]
-                html = __import__("re").sub(r' data-sink(?:-list)?="\d+"', "", result["html"])
+                html = __import__("re").sub(r' data-sink(?:-list|-table)?="\d+"', "", result["html"])
                 page = browser.new_page()
                 page.add_init_script("window.__FIDELITY__ = " + json.dumps({
                     "html": html, "pageSize": "letter", "margins": {"top": 1, "bottom": 1, "left": 1, "right": 1},
@@ -188,12 +223,14 @@ def main() -> int:
                 # The editor's trailing-node extension adds an empty paragraph after a document that ends with
                 # something else (a list): a runtime addition after any load, not part of the import.
                 trailing = {"type": "paragraph", "attrs": converter._write_paragraph_json("", None, [])["attrs"]}
-                if len(content) == len(ours) + len(our_lists) + 1 and content[-2]["type"] != "paragraph" and content[-1] == trailing:
+                if len(content) == len(ours) + len(our_lists) + len(tables) + 1 and content[-2]["type"] != "paragraph" and content[-1] == trailing:
                     content = content[:-1]
-                editor = [node for node in content if node["type"] not in ("orderedList", "bulletList")]
+                blocks = ("orderedList", "bulletList", "table")
+                editor = [node for node in content if node["type"] not in blocks]
                 editor_lists = [node for node in content if node["type"] in ("orderedList", "bulletList")]
-                found = first_difference(editor, ours) or first_difference(editor_lists, our_lists)
-                shape = " ".join(node["type"] for node in ours + our_lists)
+                editor_tables = [node for node in content if node["type"] == "table"]
+                found = first_difference(editor, ours) or first_difference(editor_lists, our_lists) or first_difference(editor_tables, tables)
+                shape = " ".join(node["type"] for node in ours + our_lists + tables)
                 print(("same         " if not found else "DIFFERENT    ") + f"{name:34} {shape}" + (f"\n    {found}" if found else ""))
                 failed += bool(found)
         finally:

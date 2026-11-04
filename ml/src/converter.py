@@ -1349,13 +1349,17 @@ _PARAGRAPH_ATTRS: Dict[str, Any] = {
 _WHITESPACE = re.compile(r"[ \t\r\n\u000c]+")
 
 
-def _editor_style(raw: str) -> Optional[str]:
+# frontend CELL_STYLE_PROPS: what a table cell keeps beyond the paragraph list.
+_EDITOR_CELL_STYLE_PROPS = {"min-height", "padding"}
+
+
+def _editor_style(raw: str, extra: Set[str] = frozenset()) -> Optional[str]:
     """frontend filterStyle: the declarations the editor keeps, as written."""
     kept = []
     for decl in raw.split(";"):
         trimmed = decl.strip()
         colon = trimmed.find(":")
-        if trimmed and colon >= 1 and trimmed[:colon].strip().lower() in _EDITOR_STYLE_PROPS:
+        if trimmed and colon >= 1 and (trimmed[:colon].strip().lower() in _EDITOR_STYLE_PROPS or trimmed[:colon].strip().lower() in extra):
             kept.append(trimmed)
     return "; ".join(kept) if kept else None
 
@@ -1588,6 +1592,12 @@ def _write_split_paragraph_json(
         nodes.append(_write_paragraph_json("", None, []))
     return nodes
 
+
+# A block the JSON writer does not write yet (as opposed to None: a block that writes nothing).
+_NOT_WRITTEN = object()
+
+# While measuring, every table the body holds at the top level is recorded here: its node, or None.
+_JSON_TABLE_SINK: Optional[List[Optional[Dict[str, Any]]]] = None
 
 # The last list paragraph the HTML writer wrote, while measuring: its content and style (None when it
 # wrote no paragraph), so the list's JSON is built from the same read.
@@ -2773,6 +2783,40 @@ def _cell_marker(p: Paragraph, counters: Dict[Tuple[str, str], int]) -> str:
     return re.sub(r"%\d", shown, text)
 
 
+def _cell_paragraph(
+    p: Paragraph,
+    doc_parts: Dict[str, bytes],
+    force_white: bool = False,
+    counters: Optional[Dict[Tuple[str, str], int]] = None,
+) -> Tuple[str, Any]:
+    """A table cell paragraph as (HTML, editor JSON). The JSON is the paragraph node, None when the
+    paragraph writes nothing, or _NOT_WRITTEN when it holds content the JSON writer does not cover."""
+    equation = _equation_paragraph_html(p)
+    if equation is not None:
+        return equation, _NOT_WRITTEN
+    items = _read_inline(p, doc_parts)
+    inner = _write_inline_html(items)
+    if not inner.strip():
+        return "", None
+    marker = _cell_marker(p, counters if counters is not None else {})
+    if marker:
+        inner = f"{marker}<span data-tab></span>{inner}"
+        # The marker is bare text and a tab ahead of the content.
+        items = [TextRun(marker + "\t", RunProps())] + items
+    alignment = _get_paragraph_alignment(p)
+    align_style = f"text-align:{alignment};" if alignment != "left" else ""
+    color_style = "color:#ffffff;" if force_white else ""
+    indent = _paragraph_indent_css(p)
+    pieces = [align_style, color_style, "margin:0", _paragraph_font_css(p), _paragraph_spacing_css(p), indent]
+    css = "; ".join(piece.rstrip("; ") for piece in pieces if piece) + ";"
+    html = f'<p style="{css}"{_tab_attributes(p, inner)}>{inner}</p>'
+    content = _write_inline_json(items)
+    if content is None:
+        return html, _NOT_WRITTEN
+    tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p))) if "data-tab" in inner else None
+    return html, _write_paragraph_json(css, tabs, content)
+
+
 def _cell_paragraph_to_html(
     p: Paragraph,
     doc_parts: Dict[str, bytes],
@@ -2784,23 +2828,7 @@ def _cell_paragraph_to_html(
     A cell paragraph keeps its own indents and, when Word numbers or bullets it, its
     marker (drawn as text and a tab, which the paragraph's tab stop lines up).
     """
-    equation = _equation_paragraph_html(p)
-    if equation is not None:
-        return equation
-    inner = _paragraph_inner_html(p, doc_parts)
-    if not inner.strip():
-        return ""
-    marker = _cell_marker(p, counters if counters is not None else {})
-    if marker:
-        inner = f"{marker}<span data-tab></span>{inner}"
-    alignment = _get_paragraph_alignment(p)
-    align_style = f"text-align:{alignment};" if alignment != "left" else ""
-    color_style = "color:#ffffff;" if force_white else ""
-    indent = _paragraph_indent_css(p)
-    pieces = [align_style, color_style, "margin:0", _paragraph_font_css(p), _paragraph_spacing_css(p), indent]
-    css = "; ".join(piece.rstrip("; ") for piece in pieces if piece) + ";"
-    return f'<p style="{css}"{_tab_attributes(p, inner)}>{inner}</p>'
-
+    return _cell_paragraph(p, doc_parts, force_white, counters)[0]
 
 def _text_width_px(doc: docx.Document) -> Optional[float]:
     """Printable width of the first section in CSS pixels, or None when unreadable."""
@@ -3086,7 +3114,26 @@ def _merged_cell_chunks(table: Table, rows: List[List[Dict[str, Any]]], col_px: 
 
 
 def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[float] = None) -> str:
-    """Convert a Word table to HTML with real colspan/rowspan, per-cell column widths and nested tables.
+    """Convert a Word table to HTML with real colspan/rowspan, per-cell column widths and nested tables."""
+    return _table(table, doc_parts, text_width_px)[0]
+
+
+def _cell_json(style: str, span: int, blocks: List[Any]) -> Any:
+    """A table cell node (or _NOT_WRITTEN). An empty cell writes &nbsp;, which the editor puts in a paragraph."""
+    if any(block is _NOT_WRITTEN for block in blocks):
+        return _NOT_WRITTEN
+    content = [block for block in blocks if block is not None]
+    if not content:
+        content = [_write_paragraph_json("", None, [{"type": "text", "text": "\u00a0"}])]
+    return {"type": "tableCell", "attrs": {
+        "colspan": span, "rowspan": 1, "colwidth": None, "style": _editor_style(style, _EDITOR_CELL_STYLE_PROPS),
+        "align": None, "backgroundColor": None, "color": None,
+    }, "content": content}
+
+
+def _table(table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[float] = None) -> Tuple[str, Any]:
+    """A Word table as (HTML, editor JSON or _NOT_WRITTEN), with real colspan/rowspan, per-cell column
+    widths and nested tables.
 
     Cells are read straight from the XML: python-docx's ``row.cells`` repeats a
     merged cell once per grid column it covers, which duplicated its text.
@@ -3101,8 +3148,10 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
     list_counters: Dict[Tuple[str, str], int] = {}
 
     rows_html: List[str] = []
+    rows_json: List[Any] = []
     for i, cells in enumerate(rows):
         cells_html: List[str] = []
+        cells_json: List[Any] = []
         tag = "td"
         last_column = len(cells) - 1
 
@@ -3112,10 +3161,11 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
                 # shared border, so the merged cell still reads as one block.
                 span_attr = f' colspan="{cell["span"]}"' if cell["span"] > 1 else ""
                 shared = merged_chunks.get((i, cell["col"]))
-                spill = "".join(_cell_paragraph_to_html(Paragraph(el, table), doc_parts, counters=list_counters) for el in shared) if shared else ""
-                cells_html.append(
-                    f'<{tag} style="{_cell_edge_css(borders, cell["el"], i, last_row, column, last_column)}; border-top:none; {_cell_padding_css(cell["el"], pad)}; vertical-align:top;"{span_attr}>{spill or "&nbsp;"}</{tag}>'
-                )
+                spilled = [_cell_paragraph(Paragraph(el, table), doc_parts, counters=list_counters) for el in shared] if shared else []
+                spill = "".join(html for html, _ in spilled)
+                skip_style = f'{_cell_edge_css(borders, cell["el"], i, last_row, column, last_column)}; border-top:none; {_cell_padding_css(cell["el"], pad)}; vertical-align:top;'
+                cells_html.append(f'<{tag} style="{skip_style}"{span_attr}>{spill or "&nbsp;"}</{tag}>')
+                cells_json.append(_cell_json(skip_style, cell["span"], [node for _, node in spilled] if spill else []))
                 continue
             tc = cell["el"]
             bg_color = ""
@@ -3131,13 +3181,16 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
                         text_color = "color:#ffffff; font-weight:600;"
 
             content_parts: List[str] = []
+            content_json: List[Any] = []
             # A cell merged down several rows keeps only the paragraphs that start in this row.
             own_blocks = merged_chunks.get((i, cell["col"])) if cell["rowspan"] > 1 else None
             for child in own_blocks if own_blocks is not None else _iter_block_elements(tc):
                 if child.tag == qn("w:p"):
-                    content_parts.append(_cell_paragraph_to_html(Paragraph(child, table), doc_parts, force_white=is_dark, counters=list_counters))
+                    html, node = _cell_paragraph(Paragraph(child, table), doc_parts, force_white=is_dark, counters=list_counters)
                 else:
-                    content_parts.append(_table_to_html(Table(child, table), doc_parts, text_width_px))
+                    html, node = _table(Table(child, table), doc_parts, text_width_px)
+                content_parts.append(html)
+                content_json.append(node)
             cell_content = "".join(content_parts)
             if not cell_content.strip():
                 cell_content = "&nbsp;"
@@ -3163,11 +3216,25 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
             if cell["span"] > 1:
                 attrs.append(f'colspan="{cell["span"]}"')
             cells_html.append(f'<{tag} {" ".join(attrs)}>{cell_content}</{tag}>')
+            cells_json.append(_cell_json(cell_style, cell["span"], content_json if cell_content != "&nbsp;" else []))
 
         rows_html.append(f"<tr>{''.join(cells_html)}</tr>")
+        rows_json.append(_NOT_WRITTEN if any(cell is _NOT_WRITTEN for cell in cells_json) else {"type": "tableRow", "content": cells_json})
 
     table_css = "border-collapse:collapse; width:100%; margin:0; table-layout:fixed;"
-    return f'<table style="{table_css}"{_column_size_attribute(rows, col_px)}>{"".join(rows_html)}</table>'
+    column_size = _column_size_attribute(rows, col_px)
+    html = f'<table style="{table_css}"{column_size}>{"".join(rows_html)}</table>'
+    if any(row is _NOT_WRITTEN for row in rows_json):
+        return html, _NOT_WRITTEN
+    sizes = re.search(r'data-column-size="([^"]*)"', column_size)
+    raw = sizes.group(1) if sizes else ""
+    # tiptap-table-plus keeps the list only when every entry is a number.
+    columns = raw if all(re.fullmatch(r"-?[\d.]*", part) for part in raw.split(",")) else ""
+    # The HTML parser puts the rows in a <tbody>, which tiptap-table-plus reads as one row group; its
+    # regrouping (by rowspan, and every row here spans one) rebuilds the table with plain rows only when
+    # that changes the grouping, so a table of one row keeps its group.
+    content = [{"type": "tableRowGroup", "content": rows_json}] if len(rows_json) == 1 else rows_json
+    return html, {"type": "table", "attrs": {"alignment": "center", "columnSize": columns, "inset": None, "span": None}, "content": content}
 
 
 def _body_to_html(*args: Any, **kwargs: Any) -> str:
@@ -3398,7 +3465,12 @@ def _write_body_html(
 
         elif element.tag == qn("w:tbl"):
             close_all_lists()
-            out.append(_table_to_html(Table(element, doc), doc_parts, text_width))
+            html, node = _table(Table(element, doc), doc_parts, text_width)
+            if _JSON_TABLE_SINK is not None and _IN_BODY:
+                _JSON_TABLE_SINK.append(None if node is _NOT_WRITTEN else node)
+                # Measurement only: tag the table so the measurement can tell which ones stay in the body.
+                html = re.sub(r"^(<table\b[^>]*)>", lambda m: f'{m.group(1)} data-sink-table="{len(_JSON_TABLE_SINK) - 1}">', html, count=1)
+            out.append(html)
 
     close_all_lists()
     section_starts[section_no + 1] = len(out)
