@@ -2,10 +2,12 @@ import base64
 import hashlib
 import io
 import json
+import logging
 import math
 import os
 import re
 import tempfile
+import threading
 from html import escape as _html_escape
 from typing import Any, Dict, List, Optional, Set, Tuple
 import docx
@@ -19,6 +21,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 import omml
+from html import unescape as _html_unescape
 from docir import (
     ColumnBreak,
     DisplayMath,
@@ -1203,6 +1206,7 @@ def _notes_part_root(doc: docx.Document, kind: str) -> Optional[Any]:
 
 def _notes_html(doc: docx.Document, doc_parts: Dict[str, bytes]) -> str:
     """The text of every referenced footnote and endnote, under "Notes" / "Endnotes", in reference order."""
+    _STATE.last_notes_json = []
     state = getattr(doc.part, "_intellidocs_notes", None)
     if not state:
         return ""
@@ -1214,19 +1218,31 @@ def _notes_html(doc: docx.Document, doc_parts: Dict[str, bytes]) -> str:
         if root is None:
             continue
         pieces: List[str] = []
+        piece_nodes: List[Any] = []
         for note_id, number in state[kind].items():
             note = next((n for n in root.findall(qn(f"w:{kind}")) if n.get(qn("w:id")) == note_id), None)
             if note is None:
                 continue
-            paragraphs = [_paragraph_to_html(Paragraph(pe, doc), doc_parts) for pe in note.findall(qn("w:p"))]
-            paragraphs = [html for html in paragraphs if html]
-            if not paragraphs:
+            written = []
+            for pe in note.findall(qn("w:p")):
+                html = _paragraph_to_html(Paragraph(pe, doc), doc_parts)
+                if html:
+                    written.append((html, _STATE.last_paragraph_nodes))
+            if not written:
                 continue
+            paragraphs = [html for html, _ in written]
             label = f"<sup>{_format_number(fmt, number)}</sup> "
             paragraphs[0] = re.sub(r"(<p\b[^>]*>)", lambda m: m.group(1) + label, paragraphs[0], count=1)
             pieces.extend(paragraphs)
+            nodes_list = [nodes for _, nodes in written]
+            if all(nodes is not None for nodes in nodes_list) and paragraphs[0].startswith("<p"):
+                nodes_list[0] = _with_note_label(nodes_list[0], _format_number(fmt, number))
+            piece_nodes.extend(nodes_list)
         if pieces:
             sections.append(f'<p style="font-weight:600; margin-top:12px; margin-bottom:4px;">{heading}</p>' + "".join(pieces))
+            title = _write_paragraph_json("font-weight:600; margin-top:12px; margin-bottom:4px;", None, [{"type": "text", "text": heading}])
+            if _STATE.last_notes_json is not None:
+                _STATE.last_notes_json = None if any(nodes is None for nodes in piece_nodes) else _STATE.last_notes_json + [title] + [n for nodes in piece_nodes for n in nodes]
     return "".join(sections)
 
 
@@ -1461,6 +1477,9 @@ def _run_marks(props: RunProps) -> List[Dict[str, Any]]:
     return [marks[name] for name in _MARK_RANK if name in marks]
 
 
+_TIPTAP_REMOVED_TEXT = re.compile(r"\n\s\s|\n")
+
+
 def _write_inline_json(items: List[Inline], implicit: bool = False, lines: str = "split") -> Optional[List[Dict[str, Any]]]:
     """A paragraph's content as editor JSON nodes, normalised the way ProseMirror parses HTML: spaces
     collapse; a space is dropped at the start of the paragraph, after a space, or straight after a <br>
@@ -1474,8 +1493,16 @@ def _write_inline_json(items: List[Inline], implicit: bool = False, lines: str =
     one left is not written; "drop": a list item's paragraph removes them; "text": a table cell keeps
     the marker character itself (the cell writer never turns it into a rule)."""
     nodes: List[Dict[str, Any]] = []
+    joins_bare = [False]  # the last thing written was bare text, which the next bare text joins in the DOM
 
     def add_text(text: str, marks: List[Dict[str, Any]], bare: bool) -> None:
+        # TipTap's elementFromString removes a DOM text node that is only a newline (or a newline and two
+        # spaces) before ProseMirror reads the HTML.
+        joined = bare and joins_bare[0]
+        joins_bare[0] = bare
+        if not joined and _TIPTAP_REMOVED_TEXT.fullmatch(text):
+            joins_bare[0] = False
+            return
         text = _WHITESPACE.sub(" ", text)
         if text.startswith(" ") and not implicit:
             before = nodes[-1] if nodes else None
@@ -1504,9 +1531,11 @@ def _write_inline_json(items: List[Inline], implicit: bool = False, lines: str =
                     if index:
                         nodes.append({"type": "tab", **({"marks": marks} if marks else {})})
                         bare = False
+                        joins_bare[0] = False
                     add_text(segment, marks, bare)
             elif isinstance(item, LineBreak) and not link:
                 nodes.append({"type": "hardBreak"})
+                joins_bare[0] = False
             elif isinstance(item, ColumnBreak):
                 continue  # only marks where a column ends; the paragraph itself is unchanged
             elif isinstance(item, PageArt) or (isinstance(item, Fragment) and not item.html):
@@ -1521,6 +1550,7 @@ def _write_inline_json(items: List[Inline], implicit: bool = False, lines: str =
                     add_text(item.text, [], True)
                 else:
                     nodes.append({"type": "inlineMath", "attrs": {"latex": item.latex}})
+                    joins_bare[0] = False
             elif isinstance(item, Hyperlink) and not link:
                 if not _write_inline_html(list(item.content)):
                     continue
@@ -1548,6 +1578,50 @@ def _write_inline_json(items: List[Inline], implicit: bool = False, lines: str =
     return nodes
 
 
+def _with_note_label(nodes: List[Dict[str, Any]], number: str) -> List[Dict[str, Any]]:
+    """A note's first paragraph with its number in front (<sup>n</sup> and a space), as ProseMirror
+    reads it: the paragraph's own leading space goes after that space, and bare text joins it."""
+    first = dict(nodes[0])
+    content = [dict(node) for node in first.get("content", [])]
+    if content and content[0]["type"] == "text" and content[0]["text"].startswith(" "):
+        content[0]["text"] = content[0]["text"][1:]
+        if not content[0]["text"]:
+            content.pop(0)
+    label = [{"type": "text", "text": number, "marks": [{"type": "superscript"}]}, {"type": "text", "text": " "}]
+    if content and content[0]["type"] == "text" and not content[0].get("marks"):
+        label[1] = {"type": "text", "text": " " + content.pop(0)["text"]}
+    first["content"] = label + content
+    return [first] + nodes[1:]
+
+
+def _js_numbers(value: Any) -> Any:
+    """JSON as JavaScript writes it: one number type, so 48.0 is 48."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_js_numbers(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _js_numbers(item) for key, item in value.items()}
+    return value
+
+
+def _document_json(doc: docx.Document, hf: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The editor's JSON of the whole document (None when part of it is not written yet): the body as
+    its passes left it, then the notes, with every section break carrying its section's properties."""
+    body = _body_nodes(_STATE.last_body_json or [])
+    if body is None or _STATE.last_notes_json is None:
+        return None
+    content = body + _STATE.last_notes_json
+    if not _is_pdf(doc):
+        sections = list(doc.sections)
+        described = {entry["index"]: entry for entry in hf.get("sections", [])}
+        for node in content:
+            index = (node.get("attrs") or {}).get("section")
+            if node["type"] in ("pageBreak", "sectionMark") and isinstance(index, int) and index < len(sections):
+                node["attrs"]["sectionProps"] = _section_props(sections[index], described.get(index, {}))
+    return _js_numbers({"type": "doc", "content": content})
+
+
 def _block_style_marks(style: str) -> List[Dict[str, Any]]:
     """Marks the editor's Bold and Italic parse rules give everything inside a block whose own style says
     so (a heading styled font-weight:bold has all its text bold)."""
@@ -1558,6 +1632,21 @@ def _block_style_marks(style: str) -> List[Dict[str, Any]]:
     if style and _style_value(style, "font-style") == "italic":
         marks.append({"type": "italic"})
     return marks
+
+
+def _with_block_marks_deep(nodes: List[Dict[str, Any]], style: str) -> List[Dict[str, Any]]:
+    """Blocks with an enclosing element's style marks added to all the text inside them."""
+    if not _block_style_marks(style):
+        return nodes
+    out = []
+    for node in nodes:
+        children = node.get("content")
+        if children and any(child["type"] in ("text", "tab") for child in children):
+            node = {**node, "content": _with_block_marks(children, style)}
+        elif children:
+            node = {**node, "content": _with_block_marks_deep(children, style)}
+        out.append(node)
+    return out
 
 
 def _with_block_marks(content: List[Dict[str, Any]], style: str) -> List[Dict[str, Any]]:
@@ -1737,12 +1826,36 @@ def _write_split_paragraph_json(
 # A block the JSON writer does not write yet (as opposed to None: a block that writes nothing).
 _NOT_WRITTEN = object()
 
+logger = logging.getLogger(__name__)
+
+# When set, the conversion also returns the editor's JSON of the whole document (`content_json`),
+# built alongside the HTML from the same read: every pass that reshapes the body's HTML reshapes its
+# JSON the same way. The editor loads it in place of parsing the HTML (Stage 2a).
+_BUILD_JSON = True
+
+
+
+class _ConversionState(threading.local):
+    """What the HTML writers hand the JSON writer during one conversion. Per thread: the ML service
+    converts in a thread pool, so two imports at once must not see each other's nodes."""
+
+    def __init__(self) -> None:
+        # The editor nodes of the last body paragraph _paragraph_to_html wrote (None: not written), of
+        # the whole body once _write_body_html is done, and of the notes (None: not written).
+        self.last_paragraph_nodes: Optional[List[Dict[str, Any]]] = None
+        self.last_body_json: Optional[List[Any]] = None
+        self.last_notes_json: Optional[List[Dict[str, Any]]] = []
+        # The last list paragraph the HTML writer wrote: its content and style (None when it wrote no
+        # paragraph), so the list's JSON is built from the same read.
+        self.last_list_paragraph: Optional[Tuple[List[Inline], Optional[str]]] = None
+        # The body (not a header, footer or note) is being written.
+        self.in_body = False
+
+
+_STATE = _ConversionState()
+
 # While measuring, every table the body holds at the top level is recorded here: its node, or None.
 _JSON_TABLE_SINK: Optional[List[Optional[Dict[str, Any]]]] = None
-
-# The last list paragraph the HTML writer wrote, while measuring: its content and style (None when it
-# wrote no paragraph), so the list's JSON is built from the same read.
-_LAST_LIST_PARAGRAPH: Optional[Tuple[List[Inline], Optional[str]]] = None
 
 # While measuring, every list the body opens at the top level is recorded here (its node is filled in
 # as its items arrive; None when an item holds content the JSON writer does not write yet).
@@ -1766,11 +1879,10 @@ def _close_list_item_json(item: Dict[str, Any]) -> None:
 # reference paragraph.
 _JSON_SINK: Optional[List[Tuple[str, Optional[List[Dict[str, Any]]]]]] = None
 _JSON_SINK_HTML: Optional[List[str]] = None
-_IN_BODY = False
 
 
 def _record_paragraph_json(p: Paragraph, items: List[Inline]) -> None:
-    if _JSON_SINK is None or not _IN_BODY:
+    if _JSON_SINK is None or not _STATE.in_body:
         return
     _JSON_SINK.append(_paragraph_json(p, items))
 
@@ -1839,7 +1951,13 @@ def _paragraph_piece_json(p: Paragraph, items: List[Inline]) -> Tuple[str, Optio
         items = _without_inline_icons(items, inner)
     pictures = [item for item in items if isinstance(item, Picture)]
     if any(picture.wraps for picture in pictures):
-        return text, None  # grouped into a wrap block by the body pass: whole-document assembly (2a.4)
+        # The wrap pass moves the picture out ahead of its paragraph when it opens it, then groups them.
+        if len(pictures) == 1 and items and items[0] is pictures[0] and heading is None:
+            rest = _write_inline_json(items[1:])
+            if rest is None:
+                return text, None
+            return text, [_picture_json(pictures[0]), _write_paragraph_json(style, tabs, rest)]
+        return text, None
     if pictures and re.fullmatch(r"<img\s[^>]+/>", _write_inline_html(items).strip()):
         return text, [_picture_json(pictures[0])]  # a paragraph that is only a picture is the picture
     if pictures and any(isinstance(item, (PageBreak, DisplayMath)) for item in items):
@@ -2688,10 +2806,21 @@ def _paragraph_to_html(
     if list_info is None:
         equation = _equation_paragraph_html(p)
         if equation is not None:
+            if _BUILD_JSON:
+                _STATE.last_paragraph_nodes = [
+                    {"type": "blockMath", "attrs": {"latex": m.group(1), "number": m.group(3), "span": None}}
+                    for m in re.finditer(r'<div data-type="block-math" data-latex="([^"]*)"( data-number="([^"]*)")?></div>', equation)
+                ]
+                for node in _STATE.last_paragraph_nodes:
+                    node["attrs"]["latex"] = _html_unescape(node["attrs"]["latex"])
+                    if node["attrs"]["number"] is not None:
+                        node["attrs"]["number"] = _html_unescape(node["attrs"]["number"])
             return equation
     items = _read_inline(p, doc_parts)
     inner = _write_inline_html(items)
-    if list_info is None and _JSON_SINK is not None and _IN_BODY:
+    if list_info is None and _BUILD_JSON:
+        _STATE.last_paragraph_nodes = _paragraph_json(p, items)[1]
+    if list_info is None and _JSON_SINK is not None and _STATE.in_body:
         html = _paragraph_to_html_from_items(p, inner)
         _record_paragraph_json(p, items)
         if _JSON_SINK_HTML is not None:
@@ -2704,8 +2833,7 @@ def _paragraph_to_html(
     if list_info is None:
         return _paragraph_to_html_from_items(p, inner)
     inner = inner.replace(_LINE_MARK, "")
-    global _LAST_LIST_PARAGRAPH
-    _LAST_LIST_PARAGRAPH = (items, _list_paragraph_css(p, list_info) if inner.strip() else None)
+    _STATE.last_list_paragraph = (items, _list_paragraph_css(p, list_info) if inner.strip() else None)
     # The item keeps its paragraph's spacing, size and alignment.
     if inner.strip():
         css = _list_paragraph_css(p, list_info)
@@ -3324,13 +3452,17 @@ def _cell_json(style: str, span: int, blocks: List[Any]) -> Any:
             content.append(block)
     if not content:
         content = [_write_paragraph_json("", None, [{"type": "text", "text": "\u00a0"}])]
+    # The cell's own style marks (a header cell styled font-weight:600) reach all text inside it.
+    content = _with_block_marks_deep(content, style)
     return {"type": "tableCell", "attrs": {
         "colspan": span, "rowspan": 1, "colwidth": None, "style": _editor_style(style, _EDITOR_CELL_STYLE_PROPS),
         "align": None, "backgroundColor": None, "color": None,
     }, "content": content}
 
 
-def _table(table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[float] = None) -> Tuple[str, Any]:
+def _table(
+    table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[float] = None, nested: bool = False
+) -> Tuple[str, Any]:
     """A Word table as (HTML, editor JSON or _NOT_WRITTEN), with real colspan/rowspan, per-cell column
     widths and nested tables.
 
@@ -3387,7 +3519,7 @@ def _table(table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[fl
                 if child.tag == qn("w:p"):
                     html, node = _cell_paragraph(Paragraph(child, table), doc_parts, force_white=is_dark, counters=list_counters)
                 else:
-                    html, node = _table(Table(child, table), doc_parts, text_width_px)
+                    html, node = _table(Table(child, table), doc_parts, text_width_px, nested=True)
                 content_parts.append(html)
                 content_json.append(node)
             cell_content = "".join(content_parts)
@@ -3431,19 +3563,20 @@ def _table(table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[fl
     columns = raw if all(re.fullmatch(r"-?[\d.]*", part) for part in raw.split(",")) else ""
     # The HTML parser puts the rows in a <tbody>, which tiptap-table-plus reads as one row group; its
     # regrouping (by rowspan, and every row here spans one) rebuilds the table with plain rows only when
-    # that changes the grouping, so a table of one row keeps its group.
-    content = [{"type": "tableRowGroup", "content": rows_json}] if len(rows_json) == 1 else rows_json
+    # that changes the grouping, so a table of one row keeps its group. The regrouping does not look
+    # inside tables, so a nested table always keeps the one group of all its rows.
+    grouped = nested or len(rows_json) == 1
+    content = [{"type": "tableRowGroup", "content": rows_json}] if grouped else rows_json
     return html, {"type": "table", "attrs": {"alignment": "center", "columnSize": columns, "inset": None, "span": None}, "content": content}
 
 
 def _body_to_html(*args: Any, **kwargs: Any) -> str:
     """The document body as the editor's HTML (see _write_body_html); records paragraph JSON when measured."""
-    global _IN_BODY
-    _IN_BODY = True
+    _STATE.in_body = True
     try:
         return _write_body_html(*args, **kwargs)
     finally:
-        _IN_BODY = False
+        _STATE.in_body = False
 
 
 def _write_body_html(
@@ -3469,24 +3602,30 @@ def _write_body_html(
     # paragraphs reopens with <ol start="n"> so Word's numbering carries on.
     item_counts: Dict[Tuple[str, int], int] = {}
 
-    # While measuring: the editor JSON of the open lists and items, built alongside the HTML.
+    # The editor JSON of the open lists and items, built alongside the HTML.
     json_lists: List[Dict[str, Any]] = []
     json_items: List[Dict[str, Any]] = []
     json_root: Dict[str, Any] = {}
+    # The JSON of each `out` entry, kept in step with it: a list of nodes, [] for an entry that adds
+    # none of its own (list tags), None when not written, or a list's root {"node", "ok"}.
+    jout: List[Any] = []
 
     def close_list() -> None:
         nonlocal open_li_depth
         if open_li_depth == len(stack):
             out.append("</li>")
+            jout.append([])
             open_li_depth = None
             if json_items:
                 _close_list_item_json(json_items.pop())
         out.append(f"</{stack.pop()['kind']}>")
+        jout.append([])
         if json_lists:
             json_lists.pop()
         # The <li> that contained this (nested) list is now complete.
         if len(stack) > 0:
             out.append("</li>")
+            jout.append([])
             open_li_depth = None
             if json_items:
                 _close_list_item_json(json_items.pop())
@@ -3505,10 +3644,13 @@ def _write_body_html(
         # Blank lines before a break stay: when a full page pushes them over, Word
         # leaves the blank page they make, and every later page depends on it.
         marked = _PAGE_BREAK_HTML if section is None else _PAGE_BREAK_HTML.replace(" />", f' data-section="{section}" />')
+        node = {"type": "pageBreak", "attrs": {"height": 0, "section": section, "sectionProps": None}}
         if out and out[-1] == _PAGE_BREAK_HTML and section is not None:
             out[-1] = marked
+            jout[-1] = [node]
         elif not out or out[-1] not in (_PAGE_BREAK_HTML, marked):
             out.append(marked)
+            jout.append([node])
 
     def emit_textboxes(element: Any) -> None:
         """Text-box paragraphs anchored to a paragraph, as ordinary paragraphs after it."""
@@ -3517,6 +3659,7 @@ def _write_body_html(
             if html and not html.startswith('<p class="empty-spacer"'):
                 close_all_lists()
                 out.append(html)
+                jout.append(_STATE.last_paragraph_nodes)
 
     section_no = 0
     section_starts: Dict[int, int] = {0: 0}
@@ -3540,10 +3683,12 @@ def _write_body_html(
             if info is None:
                 close_all_lists()
                 html = _paragraph_to_html(p, doc_parts)
+                nodes = _STATE.last_paragraph_nodes
                 if pending_page_break and html.startswith('<p class="empty-spacer"'):
                     continue
                 if html:
                     out.append(html)
+                    jout.append(nodes)
                 emit_textboxes(element)
                 continue
 
@@ -3612,14 +3757,16 @@ def _write_body_html(
                 close_list()
                 ordinal = 1
 
-            measuring = _JSON_LIST_SINK is not None and _IN_BODY
+            measuring = (_JSON_LIST_SINK is not None and _STATE.in_body) or _BUILD_JSON
             if len(stack) == target_depth and stack:
                 # Continuing an existing list at this depth -> new sibling item.
                 if open_li_depth == target_depth:
                     out.append("</li>")
+                    jout.append([])
                     if measuring and json_items:
                         _close_list_item_json(json_items.pop())
                 out.append(item_open)
+                jout.append([])
                 open_li_depth = target_depth
             else:
                 # Open nested list(s) (inside the current open <li>) or a fresh list.
@@ -3637,21 +3784,28 @@ def _write_body_html(
                         node: Dict[str, Any] = {"type": "orderedList" if kind == "ol" else "bulletList", "content": []}
                         if kind == "ol":
                             node["attrs"] = {"start": ordinal if start_attr else 1, "type": list_type}
+                        root_entry: Any = []
                         if json_items:
                             json_items[-1]["content"].append(node)
                         else:
                             json_root = {"node": node, "ok": True}
-                            _JSON_LIST_SINK.append(json_root)
-                            opening = f"<{kind}{start_attr}{type_attr} data-sink-list=\"{len(_JSON_LIST_SINK) - 1}\">"
+                            root_entry = json_root
+                            if _JSON_LIST_SINK is not None and _STATE.in_body:
+                                _JSON_LIST_SINK.append(json_root)
+                                opening = f"<{kind}{start_attr}{type_attr} data-sink-list=\"{len(_JSON_LIST_SINK) - 1}\">"
                         json_lists.append(node)
+                        jout.append(root_entry)
+                    else:
+                        jout.append([])
                     out.append(opening)
                 out.append(item_open)
+                jout.append([])
                 open_li_depth = target_depth
             if measuring and json_lists:
                 item_node = _list_item_json(item_attrs)
                 json_lists[-1]["content"].append(item_node)
                 json_items.append(item_node)
-                list_items, list_css = _LAST_LIST_PARAGRAPH or ([], None)
+                list_items, list_css = _STATE.last_list_paragraph or ([], None)
                 if list_css is not None:
                     content = _write_inline_json(list_items, lines="drop")
                     if content is None:
@@ -3660,24 +3814,42 @@ def _write_body_html(
                         item_node["content"].extend(_with_overlay([_write_paragraph_json(f"{list_css};" if list_css else "", None, content)], list_items))
 
             out.append(item_html)
+            jout.append([])
             emit_textboxes(element)
 
         elif element.tag == qn("w:tbl"):
             close_all_lists()
             html, node = _table(Table(element, doc), doc_parts, text_width)
-            if _JSON_TABLE_SINK is not None and _IN_BODY:
+            if _JSON_TABLE_SINK is not None and _STATE.in_body:
                 _JSON_TABLE_SINK.append(None if node is _NOT_WRITTEN else node)
                 # Measurement only: tag the table so the measurement can tell which ones stay in the body.
                 html = re.sub(r"^(<table\b[^>]*)>", lambda m: f'{m.group(1)} data-sink-table="{len(_JSON_TABLE_SINK) - 1}">', html, count=1)
             out.append(html)
+            jout.append(None if node is _NOT_WRITTEN else [node])
 
     close_all_lists()
     section_starts[section_no + 1] = len(out)
-    _wrap_columns(doc, out, section_starts)
+    _wrap_columns(doc, out, section_starts, jout)
     if not _is_pdf(doc):
-        _mark_continuous_sections(doc, out, section_starts)
-    _group_wrapped_pictures(out)
+        _mark_continuous_sections(doc, out, section_starts, jout)
+    _group_wrapped_pictures(out, jout)
+    _STATE.last_body_json = jout
     return "\n".join(out).replace(_COLUMN_MARK, "")
+
+
+def _body_nodes(entries: List[Any]) -> Optional[List[Dict[str, Any]]]:
+    """The body's editor nodes from the JSON kept in step with its HTML entries (None if any is not written)."""
+    nodes: List[Dict[str, Any]] = []
+    for entry in entries:
+        if entry is None:
+            return None
+        if isinstance(entry, dict):  # a list's root
+            if not entry["ok"]:
+                return None
+            nodes.append(entry["node"])
+        else:
+            nodes.extend(entry)
+    return nodes
 
 
 def _section_kind(sect_pr: Any) -> str:
@@ -3687,7 +3859,7 @@ def _section_kind(sect_pr: Any) -> str:
     return kind if kind in ("nextPage", "continuous", "evenPage", "oddPage") else "nextPage"
 
 
-def _mark_continuous_sections(doc: docx.Document, out: List[str], starts: Dict[int, int]) -> None:
+def _mark_continuous_sections(doc: docx.Document, out: List[str], starts: Dict[int, int], jout: Optional[List[Any]] = None) -> None:
     """Put a section mark where each continuous section starts, top level, before its first block, and
     one at the very start for section 0 (its properties are on no break) when there are several sections.
 
@@ -3699,7 +3871,10 @@ def _mark_continuous_sections(doc: docx.Document, out: List[str], starts: Dict[i
         return
     for index in sorted(starts, reverse=True):
         if index == 0 or (index < len(sections) and _section_kind(sections[index]._sectPr) == "continuous"):
-            out.insert(min(starts[index], len(out)), _SECTION_MARK_HTML.format(index=index))
+            at = min(starts[index], len(out))
+            out.insert(at, _SECTION_MARK_HTML.format(index=index))
+            if jout is not None:
+                jout.insert(at, [{"type": "sectionMark", "attrs": {"section": index, "sectionProps": None}}])
 
 
 def _section_props(section: Any, described: Dict[str, Any]) -> Dict[str, Any]:
@@ -3779,7 +3954,7 @@ def _block_height_px(html: str, width_px: float) -> float:
     return lines * line_px + margins
 
 
-def _group_wrapped_pictures(out: List[str]) -> None:
+def _group_wrapped_pictures(out: List[str], jout: Optional[List[Any]] = None) -> None:
     """Put each wrapped picture and the paragraphs it reaches into one block (WrapBlock in the editor)."""
     index = len(out) - 1
     while index >= 0:
@@ -3803,10 +3978,15 @@ def _group_wrapped_pictures(out: List[str]) -> None:
             # paragraph round it and leave an empty line above.
             first = re.sub(r"^(<p\b[^>]*>)(<img\b[^>]*/>)", r"\2\1", out[index], count=1)
             out[index:end] = [f'<div class="intellidocs-wrap" data-top="{top.group(1)}">{first}{"".join(out[index + 1:end])}</div>']
+            if jout is not None:
+                inner = _body_nodes(jout[index:end])
+                jout[index:end] = [None if inner is None else [{"type": "wrapBlock", "attrs": {"top": float(top.group(1))}, "content": inner}]]
         else:
             # Not a block that can be grouped (a picture in a list item). A float outside a wrap block
             # would land below the last page, so it stays a plain block on its side.
             out[index] = re.sub(r"float: (\w+); margin: [^;]+;", lambda m: f"margin: {'0 0 0 auto' if m[1] == 'right' else '0 auto 0 0'};", out[index], count=1)
+            if jout is not None:
+                jout[index] = None  # a picture left in its paragraph with a changed style: not written yet
         index -= 1
 
 
@@ -3830,7 +4010,7 @@ def _column_widths(sect_pr: Any) -> List[float]:
     return [round(100.0 / count, 1)] * count
 
 
-def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int]) -> None:
+def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int], jout: Optional[List[Any]] = None) -> None:
     """Put each short multi-column section's blocks into a column block, split at its column breaks.
 
     The editor lays the block out as side-by-side columns, so a header line with a
@@ -3854,13 +4034,22 @@ def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int]) ->
         if not any(_COLUMN_MARK in item for item in segment):
             continue
         columns: List[List[str]] = [[]]
-        for item in segment:
+        json_columns: List[List[Any]] = [[]]
+        for position, item in enumerate(segment):
             if _COLUMN_MARK in item:
                 columns.append([])
+                json_columns.append([])
                 item = item.replace(_COLUMN_MARK, "")
             columns[-1].append(item)
+            json_columns[-1].append(jout[begin + position] if jout is not None else [])
         body = "".join('<div class="intellidocs-column">' + "\n".join(column) + "</div>" for column in columns if column)
         out[begin:end] = [f'<div class="intellidocs-columns" data-widths="{",".join(f"{w:g}" for w in widths)}">{body}</div>']
+        if jout is not None:
+            inner = [_body_nodes(column) for column, html_column in zip(json_columns, columns) if html_column]
+            jout[begin:end] = [None if any(column is None for column in inner) else [{
+                "type": "columnSection", "attrs": {"widths": ",".join(f"{w:g}" for w in widths)},
+                "content": [{"type": "sectionColumn", "content": column} for column in inner],
+            }]]
         # Later sections' offsets move with the replaced range.
         shift = len(segment) - 1
         for later in starts:
@@ -4294,11 +4483,18 @@ def _docx_document_to_result(
     page_setup = _extract_page_setup(doc)
     hf = _extract_sections(doc)
     html = _attach_section_props(html, doc, hf)
+    content_json = None
+    if _BUILD_JSON:
+        try:
+            content_json = _document_json(doc, hf)
+        except Exception:  # the HTML is complete without it: the editor then parses the HTML
+            logger.exception("Editor JSON assembly failed; returning the HTML only")
 
     return {
         "html": html,
         "page_art": _group_page_art(body_art),
         "hf": hf,
+        **({"content_json": content_json} if content_json is not None else {}),
         "page_setup": page_setup,
         "header": header,
         "footer": footer,

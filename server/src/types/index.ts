@@ -120,6 +120,8 @@ export interface CreateDocumentRequest {
   /** Number the title "Name (1)", "Name (2)" when the user already has that name (imports). */
   unique_title?: boolean
   content?: string
+  /** The editor's JSON of `content`; null or absent when there is none (the HTML is then parsed). */
+  content_json?: EditorJson | null
   header_content?: string
   footer_content?: string
   show_header?: boolean

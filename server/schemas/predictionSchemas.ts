@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { pageNumberFormatSchema, pageLayoutBaseSchema } from './documentSchemas'
+import { editorJsonShapeSchema, pageNumberFormatSchema, pageLayoutBaseSchema } from './documentSchemas'
 
 /** Validate incoming text payloads for prediction-related HTTP routes. */
 export const predictionTextSchema = z.object({
@@ -112,6 +112,12 @@ export const pythonPageSetupSchema = z.object({
 /** Validate document-conversion responses returned by the Python service. */
 export const pythonConversionResponseSchema = z.object({
   html: z.string().min(1),
+  /**
+   * The editor's JSON of the same document, built by the converter alongside `html` (absent from
+   * older ML builds, or when part of the document has no JSON writer). Its pictures are still inline
+   * here, so the stored size cap is applied after they move to storage (prepareImportedContent).
+   */
+  content_json: editorJsonShapeSchema.optional(),
   page_setup: pythonPageSetupSchema,
   header: z.string(),
   footer: z.string(),

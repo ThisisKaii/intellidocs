@@ -5,7 +5,7 @@ import path from 'path'
 import type { drive_v3 } from 'googleapis/build/src/apis/drive'
 import * as driveModel from '../models/driveModel'
 import * as documentModel from '../models/documentModel'
-import { uploadImportImages } from './uploadImportImages'
+import { prepareImportedContent } from './prepareImportedContent'
 import { buildImportedLayout } from './buildImportedLayout'
 import type { PythonConversionResponse } from '../../schemas/predictionSchemas'
 import {
@@ -24,7 +24,6 @@ import {
   type DownloadStream,
 } from './streamDownload'
 import { rtfToParagraphs, textToHtml } from './driveTextExtract'
-import { sanitizeImportedHtml } from './sanitizeImportedHtml'
 
 /** Files at or below this size convert in one shot; larger ones are queued. */
 export const LARGE_FILE_BYTES = 15 * 1024 * 1024
@@ -157,13 +156,14 @@ export async function processImportJob(job: ImportJob): Promise<void> {
 
     // The server owns document creation so the import finishes even when the
     // user has navigated away from the page that started it.
-    const content = sanitizeImportedHtml(await uploadImportImages(job.userId, html))
+    const { content, content_json } = await prepareImportedContent(job.userId, html, conversion?.content_json)
     // Header/footer art, per-section headers and page setup travel with the file when the converter read them.
     const layout = conversion ? await buildImportedLayout(job.userId, conversion) : {}
     const document = await documentModel.createDocument(job.userId, {
       title,
       unique_title: true,
       content,
+      content_json,
       ...layout,
     })
     await updateImportJob(job.id, {

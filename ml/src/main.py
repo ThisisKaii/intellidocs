@@ -767,6 +767,8 @@ def convert_document(file: UploadFile = File(...)) -> dict[str, Any]:
     "footer_number_format", "page_art", "hf"} so the server can persist page
     size/margins, header/footer text, the page-number format read from a PAGE
     field, pictures pinned to pages, and per-section headers/footers/numbering.
+    Also "content_json": the editor's JSON of the same document, which the
+    editor opens in place of parsing the HTML (absent when not written).
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is missing.")

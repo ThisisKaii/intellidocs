@@ -1,4 +1,4 @@
-import { contentBytes, restoreDocumentVersion, snapshotDocumentVersion, updateDocument } from '../documentModel'
+import { contentBytes, createDocument, restoreDocumentVersion, snapshotDocumentVersion, updateDocument } from '../documentModel'
 import { assertWithinStorageQuota } from '../userModel'
 import type { Document, EditorJson } from '../../types/index'
 
@@ -23,10 +23,17 @@ function makeQuery(table: string): Record<string, unknown> {
     pending = payload
     return query
   })
+  // Awaited directly (version snapshots) or chained to .select().single() (createDocument).
   query.insert = jest.fn((payload: Record<string, unknown>) => {
-    if (!state.migrated && 'content_json' in payload) return Promise.resolve({ error: MISSING_COLUMN })
-    state.inserts.push(payload)
-    return Promise.resolve({ error: null })
+    const failed = !state.migrated && 'content_json' in payload
+    if (!failed) state.inserts.push(payload)
+    const outcome = failed ? { data: null, error: MISSING_COLUMN } : { data: { id: 'new', ...payload }, error: null }
+    const chain = {
+      select: () => chain,
+      single: async () => outcome,
+      then: (resolve: (value: { error: typeof MISSING_COLUMN | null }) => unknown) => resolve({ error: outcome.error }),
+    }
+    return chain
   })
   query.single = jest.fn(async () => {
     if (table === 'document_versions') return { data: state.version, error: null }
@@ -128,5 +135,27 @@ describe('versions', () => {
     await restoreDocumentVersion('d1', 'v0', OWNER)
     expect(state.updates[0]).toMatchObject({ content: '<p>v0</p>', content_json: null })
     await flush()
+  })
+})
+
+describe('createDocument content_json', () => {
+  it('stores an import with the editor JSON the converter wrote beside its HTML', async () => {
+    await createDocument(OWNER, { title: 'Imported', content: '<p>imported</p>', content_json: json('imported') })
+    expect(state.inserts[0]).toMatchObject({ content: '<p>imported</p>', content_json: json('imported') })
+    // The quota counts the document once: by its JSON when it has one.
+    expect(assertWithinStorageQuota).toHaveBeenCalledWith(OWNER, contentBytes('<p>imported</p>', json('imported')))
+  })
+
+  it('stores no JSON column when there is none', async () => {
+    await createDocument(OWNER, { title: 'Plain', content: '<p>plain</p>' })
+    expect(state.inserts[0]).not.toHaveProperty('content_json')
+  })
+
+  it('still creates the document before migration 037, from the HTML alone', async () => {
+    state.migrated = false
+    const created = await createDocument(OWNER, { title: 'Imported', content: '<p>imported</p>', content_json: json('imported') })
+    expect(state.inserts).toHaveLength(1)
+    expect(state.inserts[0]).not.toHaveProperty('content_json')
+    expect(created).toMatchObject({ content: '<p>imported</p>' })
   })
 })

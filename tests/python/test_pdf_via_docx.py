@@ -132,8 +132,9 @@ class TestFixtureConversion:
         html = result["html"]
         assert set(result) == {
             "html", "page_setup", "header", "footer", "header_number_format", "footer_number_format",
-            "page_art", "hf", "flow_rules", "two_column_body",
+            "page_art", "hf", "flow_rules", "two_column_body", "content_json",
         }
+        assert result["content_json"]["type"] == "doc"
         # pdf2docx marks every multi-column page as columns, so a PDF is never offered the IEEE view.
         assert result["two_column_body"] is False
         assert result["page_setup"]["page_size"] and result["page_setup"]["margins"]

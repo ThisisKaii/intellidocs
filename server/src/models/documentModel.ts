@@ -330,7 +330,7 @@ export async function createDocument(
   userId: string,
   req: CreateDocumentRequest
 ): Promise<Document> {
-  await assertWithinStorageQuota(userId, Buffer.byteLength(req.content ?? ''))
+  await assertWithinStorageQuota(userId, contentBytes(req.content, req.content_json))
   const row: Record<string, unknown> = {
     user_id: userId,
     title: req.unique_title ? await resolveUniqueTitle(userId, req.title) : req.title,
@@ -350,15 +350,17 @@ export async function createDocument(
       : {}),
   }
   const layoutColumn = req.page_layout ? { page_layout: req.page_layout } : {}
+  // The editor's JSON of `content` (an import the converter wrote JSON for), loaded in place of the HTML.
+  const jsonColumn = req.content_json ? { content_json: req.content_json } : {}
 
   let { data, error } = await supabase
     .from('documents')
-    .insert({ ...row, ...layoutColumn, preview_snippet: extractPreviewSnippet(req.content ?? '') })
+    .insert({ ...row, ...layoutColumn, ...jsonColumn, preview_snippet: extractPreviewSnippet(req.content ?? '') })
     .select()
     .single()
 
   if (isUndefinedColumnError(error)) {
-    // A migration (026 snippet, 032 page layout) is missing: retry without those columns.
+    // A migration (026 snippet, 032 page layout, 037 content JSON) is missing: retry without those columns.
     ;({ data, error } = await supabase.from('documents').insert(row).select().single())
   }
 

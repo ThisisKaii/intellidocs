@@ -179,6 +179,66 @@ def case_nested_table(d):
     d.add_paragraph("After")
 
 
+def _shade(cell, fill: str) -> None:
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:fill"), fill)
+    cell._tc.get_or_add_tcPr().append(shd)
+
+
+def case_dark_header_cells(d):
+    # A dark cell is written white and font-weight:600, which bolds all its text (an empty cell's too).
+    table = d.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Header"
+    _shade(table.cell(0, 0), "000000")
+    _shade(table.cell(0, 1), "1F3864")
+    table.cell(1, 0).text = "body"
+    d.add_paragraph("After")
+
+
+def case_nested_table_of_two_rows(d):
+    table = d.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "outer"
+    inner = table.cell(0, 1).add_table(rows=2, cols=1)
+    inner.cell(0, 0).text = "inner one"
+    inner.cell(1, 0).text = "inner two"
+    d.add_paragraph("After")
+
+
+def _text_run(paragraph, text: str, bold: bool = False) -> None:
+    """A run whose w:t holds `text` as is (python-docx turns a newline into a w:br)."""
+    run = paragraph.add_run()
+    run.bold = bold
+    t = OxmlElement("w:t")
+    t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    t.text = text
+    run._r.append(t)
+
+
+def case_newline_runs(d):
+    # TipTap removes a text node that is only a newline before ProseMirror reads the HTML.
+    p = d.add_paragraph("before")
+    _break(p.add_run(), None)
+    _text_run(p, "\n", bold=True)
+    p.add_run("after")
+    q = d.add_paragraph("mid")
+    _text_run(q, "\n", bold=True)
+    _text_run(q, " ", bold=True)
+    q.add_run("end")
+
+
+def case_mixed_document(d):
+    # Whole-document assembly: blocks of every kind in order (tests/python TestDocumentJson pins it).
+    d.add_heading("Title", level=1)
+    d.add_paragraph("Intro")
+    for text in ("first", "second"):
+        d.add_paragraph(text, style="List Number")
+    table = d.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "cell"
+    d.add_page_break()
+    d.add_paragraph("After the break")
+
+
 def _png(width: int, height: int) -> io.BytesIO:
     """A plain grey PNG of the given size (standard library only)."""
     import struct
@@ -275,6 +335,10 @@ def main() -> int:
                 editor_lists = [node for node in content if node["type"] in ("orderedList", "bulletList")]
                 editor_tables = [node for node in content if node["type"] == "table"]
                 found = first_difference(editor, ours) or first_difference(editor_lists, our_lists) or first_difference(editor_tables, tables)
+                # And the whole document as the converter assembles it (content_json).
+                document = result.get("content_json")
+                if not found:
+                    found = "no document JSON" if document is None else first_difference(content, document["content"])
                 shape = " ".join(node["type"] for node in ours + our_lists + tables)
                 print(("same         " if not found else "DIFFERENT    ") + f"{name:34} {shape}" + (f"\n    {found}" if found else ""))
                 failed += bool(found)

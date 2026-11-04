@@ -75,15 +75,23 @@ gzipped, pictures replaced by a hash of their data). While the converter moves o
 has to reproduce the recorded editor JSON. It names the first differing character or JSON path.
 `--json` pairs each body paragraph the writer produced with the reference paragraph and reports
 how many are identical; differences listed in `KNOWN_DIFFERENCES` name the slice that removes them.
-`editor_json_cases.py` (frontend on 5173) covers shapes no fixture has, such as a page break inside a
-line of text: it builds small DOCX files, loads their converted HTML in the editor, and compares the
-editor's JSON with the writer's.
+`--doc` compares the whole document the converter returns as `content_json` (what an import now stores
+and opens from) with the recorded editor JSON; the only allowances are what the editor adds at runtime
+after any load (the trailing empty paragraph, the image width cap). `editor_json_cases.py` (frontend on
+5173) covers shapes no fixture has, such as a page break inside a line of text: it builds small DOCX
+files, loads their converted HTML in the editor, and compares the editor's JSON with the writer's, piece
+by piece and as the whole `content_json`. The references are always the editor's parse of the HTML:
+`record` never hands the harness the converter's JSON.
+
+`fidelity_run.py` and `word_gate.py` open each import from the converter's JSON, as the app does;
+`fidelity_run.py --from-html` parses the HTML instead (how a document without stored JSON opens).
 
 ```powershell
 ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check              # needs the frontend on 5173
 ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check --html-only  # converter only, no browser
 ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py record             # deliberate: review the diff
 ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check --json       # the converter's own JSON writer, no browser
+ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check --doc        # the whole content_json, no browser
 ```
 
 ## Fonts

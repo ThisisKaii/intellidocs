@@ -108,10 +108,12 @@ def _page_layout(result: dict) -> dict | None:
 
 
 def to_payload(result: dict) -> dict:
-    """The converter result as the harness (and the Document page) lay it out."""
+    """The converter result as the harness (and the Document page) lay it out: an import opens from the
+    converter's editor JSON when it wrote one (the stored content_json), else from its HTML."""
     setup = result.get("page_setup") or {}
     return {
         "html": result["html"],
+        "json": result.get("content_json"),
         "pageSize": setup.get("page_size", "letter"),
         "margins": setup.get("margins", {"top": 1, "bottom": 1, "left": 1, "right": 1}),
         "orientation": setup.get("orientation", "portrait"),
@@ -230,6 +232,7 @@ class Args:
     only: str | None
     max_pages: int | None
     keep_payload: bool
+    from_html: bool = False
 
 
 def run_one(browser, source: str, pdf_name: str, args: Args) -> fl.DocumentResult:
@@ -246,6 +249,8 @@ def run_one(browser, source: str, pdf_name: str, args: Args) -> fl.DocumentResul
     started = time.time()
     result = convert(DOCS / source)
     payload = to_payload(result)
+    if args.from_html:
+        payload["json"] = None
     print(f"  converted in {time.time() - started:.1f}s: {len(payload['html']) // 1024} KB html, page setup {payload['pageSize']} {payload['margins']}", flush=True)
 
     out_dir = args.out / re.sub(r"[^\w\-.]", "_", source)
@@ -295,8 +300,12 @@ def main() -> int:
     parser.add_argument("--only", help="run only sources whose name contains this text")
     parser.add_argument("--max-pages", type=int, help="compare only the first N pages of each document")
     parser.add_argument("--keep-payload", action="store_true", help="save each converter result as JSON for debugging")
+    parser.add_argument(
+        "--from-html", action="store_true",
+        help="open each import by parsing the converter's HTML (as documents without editor JSON open), not from its JSON",
+    )
     ns = parser.parse_args()
-    args = Args(ns.web, ns.out, ns.only, ns.max_pages, ns.keep_payload)
+    args = Args(ns.web, ns.out, ns.only, ns.max_pages, ns.keep_payload, ns.from_html)
 
     chosen = [(s, p) for s, p in SOURCES if not args.only or args.only.lower() in s.lower()]
     results: list[fl.DocumentResult] = []

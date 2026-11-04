@@ -95,14 +95,17 @@ def shipped_fonts_only(payload: dict, shipped: set[str], dropped: Counter) -> di
     font-family stack keeps only the families the editor ships (and generic ones)."""
 
     def reduce(match: re.Match) -> str:
+        return match.group(1) + reduce_stack(match.group(2))
+
+    def reduce_stack(stack: str) -> str:
         kept = []
-        for item in match.group(2).split(","):
+        for item in stack.split(","):
             name = item.strip().replace("&quot;", "").strip("'\" \\")
             if name.lower() in shipped or name.lower() in GENERIC_FAMILIES:
                 kept.append(f"'{name}'" if " " in name else name)
             elif name:
                 dropped[name] += 1
-        return match.group(1) + (", ".join(kept) or "serif")
+        return ", ".join(kept) or "serif"
 
     def walk(value):
         if isinstance(value, str):
@@ -110,7 +113,11 @@ def shipped_fonts_only(payload: dict, shipped: set[str], dropped: Counter) -> di
         if isinstance(value, list):
             return [walk(item) for item in value]
         if isinstance(value, dict):
-            return {key: walk(item) for key, item in value.items()}
+            # Editor JSON names a run's fonts in its textStyle mark's fontFamily, a bare stack.
+            return {
+                key: reduce_stack(item) if key == "fontFamily" and isinstance(item, str) else walk(item)
+                for key, item in value.items()
+            }
         return value
 
     return walk(payload)
@@ -237,6 +244,9 @@ def run(web: str, only: str | None, roundtrip: bool = False, shipped_only: bool 
             for name, fixture, truth in golden_files(only):
                 print(f"{name} ...", flush=True)
                 payload = fr.to_payload(fr.convert(fixture))
+                if payload["json"] is None:
+                    # An import opens from this JSON; without it the gate would measure the HTML parse.
+                    raise GateError(f"{name}: the converter returned no editor JSON (content_json)")
                 fonts: dict | None = None
                 if shipped_only:
                     payload = shipped_fonts_only(payload, shipped, dropped)

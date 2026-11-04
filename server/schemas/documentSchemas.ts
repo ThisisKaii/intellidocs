@@ -106,12 +106,15 @@ export const EDITOR_JSON_MAX_CHARS = 8_000_000
  * The editor's own document (ProseMirror `editor.getJSON()`). Only the root is checked here: node
  * shapes belong to the editor's schema, which validates them when it loads the JSON.
  */
-export const editorJsonSchema = z
+export const editorJsonShapeSchema = z
   .object({
     type: z.literal('doc'),
     content: z.array(z.unknown()).optional(),
   })
   .passthrough()
+
+/** Editor JSON as clients send it: the document shape within the stored size cap. */
+export const editorJsonSchema = editorJsonShapeSchema
   .refine((doc) => JSON.stringify(doc).length <= EDITOR_JSON_MAX_CHARS, {
     message: 'Content JSON is too large',
   })

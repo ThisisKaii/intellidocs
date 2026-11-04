@@ -12,6 +12,7 @@ usage (repo root; `record` and `check` need the frontend dev server on 5173):
     ml/venv/Scripts/python tests/e2e/tools/editor_json_reference.py check             # exit 1 on any difference
     ml/venv/Scripts/python tests/e2e/tools/editor_json_reference.py check --html-only # no browser needed
     ml/venv/Scripts/python tests/e2e/tools/editor_json_reference.py check --json      # the converter's own JSON
+    ml/venv/Scripts/python tests/e2e/tools/editor_json_reference.py check --doc       # its whole content_json
 
 References live in tests/fixtures/import_baselines/editor_json/, gzipped, with every embedded picture
 replaced by a hash of its data (the pictures are what make them large, and a changed picture still
@@ -314,6 +315,68 @@ def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
     return counts, problems + list_problems + table_problems
 
 
+def _style_width(style: str) -> float | None:
+    """TiptapEditor readStyleWidth: the explicit px width in an image container style."""
+    found = re.search(r"(?:^|;)\s*width:\s*([\d.]+)px", style or "", re.I)
+    return float(found.group(1)) if found else None
+
+
+def _with_image_width(style: str, width: int) -> str:
+    """TiptapEditor withImageWidth: the style with its width and height replaced by `width`."""
+    parts = [part.strip() for part in style.split(";") if part.strip()]
+    parts = [part for part in parts if part.split(":")[0].strip().lower() not in ("width", "height")]
+    parts += [f"width: {width}px", "height: auto"]
+    if not any(part.lower().startswith("cursor") for part in parts):
+        parts.append("cursor: pointer")
+    return "; ".join(parts) + ";"
+
+
+def cap_images(ours: object, theirs: object, columns: set[int]) -> object:
+    """Our JSON with the editor's image width cap applied where the reference shows it applied.
+
+    The cap (TiptapEditor CenteredImageResize) rewrites an image wider than the text column on the
+    first edit after a load, from the column the page layout gives at runtime: the same after an HTML
+    or a JSON load, so it is no part of the import. Applied only where the reference width is smaller
+    than ours; every width it was applied with is collected, since the editor has one text column."""
+    if isinstance(ours, list) and isinstance(theirs, list) and len(ours) == len(theirs):
+        return [cap_images(a, b, columns) for a, b in zip(ours, theirs)]
+    if not (isinstance(ours, dict) and isinstance(theirs, dict) and ours.get("type") == theirs.get("type")):
+        return ours
+    if ours.get("type") == "imageResize":
+        mine, given = ours.get("attrs") or {}, theirs.get("attrs") or {}
+        stored = _style_width(mine.get("containerStyle") or "") or mine.get("width")
+        column = _style_width(given.get("containerStyle") or "")
+        if stored and column and column < stored and column.is_integer():
+            columns.add(int(column))
+            capped = {**mine, "containerStyle": _with_image_width(mine.get("containerStyle") or "", int(column))}
+            if mine.get("width") is not None:
+                capped["width"] = int(column)
+            return {**ours, "attrs": capped}
+        return ours
+    return {key: cap_images(value, theirs.get(key), columns) for key, value in ours.items()}
+
+
+def check_document(fixture: Path, reference: dict) -> str | None:
+    """The first difference between the converter's whole-document JSON and the reference (None: same)."""
+    result = fr.convert(fixture)
+    ours = result.get("content_json")
+    if ours is None:
+        return "the converter wrote no document JSON (some content is not written yet)"
+    ours = strip_pictures(ours)
+    theirs = strip_pictures(reference)
+    # The editor's trailing-node extension adds an empty paragraph after a document that does not end
+    # with one: a runtime addition after any load, not part of the import.
+    empty = {"type": "paragraph", "attrs": converter._write_paragraph_json("", None, [])["attrs"]}
+    if (len(theirs["content"]) == len(ours["content"]) + 1 and theirs["content"][-1] == empty
+            and ours["content"] and ours["content"][-1]["type"] != "paragraph"):
+        theirs = {**theirs, "content": theirs["content"][:-1]}
+    columns: set[int] = set()
+    ours = cap_images(ours, theirs, columns)
+    if len(columns) > 1:
+        return f"images capped to different text columns: {sorted(columns)}"
+    return first_difference(theirs, ours)
+
+
 def read_gz(path: Path) -> str:
     return gzip.decompress(path.read_bytes()).decode("utf-8")
 
@@ -330,7 +393,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--only", help="only fixtures whose file name contains this text")
     parser.add_argument("--html-only", action="store_true", help="check the converter HTML only (no browser)")
     parser.add_argument("--json", action="store_true", help="compare the converter's own JSON with the references (no browser)")
+    parser.add_argument("--doc", action="store_true", help="compare the converter's whole-document JSON with the references (no browser)")
     args = parser.parse_args(argv)
+    if args.doc:
+        failed = False
+        for fixture in fixtures(args.only):
+            reference = json.loads(read_gz(REFERENCES / f"{fixture.name}.json.gz"))
+            found = check_document(fixture, reference)
+            print(("same          " if found is None else "DIFFERENT     ") + fixture.name + (f"\n    {found}" if found else ""))
+            failed = failed or found is not None
+        return 1 if failed else 0
     if args.json:
         if args.mode != "check":
             parser.error("--json only checks")
@@ -363,7 +435,9 @@ def main(argv: list[str] | None = None) -> int:
             digest = hashlib.sha256(fixture.read_bytes()).hexdigest()
             result = fr.convert(fixture)
             html = strip_pictures(result["html"])
-            doc = None if args.html_only else strip_pictures(editor_json(browser, args.web, fr.to_payload(result)))
+            # The reference is the editor's parse of the HTML: never hand it the converter's own JSON.
+            payload = {**fr.to_payload(result), "json": None}
+            doc = None if args.html_only else strip_pictures(editor_json(browser, args.web, payload))
             html_file, json_file = REFERENCES / f"{fixture.name}.html.gz", REFERENCES / f"{fixture.name}.json.gz"
 
             if args.mode == "record":

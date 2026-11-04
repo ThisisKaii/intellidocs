@@ -388,3 +388,142 @@ def test_a_box_hangs_on_the_paragraph_it_sits_in_even_after_a_text_box():
     cleaned, art = _extract_page_art(html)
     assert cleaned == '<p>first</p><p data-overlay="4">second</p><p>third</p>'
     assert len(art) == 2
+
+
+class TestTipTapNewlineRemoval:
+    """TipTap's elementFromString removes a DOM text node that is only a newline before ProseMirror reads
+    the HTML; a run's text is its own text node unless it is bare text following bare text."""
+
+    def test_a_styled_newline_run_writes_nothing_even_after_a_break(self):
+        from converter import _write_inline_json
+        from docir import LineBreak
+
+        bold = RunProps(bold=True)
+        nodes = _write_inline_json([TextRun("a", RunProps()), LineBreak(), TextRun("\n", bold), TextRun("b", RunProps())])
+        assert [n.get("text", n["type"]) for n in nodes] == ["a", "hardBreak", "b"]
+
+    def test_a_styled_space_is_kept_where_a_newline_is_not(self):
+        from converter import _write_inline_json
+
+        bold = RunProps(bold=True)
+        nodes = _write_inline_json([TextRun("a", RunProps()), TextRun("\n", bold), TextRun(" ", bold), TextRun("b", RunProps())])
+        assert [n["text"] for n in nodes] == ["a", " ", "b"]
+
+    def test_bare_newline_text_after_bare_text_joins_it(self):
+        from converter import _write_inline_json
+
+        nodes = _write_inline_json([TextRun("a", RunProps()), TextRun("\n", RunProps()), TextRun("b", RunProps())])
+        assert nodes == [{"type": "text", "text": "a b"}]
+
+
+def _shade(cell, fill: str) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:fill"), fill)
+    cell._tc.get_or_add_tcPr().append(shd)
+
+
+def _texts(node):
+    if node.get("type") == "text":
+        yield node
+    for child in node.get("content", []):
+        yield from _texts(child)
+
+
+def test_a_dark_cells_bold_style_reaches_all_its_text():
+    from converter import _table
+
+    document = docx.Document()
+    table = document.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "Header"
+    _shade(table.cell(0, 0), "000000")
+    _shade(table.cell(0, 1), "000000")  # empty: its no-break space is bold too
+    html, node = _table(table, {})
+    assert "font-weight:600" in html
+    texts = list(_texts(node))
+    assert [t["text"] for t in texts] == ["Header", "\u00a0"]
+    assert all({"type": "bold"} in t["marks"] for t in texts)
+
+
+def test_a_nested_table_keeps_its_one_row_group():
+    from converter import _table
+
+    document = docx.Document()
+    outer = document.add_table(rows=1, cols=1)
+    inner = outer.cell(0, 0).add_table(rows=2, cols=1)
+    inner.cell(0, 0).text, inner.cell(1, 0).text = "one", "two"
+    _, node = _table(outer, {})
+    nested = next(n for n in node["content"][0]["content"][0]["content"][0]["content"] if n["type"] == "table")
+    # tiptap-table-plus regroups top-level tables only: a nested one keeps the parser's single <tbody>.
+    assert [n["type"] for n in nested["content"]] == ["tableRowGroup"]
+    assert len(nested["content"][0]["content"]) == 2
+
+
+def _document(build) -> bytes:
+    document = docx.Document()
+    build(document)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def _mixed(document) -> None:
+    document.add_heading("Title", level=1)
+    document.add_paragraph("Intro")
+    for text in ("first", "second"):
+        document.add_paragraph(text, style="List Number")
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "cell"
+    document.add_page_break()
+    document.add_paragraph("After the break")
+
+
+class TestDocumentJson:
+    def test_the_conversion_returns_the_whole_document_in_order(self):
+        from converter import convert_docx_bytes_to_html
+
+        result = convert_docx_bytes_to_html(_document(_mixed))
+        doc = result["content_json"]
+        assert doc["type"] == "doc"
+        # As the editor reads the HTML (editor_json_cases.py mixed_document): Word's page-break paragraph
+        # holds nothing but the break, so it is the break alone.
+        assert [n["type"] for n in doc["content"]] == [
+            "heading", "paragraph", "orderedList", "table", "pageBreak", "paragraph",
+        ]
+
+    def test_numbers_are_written_as_javascript_writes_them(self):
+        from converter import _js_numbers
+
+        assert _js_numbers({"a": [48.0, 1.5, {"b": 2.0}], "c": True}) == {"a": [48, 1.5, {"b": 2}], "c": True}
+        assert isinstance(_js_numbers(48.0), int)
+
+    def test_a_failed_assembly_still_returns_the_html(self, monkeypatch):
+        import converter
+
+        def broken(*_args):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(converter, "_document_json", broken)
+        result = converter.convert_docx_bytes_to_html(_document(_mixed))
+        assert "content_json" not in result and "After the break" in result["html"]
+
+    def test_conversions_on_several_threads_keep_their_own_nodes(self):
+        # The ML service converts in a thread pool: the JSON writer's state is per thread.
+        from concurrent.futures import ThreadPoolExecutor
+
+        from converter import convert_docx_bytes_to_html
+
+        def numbered(n: int):
+            def build(document):
+                for i in range(40):
+                    document.add_paragraph(f"doc {n} paragraph {i}")
+            return _document(build)
+
+        files = [numbered(n) for n in range(4)]
+        alone = [convert_docx_bytes_to_html(f)["content_json"] for f in files]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            together = list(pool.map(lambda f: convert_docx_bytes_to_html(f)["content_json"], files * 3))
+        assert together == alone * 3

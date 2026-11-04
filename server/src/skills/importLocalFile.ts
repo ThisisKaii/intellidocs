@@ -1,9 +1,9 @@
 import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
 import * as documentModel from '../models/documentModel'
-import { PageNumberFormat, Document } from '../types/index'
+import { PageNumberFormat, Document, EditorJson } from '../types/index'
 import { uploadImportImages } from './uploadImportImages'
 import { buildImportedLayout } from './buildImportedLayout'
-import { sanitizeImportedHtml } from './sanitizeImportedHtml'
+import { prepareImportedContent } from './prepareImportedContent'
 import { validateImportUpload, type ImportUpload } from './validateImportUpload'
 
 /** The slice of the pdf-parse v2 class API this controller uses. */
@@ -72,6 +72,8 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
   const { effectiveExt, title } = validateImportUpload(file)
 
     let htmlContent = ''
+    // The editor's JSON of htmlContent, when the Python converter wrote it (the other converters do not).
+    let contentJson: EditorJson | undefined
     let headerContent = ''
     let footerContent = ''
     let headerNumberFormat: PageNumberFormat = 'none'
@@ -89,6 +91,7 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
         const pyResult = await requestDocumentConversion(file.buffer, file.originalname)
         if (pyResult && pyResult.html) {
           htmlContent = pyResult.html
+          contentJson = pyResult.content_json
           headerContent = pyResult.header ?? ''
           footerContent = pyResult.footer ?? ''
           headerNumberFormat = pyResult.header_number_format ?? 'none'
@@ -216,8 +219,8 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
     }
 
     // Embedded base64 images go to storage so the saved document stays small.
-    const [storedContent, storedHeader, storedFooter] = await Promise.all([
-      uploadImportImages(userId, htmlContent),
+    const [stored, storedHeader, storedFooter] = await Promise.all([
+      prepareImportedContent(userId, htmlContent, contentJson),
       uploadImportImages(userId, headerContent),
       uploadImportImages(userId, footerContent),
     ])
@@ -226,7 +229,8 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
     const document = await documentModel.createDocument(userId, {
       title,
       unique_title: true,
-      content: sanitizeImportedHtml(storedContent),
+      content: stored.content,
+      content_json: stored.content_json,
       header_content: storedHeader,
       footer_content: storedFooter,
       // Word's header/footer exists on the page; turn the editor's on whenever
