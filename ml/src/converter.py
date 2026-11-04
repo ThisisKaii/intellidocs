@@ -1589,6 +1589,26 @@ def _write_split_paragraph_json(
     return nodes
 
 
+# The last list paragraph the HTML writer wrote, while measuring: its content and style (None when it
+# wrote no paragraph), so the list's JSON is built from the same read.
+_LAST_LIST_PARAGRAPH: Optional[Tuple[List[Inline], Optional[str]]] = None
+
+# While measuring, every list the body opens at the top level is recorded here (its node is filled in
+# as its items arrive; None when an item holds content the JSON writer does not write yet).
+_JSON_LIST_SINK: Optional[List[Dict[str, Any]]] = None
+
+
+def _list_item_json(attrs: Dict[str, Any]) -> Dict[str, Any]:
+    """A list item node; its paragraph and nested lists are added as the body is read."""
+    return {"type": "listItem", "attrs": attrs, "content": []}
+
+
+def _close_list_item_json(item: Dict[str, Any]) -> None:
+    """A list item must start with a paragraph: ProseMirror opens an empty one when the HTML has none."""
+    if not item["content"] or item["content"][0]["type"] != "paragraph":
+        item["content"].insert(0, _write_paragraph_json("", None, []))
+
+
 # While editor_json_reference.py measures the JSON writer, the body's paragraphs are recorded here, in
 # order, as (plain text, the editor nodes it becomes, or None when not written yet). None the rest of
 # the time. The paragraph's HTML is recorded with it so the measurement can pair it with the right
@@ -2485,32 +2505,38 @@ def _paragraph_to_html(
 
     if list_info is None:
         return _paragraph_to_html_from_items(p, inner)
-    if list_info is not None:
-        inner = inner.replace(_LINE_MARK, "")
-        # The item keeps its paragraph's spacing, size and alignment.
-        if inner.strip():
-            # The editor's list already indents text 24px; the rest of Word's indent goes on the item.
-            direct_left = re.search(r"margin-left:\s*([\d.]+)px", _paragraph_indent_css(p))
-            left_px = float(direct_left.group(1)) if direct_left else float(list_info.get("left_px") or 0.0)
-            extra = f"margin-left:{round(left_px - 24, 1):g}px" if left_px - 24 > 2 else ""
-            geometry = _list_item_geometry(p, list_info)
-            if geometry:
-                # The editor draws the marker at its own x; the paragraph wraps at the indent and
-                # starts its first line at the tab stop after the marker, as in Word.
-                right = re.search(r"margin-right:\s*[\d.]+px", _paragraph_indent_css(p))
-                extra = "; ".join(
-                    part
-                    for part in (
-                        f"margin-left:{geometry['wrap_x']:g}px",
-                        f"text-indent:{round(geometry['text_x'] - geometry['wrap_x'], 1):g}px",
-                        right.group(0).replace(" ", "") if right else "",
-                    )
-                    if part
-                )
-            css_parts = [_get_paragraph_alignment_css(p), _paragraph_font_css(p), _paragraph_spacing_css(p), extra]
-            css = "; ".join(part.rstrip("; ") for part in css_parts if part)
-            return f'<p style="{css};">{inner}</p>' if css else f"<p>{inner}</p>"
-        return inner
+    inner = inner.replace(_LINE_MARK, "")
+    global _LAST_LIST_PARAGRAPH
+    _LAST_LIST_PARAGRAPH = (items, _list_paragraph_css(p, list_info) if inner.strip() else None)
+    # The item keeps its paragraph's spacing, size and alignment.
+    if inner.strip():
+        css = _list_paragraph_css(p, list_info)
+        return f'<p style="{css};">{inner}</p>' if css else f"<p>{inner}</p>"
+    return inner
+
+
+def _list_paragraph_css(p: Paragraph, list_info: Dict[str, Any]) -> str:
+    """The style of a list item's paragraph: its spacing, size and alignment, and Word's indent."""
+    # The editor's list already indents text 24px; the rest of Word's indent goes on the item.
+    direct_left = re.search(r"margin-left:\s*([\d.]+)px", _paragraph_indent_css(p))
+    left_px = float(direct_left.group(1)) if direct_left else float(list_info.get("left_px") or 0.0)
+    extra = f"margin-left:{round(left_px - 24, 1):g}px" if left_px - 24 > 2 else ""
+    geometry = _list_item_geometry(p, list_info)
+    if geometry:
+        # The editor draws the marker at its own x; the paragraph wraps at the indent and
+        # starts its first line at the tab stop after the marker, as in Word.
+        right = re.search(r"margin-right:\s*[\d.]+px", _paragraph_indent_css(p))
+        extra = "; ".join(
+            part
+            for part in (
+                f"margin-left:{geometry['wrap_x']:g}px",
+                f"text-indent:{round(geometry['text_x'] - geometry['wrap_x'], 1):g}px",
+                right.group(0).replace(" ", "") if right else "",
+            )
+            if part
+        )
+    css_parts = [_get_paragraph_alignment_css(p), _paragraph_font_css(p), _paragraph_spacing_css(p), extra]
+    return "; ".join(part.rstrip("; ") for part in css_parts if part)
 def _paragraph_to_html_from_items(p: Paragraph, inner: str) -> str:
     """A (non-list) paragraph's HTML from its inner HTML: drawn lines split it into bordered paragraphs."""
     if _LINE_MARK not in inner:
@@ -3177,16 +3203,27 @@ def _write_body_html(
     # paragraphs reopens with <ol start="n"> so Word's numbering carries on.
     item_counts: Dict[Tuple[str, int], int] = {}
 
+    # While measuring: the editor JSON of the open lists and items, built alongside the HTML.
+    json_lists: List[Dict[str, Any]] = []
+    json_items: List[Dict[str, Any]] = []
+    json_root: Dict[str, Any] = {}
+
     def close_list() -> None:
         nonlocal open_li_depth
         if open_li_depth == len(stack):
             out.append("</li>")
             open_li_depth = None
+            if json_items:
+                _close_list_item_json(json_items.pop())
         out.append(f"</{stack.pop()['kind']}>")
+        if json_lists:
+            json_lists.pop()
         # The <li> that contained this (nested) list is now complete.
         if len(stack) > 0:
             out.append("</li>")
             open_li_depth = None
+            if json_items:
+                _close_list_item_json(json_items.pop())
 
     def close_all_lists() -> None:
         while stack:
@@ -3261,6 +3298,10 @@ def _write_body_html(
             item_html = _paragraph_to_html(p, doc_parts, list_info=info)
             # data-flat: Word puts no space around a list or between its items (the paragraphs carry it all).
             item_open = f'<li data-flat="1" style="{size_css}">' if size_css else '<li data-flat="1">'
+            item_attrs: Dict[str, Any] = {
+                "style": _editor_style(size_css) if size_css else None, "markerX": None, "markerTop": None,
+                "markerPre": None, "markerPost": None, "flat": "1", "markerText": None,
+            }
             geometry = _list_item_geometry(p, info)
             if geometry:
                 # The marker is drawn by the editor at Word's x, in the item's own font and line box.
@@ -3285,6 +3326,11 @@ def _write_body_html(
                     # The number is written out (it joins several counters or restarts), not drawn from the list's counter.
                     attrs += f' data-marker="{_html_escape(geometry["marker"], quote=True)}"'
                 item_open = f'<li data-flat="1"{attrs} style="{style}">' if style else f'<li data-flat="1"{attrs}>'
+                item_attrs.update({
+                    "style": _editor_style(style) if style else None,
+                    "markerX": f"{geometry['marker_x']:g}", "markerTop": top.group(1) if top else "0",
+                    "markerPre": geometry["pre"], "markerPost": geometry["post"], "markerText": geometry.get("marker") or None,
+                })
             # Lists open one nesting level at a time and remember the Word level they hold: a lettered
             # sublist whose first item has no numbered parent starts at the top (no stray empty "1."),
             # and its later items stay siblings instead of nesting deeper.
@@ -3300,10 +3346,13 @@ def _write_body_html(
                 close_list()
                 ordinal = 1
 
+            measuring = _JSON_LIST_SINK is not None and _IN_BODY
             if len(stack) == target_depth and stack:
                 # Continuing an existing list at this depth -> new sibling item.
                 if open_li_depth == target_depth:
                     out.append("</li>")
+                    if measuring and json_items:
+                        _close_list_item_json(json_items.pop())
                 out.append(item_open)
                 open_li_depth = target_depth
             else:
@@ -3313,12 +3362,36 @@ def _write_body_html(
                     stack.append({"kind": kind, "num_id": info["num_id"] if opens_this_item else None, "level": info["level"]})
                     start_attr = f' start="{ordinal}"' if kind == "ol" and opens_this_item and ordinal > 1 else ""
                     type_attr = ""
+                    list_type = None
                     if kind == "ol" and opens_this_item:
                         list_type = _LIST_TYPES.get(info.get("fmt", ""))
                         type_attr = f' type="{list_type}"' if list_type else ""
-                    out.append(f"<{kind}{start_attr}{type_attr}>")
+                    opening = f"<{kind}{start_attr}{type_attr}>"
+                    if measuring:
+                        node: Dict[str, Any] = {"type": "orderedList" if kind == "ol" else "bulletList", "content": []}
+                        if kind == "ol":
+                            node["attrs"] = {"start": ordinal if start_attr else 1, "type": list_type}
+                        if json_items:
+                            json_items[-1]["content"].append(node)
+                        else:
+                            json_root = {"node": node, "ok": True}
+                            _JSON_LIST_SINK.append(json_root)
+                            opening = f"<{kind}{start_attr}{type_attr} data-sink-list=\"{len(_JSON_LIST_SINK) - 1}\">"
+                        json_lists.append(node)
+                    out.append(opening)
                 out.append(item_open)
                 open_li_depth = target_depth
+            if measuring and json_lists:
+                item_node = _list_item_json(item_attrs)
+                json_lists[-1]["content"].append(item_node)
+                json_items.append(item_node)
+                list_items, list_css = _LAST_LIST_PARAGRAPH or ([], None)
+                if list_css is not None:
+                    content = _write_inline_json(list_items)
+                    if content is None:
+                        json_root["ok"] = False
+                    else:
+                        item_node["content"].append(_write_paragraph_json(f"{list_css};" if list_css else "", None, content))
 
             out.append(item_html)
             emit_textboxes(element)

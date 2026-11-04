@@ -140,16 +140,68 @@ def node_text(node: dict) -> str:
     return "".join(child.get("text", "") for child in node.get("content", []))
 
 
+def deep_text(node: dict) -> str:
+    """All the text inside a node, at any depth."""
+    return node.get("text", "") + "".join(deep_text(child) for child in node.get("content", []))
+
+
+def reference_lists(doc: dict) -> list[dict]:
+    """The top-level lists of a reference document, in order (not those nested in lists or in tables)."""
+    found: list[dict] = []
+
+    def walk(node: dict) -> None:
+        if node.get("type") in ("orderedList", "bulletList"):
+            found.append(node)
+            return
+        if node.get("type") in ("table", "blockquote"):
+            return
+        for child in node.get("content", []):
+            walk(child)
+
+    walk(doc)
+    return found
+
+
+def check_lists(recorded: list[dict], body: str, reference: dict) -> tuple[dict, list[str]]:
+    """Compare the lists the writer built with the reference's, paired in order by their text."""
+    survivors = {int(n) for n in re.findall(r'data-sink-list="(\d+)"', body)}
+    counts = {"lists written": 0, "lists same": 0, "lists different": 0, "lists not written": 0, "lists unpaired": 0}
+    problems: list[str] = []
+    ours = [(i, entry["node"]) for i, entry in enumerate(recorded) if i in survivors and entry["ok"]]
+    counts["lists not written"] = sum(1 for i, entry in enumerate(recorded) if i in survivors and not entry["ok"])
+    theirs = reference_lists(reference)
+    pairs = {}
+    matcher = difflib.SequenceMatcher(None, [text_key(deep_text(n)) for _, n in ours], [text_key(deep_text(n)) for n in theirs], autojunk=False)
+    for block in matcher.get_matching_blocks():
+        for offset in range(block.size):
+            pairs[block.a + offset] = block.b + offset
+    for position, (index, node) in enumerate(ours):
+        counts["lists written"] += 1
+        match = pairs.get(position)
+        if match is None:
+            counts["lists unpaired"] += 1
+            problems.append(f"list {index} {deep_text(node)[:30]!r} pairs with no reference list")
+            continue
+        found = first_difference(strip_pictures(theirs[match]), strip_pictures(node))
+        if found:
+            counts["lists different"] += 1
+            problems.append(f"list {index} {deep_text(node)[:30]!r}: {found}")
+        else:
+            counts["lists same"] += 1
+    return counts, problems
+
+
 def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
     """Compare the converter's paragraph JSON with the reference's paragraphs, paired in order by text."""
-    converter._JSON_SINK, converter._JSON_SINK_HTML = [], []
+    converter._JSON_SINK, converter._JSON_SINK_HTML, converter._JSON_LIST_SINK = [], [], []
     try:
         body = fr.convert(fixture)["html"]
         recorded, recorded_html = list(converter._JSON_SINK), list(converter._JSON_SINK_HTML)
+        recorded_lists = list(converter._JSON_LIST_SINK)
     finally:
-        converter._JSON_SINK, converter._JSON_SINK_HTML = None, None
+        converter._JSON_SINK, converter._JSON_SINK_HTML, converter._JSON_LIST_SINK = None, None, None
     # Measuring must not change the conversion: without its tags the body is the recorded HTML.
-    untagged = strip_pictures(re.sub(r' data-sink="\d+"', "", body))
+    untagged = strip_pictures(re.sub(r' data-sink(?:-list)?="\d+"', "", body))
     if untagged != read_gz(REFERENCES / f"{fixture.name}.html.gz"):
         raise SystemExit(f"{fixture.name}: measuring changed the converter's HTML; the JSON check would be meaningless")
     paragraphs = reference_paragraphs(reference)
@@ -205,7 +257,9 @@ def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
             problems.append(f"paragraph {match} {text[:30]!r}: {found}")
         else:
             counts["same"] += 1
-    return counts, problems
+    list_counts, list_problems = check_lists(recorded_lists, body, reference)
+    counts.update(list_counts)
+    return counts, problems + list_problems
 
 
 def read_gz(path: Path) -> str:

@@ -293,3 +293,15 @@ class TestSplitParagraphs:
         kept = _write_split_paragraph_json([TextRun("A", RunProps()), DisplayMath("x"), TextRun("  ", RunProps())], "", None, None)
         assert [n["type"] for n in kept] == ["paragraph", "blockMath", "paragraph", "paragraph"]
         assert nodes[1]["attrs"] == {"latex": "x", "number": "2", "span": None}
+
+
+def test_a_list_item_always_starts_with_a_paragraph():
+    from converter import _close_list_item_json, _list_item_json
+
+    empty = _list_item_json({"flat": "1"})
+    _close_list_item_json(empty)
+    assert [n["type"] for n in empty["content"]] == ["paragraph"] and "content" not in empty["content"][0]
+    only_nested = _list_item_json({"flat": "1"})
+    only_nested["content"].append({"type": "bulletList", "content": []})
+    _close_list_item_json(only_nested)
+    assert [n["type"] for n in only_nested["content"]] == ["paragraph", "bulletList"]
