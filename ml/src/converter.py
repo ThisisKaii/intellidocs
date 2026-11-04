@@ -19,6 +19,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 import omml
+from docir import ParagraphIndent, ParagraphProps, ParagraphSpacing, RunProps, TextRun
 
 # Word highlight color names -> CSS hex.
 HIGHLIGHT_COLORS: Dict[str, str] = {
@@ -216,12 +217,45 @@ def _character_scale_tracking(run: Run, font_name: Optional[str]) -> float:
     return tracking * _JUSTIFIED_TRACKING if justified else tracking
 
 
-def _run_to_html(run: Run) -> str:
-    """Convert a single text run into styled HTML with font size, color, family, and styles."""
+def _read_run(run: Run) -> Optional[TextRun]:
+    """A text run as the document model: its text and its formatting resolved (None when it has no text)."""
     text = run.text
     if not text:
-        return ""
+        return None
 
+    rpr = run._element.rPr
+    # Character spacing (w:spacing, twentieths of a point): condensed text wraps later.
+    spacing = rpr.find(qn("w:spacing")) if rpr is not None else None
+    tracking = float(spacing.get(qn("w:val")) or 0) / 20 if spacing is not None else 0.0
+
+    # A run with no font of its own uses its paragraph's style chain, then the
+    # document defaults; without this an Arial document imports as serif.
+    font_name = run.font.name or _rfonts_name(rpr.find(qn("w:rFonts")) if rpr is not None else None, run.part)
+    if not font_name and isinstance(run._parent, Paragraph):
+        font_name = _inherited_font_name(run._parent)
+    tracking += _character_scale_tracking(run, font_name)
+
+    return TextRun(
+        text=text,
+        props=RunProps(
+            size_pt=run.font.size.pt if run.font.size else None,
+            color=_color_to_hex(run.font.color),
+            tracking_pt=tracking,
+            font_family=_clean_font_name(font_name) if font_name else None,
+            bold=bool(_inherited_run_flag(run, "bold")),
+            italic=bool(_inherited_run_flag(run, "italic")),
+            underline=bool(run.underline),
+            strike=bool(run.font.strike),
+            subscript=bool(run.font.subscript),
+            superscript=bool(run.font.superscript),
+            highlight=_highlight_css(run),
+        ),
+    )
+
+
+def _write_run_html(item: TextRun) -> str:
+    """A text run as the editor's HTML: escaped text in a styled span, wrapped in its formatting tags."""
+    text, props = item.text, item.props
     escaped = (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -235,59 +269,43 @@ def _run_to_html(run: Run) -> str:
     escaped = escaped.replace("\t", "<span data-tab></span>")
     escaped = re.sub(r" {2,}", lambda m: " " + "\u00a0" * (len(m.group(0)) - 1), escaped)
     # An underlined run of only spaces is a fill-in blank: it keeps its whole width, even beside another space.
-    if run.underline and not text.strip(" "):
+    if props.underline and not text.strip(" "):
         escaped = "\u00a0" * len(text)
 
     styles: List[str] = []
-
-    if run.font.size:
-        pt_val = round(run.font.size.pt, 1)
-        styles.append(f"font-size:{pt_val}pt")
-
-    hex_color = _color_to_hex(run.font.color)
-    if hex_color:
-        styles.append(f"color:{hex_color}")
-
-    # Character spacing (w:spacing, twentieths of a point): condensed text wraps later.
-    spacing = run._element.rPr.find(qn("w:spacing")) if run._element.rPr is not None else None
-    tracking = float(spacing.get(qn("w:val")) or 0) / 20 if spacing is not None else 0.0
-
-    # A run with no font of its own uses its paragraph's style chain, then the
-    # document defaults; without this an Arial document imports as serif.
-    font_name = run.font.name or _rfonts_name(run._element.rPr.find(qn("w:rFonts")) if run._element.rPr is not None else None, run.part)
-    if not font_name and isinstance(run._parent, Paragraph):
-        font_name = _inherited_font_name(run._parent)
-
-    tracking += _character_scale_tracking(run, font_name)
-    if abs(tracking) >= 0.005:
-        styles.append(f"letter-spacing:{round(tracking, 3):g}pt")
-    if font_name:
-        family = _clean_font_name(font_name)
-        styles.append(f"font-family:'{family}', {_generic_family(family)}")
+    if props.size_pt:
+        styles.append(f"font-size:{round(props.size_pt, 1)}pt")
+    if props.color:
+        styles.append(f"color:{props.color}")
+    if abs(props.tracking_pt) >= 0.005:
+        styles.append(f"letter-spacing:{round(props.tracking_pt, 3):g}pt")
+    if props.font_family:
+        styles.append(f"font-family:'{props.font_family}', {_generic_family(props.font_family)}")
 
     res = escaped
     if styles:
-        css_str = "; ".join(styles)
-        res = f'<span style="{css_str}">{res}</span>'
-
-    if _inherited_run_flag(run, "bold"):
+        res = f'<span style="{"; ".join(styles)}">{res}</span>'
+    if props.bold:
         res = f"<strong>{res}</strong>"
-    if _inherited_run_flag(run, "italic"):
+    if props.italic:
         res = f"<em>{res}</em>"
-    if run.underline:
+    if props.underline:
         res = f"<u>{res}</u>"
-    if run.font.strike:
+    if props.strike:
         res = f"<s>{res}</s>"
-    if run.font.subscript:
+    if props.subscript:
         res = f"<sub>{res}</sub>"
-    if run.font.superscript:
+    if props.superscript:
         res = f"<sup>{res}</sup>"
-
-    hl = _highlight_css(run)
-    if hl:
-        res = f'<mark style="background-color:{hl}">{res}</mark>'
-
+    if props.highlight:
+        res = f'<mark style="background-color:{props.highlight}">{res}</mark>'
     return res
+
+
+def _run_to_html(run: Run) -> str:
+    """Convert a single text run into styled HTML with font size, color, family, and styles."""
+    item = _read_run(run)
+    return _write_run_html(item) if item is not None else ""
 
 
 # DrawingML namespaces used to size and position pictures.
@@ -1370,19 +1388,13 @@ def _resolve_spacing_attr(p: Paragraph, attr: str) -> Optional[str]:
     return _resolve_pPr_attr(p, "spacing", attr)
 
 
-def _paragraph_indent_css(p: Paragraph) -> str:
-    """Return CSS for paragraph left indent / first-line indent (twips -> px).
+def _read_indent(p: Paragraph) -> ParagraphIndent:
+    """A paragraph's indents, resolved through the style chain like spacing is."""
 
-    Indents resolve through the style chain like spacing does. A paragraph with
-    no first-line indent gets an explicit ``text-indent:0``: inline style beats
-    any preset stylesheet, so an applied template's 0.5in first-line indent can
-    never be forced onto a title page or signature block that Word left flush.
-    """
-    styles: List[str] = []
+    def twips(value: Optional[str]) -> Optional[int]:
+        return int(value) if value and value != "0" else None
+
     left = _resolve_pPr_attr(p, "ind", "left") or _resolve_pPr_attr(p, "ind", "start")
-    if left and left != "0":
-        styles.append(f"margin-left:{round(int(left) * TWIPS_PER_PX, 1)}px")
-
     # firstLine and hanging are mutually exclusive: a direct value of either
     # replaces whatever the style chain says, as a pair.
     pPr = p._element.pPr
@@ -1395,17 +1407,39 @@ def _paragraph_indent_css(p: Paragraph) -> str:
     else:
         first_line = _resolve_pPr_attr(p, "ind", "firstLine")
         hanging = _resolve_pPr_attr(p, "ind", "hanging")
+    right = _resolve_pPr_attr(p, "ind", "right") or _resolve_pPr_attr(p, "ind", "end")
+    return ParagraphIndent(
+        left_twips=twips(left),
+        right_twips=twips(right),
+        first_line_twips=twips(first_line),
+        hanging_twips=twips(hanging),
+    )
 
-    if first_line and first_line != "0":
-        styles.append(f"text-indent:{round(int(first_line) * TWIPS_PER_PX, 1)}px")
-    elif hanging and hanging != "0":
-        styles.append(f"text-indent:{round(-int(hanging) * TWIPS_PER_PX, 1)}px")
+
+def _write_indent_css(indent: ParagraphIndent) -> str:
+    """CSS for a paragraph's indents (twips -> px).
+
+    A paragraph with no first-line indent gets an explicit ``text-indent:0``: inline style beats
+    any preset stylesheet, so an applied template's 0.5in first-line indent can never be forced
+    onto a title page or signature block that Word left flush.
+    """
+    styles: List[str] = []
+    if indent.left_twips:
+        styles.append(f"margin-left:{round(indent.left_twips * TWIPS_PER_PX, 1)}px")
+    if indent.first_line_twips:
+        styles.append(f"text-indent:{round(indent.first_line_twips * TWIPS_PER_PX, 1)}px")
+    elif indent.hanging_twips:
+        styles.append(f"text-indent:{round(-indent.hanging_twips * TWIPS_PER_PX, 1)}px")
     else:
         styles.append("text-indent:0")
-    right = _resolve_pPr_attr(p, "ind", "right") or _resolve_pPr_attr(p, "ind", "end")
-    if right and right != "0":
-        styles.append(f"margin-right:{round(int(right) * TWIPS_PER_PX, 1)}px")
+    if indent.right_twips:
+        styles.append(f"margin-right:{round(indent.right_twips * TWIPS_PER_PX, 1)}px")
     return "; ".join(styles)
+
+
+def _paragraph_indent_css(p: Paragraph) -> str:
+    """CSS for a paragraph's left, right and first-line indents."""
+    return _write_indent_css(_read_indent(p))
 
 
 # Word's single line height per em (hhea ascender + descender + line gap) for
@@ -1594,61 +1628,90 @@ def _style_font_size_pt(p: Paragraph) -> Optional[float]:
     return None
 
 
-def _paragraph_font_css(p: Paragraph) -> str:
+def _write_font_css(size: Optional[float]) -> str:
     """Explicit base font size, so an applied preset's size cannot change imported text."""
-    size = _resolve_font_size_pt(p)
     if size is None:
         return ""
     return f"font-size:{int(size) if size == int(size) else size}pt"
 
 
-def _paragraph_spacing_css(p: Paragraph) -> str:
-    """Return CSS for the paragraph's effective spacing (twips -> px, line -> unitless).
+def _paragraph_font_css(p: Paragraph) -> str:
+    """The paragraph's base font size as CSS, empty when the document sets none."""
+    return _write_font_css(_resolve_font_size_pt(p))
 
-    Values are resolved exactly the way Word renders them: direct w:spacing on
-    the paragraph, then its style chain, then docDefaults. Nothing is invented —
-    a paragraph whose spacing is defined nowhere yields an empty string — but
-    spacing inherited from styles IS emitted, because the editor cannot see the
-    DOCX style chain and would otherwise fall back to its own line spacing
-    (rendering single-spaced documents far too loose).
-    """
+
+def _read_spacing(p: Paragraph) -> ParagraphSpacing:
+    """The paragraph's spacing, resolved exactly the way Word renders it: direct w:spacing, then its
+    style chain, then docDefaults. Nothing is invented: what is set nowhere stays None."""
     before = _resolve_spacing_attr(p, "before")
     before_lines = _resolve_spacing_attr(p, "beforeLines")
     after = _resolve_spacing_attr(p, "after")
     after_lines = _resolve_spacing_attr(p, "afterLines")
     line = _resolve_spacing_attr(p, "line")
-    rule = _resolve_spacing_attr(p, "lineRule") or "auto"
 
-    if before is None and before_lines is None and after is None and after_lines is None and line is None:
+    def lines(value: Optional[str]) -> Optional[int]:
+        # w:beforeLines / w:afterLines count hundredths of a line (100 = one line).
+        return int(value) if value and value != "0" and value.isdigit() else None
+
+    return ParagraphSpacing(
+        before_twips=int(before) if before is not None else None,
+        after_twips=int(after) if after is not None else None,
+        before_lines=lines(before_lines),
+        after_lines=lines(after_lines),
+        line=int(line) if line and line != "0" else None,
+        line_rule=_resolve_spacing_attr(p, "lineRule") or "auto",
+        unset=before is None and before_lines is None and after is None and after_lines is None and line is None,
+    )
+
+
+def _write_spacing_css(spacing: ParagraphSpacing, font_name: Optional[str]) -> str:
+    """CSS for a paragraph's spacing (twips -> px, auto line spacing -> unitless).
+
+    Spacing inherited from styles IS emitted, because the editor cannot see the DOCX style chain
+    and would otherwise fall back to its own line spacing (single-spaced documents far too loose).
+    """
+    if spacing.unset:
         return ""
-
     styles: List[str] = []
-
-    if before is not None:
-        px = round(int(before) * TWIPS_PER_PX, 1)
+    if spacing.before_twips is not None:
+        px = round(spacing.before_twips * TWIPS_PER_PX, 1)
         styles.append(f"margin-top:{px}px" if px else "margin-top:0")
-    elif before_lines and before_lines != "0" and before_lines.isdigit():
-        # w:beforeLines counts hundredths of a line (100 = one line).
-        styles.append(f"margin-top:{round(int(before_lines) * 0.012, 2)}em")
-
-    if after is not None:
-        px = round(int(after) * TWIPS_PER_PX, 1)
+    elif spacing.before_lines:
+        styles.append(f"margin-top:{round(spacing.before_lines * 0.012, 2)}em")
+    if spacing.after_twips is not None:
+        px = round(spacing.after_twips * TWIPS_PER_PX, 1)
         styles.append(f"margin-bottom:{px}px" if px else "margin-bottom:0")
-    elif after_lines and after_lines != "0" and after_lines.isdigit():
-        styles.append(f"margin-bottom:{round(int(after_lines) * 0.012, 2)}em")
-
-    if line and line != "0":
-        if rule == "exact" or rule == "atLeast":
+    elif spacing.after_lines:
+        styles.append(f"margin-bottom:{round(spacing.after_lines * 0.012, 2)}em")
+    if spacing.line:
+        if spacing.line_rule in ("exact", "atLeast"):
             # Exact/atLeast spacing is stored in twips (1/20 pt): 240 = 12pt.
-            styles.append(f"line-height:{round(int(line) / 20.0, 2)}pt")
+            styles.append(f"line-height:{round(spacing.line / 20.0, 2)}pt")
         else:
-            # Auto spacing is in 240ths of a line: 240 = single, 360 = 1.5x.
-            # Word's "single" is the font's natural line height (~1.15em for
-            # Times New Roman), CSS's is 1em, so scale by that factor.
-            factor = _FONT_LINE_FACTORS.get((_resolve_font_name(p) or "").lower(), _DEFAULT_LINE_FACTOR)
-            styles.append(f"line-height:{round(int(line) / 240.0 * factor, 3)}")
-
+            # Auto spacing is in 240ths of a line: 240 = single, 360 = 1.5x. Word's "single" is the
+            # font's natural line height (~1.15em for Times New Roman), CSS's is 1em, so scale by it.
+            factor = _FONT_LINE_FACTORS.get((font_name or "").lower(), _DEFAULT_LINE_FACTOR)
+            styles.append(f"line-height:{round(spacing.line / 240.0 * factor, 3)}")
     return "; ".join(styles)
+
+
+def _paragraph_spacing_css(p: Paragraph) -> str:
+    """CSS for the paragraph's effective spacing, empty when the document sets none."""
+    spacing = _read_spacing(p)
+    needs_font = spacing.line and spacing.line_rule not in ("exact", "atLeast")
+    return _write_spacing_css(spacing, _resolve_font_name(p) if needs_font else None)
+
+
+def _read_paragraph_props(p: Paragraph) -> ParagraphProps:
+    """A paragraph's own formatting as the document model."""
+    return ParagraphProps(
+        alignment=_get_paragraph_alignment(p),
+        font_size_pt=_resolve_font_size_pt(p),
+        font_name=_resolve_font_name(p),
+        spacing=_read_spacing(p),
+        indent=_read_indent(p),
+        style_name=p.style.name.lower() if p.style else "",
+    )
 
 
 # Word numbering formats the editor's ordered list can draw (its `type` attribute).
@@ -2052,7 +2115,10 @@ def _drop_inline_icons(inner: str) -> str:
 def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
     """The HTML of a (non-list) paragraph whose inner HTML has already been built."""
     inner = _drop_inline_icons(inner)
-    style_name = p.style.name.lower() if p.style else ""
+    props = _read_paragraph_props(p)
+    style_name = props.style_name
+    font_css = _write_font_css(props.font_size_pt)
+    spacing_css = _write_spacing_css(props.spacing, props.font_name)
 
     if not inner.strip():
         # Blank line: render it exactly as tall as Word does — the same
@@ -2060,7 +2126,7 @@ def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
         # so runs of blank paragraphs neither collapse nor balloon. No <br/>:
         # the editor's strict HTML parsing turns a lone <br> into a hard-break
         # node that renders TWO line boxes (double-height blank lines).
-        empty_style = "; ".join(filter(None, [_paragraph_font_css(p), _paragraph_spacing_css(p)]))
+        empty_style = "; ".join(filter(None, [font_css, spacing_css]))
         empty_attr = f' style="{empty_style}"' if empty_style else ""
         return f'<p class="empty-spacer"{empty_attr}></p>'
 
@@ -2078,24 +2144,24 @@ def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
     if re.fullmatch(r'(<div data-type="block-math"[^>]*></div>\s*)+', inner):
         return inner
 
-    alignment = _get_paragraph_alignment(p)
-    align_style = f"text-align:{alignment};" if alignment != "left" else ""
-    spacing_style = _paragraph_spacing_css(p)
-    indent_style = _paragraph_indent_css(p)
+    align_style = f"text-align:{props.alignment};" if props.alignment != "left" else ""
+    spacing_style = spacing_css
+    indent_style = _write_indent_css(props.indent)
+
+    def heading(default_size: float, default_margin: str, weight: str = "bold", italic: bool = False) -> str:
+        return _heading_css(font_css, spacing_css, align_style, indent_style, default_size, default_margin, weight, italic)
 
     if "title" in style_name and "sub" not in style_name:
-        css = _heading_css(p, align_style, indent_style, 20, "margin:0.75em 0 0.35em")
-        return f'<h1 class="title" style="{css}">{inner}</h1>'
+        return f'<h1 class="title" style="{heading(20, "margin:0.75em 0 0.35em")}">{inner}</h1>'
     if "subtitle" in style_name:
-        css = _heading_css(p, align_style, indent_style, 14, "margin:0.35em 0 0.5em", weight="600", italic=True)
-        return f'<h2 class="subtitle" style="{css}">{inner}</h2>'
+        return f'<h2 class="subtitle" style="{heading(14, "margin:0.35em 0 0.5em", weight="600", italic=True)}">{inner}</h2>'
     for level, size, margin in _HEADING_DEFAULTS:
         if f"heading {level}" in style_name:
-            return f'<h{level} style="{_heading_css(p, align_style, indent_style, size, margin)}">{inner}</h{level}>'
+            return f'<h{level} style="{heading(size, margin)}">{inner}</h{level}>'
     if "heading" in style_name:
-        return f'<h4 style="{_heading_css(p, align_style, indent_style, 11.5, "margin:0.5em 0 0.25em")}">{inner}</h4>'
+        return f'<h4 style="{heading(11.5, "margin:0.5em 0 0.25em")}">{inner}</h4>'
 
-    css_parts = filter(None, [align_style, _paragraph_font_css(p), spacing_style, indent_style])
+    css_parts = filter(None, [align_style, font_css, spacing_style, indent_style])
     css_combined = "; ".join(part.rstrip("; ") for part in css_parts).strip()
     style_attr = f' style="{css_combined};"' if css_combined else ""
     return f"<p{style_attr}{_tab_attributes(p, inner)}>{inner}</p>"
@@ -2114,7 +2180,8 @@ _HEADING_DEFAULTS: List[Tuple[int, float, str]] = [
 
 
 def _heading_css(
-    p: Paragraph,
+    font_css: str,
+    spacing_css: str,
     align_style: str,
     indent_style: str,
     default_size_pt: float,
@@ -2129,8 +2196,8 @@ def _heading_css(
     apply only when the document defines none, so an imported heading is never
     reshaped by the editor's heading rules.
     """
-    size = _paragraph_font_css(p) or f"font-size:{default_size_pt:g}pt"
-    spacing = _paragraph_spacing_css(p) or default_margin
+    size = font_css or f"font-size:{default_size_pt:g}pt"
+    spacing = spacing_css or default_margin
     parts = [align_style.rstrip(";"), size, f"font-weight:{weight}", "font-style:italic" if italic else "", spacing, indent_style.rstrip(";")]
     return "; ".join(part for part in parts if part) + ";"
 
