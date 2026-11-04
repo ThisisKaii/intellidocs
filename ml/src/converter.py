@@ -1335,6 +1335,12 @@ _EDITOR_STYLE_PROPS = {
     "overflow-wrap", "text-indent",
 }
 
+_HEADING_ATTRS: Dict[str, Any] = {
+    "tabStops": None, "defaultTab": None, "generated": None, "indent": 0, "textAlign": None, "level": 1,
+    "styleSource": None, "docRole": None, "style": None, "overlay": None, "guide": None, "guideText": None,
+    "guideGroup": None,
+}
+
 _PARAGRAPH_ATTRS: Dict[str, Any] = {
     "tabStops": None, "defaultTab": None, "captionKind": None, "generated": None, "indent": 0, "textAlign": None,
     "styleSource": None, "style": None, "overlay": None, "guide": None, "guideText": None, "guideGroup": None,
@@ -1392,28 +1398,71 @@ def _run_marks(props: RunProps) -> List[Dict[str, Any]]:
 
 
 def _write_inline_json(items: List[Inline]) -> Optional[List[Dict[str, Any]]]:
-    """A paragraph's content as editor JSON nodes, normalised the way ProseMirror parses HTML (spaces
-    collapse, a space at the start or after a space is dropped, the paragraph's trailing space is
-    removed, and neighbouring text with the same marks is one node). None for content not written yet."""
+    """A paragraph's content as editor JSON nodes, normalised the way ProseMirror parses HTML: spaces
+    collapse; a space is dropped at the start of the paragraph, after a space, or straight after a <br>
+    (only when the text is not inside a span); the paragraph's trailing space is removed; neighbouring
+    text with the same marks is one node. None when the content holds something not written yet."""
     nodes: List[Dict[str, Any]] = []
-    for item in items:
-        if not isinstance(item, TextRun):
-            return None
-        marks = _run_marks(item.props)
-        for index, segment in enumerate(_run_segments(item)):
-            if index:
-                nodes.append({"type": "tab", **({"marks": marks} if marks else {})})
-            text = _WHITESPACE.sub(" ", segment)
-            if text.startswith(" "):
-                before = nodes[-1] if nodes else None
-                if before is None or (before["type"] == "text" and _WHITESPACE.search(before["text"][-1:])):
-                    text = text[1:]
-            if not text:
-                continue
-            if nodes and nodes[-1]["type"] == "text" and nodes[-1].get("marks") == (marks or None):
-                nodes[-1]["text"] += text
+
+    def add_text(text: str, marks: List[Dict[str, Any]], bare: bool) -> None:
+        text = _WHITESPACE.sub(" ", text)
+        if text.startswith(" "):
+            before = nodes[-1] if nodes else None
+            if (
+                before is None
+                or (before["type"] == "text" and _WHITESPACE.search(before["text"][-1:]))
+                or (bare and before["type"] == "hardBreak")
+            ):
+                text = text[1:]
+        if not text:
+            return
+        if nodes and nodes[-1]["type"] == "text" and nodes[-1].get("marks") == (marks or None):
+            nodes[-1]["text"] += text
+        else:
+            nodes.append({"type": "text", "text": text, **({"marks": marks} if marks else {})})
+
+    def add(items: List[Inline], link: Optional[Dict[str, Any]]) -> bool:
+        for item in items:
+            if isinstance(item, TextRun):
+                marks = _run_marks(item.props)
+                if link:
+                    marks = [link] + marks
+                # A run without formatting is written as bare text, straight after whatever precedes it.
+                bare = not marks
+                for index, segment in enumerate(_run_segments(item)):
+                    if index:
+                        nodes.append({"type": "tab", **({"marks": marks} if marks else {})})
+                        bare = False
+                    add_text(segment, marks, bare)
+            elif isinstance(item, LineBreak) and not link:
+                nodes.append({"type": "hardBreak"})
+            elif isinstance(item, NoteReference) and not link:
+                add_text(_format_number(item.number_format, item.number), [{"type": "superscript"}], False)
+            elif isinstance(item, InlineMath) and not link:
+                if item.latex is None:
+                    add_text(item.text, [], True)
+                else:
+                    nodes.append({"type": "inlineMath", "attrs": {"latex": item.latex}})
+            elif isinstance(item, Hyperlink) and not link:
+                if not _write_inline_html(list(item.content)):
+                    continue
+                web = item.url.startswith("http")
+                mark = {"type": "link", "attrs": {
+                    "href": item.url,
+                    "target": "_blank",
+                    # The link extension's own rel unless the converter wrote one (web addresses).
+                    "rel": "noopener noreferrer" if web else "noopener noreferrer nofollow",
+                    "class": None,
+                    "title": None,
+                }}
+                if not add(list(item.content), mark):
+                    return False
             else:
-                nodes.append({"type": "text", "text": text, **({"marks": marks} if marks else {})})
+                return False
+        return True
+
+    if not add(items, None):
+        return None
     if nodes and nodes[-1]["type"] == "text":
         nodes[-1]["text"] = nodes[-1]["text"].rstrip(" \t\r\n\u000c")
         if not nodes[-1]["text"]:
@@ -1421,9 +1470,47 @@ def _write_inline_json(items: List[Inline]) -> Optional[List[Dict[str, Any]]]:
     return nodes
 
 
-def _write_paragraph_json(style: str, tab_attrs: Optional[Tuple[str, str]], content: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """A paragraph node with the attributes the editor reads from its HTML."""
-    attrs = dict(_PARAGRAPH_ATTRS)
+def _block_style_marks(style: str) -> List[Dict[str, Any]]:
+    """Marks the editor's Bold and Italic parse rules give everything inside a block whose own style says
+    so (a heading styled font-weight:bold has all its text bold)."""
+    marks = []
+    weight = _style_value(style, "font-weight") if style else None
+    if weight and re.fullmatch(r"bold(er)?|[5-9]\d{2,}", weight):
+        marks.append({"type": "bold"})
+    if style and _style_value(style, "font-style") == "italic":
+        marks.append({"type": "italic"})
+    return marks
+
+
+def _with_block_marks(content: List[Dict[str, Any]], style: str) -> List[Dict[str, Any]]:
+    """Content with its block's style marks added, neighbouring text with equal marks merged again."""
+    extra = _block_style_marks(style)
+    if not extra:
+        return content
+    out: List[Dict[str, Any]] = []
+    for node in content:
+        if node["type"] in ("text", "tab"):
+            present = {m["type"] for m in node.get("marks", [])}
+            marks = node.get("marks", []) + [m for m in extra if m["type"] not in present]
+            marks.sort(key=lambda m: _MARK_RANK.index(m["type"]))
+            node = {**node, "marks": marks}
+        if out and node["type"] == "text" and out[-1]["type"] == "text" and out[-1].get("marks") == node.get("marks"):
+            out[-1] = {**out[-1], "text": out[-1]["text"] + node["text"]}
+        else:
+            out.append(node)
+    return out
+
+
+def _write_paragraph_json(
+    style: str,
+    tab_attrs: Optional[Tuple[str, str]],
+    content: List[Dict[str, Any]],
+    heading_level: Optional[int] = None,
+) -> Dict[str, Any]:
+    """A paragraph (or heading) node with the attributes the editor reads from its HTML."""
+    attrs = dict(_PARAGRAPH_ATTRS if heading_level is None else _HEADING_ATTRS)
+    if heading_level is not None:
+        attrs["level"] = heading_level
     attrs["style"] = _editor_style(style) if style else None
     align = _style_value(style, "text-align") if style else None
     attrs["textAlign"] = align if align in ("left", "center", "right", "justify") else None
@@ -1434,7 +1521,8 @@ def _write_paragraph_json(style: str, tab_attrs: Optional[Tuple[str, str]], cont
     attrs["indent"] = int(indent) if float(indent).is_integer() else indent
     if tab_attrs:
         attrs["tabStops"], attrs["defaultTab"] = tab_attrs
-    node: Dict[str, Any] = {"type": "paragraph", "attrs": attrs}
+    node: Dict[str, Any] = {"type": "paragraph" if heading_level is None else "heading", "attrs": attrs}
+    content = _with_block_marks(content, style)
     if content:
         node["content"] = content
     return node
@@ -1454,9 +1542,11 @@ def _record_paragraph_json(p: Paragraph, items: List[Inline]) -> None:
     text = "".join(item.text for item in items if isinstance(item, TextRun))
     props = _read_paragraph_props(p)
     content = _write_inline_json(items)
-    if content is None or "heading" in props.style_name or "title" in props.style_name:
+    if content is None:
         _JSON_SINK.append((text, None))
         return
+    # The text as the editor holds it (links, note numbers and all): what the measurement pairs by.
+    text = "".join(node.get("text", "") for node in content) or text
     font_css = _write_font_css(props.font_size_pt)
     spacing_css = _write_spacing_css(props.spacing, props.font_name)
     # A blank line is what writes no HTML (as _paragraph_html_from_inner decides): a space inside a
@@ -1466,7 +1556,14 @@ def _record_paragraph_json(p: Paragraph, items: List[Inline]) -> None:
         _JSON_SINK.append((text, _write_paragraph_json(style, None, [])))
         return
     align = f"text-align:{props.alignment};" if props.alignment != "left" else ""
-    css = "; ".join(part.rstrip("; ") for part in filter(None, [align, font_css, spacing_css, _write_indent_css(props.indent)])).strip()
+    indent_css = _write_indent_css(props.indent)
+    heading = _heading_kind(props.style_name)
+    if heading is not None:
+        level, size, margin, weight, italic = heading
+        css = _heading_css(font_css, spacing_css, align, indent_css, size, margin, weight, italic)
+        _JSON_SINK.append((text, _write_paragraph_json(css, None, content, heading_level=level)))
+        return
+    css = "; ".join(part.rstrip("; ") for part in filter(None, [align, font_css, spacing_css, indent_css])).strip()
     tabs = None
     if any(node["type"] == "tab" for node in content):
         tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p)))
@@ -2313,7 +2410,7 @@ def _paragraph_to_html(
         # Measurement only: tag the paragraph so the measurement can tell which ones stay in the body
         # (later passes lift text-box content into overlays and drop blank lines before page breaks).
         # At the end of the opening tag: the body writer tests how a paragraph's HTML starts.
-        return re.sub(r"^(<p\b[^>]*)>", lambda m: f'{m.group(1)} data-sink="{len(_JSON_SINK) - 1}">', html, count=1)
+        return re.sub(r"^(<(?:p|h[1-6])\b[^>]*)>", lambda m: f'{m.group(1)} data-sink="{len(_JSON_SINK) - 1}">', html, count=1)
 
     if list_info is None:
         return _paragraph_to_html_from_items(p, inner)
@@ -2413,18 +2510,12 @@ def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
     spacing_style = spacing_css
     indent_style = _write_indent_css(props.indent)
 
-    def heading(default_size: float, default_margin: str, weight: str = "bold", italic: bool = False) -> str:
-        return _heading_css(font_css, spacing_css, align_style, indent_style, default_size, default_margin, weight, italic)
-
-    if "title" in style_name and "sub" not in style_name:
-        return f'<h1 class="title" style="{heading(20, "margin:0.75em 0 0.35em")}">{inner}</h1>'
-    if "subtitle" in style_name:
-        return f'<h2 class="subtitle" style="{heading(14, "margin:0.35em 0 0.5em", weight="600", italic=True)}">{inner}</h2>'
-    for level, size, margin in _HEADING_DEFAULTS:
-        if f"heading {level}" in style_name:
-            return f'<h{level} style="{heading(size, margin)}">{inner}</h{level}>'
-    if "heading" in style_name:
-        return f'<h4 style="{heading(11.5, "margin:0.5em 0 0.25em")}">{inner}</h4>'
+    heading = _heading_kind(style_name)
+    if heading is not None:
+        level, size, margin, weight, italic = heading
+        css = _heading_css(font_css, spacing_css, align_style, indent_style, size, margin, weight, italic)
+        role = ' class="title"' if "title" in style_name and "sub" not in style_name else ' class="subtitle"' if "subtitle" in style_name else ""
+        return f'<h{level}{role} style="{css}">{inner}</h{level}>'
 
     css_parts = filter(None, [align_style, font_css, spacing_style, indent_style])
     css_combined = "; ".join(part.rstrip("; ") for part in css_parts).strip()
@@ -2442,6 +2533,21 @@ _HEADING_DEFAULTS: List[Tuple[int, float, str]] = [
     (5, 10.5, "margin:0.5em 0 0.25em"),
     (6, 9.5, "margin:0.5em 0 0.25em"),
 ]
+
+
+def _heading_kind(style_name: str) -> Optional[Tuple[int, float, str, str, bool]]:
+    """The heading a paragraph style makes: (level, fallback size pt, fallback margin, weight, italic),
+    or None for an ordinary paragraph."""
+    if "title" in style_name and "sub" not in style_name:
+        return 1, 20, "margin:0.75em 0 0.35em", "bold", False
+    if "subtitle" in style_name:
+        return 2, 14, "margin:0.35em 0 0.5em", "600", True
+    for level, size, margin in _HEADING_DEFAULTS:
+        if f"heading {level}" in style_name:
+            return level, size, margin, "bold", False
+    if "heading" in style_name:
+        return 4, 11.5, "margin:0.5em 0 0.25em", "bold", False
+    return None
 
 
 def _heading_css(

@@ -109,13 +109,13 @@ _OTHER_CONTAINERS = {"table", "listItem", "blockquote", "bulletList", "orderedLi
 
 
 def reference_paragraphs(doc: dict) -> list[dict]:
-    """The body paragraphs of a reference document, in order (not those in tables, lists or quotes)."""
+    """The body paragraphs and headings of a reference document, in order (not those in tables, lists or quotes)."""
     found: list[dict] = []
 
     def walk(node: dict) -> None:
         if node.get("type") in _OTHER_CONTAINERS:
             return
-        if node.get("type") == "paragraph":
+        if node.get("type") in ("paragraph", "heading"):
             found.append(node)
             return
         for child in node.get("content", []):
@@ -132,7 +132,7 @@ def text_key(text: str) -> str:
 
 def html_style(html: str) -> Optional[str]:
     """The editor's style attribute for a paragraph's HTML (frontend filterStyle), to pair it with its node."""
-    found = re.match(r'<p\b[^>]*?\sstyle="([^"]*)"', html)
+    found = re.match(r'<(?:p|h[1-6])\b[^>]*?\sstyle="([^"]*)"', html)
     return converter._editor_style(found.group(1)) if found else None
 
 

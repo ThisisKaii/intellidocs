@@ -210,3 +210,52 @@ class TestEditorJson:
 
 class LineBreakLike:
     """Any inline item the JSON writer does not write yet."""
+
+
+class TestEditorJsonInline:
+    def test_links_take_the_link_extension_defaults_unless_written(self):
+        from converter import _write_inline_json
+        from docir import Hyperlink
+
+        web, mail = (_write_inline_json([Hyperlink(url, (TextRun("x", RunProps()),))])[0]["marks"][0]["attrs"]
+                     for url in ("https://a.org", "mailto:a@b.c"))
+        assert web == {"href": "https://a.org", "target": "_blank", "rel": "noopener noreferrer", "class": None, "title": None}
+        assert mail["rel"] == "noopener noreferrer nofollow" and mail["target"] == "_blank"
+
+    def test_a_space_after_a_line_break_goes_only_when_the_text_is_bare(self):
+        from converter import _write_inline_json
+        from docir import LineBreak
+
+        bare = _write_inline_json([TextRun("a", RunProps()), LineBreak(), TextRun(" b", RunProps())])
+        assert bare == [{"type": "text", "text": "a"}, {"type": "hardBreak"}, {"type": "text", "text": "b"}]
+        styled = _write_inline_json([TextRun("a", RunProps()), LineBreak(), TextRun(" b", RunProps(bold=True))])
+        assert styled[-1] == {"type": "text", "text": " b", "marks": [{"type": "bold"}]}
+
+    def test_note_numbers_and_equations(self):
+        from converter import _write_inline_json
+        from docir import InlineMath, NoteReference
+
+        nodes = _write_inline_json([TextRun("x", RunProps()), NoteReference("endnote", 2, "lowerRoman"), InlineMath("a^2", ""), InlineMath(None, "a+b")])
+        assert nodes == [
+            {"type": "text", "text": "x"},
+            {"type": "text", "text": "ii", "marks": [{"type": "superscript"}]},
+            {"type": "inlineMath", "attrs": {"latex": "a^2"}},
+            {"type": "text", "text": "a+b"},
+        ]
+
+    def test_content_the_writer_does_not_cover_yet_is_left_to_html(self):
+        from converter import _write_inline_json
+        from docir import DisplayMath, Fragment, PageBreak
+
+        for item in (PageBreak(), DisplayMath("x"), Fragment("pictures", "<img/>")):
+            assert _write_inline_json([TextRun("a", RunProps()), item]) is None
+
+    def test_headings_and_their_style_marks(self):
+        from converter import _write_paragraph_json
+
+        node = _write_paragraph_json("font-size:14pt; font-weight:bold; font-style:italic; text-indent:0;", None,
+                                     [{"type": "text", "text": "A "}, {"type": "text", "text": "B", "marks": [{"type": "bold"}]}], heading_level=2)
+        assert node["type"] == "heading" and node["attrs"]["level"] == 2 and "captionKind" not in node["attrs"]
+        assert node["content"] == [{"type": "text", "text": "A B", "marks": [{"type": "bold"}, {"type": "italic"}]}]
+        light = _write_paragraph_json("font-weight:400", None, [{"type": "text", "text": "x"}], heading_level=1)
+        assert light["content"] == [{"type": "text", "text": "x"}]
