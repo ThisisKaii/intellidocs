@@ -95,3 +95,66 @@ def test_readers_resolve_a_real_paragraph_and_run():
     item = _read_run(reopened.runs[0])
     assert item is not None and item.text == "Bold text"
     assert item.props.bold and item.props.size_pt == 14.0
+
+
+class TestInline:
+    def test_breaks_notes_and_equations(self):
+        from converter import _COLUMN_MARK, _PAGE_BREAK_HTML, _write_inline_html
+        from docir import ColumnBreak, DisplayMath, InlineMath, LineBreak, NoteReference, PageBreak
+
+        html = _write_inline_html([
+            LineBreak(), PageBreak(), ColumnBreak(),
+            NoteReference("footnote", 3, "decimal"), NoteReference("endnote", 4, "lowerRoman"),
+            InlineMath("x^2", ""), InlineMath(None, "a<b"), DisplayMath("E=mc^2", "(1)"),
+        ])
+        assert html == (
+            "<br/>" + _PAGE_BREAK_HTML + _COLUMN_MARK + "<sup>3</sup><sup>iv</sup>"
+            '<span data-type="inline-math" data-latex="x^2"></span>a&lt;b'
+            '<div data-type="block-math" data-latex="E=mc^2" data-number="(1)"></div>'
+        )
+
+    def test_a_link_opens_outside_only_for_web_addresses_and_vanishes_when_empty(self):
+        from converter import _write_inline_html
+        from docir import Fragment, Hyperlink
+
+        text = TextRun("site", RunProps())
+        assert _write_inline_html([Hyperlink("https://x.org", (text,))]) == '<a href="https://x.org" target="_blank" rel="noopener noreferrer">site</a>'
+        assert _write_inline_html([Hyperlink("#top", (text,))]) == '<a href="#top">site</a>'
+        assert _write_inline_html([Hyperlink("https://x.org", ())]) == ""
+        assert _write_inline_html([Fragment("pictures", "<img />")]) == "<img />"
+
+    def test_the_reader_keeps_breaks_links_and_note_numbers_in_order(self):
+        from docx.opc.constants import RELATIONSHIP_TYPE as RT
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn as q
+        from converter import _read_inline
+        from docir import Hyperlink, LineBreak, NoteReference, PageBreak
+
+        document = docx.Document()
+        paragraph = document.add_paragraph("Before")
+        run = paragraph.add_run("After breaks")
+        for kind in (None, "page"):
+            br = OxmlElement("w:br")
+            if kind:
+                br.set(q("w:type"), kind)
+            run._r.insert(0, br)
+        link = OxmlElement("w:hyperlink")
+        link.set(q("r:id"), paragraph.part.relate_to("https://example.org", RT.HYPERLINK, is_external=True))
+        inner = OxmlElement("w:r")
+        text = OxmlElement("w:t")
+        text.text = "link"
+        inner.append(text)
+        link.append(inner)
+        paragraph._p.append(link)
+        noted = paragraph.add_run()
+        ref = OxmlElement("w:footnoteReference")
+        ref.set(q("w:id"), "7")
+        noted._r.append(ref)
+        paragraph.part._intellidocs_notes = {"footnote": {}, "endnote": {}}
+
+        items = _read_inline(paragraph, {})
+        kinds = [type(item).__name__ for item in items]
+        assert kinds == ["TextRun", "LineBreak", "PageBreak", "TextRun", "Hyperlink", "NoteReference"]
+        assert isinstance(items[1], LineBreak) and isinstance(items[2], PageBreak)
+        assert isinstance(items[4], Hyperlink) and items[4].url == "https://example.org"
+        assert isinstance(items[5], NoteReference) and items[5].number == 1

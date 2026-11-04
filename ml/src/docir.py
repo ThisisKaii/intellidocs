@@ -13,7 +13,7 @@ writers produce is held byte-identical to the recorded references
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 IR_VERSION = 1
 
@@ -88,3 +88,71 @@ class ParagraphProps:
     indent: ParagraphIndent = ParagraphIndent()
     # The paragraph style's name, lower-cased (decides title, subtitle and heading levels).
     style_name: str = ""
+
+
+# ─── A paragraph's content: a sequence of inline items ───────────────────────
+
+
+@dataclass(frozen=True)
+class LineBreak:
+    """A line break inside a paragraph (w:br with no type)."""
+
+
+@dataclass(frozen=True)
+class PageBreak:
+    """A page break inside a paragraph (w:br type="page")."""
+
+
+@dataclass(frozen=True)
+class ColumnBreak:
+    """A column break (w:br type="column"): the text continues in the next column."""
+
+
+@dataclass(frozen=True)
+class NoteReference:
+    """A footnote or endnote reference, with the number it shows (notes are numbered in reference order)."""
+
+    kind: str  # footnote or endnote
+    number: int
+    number_format: str  # Word number format: decimal for footnotes, lowerRoman for endnotes
+
+
+@dataclass(frozen=True)
+class InlineMath:
+    """An equation in a line of text, as LaTeX; `latex` is None when it could not be converted and
+    the equation is kept as its own text."""
+
+    latex: Optional[str]
+    text: str
+
+
+@dataclass(frozen=True)
+class DisplayMath:
+    """A display equation set on its own line, with its number when it has one."""
+
+    latex: str
+    number: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class Fragment:
+    """Content not modelled yet, kept as the HTML the converter already writes for it.
+
+    kind: "pictures" (a run's pictures, grouped drawings and side-by-side rows), "textboxes" (text
+    boxes anchored to a run) or "lines" (drawn lines, written as markers the paragraph splits at).
+    Stage 2a replaces each kind with its own types.
+    """
+
+    kind: str
+    html: str
+
+
+@dataclass(frozen=True)
+class Hyperlink:
+    """A link around some of a paragraph's content."""
+
+    url: str
+    content: tuple["Inline", ...]
+
+
+Inline = Union[TextRun, LineBreak, PageBreak, ColumnBreak, NoteReference, InlineMath, DisplayMath, Fragment, Hyperlink]

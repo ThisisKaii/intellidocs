@@ -19,7 +19,22 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 import omml
-from docir import ParagraphIndent, ParagraphProps, ParagraphSpacing, RunProps, TextRun
+from docir import (
+    ColumnBreak,
+    DisplayMath,
+    Fragment,
+    Hyperlink,
+    Inline,
+    InlineMath,
+    LineBreak,
+    NoteReference,
+    PageBreak,
+    ParagraphIndent,
+    ParagraphProps,
+    ParagraphSpacing,
+    RunProps,
+    TextRun,
+)
 
 # Word highlight color names -> CSS hex.
 HIGHLIGHT_COLORS: Dict[str, str] = {
@@ -886,8 +901,9 @@ def _group_page_art(art: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[str, Any]] = None) -> str:
-    """Render a run as either its inline image (if it contains a drawing) or styled text.
+def _run_picture_html(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """The HTML of a run's pictures and drawn lines, or None when it has neither (or they cannot be read):
+    then the run is text.
 
     `row` is the paragraph's merged side-by-side pictures (see _anchored_row): the first run
     holding one of them draws the merged picture, and the row's own pictures are not drawn again.
@@ -928,7 +944,22 @@ def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict
             return line_marks
     except Exception:
         pass
-    return _run_to_html(run)
+    return None
+
+
+def _read_run_content(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[str, Any]] = None) -> List[Inline]:
+    """A run as the document model: its pictures and drawn lines (not modelled yet), or its text."""
+    pictures = _run_picture_html(run, doc_parts, row)
+    if pictures is not None:
+        kind = "lines" if pictures and not pictures.replace(_LINE_MARK, "") else "pictures"
+        return [Fragment(kind, pictures)]
+    item = _read_run(run)
+    return [item] if item is not None else []
+
+
+def _run_or_image_html(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[str, Any]] = None) -> str:
+    """Render a run as either its inline image (if it contains a drawing) or styled text."""
+    return _write_inline_html(_read_run_content(run, doc_parts, row))
 
 
 _NS_WPS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
@@ -1064,8 +1095,9 @@ _M_OMATHPARA = qn("m:oMathPara")
 _NEUTRAL_PARAGRAPH_CHILDREN = {qn("w:pPr"), qn("w:bookmarkStart"), qn("w:bookmarkEnd"), qn("w:proofErr")}
 
 
-def _note_reference_html(run_el: Any, p: Paragraph) -> str:
-    """A footnote or endnote reference as its number, raised; the note's text is collected for the end of the document.
+def _read_note_reference(run_el: Any, p: Paragraph) -> Optional[NoteReference]:
+    """A footnote or endnote reference, numbered in reference order; its text is collected for the end
+    of the document.
 
     The editor has no page-bottom note area, so notes follow the text in reference order. A note
     referenced twice keeps its first number. Paragraphs outside the body (headers, footers) never
@@ -1073,7 +1105,7 @@ def _note_reference_html(run_el: Any, p: Paragraph) -> str:
     """
     state = getattr(p.part, "_intellidocs_notes", None)
     if state is None:
-        return ""
+        return None
     for tag, kind, fmt in (("w:footnoteReference", "footnote", "decimal"), ("w:endnoteReference", "endnote", "lowerRoman")):
         ref = run_el.find(qn(tag))
         if ref is None:
@@ -1082,8 +1114,14 @@ def _note_reference_html(run_el: Any, p: Paragraph) -> str:
         numbers = state[kind]
         if note_id not in numbers:
             numbers[note_id] = len(numbers) + 1
-        return f"<sup>{_format_number(fmt, numbers[note_id])}</sup>"
-    return ""
+        return NoteReference(kind=kind, number=numbers[note_id], number_format=fmt)
+    return None
+
+
+def _note_reference_html(run_el: Any, p: Paragraph) -> str:
+    """A footnote or endnote reference as its number, raised."""
+    ref = _read_note_reference(run_el, p)
+    return _write_inline_html([ref]) if ref is not None else ""
 
 
 def _notes_part_root(doc: docx.Document, kind: str) -> Optional[Any]:
@@ -1126,12 +1164,15 @@ def _notes_html(doc: docx.Document, doc_parts: Dict[str, bytes]) -> str:
     return "".join(sections)
 
 
-def _inline_math_html(omath: Any) -> str:
-    """An equation set inside a line of text: the editor's inline math node, or its own text if it cannot be converted."""
+def _read_inline_math(omath: Any) -> InlineMath:
+    """An equation set inside a line of text, as LaTeX, or as its own text if it cannot be converted."""
     latex = omml.omath_to_latex(omath)
-    if latex is None:
-        return _html_escape(omml.linear_text(omath))
-    return f'<span data-type="inline-math" data-latex="{_html_escape(latex, quote=True)}"></span>'
+    return InlineMath(latex=latex, text=omml.linear_text(omath) if latex is None else "")
+
+
+def _inline_math_html(omath: Any) -> str:
+    """An equation set inside a line of text: the editor's inline math node, or its own text."""
+    return _write_inline_html([_read_inline_math(omath)])
 
 
 def _block_math_html(latex: str, number: Optional[str] = None) -> str:
@@ -1180,44 +1221,49 @@ def _equation_paragraph_html(p: Paragraph) -> Optional[str]:
     return "".join(blocks)
 
 
-def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
-    """Build the inner HTML (runs + hyperlinks + page breaks + images) of a paragraph."""
-    parts: List[str] = []
+def _read_inline(p: Paragraph, doc_parts: Dict[str, bytes]) -> List[Inline]:
+    """A paragraph's content as the document model: runs, breaks, pictures, links, equations and note
+    references, in order (content controls and inline wrappers are read through)."""
+    items: List[Inline] = []
     wrapper_tags = {qn(tag) for tag in _INLINE_WRAPPER_TAGS}
     row = _anchored_row(p._element, doc_parts)
+
+    def br(element: Any) -> Inline:
+        kind = element.get(qn("w:type"))
+        return PageBreak() if kind == "page" else ColumnBreak() if kind == "column" else LineBreak()
 
     def walk(container: Any) -> None:
         for child in container:
             tag = child.tag
             if tag == qn("w:r"):
                 run = Run(child, p)
-                brs = child.findall(qn("w:br"))
-                page_breaks = ""
-                for br in brs:
-                    if br.get(qn("w:type")) == "page":
-                        page_breaks += _PAGE_BREAK_HTML
-                    elif br.get(qn("w:type")) == "column":
-                        parts.append(_COLUMN_MARK)
-                    else:
-                        parts.append("<br/>")
-                parts.append(page_breaks + _run_or_image_html(run, doc_parts, row) + _anchored_textboxes(child, p, doc_parts))
-                parts.append(_note_reference_html(child, p))
+                breaks = [br(element) for element in child.findall(qn("w:br"))]
+                # A run's line and column breaks come before it; its page breaks lead its own content.
+                items.extend(b for b in breaks if not isinstance(b, PageBreak))
+                items.extend(b for b in breaks if isinstance(b, PageBreak))
+                items.extend(_read_run_content(run, doc_parts, row))
+                textboxes = _anchored_textboxes(child, p, doc_parts)
+                if textboxes:
+                    items.append(Fragment("textboxes", textboxes))
+                note = _read_note_reference(child, p)
+                if note is not None:
+                    items.append(note)
             elif tag == qn("w:hyperlink"):
-                parts.append(_hyperlink_html(child, p, doc_parts))
+                link = _read_hyperlink(child, p, doc_parts)
+                if link is not None:
+                    items.append(link)
             elif tag == qn("w:br"):
-                if child.get(qn("w:type")) == "page":
-                    parts.append(_PAGE_BREAK_HTML)
-                elif child.get(qn("w:type")) == "column":
-                    parts.append(_COLUMN_MARK)
-                else:
-                    parts.append("<br/>")
+                items.append(br(child))
             elif tag == _M_OMATH:
-                parts.append(_inline_math_html(child))
+                items.append(_read_inline_math(child))
             elif tag == _M_OMATHPARA:
                 # Display math inside a paragraph that also holds other content: set as separate equations.
                 for omath in child.findall(_M_OMATH):
                     latex = omml.omath_to_latex(omath)
-                    parts.append(_block_math_html(*omml.split_equation_number(latex)) if latex else _html_escape(omml.linear_text(omath)))
+                    if latex:
+                        items.append(DisplayMath(*omml.split_equation_number(latex)))
+                    else:
+                        items.append(InlineMath(latex=None, text=omml.linear_text(omath)))
             elif tag == qn("w:sdt"):
                 content = child.find(qn("w:sdtContent"))
                 if content is not None:
@@ -1226,11 +1272,47 @@ def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
                 walk(child)
 
     walk(p._element)
-    return "".join(parts)
+    return items
 
 
-def _hyperlink_html(hyperlink_el: Any, p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
-    """Render a <w:hyperlink> element as an <a> tag with its styled run text."""
+def _write_inline_html(items: List[Inline]) -> str:
+    """A paragraph's content as the editor's HTML."""
+    out: List[str] = []
+    for item in items:
+        if isinstance(item, TextRun):
+            out.append(_write_run_html(item))
+        elif isinstance(item, LineBreak):
+            out.append("<br/>")
+        elif isinstance(item, PageBreak):
+            out.append(_PAGE_BREAK_HTML)
+        elif isinstance(item, ColumnBreak):
+            out.append(_COLUMN_MARK)
+        elif isinstance(item, NoteReference):
+            out.append(f"<sup>{_format_number(item.number_format, item.number)}</sup>")
+        elif isinstance(item, InlineMath):
+            if item.latex is None:
+                out.append(_html_escape(item.text))
+            else:
+                out.append(f'<span data-type="inline-math" data-latex="{_html_escape(item.latex, quote=True)}"></span>')
+        elif isinstance(item, DisplayMath):
+            out.append(_block_math_html(item.latex, item.number))
+        elif isinstance(item, Fragment):
+            out.append(item.html)
+        elif isinstance(item, Hyperlink):
+            inner = _write_inline_html(list(item.content))
+            if inner:
+                target = ' target="_blank" rel="noopener noreferrer"' if item.url.startswith("http") else ""
+                out.append(f'<a href="{item.url}"{target}>{inner}</a>')
+    return "".join(out)
+
+
+def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
+    """Build the inner HTML (runs + hyperlinks + page breaks + images) of a paragraph."""
+    return _write_inline_html(_read_inline(p, doc_parts))
+
+
+def _read_hyperlink(hyperlink_el: Any, p: Paragraph, doc_parts: Dict[str, bytes]) -> Optional[Hyperlink]:
+    """A <w:hyperlink> as the document model: its target and its runs (None when it cannot be read)."""
     try:
         r_id = hyperlink_el.get(qn("r:id"))
         url = "#"
@@ -1239,16 +1321,18 @@ def _hyperlink_html(hyperlink_el: Any, p: Paragraph, doc_parts: Dict[str, bytes]
                 url = p.part.rels[r_id].target_ref
             except Exception:
                 url = "#"
-        runs_html = "".join(
-            _run_or_image_html(Run(r, p), doc_parts)
-            for r in hyperlink_el.findall(qn("w:r"))
-        )
-        if not runs_html:
-            return ""
-        target = ' target="_blank" rel="noopener noreferrer"' if url.startswith("http") else ""
-        return f'<a href="{url}"{target}>{runs_html}</a>'
+        content: List[Inline] = []
+        for r in hyperlink_el.findall(qn("w:r")):
+            content.extend(_read_run_content(Run(r, p), doc_parts))
+        return Hyperlink(url=url, content=tuple(content))
     except Exception:
-        return ""
+        return None
+
+
+def _hyperlink_html(hyperlink_el: Any, p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
+    """Render a <w:hyperlink> element as an <a> tag with its styled run text."""
+    link = _read_hyperlink(hyperlink_el, p, doc_parts)
+    return _write_inline_html([link]) if link is not None else ""
 
 
 def _resolve_pPr_attr(p: Paragraph, tag: str, attr: str) -> Optional[str]:
