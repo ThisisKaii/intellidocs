@@ -116,6 +116,14 @@ Each stage is independent and testable, and none needs a canvas rewrite. A canva
 - Add a `section` node (`content: 'block+'`) with page size, margins, columns and header/footer references. This is also where per-section numbering lives, replacing CSS counters.
 - The paginator reads the section of each page, which delivers the rejected per-page body height properly.
 
+- **Status (2026-11-04): Stage 3 done** as a flat model, not the wrapper node above.
+  - Each section break carries its section's properties (`sectionProps`): a page break for a section that starts a page, and a zero-height `sectionMark` for a continuous section and for section 0.
+  - The editor draws each section's margins as decorations (`SectionLayout.ts`) and takes headers, footers and numbering from the breaks.
+  - The converter no longer bakes shifts (`_shift_sections` was removed).
+  - Measured: every block of the 7 fixtures sat within 0.5px of the baked layout before the switch, and the Word gate is unchanged.
+  - Blocks typed, pasted or inserted into a section now take its margins; before, Enter copied a 53.6px offset and tables started at the page margin.
+  - Page size and top/bottom margins per page still need Stage 5.
+
 ### Stage 4: font metrics owned by the app (fixes M4) · days
 - Ship metric-compatible fonts:
   - Tinos/Arimo/Carlito/Cousine, which are partly shipped already

@@ -17,7 +17,6 @@ ML_SRC = ROOT / "ml" / "src"
 if str(ML_SRC) not in sys.path:
     sys.path.insert(0, str(ML_SRC))
 
-import converter  # noqa: E402
 from converter import (  # noqa: E402
     _docx_document_to_result,
     _furniture_to_layout,
@@ -273,12 +272,13 @@ class TestPageSetupAndFirstSection:
         assert "&quot;top&quot;:24.0" in cover
         assert "margin-top:-72px" not in cover
 
-    def test_the_baked_layout_still_shifts_the_cover_first_block(self, monkeypatch):
-        # PDF imports, and the parity check, still use the baked shift.
-        monkeypatch.setattr(converter, "_SECTION_LAYOUT_IN_EDITOR", False)
-        html = _docx_document_to_result(self._cover_and_body())["html"]
-        assert "margin-top:-72px" in html.split("Body")[0]
+    def test_a_pdf_import_carries_no_section_properties(self):
+        # pdf2docx's one section per page, with margins wherever the page's text sits, are not real sections.
+        document = self._cover_and_body()
+        document.part._is_pdf_import = True
+        html = _docx_document_to_result(document)["html"]
         assert "intellidocs-section-mark" not in html
+        assert "data-section-props" not in html
 
 
 class TestListLevels:

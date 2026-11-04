@@ -39,10 +39,9 @@ _PAGE_BREAK_HTML = '<hr class="page-break" data-page-break="true" />'
 _SECTION_MARK_HTML = '<div class="intellidocs-section-mark" data-section="{index}"></div>'
 
 # A Word import's section margins are drawn by the editor (frontend SectionLayout) from the section
-# properties on its breaks, instead of being written into every block's style (_shift_sections), so a
-# block added to a section later is placed like the rest. False restores the old output (parity tests).
-# PDF imports always keep the old way: pdf2docx's one-section-per-page margins are not real sections.
-_SECTION_LAYOUT_IN_EDITOR = True
+# properties on its breaks; nothing is written into the blocks' own styles, so a block added to a
+# section later is placed like the rest. PDF imports get no section properties: pdf2docx's one section
+# per page, with margins wherever that page's text sits, are not the document's sections.
 
 
 def _is_pdf(doc: docx.Document) -> bool:
@@ -2812,10 +2811,8 @@ def _body_to_html(
     close_all_lists()
     section_starts[section_no + 1] = len(out)
     _wrap_columns(doc, out, section_starts)
-    if _SECTION_LAYOUT_IN_EDITOR and not _is_pdf(doc):
+    if not _is_pdf(doc):
         _mark_continuous_sections(doc, out, section_starts)
-    else:
-        _shift_sections(doc, out, section_starts)
     _group_wrapped_pictures(out)
     return "\n".join(out).replace(_COLUMN_MARK, "")
 
@@ -2888,7 +2885,7 @@ _SECTION_TAG = re.compile(r'<(?:hr class="page-break"|div class="intellidocs-sec
 def _attach_section_props(html: str, doc: docx.Document, hf: Dict[str, Any]) -> str:
     """Give every section break the properties of the section it starts (data-section-props, JSON).
     PDF imports get none: pdf2docx's sections are its pages, not the document's sections."""
-    if _is_pdf(doc) or not _SECTION_LAYOUT_IN_EDITOR:
+    if _is_pdf(doc):
         return html
     sections = list(doc.sections)
     described = {entry["index"]: entry for entry in hf.get("sections", [])}
@@ -3006,87 +3003,6 @@ def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int]) ->
         for later in starts:
             if later > index:
                 starts[later] -= shift
-
-
-def _shift_sections(doc: docx.Document, out: List[str], starts: Dict[int, int]) -> None:
-    """Give every section its own margins inside the document-wide page setup.
-
-    The editor has one page setup (the one most sections share), so a section with
-    different margins would reflow: its lines wrap at the wrong width and the page
-    breaks drift from Word's. Each section's blocks are moved by the difference
-    instead: left/right by their margin, and the first block of a section that
-    starts a new page up/down by the top margin.
-    """
-    try:
-        sections = list(doc.sections)
-        setup = _extract_page_setup(doc)["margins"]
-    except Exception:
-        return
-    if len(sections) < 2:
-        return
-
-    def shifted(style: str, prop: str, delta: float) -> str:
-        found = re.search(rf"(?<![\w-]){prop}:\s*(-?[\d.]+)px", style)
-        if found:
-            return style.replace(found.group(0), f"{prop}:{round(float(found.group(1)) + delta, 1):g}px", 1)
-        return f"{prop}:{round(delta, 1):g}px; {style}"
-
-    # pdf2docx sets each page's margins from where its text happens to sit, so only the first
-    # page (the reference) is shifted for a PDF; every section is shifted for a real DOCX.
-    shifted_sections = sections[:1] if getattr(doc.part, "_is_pdf_import", False) else sections
-    for number, section in enumerate(shifted_sections):
-        begin, end = starts.get(number), starts.get(number + 1)
-        if begin is None or end is None:
-            continue
-        try:
-            deltas = {
-                "left": section.left_margin / EMU_PER_PX - setup["left"] * 96,
-                "right": section.right_margin / EMU_PER_PX - setup["right"] * 96,
-                "top": section.top_margin / EMU_PER_PX - setup["top"] * 96,
-            }
-        except Exception:
-            continue
-        section_type = section._sectPr.find(qn("w:type"))
-        starts_page = number == 0 or section_type is None or section_type.get(qn("w:val")) != "continuous"
-        if not starts_page:
-            deltas["top"] = 0.0
-        if all(abs(value) < 4 for value in deltas.values()):
-            continue
-
-        first_block = True
-        for index in range(begin, min(end, len(out))):
-            html = out[index]
-            # A numbered item's marker sits at an absolute x from the column's edge, so it moves with its text.
-            marker = re.match(r'<li\b[^>]*\bdata-mx="(-?[\d.]+)"', html)
-            if marker and abs(deltas["left"]) >= 4:
-                moved = f'data-mx="{round(float(marker.group(1)) + deltas["left"], 1):g}"'
-                out[index] = html.replace(f'data-mx="{marker.group(1)}"', moved, 1)
-                continue
-            # The editor keeps no inline style on a table, so its section insets travel as data-inset (left,right,top).
-            if html.startswith("<table"):
-                inset = [
-                    deltas["left"] if abs(deltas["left"]) >= 4 else 0,
-                    deltas["right"] if abs(deltas["right"]) >= 4 else 0,
-                    deltas["top"] if first_block and abs(deltas["top"]) >= 4 else 0,
-                ]
-                if any(inset):
-                    out[index] = html.replace("<table", f'<table data-inset="{",".join(f"{round(v, 1):g}" for v in inset)}"', 1)
-                first_block = False
-                continue
-            match = re.match(r'<(p|h[1-6])\b([^>]*)>', html)
-            if not match or html.startswith("<p class=\"empty-spacer\""):
-                continue
-            attrs = match.group(2)
-            style_match = re.search(r'style="([^"]*)"', attrs)
-            style = style_match.group(1) if style_match else ""
-            for prop, delta in (("margin-left", deltas["left"]), ("margin-right", deltas["right"])):
-                if abs(delta) >= 4:
-                    style = shifted(style, prop, delta)
-            if first_block and abs(deltas["top"]) >= 4:
-                style = shifted(style, "margin-top", deltas["top"])
-            first_block = False
-            new_attrs = attrs.replace(style_match.group(0), f'style="{style}"') if style_match else f' style="{style}"{attrs}'
-            out[index] = f"<{match.group(1)}{new_attrs}>" + html[match.end():]
 
 
 def _page_field_format(instruction: str) -> str:

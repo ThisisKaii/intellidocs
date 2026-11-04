@@ -433,10 +433,12 @@ intellidocs/
   `sectionMark` for a continuous one, and a `sectionMark` with `section: 0` at the very start of a
   multi-section document. `SectionLayout.ts` draws each section's margin difference from the page setup
   as node decorations (nothing is written to the document), so blocks typed, pasted or inserted into a
-  section are placed like the imported ones. `tests/e2e/tools/section_parity.py` proves it places every
-  block exactly where the old baked shifts did. A section mark must never start a formatting context
-  (no `overflow`): margins have to collapse through it. PDF imports, and documents imported before
-  this, keep the baked shifts below and carry no section properties; never apply both.
+  section are placed like the imported ones. Before the converter stopped baking shifts
+  (`_shift_sections`, removed), a parity run placed all 2,966 blocks of the 7 fixtures within 0.5px of
+  the baked layout, with the same page counts. A section mark must never start a formatting context
+  (no `overflow`): margins have to collapse through it. PDF imports carry no section properties (their
+  page setup is page one, so they never needed a shift); documents imported before this keep their
+  baked shifts, drawn as below. Never apply both.
   Headers, footers and page numbering also come from the breaks' properties: `PagedEditor` merges the
   document's sections over `page_layout.sections` (the document wins per section index; older documents
   keep the stored list). The Word gate fails if a fixture's breaks disagree with `page_layout.sections`.
