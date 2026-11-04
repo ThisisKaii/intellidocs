@@ -11,6 +11,7 @@ usage (repo root; `record` and `check` need the frontend dev server on 5173):
     ml/venv/Scripts/python tests/e2e/tools/editor_json_reference.py record            # write the references
     ml/venv/Scripts/python tests/e2e/tools/editor_json_reference.py check             # exit 1 on any difference
     ml/venv/Scripts/python tests/e2e/tools/editor_json_reference.py check --html-only # no browser needed
+    ml/venv/Scripts/python tests/e2e/tools/editor_json_reference.py check --json      # the converter's own JSON
 
 References live in tests/fixtures/import_baselines/editor_json/, gzipped, with every embedded picture
 replaced by a hash of its data (the pictures are what make them large, and a changed picture still
@@ -20,17 +21,19 @@ shows). The manifest ties each to the SHA-256 of its fixture.
 from __future__ import annotations
 
 import argparse
+import difflib
 import gzip
 import hashlib
 import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 import fidelity_run as fr  # noqa: E402
+import converter  # noqa: E402  (the same module fidelity_run converts with)
 
 FIXTURES = HERE.parents[1] / "fixtures" / "import_baselines" / "documents"
 REFERENCES = HERE.parents[1] / "fixtures" / "import_baselines" / "editor_json"
@@ -96,6 +99,107 @@ def first_difference(a: Any, b: Any, path: str = "") -> str | None:
     return None if a == b else f"{path}: {repr(a)[:80]} vs {repr(b)[:80]}"
 
 
+# Differences the JSON writer cannot remove yet, by path, with the Stage 2a slice that removes them.
+KNOWN_DIFFERENCES = {
+    "/attrs/overlay": "anchors slice: a later pass over the HTML tags the paragraph a box hangs beside",
+}
+
+# Paragraphs inside these are written by other parts of the converter (tables, lists, quotes).
+_OTHER_CONTAINERS = {"table", "listItem", "blockquote", "bulletList", "orderedList"}
+
+
+def reference_paragraphs(doc: dict) -> list[dict]:
+    """The body paragraphs of a reference document, in order (not those in tables, lists or quotes)."""
+    found: list[dict] = []
+
+    def walk(node: dict) -> None:
+        if node.get("type") in _OTHER_CONTAINERS:
+            return
+        if node.get("type") == "paragraph":
+            found.append(node)
+            return
+        for child in node.get("content", []):
+            walk(child)
+
+    walk(doc)
+    return found
+
+
+def text_key(text: str) -> str:
+    """Text with all whitespace removed."""
+    return re.sub(r"\s+", "", text)
+
+
+def html_style(html: str) -> Optional[str]:
+    """The editor's style attribute for a paragraph's HTML (frontend filterStyle), to pair it with its node."""
+    found = re.match(r'<p\b[^>]*?\sstyle="([^"]*)"', html)
+    return converter._editor_style(found.group(1)) if found else None
+
+
+def node_text(node: dict) -> str:
+    return "".join(child.get("text", "") for child in node.get("content", []))
+
+
+def check_json(fixture: Path, reference: dict) -> tuple[dict, list[str]]:
+    """Compare the converter's paragraph JSON with the reference's paragraphs, paired in order by text."""
+    converter._JSON_SINK, converter._JSON_SINK_HTML = [], []
+    try:
+        body = fr.convert(fixture)["html"]
+        recorded, recorded_html = list(converter._JSON_SINK), list(converter._JSON_SINK_HTML)
+    finally:
+        converter._JSON_SINK, converter._JSON_SINK_HTML = None, None
+    # Measuring must not change the conversion: without its tags the body is the recorded HTML.
+    untagged = strip_pictures(re.sub(r' data-sink="\d+"', "", body))
+    if untagged != read_gz(REFERENCES / f"{fixture.name}.html.gz"):
+        raise SystemExit(f"{fixture.name}: measuring changed the converter's HTML; the JSON check would be meaningless")
+    paragraphs = reference_paragraphs(reference)
+    counts = {"written": 0, "same": 0, "different": 0, "known": 0, "not written": 0, "unpaired": 0, "unpaired written": 0, "moved out": 0}
+    problems: list[str] = []
+    # Keep the written paragraphs that end up in the body: later passes lift text-box content into page
+    # overlays and drop blank lines before a page break, after they were recorded. The converter tags
+    # each recorded paragraph (data-sink) while measuring; the tags still in the body are the survivors.
+    survivors = {int(n) for n in re.findall(r'data-sink="(\d+)"', body)}
+    written, written_html, recorded_index = [], [], []
+    for index, (entry, html) in enumerate(zip(recorded, recorded_html)):
+        if entry[1] is None:
+            counts["not written"] += 1
+        elif index not in survivors:
+            counts["moved out"] += 1
+        else:
+            written.append(entry)
+            written_html.append(html)
+            recorded_index.append(index)
+    # Pair by text and style (empty paragraphs differ only in style), aligning the two sequences.
+    ours = [(text_key(text), html_style(html)) for (text, _), html in zip(written, written_html)]
+    theirs = [(text_key(node_text(node)), (node.get("attrs") or {}).get("style")) for node in paragraphs]
+    pairs = {}
+    for block in difflib.SequenceMatcher(None, ours, theirs, autojunk=False).get_matching_blocks():
+        for offset in range(block.size):
+            pairs[block.a + offset] = block.b + offset
+    for index, (text, node) in enumerate(written):
+        match = pairs.get(index)
+        if match is None:
+            # A written paragraph that pairs with nothing would go unchecked: it fails the check.
+            counts["unpaired written" if node is not None else "unpaired"] += 1
+            if node is not None:
+                problems.append(f"recorded paragraph {recorded_index[index]} {text[:30]!r} pairs with no reference paragraph")
+            continue
+        if node is None:
+            counts["not written"] += 1
+            continue
+        counts["written"] += 1
+        found = first_difference(strip_pictures(paragraphs[match]), strip_pictures(node))
+        known = next((why for path, why in KNOWN_DIFFERENCES.items() if found and found.startswith(path + ":")), None)
+        if known:
+            counts["known"] += 1
+        elif found:
+            counts["different"] += 1
+            problems.append(f"paragraph {match} {text[:30]!r}: {found}")
+        else:
+            counts["same"] += 1
+    return counts, problems
+
+
 def read_gz(path: Path) -> str:
     return gzip.decompress(path.read_bytes()).decode("utf-8")
 
@@ -111,7 +215,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--web", default="http://localhost:5173")
     parser.add_argument("--only", help="only fixtures whose file name contains this text")
     parser.add_argument("--html-only", action="store_true", help="check the converter HTML only (no browser)")
+    parser.add_argument("--json", action="store_true", help="compare the converter's own JSON with the references (no browser)")
     args = parser.parse_args(argv)
+    if args.json:
+        if args.mode != "check":
+            parser.error("--json only checks")
+        failed = False
+        for fixture in fixtures(args.only):
+            if fixture.suffix != ".docx":
+                continue
+            reference = json.loads(read_gz(REFERENCES / f"{fixture.name}.json.gz"))
+            counts, problems = check_json(fixture, reference)
+            print(f"{fixture.name[:44]:44} " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+            if counts["known"]:
+                print(f"    {counts['known']} known: " + "; ".join(KNOWN_DIFFERENCES.values()))
+            for problem in problems[:6]:
+                print("   ", problem)
+            failed = failed or bool(problems)
+        return 1 if failed else 0
 
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8")) if MANIFEST.is_file() else {}
     REFERENCES.mkdir(parents=True, exist_ok=True)

@@ -73,11 +73,14 @@ editor JSON the real import path makes from it (`tests/fixtures/import_baselines
 gzipped, pictures replaced by a hash of their data). While the converter moves onto its own model,
 `check` must keep reporting `same`: the HTML stays byte-identical, and the converter's new JSON writer
 has to reproduce the recorded editor JSON. It names the first differing character or JSON path.
+`--json` pairs each body paragraph the writer produced with the reference paragraph and reports
+how many are identical; differences listed in `KNOWN_DIFFERENCES` name the slice that removes them.
 
 ```powershell
 ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check              # needs the frontend on 5173
 ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check --html-only  # converter only, no browser
 ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py record             # deliberate: review the diff
+ml\venv\Scripts\python tests\e2e\tools\editor_json_reference.py check --json       # the converter's own JSON writer, no browser
 ```
 
 ## Fonts

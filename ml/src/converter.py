@@ -268,25 +268,8 @@ def _read_run(run: Run) -> Optional[TextRun]:
     )
 
 
-def _write_run_html(item: TextRun) -> str:
-    """A text run as the editor's HTML: escaped text in a styled span, wrapped in its formatting tags."""
-    text, props = item.text, item.props
-    escaped = (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-    # A tab is an inline node whose width the editor computes from the
-    # paragraph's tab stops; runs of spaces keep their width as real NBSPs
-    # (HTML would collapse them), written as characters so sanitizing the
-    # "&nbsp;" entity form leaves them alone.
-    escaped = escaped.replace("\t", "<span data-tab></span>")
-    escaped = re.sub(r" {2,}", lambda m: " " + "\u00a0" * (len(m.group(0)) - 1), escaped)
-    # An underlined run of only spaces is a fill-in blank: it keeps its whole width, even beside another space.
-    if props.underline and not text.strip(" "):
-        escaped = "\u00a0" * len(text)
-
+def _run_styles(props: RunProps) -> List[str]:
+    """The CSS declarations of a run's span (size, colour, tracking, font), in the order they are written."""
     styles: List[str] = []
     if props.size_pt:
         styles.append(f"font-size:{round(props.size_pt, 1)}pt")
@@ -296,6 +279,31 @@ def _write_run_html(item: TextRun) -> str:
         styles.append(f"letter-spacing:{round(props.tracking_pt, 3):g}pt")
     if props.font_family:
         styles.append(f"font-family:'{props.font_family}', {_generic_family(props.font_family)}")
+    return styles
+
+
+def _run_segments(item: TextRun) -> List[str]:
+    """A run's visible text, split at its tabs (the editor's tab nodes go between the segments).
+
+    Runs of spaces keep their width as real NBSPs (HTML would collapse them), written as characters
+    so sanitizing the "&nbsp;" entity form leaves them alone; an underlined run of only spaces is a
+    fill-in blank and keeps its whole width, even beside another space.
+    """
+    if item.props.underline and not item.text.strip(" "):
+        return ["\u00a0" * len(item.text)]
+    return [re.sub(r" {2,}", lambda m: " " + "\u00a0" * (len(m.group(0)) - 1), part) for part in item.text.split("\t")]
+
+
+def _write_run_html(item: TextRun) -> str:
+    """A text run as the editor's HTML: escaped text in a styled span, wrapped in its formatting tags."""
+    props = item.props
+
+    def escape(text: str) -> str:
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+    # A tab is an inline node whose width the editor computes from the paragraph's tab stops.
+    escaped = "<span data-tab></span>".join(escape(segment) for segment in _run_segments(item))
+    styles = _run_styles(props)
 
     res = escaped
     if styles:
@@ -1306,6 +1314,165 @@ def _write_inline_html(items: List[Inline]) -> str:
     return "".join(out)
 
 
+# ─── The editor's JSON (Stage 2a.3) ───────────────────────────────────────────
+#
+# The converter writes the editor's own JSON from the document model, so an import no longer depends on
+# the editor parsing HTML. It must equal what the editor makes of the HTML today
+# (tests/e2e/tools/editor_json_reference.py check --json), so these mirror the editor's parse rules:
+# frontend TiptapEditor.tsx (filterStyle, CustomParagraph), IndentExtension, TabStop, @tiptap
+# text-style/highlight, and ProseMirror's whitespace handling. Paragraphs only so far: anything else
+# returns None and stays HTML.
+
+# The editor schema's mark order (ProseMirror sorts a node's marks by it).
+_MARK_RANK = ["link", "textStyle", "bold", "code", "italic", "strike", "underline", "subscript", "superscript", "highlight"]
+
+# frontend ALLOWED_STYLE_PROPS: the CSS a paragraph's `style` attribute keeps.
+_EDITOR_STYLE_PROPS = {
+    "color", "background-color", "background", "text-align", "font-weight", "font-style", "font-size", "font-family",
+    "margin-top", "margin-bottom", "margin-left", "margin-right", "padding-top", "padding-bottom", "padding-left",
+    "padding-right", "border", "border-top", "border-bottom", "border-left", "border-right", "border-color",
+    "border-width", "border-style", "vertical-align", "line-height", "text-decoration", "white-space", "word-wrap",
+    "overflow-wrap", "text-indent",
+}
+
+_PARAGRAPH_ATTRS: Dict[str, Any] = {
+    "tabStops": None, "defaultTab": None, "captionKind": None, "generated": None, "indent": 0, "textAlign": None,
+    "styleSource": None, "style": None, "overlay": None, "guide": None, "guideText": None, "guideGroup": None,
+}
+
+_WHITESPACE = re.compile(r"[ \t\r\n\u000c]+")
+
+
+def _editor_style(raw: str) -> Optional[str]:
+    """frontend filterStyle: the declarations the editor keeps, as written."""
+    kept = []
+    for decl in raw.split(";"):
+        trimmed = decl.strip()
+        colon = trimmed.find(":")
+        if trimmed and colon >= 1 and trimmed[:colon].strip().lower() in _EDITOR_STYLE_PROPS:
+            kept.append(trimmed)
+    return "; ".join(kept) if kept else None
+
+
+def _style_value(raw: str, prop: str) -> Optional[str]:
+    """@tiptap/core getStyleProperty: the last declaration of a property, as written."""
+    for decl in reversed([d.strip() for d in raw.split(";") if d.strip()]):
+        colon = decl.find(":")
+        if colon != -1 and decl[:colon].strip().lower() == prop:
+            return decl[colon + 1 :].strip()
+    return None
+
+
+def _cssom_length(value: Optional[str]) -> Optional[str]:
+    """A length as the browser's CSS object model gives it back ("11.0pt" is "11pt")."""
+    if value is None:
+        return None
+    found = re.fullmatch(r"(-?[\d.]+)([a-z%]*)", value.strip())
+    return f"{float(found.group(1)):g}{found.group(2)}" if found else value.strip()
+
+
+def _run_marks(props: RunProps) -> List[Dict[str, Any]]:
+    """The editor marks of a run, in schema order."""
+    marks: Dict[str, Dict[str, Any]] = {}
+    styles = _run_styles(props)
+    if styles:
+        raw = "; ".join(styles)
+        marks["textStyle"] = {"type": "textStyle", "attrs": {
+            "color": (_style_value(raw, "color") or "").replace("'", "").replace('"', ""),
+            "fontFamily": _style_value(raw, "font-family") or "",
+            "fontSize": _cssom_length(_style_value(raw, "font-size")) or "",
+            "letterSpacing": _cssom_length(_style_value(raw, "letter-spacing")),
+        }}
+    for flag in ("bold", "italic", "underline", "strike", "subscript", "superscript"):
+        if getattr(props, flag):
+            marks[flag] = {"type": flag}
+    if props.highlight:
+        marks["highlight"] = {"type": "highlight", "attrs": {"color": props.highlight}}
+    return [marks[name] for name in _MARK_RANK if name in marks]
+
+
+def _write_inline_json(items: List[Inline]) -> Optional[List[Dict[str, Any]]]:
+    """A paragraph's content as editor JSON nodes, normalised the way ProseMirror parses HTML (spaces
+    collapse, a space at the start or after a space is dropped, the paragraph's trailing space is
+    removed, and neighbouring text with the same marks is one node). None for content not written yet."""
+    nodes: List[Dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, TextRun):
+            return None
+        marks = _run_marks(item.props)
+        for index, segment in enumerate(_run_segments(item)):
+            if index:
+                nodes.append({"type": "tab", **({"marks": marks} if marks else {})})
+            text = _WHITESPACE.sub(" ", segment)
+            if text.startswith(" "):
+                before = nodes[-1] if nodes else None
+                if before is None or (before["type"] == "text" and _WHITESPACE.search(before["text"][-1:])):
+                    text = text[1:]
+            if not text:
+                continue
+            if nodes and nodes[-1]["type"] == "text" and nodes[-1].get("marks") == (marks or None):
+                nodes[-1]["text"] += text
+            else:
+                nodes.append({"type": "text", "text": text, **({"marks": marks} if marks else {})})
+    if nodes and nodes[-1]["type"] == "text":
+        nodes[-1]["text"] = nodes[-1]["text"].rstrip(" \t\r\n\u000c")
+        if not nodes[-1]["text"]:
+            nodes.pop()
+    return nodes
+
+
+def _write_paragraph_json(style: str, tab_attrs: Optional[Tuple[str, str]], content: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """A paragraph node with the attributes the editor reads from its HTML."""
+    attrs = dict(_PARAGRAPH_ATTRS)
+    attrs["style"] = _editor_style(style) if style else None
+    align = _style_value(style, "text-align") if style else None
+    attrs["textAlign"] = align if align in ("left", "center", "right", "justify") else None
+    margin = _cssom_length(_style_value(style, "margin-left")) if style else None
+    found = re.match(r"-?\d+", margin or "0px")
+    # JavaScript has one number type: 48 / 24 is 2, which JSON writes as 2, not 2.0.
+    indent = int(found.group(0)) / 24 if found and int(found.group(0)) else 0
+    attrs["indent"] = int(indent) if float(indent).is_integer() else indent
+    if tab_attrs:
+        attrs["tabStops"], attrs["defaultTab"] = tab_attrs
+    node: Dict[str, Any] = {"type": "paragraph", "attrs": attrs}
+    if content:
+        node["content"] = content
+    return node
+
+
+# While editor_json_reference.py measures the JSON writer, the body's paragraphs are recorded here, in
+# order, as (plain text, JSON or None when not written yet). None the rest of the time. The paragraph's
+# HTML is recorded with it so the measurement can pair it with the right reference paragraph.
+_JSON_SINK: Optional[List[Tuple[str, Optional[Dict[str, Any]]]]] = None
+_JSON_SINK_HTML: Optional[List[str]] = None
+_IN_BODY = False
+
+
+def _record_paragraph_json(p: Paragraph, items: List[Inline]) -> None:
+    if _JSON_SINK is None or not _IN_BODY:
+        return
+    text = "".join(item.text for item in items if isinstance(item, TextRun))
+    props = _read_paragraph_props(p)
+    content = _write_inline_json(items)
+    if content is None or "heading" in props.style_name or "title" in props.style_name:
+        _JSON_SINK.append((text, None))
+        return
+    font_css = _write_font_css(props.font_size_pt)
+    spacing_css = _write_spacing_css(props.spacing, props.font_name)
+    # A blank line is what writes no HTML (as _paragraph_html_from_inner decides): a space inside a
+    # styled run still writes its span, so that paragraph keeps its alignment and indent.
+    if not _write_inline_html(items).strip():
+        style = "; ".join(filter(None, [font_css, spacing_css]))
+        _JSON_SINK.append((text, _write_paragraph_json(style, None, [])))
+        return
+    align = f"text-align:{props.alignment};" if props.alignment != "left" else ""
+    css = "; ".join(part.rstrip("; ") for part in filter(None, [align, font_css, spacing_css, _write_indent_css(props.indent)])).strip()
+    tabs = None
+    if any(node["type"] == "tab" for node in content):
+        tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p)))
+    _JSON_SINK.append((text, _write_paragraph_json(f"{css};" if css else "", tabs, content)))
+
+
 def _paragraph_inner_html(p: Paragraph, doc_parts: Dict[str, bytes]) -> str:
     """Build the inner HTML (runs + hyperlinks + page breaks + images) of a paragraph."""
     return _write_inline_html(_read_inline(p, doc_parts))
@@ -2136,8 +2303,20 @@ def _paragraph_to_html(
         equation = _equation_paragraph_html(p)
         if equation is not None:
             return equation
-    inner = _paragraph_inner_html(p, doc_parts)
+    items = _read_inline(p, doc_parts)
+    inner = _write_inline_html(items)
+    if list_info is None and _JSON_SINK is not None and _IN_BODY:
+        html = _paragraph_to_html_from_items(p, inner)
+        _record_paragraph_json(p, items)
+        if _JSON_SINK_HTML is not None:
+            _JSON_SINK_HTML.append(html)
+        # Measurement only: tag the paragraph so the measurement can tell which ones stay in the body
+        # (later passes lift text-box content into overlays and drop blank lines before page breaks).
+        # At the end of the opening tag: the body writer tests how a paragraph's HTML starts.
+        return re.sub(r"^(<p\b[^>]*)>", lambda m: f'{m.group(1)} data-sink="{len(_JSON_SINK) - 1}">', html, count=1)
 
+    if list_info is None:
+        return _paragraph_to_html_from_items(p, inner)
     if list_info is not None:
         inner = inner.replace(_LINE_MARK, "")
         # The item keeps its paragraph's spacing, size and alignment.
@@ -2164,6 +2343,8 @@ def _paragraph_to_html(
             css = "; ".join(part.rstrip("; ") for part in css_parts if part)
             return f'<p style="{css};">{inner}</p>' if css else f"<p>{inner}</p>"
         return inner
+def _paragraph_to_html_from_items(p: Paragraph, inner: str) -> str:
+    """A (non-list) paragraph's HTML from its inner HTML: drawn lines split it into bordered paragraphs."""
     if _LINE_MARK not in inner:
         return _paragraph_html_from_inner(p, inner)
 
@@ -2786,7 +2967,17 @@ def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Opt
     return f'<table style="{table_css}"{_column_size_attribute(rows, col_px)}>{"".join(rows_html)}</table>'
 
 
-def _body_to_html(
+def _body_to_html(*args: Any, **kwargs: Any) -> str:
+    """The document body as the editor's HTML (see _write_body_html); records paragraph JSON when measured."""
+    global _IN_BODY
+    _IN_BODY = True
+    try:
+        return _write_body_html(*args, **kwargs)
+    finally:
+        _IN_BODY = False
+
+
+def _write_body_html(
     doc: docx.Document,
     doc_parts: Dict[str, bytes],
     page_break_after: Optional[Set[Any]] = None,

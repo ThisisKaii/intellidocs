@@ -158,3 +158,55 @@ class TestInline:
         assert isinstance(items[1], LineBreak) and isinstance(items[2], PageBreak)
         assert isinstance(items[4], Hyperlink) and items[4].url == "https://example.org"
         assert isinstance(items[5], NoteReference) and items[5].number == 1
+
+
+class TestEditorJson:
+    """The JSON writer mirrors the editor's HTML parse rules; editor_json_reference.py check --json holds
+    it to the recorded references, these pin the rules themselves."""
+
+    def test_style_rules(self):
+        from converter import _cssom_length, _editor_style, _style_value
+
+        assert _editor_style("font-size:11pt; letter-spacing:1pt; text-indent:0;") == "font-size:11pt; text-indent:0"
+        assert _editor_style("letter-spacing:1pt") is None
+        assert _style_value("color:#000; font-size:9pt; color:#FF0000", "color") == "#FF0000"  # the last one wins
+        assert _style_value("font-size:9pt", "color") is None
+        assert _cssom_length("11.0pt") == "11pt" and _cssom_length("-0.017pt") == "-0.017pt" and _cssom_length(None) is None
+
+    def test_marks_follow_the_schema_order(self):
+        from converter import _run_marks
+
+        marks = _run_marks(RunProps(font_family="Arial", bold=True, underline=True, italic=True, highlight="#FFFF00"))
+        assert [m["type"] for m in marks] == ["textStyle", "bold", "italic", "underline", "highlight"]
+        assert marks[0]["attrs"] == {"color": "", "fontFamily": "'Arial', Arial, sans-serif", "fontSize": "", "letterSpacing": None}
+        assert marks[-1]["attrs"] == {"color": "#FFFF00"}
+        assert _run_marks(RunProps()) == []
+
+    def test_whitespace_merging_and_tabs(self):
+        from converter import _write_inline_json
+
+        plain, bold = RunProps(), RunProps(bold=True)
+        nodes = _write_inline_json([TextRun("  Hello ", plain), TextRun(" world", plain), TextRun("x\ty ", bold)])
+        assert nodes == [
+            {"type": "text", "text": "\u00a0Hello world"},
+            {"type": "text", "text": "x", "marks": [{"type": "bold"}]},
+            {"type": "tab", "marks": [{"type": "bold"}]},
+            {"type": "text", "text": "y", "marks": [{"type": "bold"}]},
+        ]
+        assert _write_inline_json([TextRun(" ", plain)]) == []
+        assert _write_inline_json([LineBreakLike()]) is None
+
+    def test_paragraph_attributes(self):
+        from converter import _write_paragraph_json
+
+        node = _write_paragraph_json("text-align:center; font-size:11pt; margin-left:48.0px; text-indent:0;", ('[["left",96,"none"]]', "48"), [])
+        assert node["attrs"]["textAlign"] == "center"
+        assert node["attrs"]["indent"] == 2 and isinstance(node["attrs"]["indent"], int)  # JavaScript's 48 / 24
+        assert node["attrs"]["style"] == "text-align:center; font-size:11pt; margin-left:48.0px; text-indent:0"
+        assert node["attrs"]["tabStops"] == '[["left",96,"none"]]' and node["attrs"]["defaultTab"] == "48"
+        assert "content" not in node
+        assert _write_paragraph_json("margin-left:2.8px", None, [])["attrs"]["indent"] == 2 / 24  # parseInt drops the fraction
+
+
+class LineBreakLike:
+    """Any inline item the JSON writer does not write yet."""
