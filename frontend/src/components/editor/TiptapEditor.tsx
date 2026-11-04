@@ -33,6 +33,7 @@ import { MarkdownTriggers } from './MarkdownTriggers'
 import { ListItem, OrderedList } from '@tiptap/extension-list'
 import { PageBreak } from './PageBreak'
 import { SectionMark } from './SectionMark'
+import { SectionLayout } from './SectionLayout'
 import { ColumnSection, SectionColumn } from './ColumnSection'
 import { WrapBlock } from './WrapBlock'
 import { PageFlowExtension } from './PageFlow'
@@ -1212,6 +1213,7 @@ export const editorExtensions = [
   CustomBlockquote,
   PageBreak,
   SectionMark,
+  SectionLayout,
   ColumnSection,
   SectionColumn,
   WrapBlock,

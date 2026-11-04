@@ -428,7 +428,16 @@ intellidocs/
   section break). It also needs each page's section from the laid-out `data-section` breaks, and a spilled page
   makes that measurement wrong in a stable way. Revisit only after the content-height drift (wrapped cell
   text, list row heights) is fixed.
-- Section margin shifts also cover tables and numbered items: a table carries `data-inset="left,right,top"`
+- Sections (Word imports): each section break carries the section's properties (`sectionProps`, see
+  `frontend/src/lib/sectionProps.ts`): a `pageBreak` for a section starting a page, a zero-height
+  `sectionMark` for a continuous one, and a `sectionMark` with `section: 0` at the very start of a
+  multi-section document. `SectionLayout.ts` draws each section's margin difference from the page setup
+  as node decorations (nothing is written to the document), so blocks typed, pasted or inserted into a
+  section are placed like the imported ones. `tests/e2e/tools/section_parity.py` proves it places every
+  block exactly where the old baked shifts did. A section mark must never start a formatting context
+  (no `overflow`): margins have to collapse through it. PDF imports, and documents imported before
+  this, keep the baked shifts below and carry no section properties; never apply both.
+- Baked section margin shifts (PDF imports, older documents) also cover tables and numbered items: a table carries `data-inset="left,right,top"`
   (px; the `TableInset` extension draws it as a node decoration because the table node view drops inline
   style), and a list item's `data-mx` moves by the section's left difference.
 - Footer art (copyright line, rule) has page-corner `top` values, which only hold in the page-sized box of

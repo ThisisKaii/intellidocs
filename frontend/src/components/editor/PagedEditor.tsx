@@ -287,6 +287,12 @@ export function PagedEditor({
     onActiveEditorChange(editor)
   }, [editor, onActiveEditorChange])
 
+  // Sections whose margins differ from the page setup are moved by the difference (SectionLayout).
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.commands.setSectionPageMargins({ top: topPx, right: rightPx, bottom: inToPx(margins.bottom), left: leftPx })
+  }, [editor, topPx, rightPx, leftPx, margins.bottom])
+
   // Report progressive-hydration state so heavy document scanners can pause
   // while chunks are still streaming in.
   useEffect(() => {

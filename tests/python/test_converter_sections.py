@@ -41,11 +41,12 @@ def three_sections() -> bytes:
 
 
 def breaks(result: dict) -> list[tuple[str, dict]]:
+    """Section breaks after section 0's own mark (which leads every multi-section document)."""
     out = []
     for tag in TAG.findall(result["html"]):
         props = re.search(r'data-section-props="([^"]+)"', tag)
         out.append((tag, json.loads(html.unescape(props.group(1))) if props else {}))
-    return out
+    return [entry for entry in out if 'data-section="0"' not in entry[0]]
 
 
 def test_a_new_page_section_break_carries_its_section_properties():
@@ -70,8 +71,16 @@ def test_a_continuous_section_gets_a_mark_with_its_columns():
     assert props["columns"]["gap"] == 24.0  # 360 twips
     # The mark sits at the section's start, at the top level, before its first block.
     html_text = result["html"]
-    assert html_text.index("intellidocs-section-mark") < html_text.index("Third section")
-    assert html_text.index("intellidocs-section-mark") > html_text.index("Second section")
+    mark = html_text.index('intellidocs-section-mark" data-section="2"')
+    assert html_text.index("Second section") < mark < html_text.index("Third section")
+
+
+def test_section_zero_is_carried_by_a_mark_at_the_start():
+    result = convert_docx_bytes_to_html(three_sections())
+    assert result["html"].startswith('<div class="intellidocs-section-mark" data-section="0"')
+    first = TAG.findall(result["html"])[0]
+    props = json.loads(html.unescape(re.search(r'data-section-props="([^"]+)"', first).group(1)))
+    assert props["margins"]["left"] == 120.0  # section 0 keeps the default template's 1.25in
 
 
 def test_a_one_section_document_has_no_section_breaks():

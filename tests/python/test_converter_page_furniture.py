@@ -17,6 +17,7 @@ ML_SRC = ROOT / "ml" / "src"
 if str(ML_SRC) not in sys.path:
     sys.path.insert(0, str(ML_SRC))
 
+import converter  # noqa: E402
 from converter import (  # noqa: E402
     _docx_document_to_result,
     _furniture_to_layout,
@@ -254,15 +255,30 @@ class TestPageSetupAndFirstSection:
             section.top_margin = Inches(1.0)
         assert _docx_document_to_result(document)["page_setup"]["margins"]["top"] == 1.0
 
-    def test_the_cover_section_keeps_its_own_top_margin_by_shifting_its_first_block(self):
+    @staticmethod
+    def _cover_and_body():
         document = docx.Document()
         document.sections[0].top_margin = Inches(0.25)
         document.add_paragraph("Cover title")
         for _ in range(2):
             document.add_section().top_margin = Inches(1.0)
             document.add_paragraph("Body")
-        html = _docx_document_to_result(document)["html"]
+        return document
+
+    def test_the_cover_section_keeps_its_own_top_margin_on_its_section_mark(self):
+        # The editor moves the cover's first block by the difference (SectionLayout); nothing is baked.
+        html = _docx_document_to_result(self._cover_and_body())["html"]
+        cover = html.split("Body")[0]
+        assert cover.startswith('<div class="intellidocs-section-mark" data-section="0"')
+        assert "&quot;top&quot;:24.0" in cover
+        assert "margin-top:-72px" not in cover
+
+    def test_the_baked_layout_still_shifts_the_cover_first_block(self, monkeypatch):
+        # PDF imports, and the parity check, still use the baked shift.
+        monkeypatch.setattr(converter, "_SECTION_LAYOUT_IN_EDITOR", False)
+        html = _docx_document_to_result(self._cover_and_body())["html"]
         assert "margin-top:-72px" in html.split("Body")[0]
+        assert "intellidocs-section-mark" not in html
 
 
 class TestListLevels:

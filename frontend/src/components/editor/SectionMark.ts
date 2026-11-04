@@ -44,7 +44,9 @@ export const SectionMark = Node.create({
       {
         class: 'intellidocs-section-mark',
         contenteditable: 'false',
-        style: 'height:0;margin:0;padding:0;border:0;overflow:hidden',
+        // No overflow/display that starts a formatting context: the margins of the blocks around it
+        // must collapse through it, or it adds space (3.3px measured on the IEEE paper).
+        style: 'height:0;margin:0;padding:0;border:0',
         ...section,
         ...sectionPropsAttribute(node.attrs.sectionProps as SectionProps | null),
       },

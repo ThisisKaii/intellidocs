@@ -38,6 +38,16 @@ _PAGE_BREAK_HTML = '<hr class="page-break" data-page-break="true" />'
 # Where a continuous section starts (frontend SectionMark): takes no room and never breaks a page.
 _SECTION_MARK_HTML = '<div class="intellidocs-section-mark" data-section="{index}"></div>'
 
+# A Word import's section margins are drawn by the editor (frontend SectionLayout) from the section
+# properties on its breaks, instead of being written into every block's style (_shift_sections), so a
+# block added to a section later is placed like the rest. False restores the old output (parity tests).
+# PDF imports always keep the old way: pdf2docx's one-section-per-page margins are not real sections.
+_SECTION_LAYOUT_IN_EDITOR = True
+
+
+def _is_pdf(doc: docx.Document) -> bool:
+    return bool(getattr(doc.part, "_is_pdf_import", False))
+
 DEFAULT_PAGE_SETUP: Dict[str, Any] = {
     "page_size": "letter",
     "orientation": "portrait",
@@ -2802,8 +2812,10 @@ def _body_to_html(
     close_all_lists()
     section_starts[section_no + 1] = len(out)
     _wrap_columns(doc, out, section_starts)
-    _shift_sections(doc, out, section_starts)
-    _mark_continuous_sections(doc, out, section_starts)
+    if _SECTION_LAYOUT_IN_EDITOR and not _is_pdf(doc):
+        _mark_continuous_sections(doc, out, section_starts)
+    else:
+        _shift_sections(doc, out, section_starts)
     _group_wrapped_pictures(out)
     return "\n".join(out).replace(_COLUMN_MARK, "")
 
@@ -2816,14 +2828,17 @@ def _section_kind(sect_pr: Any) -> str:
 
 
 def _mark_continuous_sections(doc: docx.Document, out: List[str], starts: Dict[int, int]) -> None:
-    """Put a section mark where each continuous section starts, top level, before its first block.
+    """Put a section mark where each continuous section starts, top level, before its first block, and
+    one at the very start for section 0 (its properties are on no break) when there are several sections.
 
-    Runs after the column wrapping and margin shifts, which index `out` by section start: a mark added
-    earlier would be wrapped into a column or take the section's first-block shift.
+    Runs after the column wrapping, which indexes `out` by section start: a mark added earlier would be
+    wrapped into a column.
     """
     sections = list(doc.sections)
+    if len(sections) < 2:
+        return
     for index in sorted(starts, reverse=True):
-        if 0 < index < len(sections) and _section_kind(sections[index]._sectPr) == "continuous":
+        if index == 0 or (index < len(sections) and _section_kind(sections[index]._sectPr) == "continuous"):
             out.insert(min(starts[index], len(out)), _SECTION_MARK_HTML.format(index=index))
 
 
@@ -2869,7 +2884,10 @@ _SECTION_TAG = re.compile(r'<(?:hr class="page-break"|div class="intellidocs-sec
 
 
 def _attach_section_props(html: str, doc: docx.Document, hf: Dict[str, Any]) -> str:
-    """Give every section break the properties of the section it starts (data-section-props, JSON)."""
+    """Give every section break the properties of the section it starts (data-section-props, JSON).
+    PDF imports get none: pdf2docx's sections are its pages, not the document's sections."""
+    if _is_pdf(doc) or not _SECTION_LAYOUT_IN_EDITOR:
+        return html
     sections = list(doc.sections)
     described = {entry["index"]: entry for entry in hf.get("sections", [])}
 
