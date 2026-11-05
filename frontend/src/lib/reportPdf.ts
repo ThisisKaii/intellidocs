@@ -139,7 +139,8 @@ export function renderAdminReport(
     doc.setFont('helvetica', 'normal')
     y += 7
     if (image) {
-      doc.addImage(image.dataUrl, 'PNG', MARGIN, y, CONTENT_WIDTH, imageHeight)
+      // 'FAST' stores the pixels Flate-compressed (lossless); uncompressed, each chart is ~1 MB.
+      doc.addImage(image.dataUrl, 'PNG', MARGIN, y, CONTENT_WIDTH, imageHeight, `chart-${spec.id}`, 'FAST')
     } else {
       doc.setFontSize(9)
       doc.setTextColor(MUTED)
