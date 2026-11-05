@@ -1,14 +1,26 @@
 // Administrator Role — Finalized System Architecture
-// Role Hierarchy: student, professor (requires admin approval), admin (system management)
+// Role Hierarchy: user (baseline), student and professor (admin-approved academic verification),
+// admin (system management)
 
-export type RoleName = 'student' | 'professor' | 'admin'
+export type RoleName = 'user' | 'student' | 'professor' | 'admin'
 export type VerificationStatus = 'pending' | 'approved' | 'rejected'
+
+/** Mock subscription plan (migration 040). */
+export type Plan = 'free' | 'pro'
+
+/** Document genre that partitions behavior learning (migration 038). */
+export type DocumentGenre = 'ieee' | 'thesis' | 'memo' | 'general'
+
+/** Whether a document's genre came from the classifier or the user. */
+export type GenreSource = 'auto' | 'manual'
 
 /** Signed-in user's own storage usage versus their account quota. */
 export interface StorageSummary {
   usedBytes: number
-  quotaBytes: number
+  /** Null when the plan has unlimited storage (Pro). */
+  quotaBytes: number | null
   role: RoleName
+  plan: Plan
 }
 
 /** Page-number style for headers/footers. */
@@ -68,6 +80,9 @@ export interface Document {
   formatting_history: unknown[]
   is_isolated: boolean
   formatting_preset: string | null
+  /** Genre partition for behavior learning (migration 038). */
+  genre: DocumentGenre
+  genre_source: GenreSource
   /** Header/footer art, per-section headers and page numbering from an import (migration 032). */
   page_layout?: PageLayout | null
   is_deleted: boolean
@@ -486,6 +501,8 @@ export interface BehaviorEvent {
   action: string
   timestamp: string
   documentId: string
+  /** Stamped by the server from the document; any client value is overwritten. */
+  genre?: DocumentGenre
   blockId?: string
   payload?: FormatBehaviorPayload & Record<string, unknown>
   /** Characters affected by composition events (type/paste/backspace). */

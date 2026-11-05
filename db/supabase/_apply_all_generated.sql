@@ -1527,3 +1527,127 @@ as $$
   where user_id = p_user_id
     and is_deleted = false;
 $$;
+
+-- ==================== 038_document_genre.sql ====================
+-- IntelliDocs: Migration 038 — document genre for genre-isolated personalization
+--
+-- Behavior learning used to be keyed by user only, so IEEE habits (10pt, compact, two columns)
+-- leaked into thesis documents (12pt, double spaced). Every document now carries a genre, and
+-- behavior events, learned patterns, DuckDB training rows and ML models are partitioned by it.
+-- `genre_source` records whether the structural classifier set it ('auto') or the user did
+-- ('manual'); auto-detection never overwrites a manual choice.
+-- Re-runnable: every statement is guarded.
+
+alter table public.documents
+  add column if not exists genre text not null default 'general';
+
+alter table public.documents
+  add column if not exists genre_source text not null default 'auto';
+
+do $$ begin
+  alter table public.documents
+    add constraint documents_genre_check check (genre in ('ieee', 'thesis', 'memo', 'general'));
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  alter table public.documents
+    add constraint documents_genre_source_check check (genre_source in ('auto', 'manual'));
+exception when duplicate_object then null; end $$;
+
+-- Backfill from the formatting preset. Forked presets (ieee__v2) use their base key.
+update public.documents
+set genre = case split_part(formatting_preset, '__', 1)
+    when 'ieee' then 'ieee'
+    when 'uclm_capstone' then 'thesis'
+    when 'thesis' then 'thesis'
+    when 'academic' then 'thesis'
+    when 'business_letter' then 'memo'
+    else 'general'
+  end
+where genre_source = 'auto' and formatting_preset is not null;
+
+-- The `ieee` seed from migration 014 only carries page geometry, so it never matches in the tier
+-- check. `ieee_base` is the conditioned fallback preset for the IEEE genre partition.
+insert into public.formatting_presets (key, name, description, rules) values
+('ieee_base', 'IEEE (genre baseline)', 'Genre fallback for IEEE papers: Roman-numeral sections as H1, lettered subsections as H2, Abstract and Index Terms as paragraphs.',
+ '[{"condition":{"startsWith":"Abstract"},"format":"paragraph","priority":30},{"condition":{"startsWith":"Index Terms"},"format":"paragraph","priority":30},{"condition":{"startsWith":"References"},"format":"heading1","priority":25},{"condition":{"maxWords":6,"standaloneLine":true},"format":"heading1","priority":10},{"condition":{"maxWords":12,"standaloneLine":true},"format":"heading2","priority":5}]')
+on conflict (key) do nothing;
+
+-- ==================== 039_user_role_and_academic.sql ====================
+-- IntelliDocs: Migration 039 — baseline `user` role and academic verification
+--
+-- New accounts start as `user` (baseline quota) and apply for `student` or `professor`.
+-- Existing student rows are left as they are.
+-- Re-runnable: every statement is guarded.
+
+-- 1) The baseline role. Its id is pinned to 4 because the frontend admin role picker maps names to ids.
+insert into public.roles (role_id, role_name) values (4, 'user')
+on conflict do nothing;
+select setval(pg_get_serial_sequence('public.roles', 'role_id'),
+              greatest((select max(role_id) from public.roles), 1));
+
+alter table public.user_profiles alter column role_id set default 4;
+
+-- 2) Student applications keep their ID in its own column instead of `phone`.
+alter table public.user_profiles add column if not exists student_id varchar(50);
+
+-- 3) Users may update their own profile row (display name, phone), but never the columns that
+--    grant privileges. The Express server writes those with the service role, which bypasses this.
+create or replace function public.protect_profile_privileged_columns()
+returns trigger
+language plpgsql
+as $$
+begin
+  if coalesce(auth.role(), '') in ('authenticated', 'anon') then
+    if new.role_id is distinct from old.role_id
+       or new.verification_status is distinct from old.verification_status
+       or new.requested_role is distinct from old.requested_role then
+      raise exception 'privileged profile columns can only be changed by the server';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_protect_profile_privileged_columns on public.user_profiles;
+create trigger trg_protect_profile_privileged_columns
+  before update on public.user_profiles
+  for each row execute function public.protect_profile_privileged_columns();
+
+-- ==================== 040_user_plans.sql ====================
+-- IntelliDocs: Migration 040 — mock Pro subscription state
+--
+-- A demo SaaS flow: no payment provider is involved and no card data is stored. `plan = 'pro'`
+-- lifts the storage quota on the server. Cancelling keeps Pro until `plan_renews_at`.
+-- Re-runnable: every statement is guarded.
+
+alter table public.user_profiles add column if not exists plan text not null default 'free';
+alter table public.user_profiles add column if not exists plan_started_at timestamptz;
+alter table public.user_profiles add column if not exists plan_renews_at timestamptz;
+alter table public.user_profiles add column if not exists plan_canceled_at timestamptz;
+
+do $$ begin
+  alter table public.user_profiles
+    add constraint user_profiles_plan_check check (plan in ('free', 'pro'));
+exception when duplicate_object then null; end $$;
+
+-- Plan columns join the privileged set guarded by migration 039's trigger.
+create or replace function public.protect_profile_privileged_columns()
+returns trigger
+language plpgsql
+as $$
+begin
+  if coalesce(auth.role(), '') in ('authenticated', 'anon') then
+    if new.role_id is distinct from old.role_id
+       or new.verification_status is distinct from old.verification_status
+       or new.requested_role is distinct from old.requested_role
+       or new.plan is distinct from old.plan
+       or new.plan_started_at is distinct from old.plan_started_at
+       or new.plan_renews_at is distinct from old.plan_renews_at
+       or new.plan_canceled_at is distinct from old.plan_canceled_at then
+      raise exception 'privileged profile columns can only be changed by the server';
+    end if;
+  end if;
+  return new;
+end;
+$$;

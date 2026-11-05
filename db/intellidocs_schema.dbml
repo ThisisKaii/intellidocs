@@ -30,6 +30,11 @@ Table user_profiles {
   verification_status text [not null, note: 'pending, approved, rejected']
   display_name varchar
   phone varchar
+  student_id varchar [note: 'academic verification: student applications']
+  plan text [not null, note: 'free, pro (mock subscription)']
+  plan_started_at timestamptz
+  plan_renews_at timestamptz
+  plan_canceled_at timestamptz
   created_at timestamptz
   updated_at timestamptz
 }
@@ -42,6 +47,8 @@ Table documents {
   content_json jsonb
   formatting_history jsonb
   is_isolated boolean
+  genre text [not null, note: 'ieee, thesis, memo, general; partitions behavior learning']
+  genre_source text [not null, note: 'auto, manual']
   created_at timestamptz
   updated_at timestamptz
 }

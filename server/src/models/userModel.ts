@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { RoleName, StorageSummary, VerificationStatus } from '../types/index'
+import { effectivePlan, PlanRow } from '../utils/plan'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -9,10 +10,12 @@ const supabase = createClient(
 
 /**
  * Storage quota per role in bytes, sized so a class of free-tier testers fits in
- * the 500 MB database with room for versions and analytics. Verified accounts
- * (professor, admin) get a higher cap than default student accounts.
+ * the 500 MB database with room for versions and analytics. New accounts start as
+ * `user`; academic verification (student, professor) and admin raise the cap.
+ * Pro subscribers have no cap (see getUserStorageSummary).
  */
 export const STORAGE_QUOTA_BYTES: Record<RoleName, number> = {
+  user: 10 * 1024 * 1024,
   student: 25 * 1024 * 1024,
   professor: 50 * 1024 * 1024,
   admin: 100 * 1024 * 1024,
@@ -64,7 +67,8 @@ export async function getUserStorageSummary(userId: string): Promise<StorageSumm
     .eq('user_id', userId)
     .maybeSingle()
 
-  const role = ((profile?.roles as { role_name?: RoleName } | null)?.role_name) ?? 'student'
+  const role = ((profile?.roles as { role_name?: RoleName } | null)?.role_name) ?? 'user'
+  const plan = effectivePlan(await getPlanRow(userId))
 
   let usedBytes = 0
   try {
@@ -76,7 +80,21 @@ export async function getUserStorageSummary(userId: string): Promise<StorageSumm
     console.error('Storage summary size query failed (degrading to 0; is migration 027 applied?):', e)
   }
 
-  return { usedBytes, quotaBytes: STORAGE_QUOTA_BYTES[role], role }
+  return { usedBytes, quotaBytes: plan === 'pro' ? null : STORAGE_QUOTA_BYTES[role], role, plan }
+}
+
+/**
+ * The user's plan columns, or null. Read on its own so a database without migration 040
+ * still reports the user's role and quota (as a free plan).
+ */
+export async function getPlanRow(userId: string): Promise<PlanRow | null> {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('plan, plan_started_at, plan_renews_at, plan_canceled_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) return null
+  return (data as PlanRow | null) ?? null
 }
 
 /**
@@ -293,7 +311,8 @@ export async function assertWithinStorageQuota(userId: string, addedBytes: numbe
       summary = await getUserStorageSummary(userId)
       if (summary) quotaCache.set(userId, { at: Date.now(), summary })
     }
-    if (summary && summary.usedBytes + addedBytes > summary.quotaBytes) throw storageQuotaError()
+    // A null quota is unlimited (Pro).
+    if (summary && summary.quotaBytes !== null && summary.usedBytes + addedBytes > summary.quotaBytes) throw storageQuotaError()
     // Count this save in the cached size, so a quick run of saves can't all pass on a stale reading.
     if (summary) quotaCache.set(userId, { at: cached?.at ?? Date.now(), summary: { ...summary, usedBytes: summary.usedBytes + addedBytes } })
   } catch (error) {

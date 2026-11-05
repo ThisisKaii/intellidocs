@@ -308,7 +308,7 @@ export async function getAllDocumentsForAdmin(query?: string): Promise<AdminDocu
 
 /** Fetch platform-wide aggregated system statistics for admin reports. */
 export async function getSystemReports(): Promise<SystemReport> {
-  const roles = ['student', 'professor', 'admin'] as const
+  const roles = ['user', 'student', 'professor', 'admin'] as const
 
   const [totalUsers, totalDocuments, activeDocuments, softDeletedDocuments, pendingApplicants, totalActions, roleCounts] =
     await Promise.all([
@@ -352,9 +352,10 @@ export async function getSystemReports(): Promise<SystemReport> {
   const rejectedFb = Object.values(byType).reduce((sum, b) => sum + b.rejected, 0)
 
   const byRole: Record<RoleName, number> = {
-    student: roleCounts[0].count || 0,
-    professor: roleCounts[1].count || 0,
-    admin: roleCounts[2].count || 0,
+    user: roleCounts[0].count || 0,
+    student: roleCounts[1].count || 0,
+    professor: roleCounts[2].count || 0,
+    admin: roleCounts[3].count || 0,
   }
 
   return {
