@@ -1,9 +1,10 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Download, FileText } from 'lucide-react'
-import { chartToCsv, fullReportCsv, buildChartSpecs, type ChartSpec } from '@/lib/reportCharts'
+import { Download, FileText, Loader2, Table } from 'lucide-react'
+import { chartToCsv, fullReportCsv, buildChartSpecs, timeseriesCsv, type ChartSpec } from '@/lib/reportCharts'
 import { downloadTextFile } from '@/lib/csv'
-import { exportAdminReportPdf, serializeChartSvgs } from '@/lib/reportExport'
+import { rasterizeCharts } from '@/lib/chartRaster'
+import { downloadAdminReportPdf, reportFileName } from '@/lib/reportPdf'
 import type { AdminUserRecord, ReportTimeseries, SystemReport } from '@/types/admin'
 
 interface ReportsChartsProps {
@@ -61,6 +62,7 @@ function ChartCard({ spec }: { spec: ChartSpec }): JSX.Element {
 /** Reports tab: headline numbers, six charts, and CSV/PDF downloads of the same data. */
 export function ReportsCharts({ report, series, users, onError }: ReportsChartsProps): JSX.Element {
   const gridRef = useRef<HTMLDivElement>(null)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const specs = useMemo(() => (report && series ? buildChartSpecs(report, series) : []), [report, series])
 
   if (!report || !series) {
@@ -81,13 +83,21 @@ export function ReportsCharts({ report, series, users, onError }: ReportsChartsP
     downloadTextFile(`intellidocs-report-${report!.generatedAt.slice(0, 10)}.csv`, fullReportCsv(specs, report!.generatedAt))
   }
 
-  /** Print the report, with the charts as currently drawn, to PDF. */
-  function downloadPdf(): void {
+  /** Download the weekly timeseries behind the charts as clean CSV tables. */
+  function downloadTimeseriesCsv(): void {
+    downloadTextFile(reportFileName(report!.generatedAt, 'csv', '-timeseries'), timeseriesCsv(series!))
+  }
+
+  /** Capture the charts as currently drawn (base64 PNG) and download a real PDF report. */
+  async function downloadPdf(): Promise<void> {
+    setPdfBusy(true)
     try {
-      const svgs = gridRef.current ? serializeChartSvgs(gridRef.current) : {}
-      exportAdminReportPdf(report!, users, specs, svgs)
+      const images = gridRef.current ? await rasterizeCharts(gridRef.current) : {}
+      await downloadAdminReportPdf(report!, series!, specs, images, users)
     } catch (err) {
       onError(err instanceof Error ? err.message : 'PDF export failed')
+    } finally {
+      setPdfBusy(false)
     }
   }
 
@@ -97,10 +107,13 @@ export function ReportsCharts({ report, series, users, onError }: ReportsChartsP
         <h2 className="m-0 text-lg font-semibold">System analytics</h2>
         <div className="flex gap-2">
           <button type="button" onClick={downloadAllCsv} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm font-semibold hover:bg-secondary">
-            <Download className="size-4" /> Download CSV
+            <Download className="size-4" /> Charts CSV
           </button>
-          <button type="button" onClick={downloadPdf} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-            <FileText className="size-4" /> Download PDF
+          <button type="button" onClick={downloadTimeseriesCsv} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm font-semibold hover:bg-secondary">
+            <Table className="size-4" /> Timeseries CSV
+          </button>
+          <button type="button" onClick={() => { void downloadPdf() }} disabled={pdfBusy} aria-busy={pdfBusy} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-70">
+            {pdfBusy ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />} {pdfBusy ? 'Building PDF...' : 'Download PDF'}
           </button>
         </div>
       </div>

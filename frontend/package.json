@@ -48,6 +48,7 @@
     "docx": "^9.5.1",
     "framer-motion": "^11.0.0",
     "harper.js": "^2.10.0",
+    "jspdf": "^4.2.1",
     "katex": "^0.16.47",
     "lucide-react": "^0.292.0",
     "pagedjs": "^0.4.3",

@@ -121,3 +121,43 @@ export function fullReportCsv(specs: ChartSpec[], generatedAt: string): string {
   const sections = specs.map((spec) => `${spec.title}\r\n${chartToCsv(spec)}`)
   return [`IntelliDocs system report,${generatedAt}`, ...sections].join('\r\n\r\n')
 }
+
+/**
+ * The weekly timeseries behind the line/bar charts as one clean table (ISO week start, one
+ * column per metric), followed by the application-status and scan totals. Weeks are the
+ * server's Monday-UTC buckets, oldest first.
+ */
+export function timeseriesCsv(series: ReportTimeseries): string {
+  type Row = Record<string, CsvCell>
+  const byWeek = new Map<string, Row>()
+  const put = (items: ReportTimeseries['signups'], key: string): void => {
+    for (const item of items) {
+      const row = byWeek.get(item.week) ?? { week: item.week, signups: 0, documents: 0, scans: 0 }
+      row[key] = item.count
+      byWeek.set(item.week, row)
+    }
+  }
+  put(series.signups, 'signups')
+  put(series.documents, 'documents')
+  put(series.scans, 'scans')
+  const weekly = [...byWeek.values()].sort((a, b) => String(a.week).localeCompare(String(b.week)))
+
+  const weeklyTable = toCsv(weekly, [
+    { key: 'week', label: 'week_start' },
+    { key: 'signups', label: 'signups' },
+    { key: 'documents', label: 'documents_created' },
+    { key: 'scans', label: 'originality_scans' },
+  ])
+  const statusTable = toCsv<Row>(
+    (['pending', 'approved', 'rejected'] as const).map((status) => ({ status, count: series.applicationsByStatus[status] })),
+    [
+      { key: 'status', label: 'application_status' },
+      { key: 'count', label: 'count' },
+    ],
+  )
+  const scanTable = toCsv<Row>([{ total: series.totalScans, flagged: series.flaggedScans }], [
+    { key: 'total', label: 'total_scans' },
+    { key: 'flagged', label: 'flagged_scans' },
+  ])
+  return [weeklyTable, statusTable, scanTable].join('\r\n\r\n')
+}
