@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from converter import convert_docx_bytes_to_html, convert_pdf_bytes_to_html
 
@@ -127,6 +127,10 @@ class PredictRequest(BaseModel):
     #   "isolated"  → user model ONLY, base-model predictions are ignored
     #   "hybrid"    → base model + user LSTM reweighting (default)
     isolation_mode: Optional[str] = None
+    genre: Literal["ieee", "thesis", "memo", "general"] = Field(
+        ...,
+        description="Genre partition of the document. Only this genre's user model and events are consulted.",
+    )
 
 
 class PredictResponse(BaseModel):
@@ -135,6 +139,11 @@ class PredictResponse(BaseModel):
     model_path: str
     feature_values: dict[str, float]
     lstm_adjusted: bool = False
+    genre: Optional[str] = Field(None, description="Genre partition the prediction was scoped to.")
+    genre_partition_hit: bool = Field(
+        False,
+        description="True only when the user's model for this genre contributed to the prediction.",
+    )
 
 
 class TextBlock(BaseModel):
@@ -175,18 +184,26 @@ def load_model_payload() -> dict[str, Any]:
     return payload
 
 
-def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> float:
-    """Calculate sequence-level confidence reweighting from user's PyTorch LSTM weights if available."""
+def user_lstm_path(user_id: str, genre: str) -> str:
+    """Local file of a user's LSTM for one genre partition."""
+    return os.path.join(LSTM_DIR, f"user_{user_id}__{genre}.pt")
+
+
+def compute_lstm_sequence_adjustment(user_id: str, genre: str, predicted_format: str) -> float:
+    """Sequence-level confidence reweighting from the user's LSTM for THIS genre only.
+
+    Returns 0.0 when that genre has no model; another genre's model is never used.
+    """
     # Prefer the 24h temp cache backed by Supabase Storage; fall back to local dir.
     try:
         from storage import download_user_model
 
-        cached_model = download_user_model(user_id)
+        cached_model = download_user_model(user_id, genre)
     except Exception as exc:
-        print(f"Model cache lookup warning for {user_id}: {exc}")
+        print(f"Model cache lookup warning for {user_id}/{genre}: {exc}")
         cached_model = None
 
-    model_file = cached_model or os.path.join(LSTM_DIR, f"user_{user_id}.pt")
+    model_file = cached_model or user_lstm_path(user_id, genre)
     if not os.path.exists(model_file):
         return 0.0
 
@@ -208,18 +225,13 @@ def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> flo
         import duckdb_store
 
         conn = duckdb_store.connect_duckdb(read_only=True).conn
-        df = conn.execute(
-            "SELECT action FROM behavior_events WHERE user_id = ? ORDER BY event_ts DESC LIMIT 5",
-            [user_id],
-        ).fetchdf()
+        recent = duckdb_store.fetch_genre_actions(conn, user_id, genre, limit=5, newest_first=True)
         conn.close()
 
-        if df.empty or len(df) < 5:
+        if len(recent) < 5:
             return 0.0
 
-        actions = [
-            ACTION_TO_IDX.get(a, 0) for a in reversed(df["action"].tolist())
-        ]
+        actions = [ACTION_TO_IDX.get(a, 0) for a in reversed(recent)]
         input_tensor = torch.tensor([actions], dtype=torch.long)
 
         with torch.no_grad():
@@ -233,20 +245,20 @@ def compute_lstm_sequence_adjustment(user_id: str, predicted_format: str) -> flo
         return 0.0
 
 
-def predict_with_user_lstm(user_id: str, request: PredictRequest) -> Optional[tuple[str, float]]:
-    """Return a (format, confidence) prediction computed ONLY from the user's LSTM model.
+def predict_with_user_lstm(user_id: str, genre: str) -> Optional[tuple[str, float]]:
+    """Return a (format, confidence) prediction computed ONLY from the user's LSTM for this genre.
 
-    Used by isolation_mode="isolated". Returns None when the user model or
+    Used by isolation_mode="isolated". Returns None when that genre's model or
     recent sequence history is unavailable, so the caller can fall back to the
     base-model path instead of failing the request.
     """
-    model_file = os.path.join(LSTM_DIR, f"user_{user_id}.pt")
+    model_file = user_lstm_path(user_id, genre)
     if not os.path.exists(model_file):
         # Prefer the Supabase Storage cache; the local dir is a fallback.
         try:
             from storage import download_user_model
 
-            cached_model = download_user_model(user_id)
+            cached_model = download_user_model(user_id, genre)
         except Exception as exc:
             print(f"Isolated-model lookup warning for {user_id}: {exc}")
             cached_model = None
@@ -266,18 +278,13 @@ def predict_with_user_lstm(user_id: str, request: PredictRequest) -> Optional[tu
         import duckdb_store
 
         conn = duckdb_store.connect_duckdb(read_only=True).conn
-        df = conn.execute(
-            "SELECT action FROM behavior_events WHERE user_id = ? ORDER BY event_ts DESC LIMIT 5",
-            [user_id],
-        ).fetchdf()
+        recent = duckdb_store.fetch_genre_actions(conn, user_id, genre, limit=5, newest_first=True)
         conn.close()
 
-        if df.empty or len(df) < 5:
+        if len(recent) < 5:
             return None
 
-        actions = [
-            ACTION_TO_IDX.get(a, 0) for a in reversed(df["action"].tolist())
-        ]
+        actions = [ACTION_TO_IDX.get(a, 0) for a in reversed(recent)]
         input_tensor = torch.tensor([actions], dtype=torch.long)
 
         with torch.no_grad():
@@ -481,6 +488,18 @@ async def health_check() -> dict[str, str]:
 
 @app.post("/predict", response_model=PredictResponse)
 async def predict_format(request: PredictRequest) -> PredictResponse:
+    """Predict a formatting label, scoped to the document's genre partition.
+
+    Heuristic fast paths and the pretrained base model hold no user data; the user's
+    LSTM is consulted only for the request's genre, and `genre_partition_hit` reports
+    whether it contributed.
+    """
+    response = await predict_format_core(request)
+    response.genre = request.genre
+    return response
+
+
+async def predict_format_core(request: PredictRequest) -> PredictResponse:
     """Predict an APA academic formatting label using hierarchical heuristics + RandomForest + LSTM."""
     import re
 
@@ -590,6 +609,7 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
         )
 
     lstm_adjusted = False
+    genre_partition_hit = False
     isolation_mode = resolve_isolation_mode(request.isolation_mode)
     predicted_format: Optional[str] = None
     confidence: float = 0.0
@@ -597,9 +617,10 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
     try:
         # "isolated" → the user model alone decides the formatting label.
         if isolation_mode == "isolated" and request.user_id:
-            isolated = predict_with_user_lstm(request.user_id, request)
+            isolated = predict_with_user_lstm(request.user_id, request.genre)
             if isolated is not None:
                 predicted_format, confidence = isolated
+                genre_partition_hit = True
 
         if predicted_format is None:
             payload = load_model_payload()
@@ -631,11 +652,12 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
 
             if request.user_id and isolation_mode == "hybrid":
                 lstm_score = compute_lstm_sequence_adjustment(
-                    request.user_id, str(prediction)
+                    request.user_id, request.genre, str(prediction)
                 )
                 if lstm_score > 0:
                     confidence = (0.7 * rf_confidence) + (0.3 * lstm_score)
                     lstm_adjusted = True
+                    genre_partition_hit = True
                 else:
                     confidence = rf_confidence
             else:
@@ -661,6 +683,7 @@ async def predict_format(request: PredictRequest) -> PredictResponse:
         model_path=MODEL_PATH,
         feature_values=feature_values,
         lstm_adjusted=lstm_adjusted,
+        genre_partition_hit=genre_partition_hit,
     )
 
 
@@ -858,7 +881,11 @@ async def trigger_feature_export() -> dict[str, str]:
 
 
 class FineTuneRequest(BaseModel):
-    user_id: str
+    user_id: str = Field(..., description="Supabase user id to fine-tune.")
+    genre: Optional[Literal["ieee", "thesis", "memo", "general"]] = Field(
+        None,
+        description="Train one genre partition; omitted trains each genre separately (never pooled).",
+    )
 
 
 class FineTuneResponse(BaseModel):
@@ -881,19 +908,25 @@ async def trigger_fine_tune(request: FineTuneRequest) -> FineTuneResponse:
     lstm_trainer_path = ROOT_DIR / "training" / "lstm_trainer.py"
     python_exec = sys.executable
 
+    import duckdb_store
+
+    genres = [request.genre] if request.genre else list(duckdb_store.GENRES)
+
     def run_fine_tuner() -> None:
-        subprocess.run(
-            [python_exec, str(fine_tuner_path), "--user-id", request.user_id],
-            cwd=str(ROOT_DIR),
-            capture_output=True,
-            text=True,
-        )
-        subprocess.run(
-            [python_exec, str(lstm_trainer_path), "--user-id", request.user_id, "--epochs", "8"],
-            cwd=str(ROOT_DIR),
-            capture_output=True,
-            text=True,
-        )
+        # One model per (user, genre): each run reads only its own partition.
+        for genre in genres:
+            subprocess.run(
+                [python_exec, str(fine_tuner_path), "--user-id", request.user_id, "--genre", genre],
+                cwd=str(ROOT_DIR),
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [python_exec, str(lstm_trainer_path), "--user-id", request.user_id, "--genre", genre, "--epochs", "8"],
+                cwd=str(ROOT_DIR),
+                capture_output=True,
+                text=True,
+            )
 
     thread = threading.Thread(target=run_fine_tuner, daemon=True)
     thread.start()

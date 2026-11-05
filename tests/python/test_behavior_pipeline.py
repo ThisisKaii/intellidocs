@@ -15,19 +15,35 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../ml'))
 
 import aggregator
+import duckdb_store
 import feature_extractor
 
 
-def _event(action, ts, payload=None, block_id=None):
-    """Build one stored behavior event payload row."""
+def _event(action, ts, payload=None, block_id=None, genre="general", user="u1", doc="d1"):
+    """Build one stored behavior event payload row (the server stamps `genre`)."""
     return {
-        "userId": "u1",
-        "documentId": "d1",
+        "userId": user,
+        "documentId": doc,
         "action": action,
         "timestamp": ts,
         "blockId": block_id,
         "payload": payload,
+        "genre": genre,
     }
+
+
+def _insert(connection, events):
+    """Insert stored events exactly as aggregator.drain_redis would."""
+    rows = [aggregator.event_row(e, f"behavior:{e['userId']}:{e['documentId']}") for e in events]
+    connection.executemany(
+        """
+        INSERT INTO behavior_events
+          (user_id, document_id, action, event_ts, event_ts_raw, source_key,
+           payload, block_id, genre)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
 
 
 SAMPLE_EVENTS = [
@@ -57,25 +73,7 @@ def conn():
     """An in-memory DuckDB seeded with the sample events."""
     connection = duckdb.connect(":memory:")
     aggregator.ensure_schema(connection)
-    for e in SAMPLE_EVENTS:
-        connection.execute(
-            """
-            INSERT INTO behavior_events
-              (user_id, document_id, action, event_ts, event_ts_raw, source_key,
-               payload, block_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
-                e["userId"],
-                e["documentId"],
-                e["action"],
-                aggregator.parse_timestamp(e["timestamp"]),
-                e["timestamp"],
-                "behavior:u1:d1",
-                json.dumps(e["payload"]) if e["payload"] is not None else None,
-                e["blockId"],
-            ],
-        )
+    _insert(connection, SAMPLE_EVENTS)
     feature_extractor.ensure_feature_table(connection)
     yield connection
     connection.close()
@@ -193,8 +191,8 @@ class TestFeatureExtraction:
         conn.execute(
             """
             INSERT INTO behavior_events
-              (user_id, document_id, action, event_ts, event_ts_raw, source_key, payload)
-            VALUES ('u1', 'd1', 'insert_image', now(), 'raw', 'k', '{not json')
+              (user_id, document_id, action, event_ts, event_ts_raw, source_key, payload, genre)
+            VALUES ('u1', 'd1', 'insert_image', now(), 'raw', 'k', '{not json', 'general')
             """
         )
         got = _features(conn)
@@ -256,3 +254,81 @@ class TestAggregatorKeyFiltering:
         # The learned-format map is application state, so the aggregator leaves it alone.
         assert "behavior:formats:u1" in store
         assert "behavior:u1:d1" not in store
+
+
+class TestGenreIsolation:
+    """Events from one genre must never train or inform another genre's partition."""
+
+    @pytest.fixture()
+    def mixed(self):
+        connection = duckdb.connect(":memory:")
+        aggregator.ensure_schema(connection)
+        _insert(connection, [
+            _event("heading1", "2026-01-01T10:00:00Z", genre="ieee", doc="paper"),
+            _event("bold", "2026-01-01T10:01:00Z", genre="ieee", doc="paper"),
+            _event("italic", "2026-01-01T10:02:00Z", genre="thesis", doc="thesis"),
+            _event("heading2", "2026-01-01T10:03:00Z", genre="thesis", doc="thesis"),
+            # Pre-tagging event: genre unknown, so it must never be read for training.
+            {**_event("underline", "2026-01-01T10:04:00Z", doc="old"), "genre": None},
+        ])
+        feature_extractor.ensure_feature_table(connection)
+        yield connection
+        connection.close()
+
+    def test_event_row_stamps_known_genre(self):
+        row = aggregator.event_row(_event("bold", "2026-01-01T10:00:00Z", genre="memo"), "k")
+        assert row[-1] == "memo"
+
+    @pytest.mark.parametrize("value", [None, "", "IEEE", "poetry", 7])
+    def test_event_row_quarantines_unknown_genre_as_legacy(self, value):
+        row = aggregator.event_row({**_event("bold", "2026-01-01T10:00:00Z"), "genre": value}, "k")
+        assert row[-1] == duckdb_store.LEGACY_GENRE
+
+    def test_thesis_partition_returns_only_thesis_actions(self, mixed):
+        assert duckdb_store.fetch_genre_actions(mixed, "u1", "thesis") == ["italic", "heading2"]
+
+    def test_ieee_partition_returns_only_ieee_actions(self, mixed):
+        assert duckdb_store.fetch_genre_actions(mixed, "u1", "ieee") == ["heading1", "bold"]
+
+    def test_newest_first_with_limit(self, mixed):
+        assert duckdb_store.fetch_genre_actions(mixed, "u1", "ieee", limit=1, newest_first=True) == ["bold"]
+
+    @pytest.mark.parametrize("genre", ["legacy", "", "IEEE", "ieee' OR '1'='1"])
+    def test_untrainable_partitions_are_rejected(self, mixed, genre):
+        with pytest.raises(ValueError):
+            duckdb_store.fetch_genre_actions(mixed, "u1", genre)
+
+    def test_other_users_never_leak_in(self, mixed):
+        _insert(mixed, [_event("bold", "2026-01-01T11:00:00Z", genre="thesis", user="u2")])
+        assert duckdb_store.fetch_genre_actions(mixed, "u1", "thesis") == ["italic", "heading2"]
+
+    def test_features_grouped_per_genre_and_legacy_excluded(self, mixed):
+        rows = feature_extractor.extract_features(mixed)
+        order = feature_extractor.feature_column_order()
+        genres = sorted(dict(zip(order, row))["genre"] for row in rows)
+        assert genres == ["ieee", "thesis"]
+
+    def test_fine_tuner_reads_one_genre_only(self, mixed):
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../ml/training'))
+        import fine_tuner
+
+        feature_extractor.overwrite_features(mixed, feature_extractor.extract_features(mixed))
+        frame = fine_tuner.load_user_features(mixed, "u1", "thesis")
+        assert set(frame["genre"]) == {"thesis"}
+        assert set(frame["document_id"]) == {"thesis"}
+
+    def test_fallback_sync_carries_genre(self, tmp_path, monkeypatch):
+        primary = tmp_path / "p.duckdb"
+        fallback = tmp_path / "f.duckdb"
+        monkeypatch.setenv("DUCKDB_PATH", str(primary))
+        monkeypatch.setenv("DUCKDB_FALLBACK_PATH", str(fallback))
+        fb = duckdb.connect(str(fallback))
+        aggregator.ensure_schema(fb)
+        _insert(fb, [_event("bold", "2026-01-01T10:00:00Z", genre="memo")])
+        fb.close()
+
+        conn = duckdb.connect(str(primary))
+        aggregator.ensure_schema(conn)
+        assert duckdb_store.sync_fallback_to_primary(conn) == 1
+        assert duckdb_store.fetch_genre_actions(conn, "u1", "memo") == ["bold"]
+        conn.close()

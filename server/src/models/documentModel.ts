@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
-import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion, EditorJson, FormatSnapshot, PageNumberFormat } from '../types/index'
+import { Document, CreateDocumentRequest, UpdateDocumentRequest, DocumentVersion, EditorJson, FormatSnapshot, PageNumberFormat, DocumentGenre, GenreSource } from '../types/index'
 import { getRedisClient } from '../utils/redisClient'
 import { isDestructiveBlankOverwrite } from '../utils/documentGuards'
 import { assertWithinStorageQuota } from './userModel'
@@ -276,6 +276,36 @@ export async function hasShareAccess(
 }
 
 /** Soft-delete a document (moves it to the trash). */
+/**
+ * Set the genre partition of a document the user owns (migration 038). `source` records whether
+ * the classifier ('auto') or the user ('manual') chose it.
+ */
+export async function setDocumentGenre(
+  id: string,
+  userId: string,
+  genre: DocumentGenre,
+  source: GenreSource,
+): Promise<{ genre: DocumentGenre; genre_source: GenreSource }> {
+  const { data, error } = await supabase
+    .from('documents')
+    .update({ genre, genre_source: source })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('genre, genre_source')
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      const notFound = new Error('Document not found') as Error & { status: number }
+      notFound.status = 404
+      throw notFound
+    }
+    throw new Error(`Failed to set document genre: ${error.message}`)
+  }
+  void invalidateDocumentCache(id)
+  return data as { genre: DocumentGenre; genre_source: GenreSource }
+}
+
 export async function softDeleteDocument(id: string, userId: string): Promise<void> {
   const { error } = await supabase
     .from('documents')

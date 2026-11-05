@@ -7,7 +7,9 @@ import {
   CreateFormatBindingRequest,
   UpdateFormatBindingRequest,
   UserPreset,
+  DocumentGenre,
 } from '../types/index'
+import { resolveDocumentGenre } from '../utils/documentGenre'
 import { snapshotDocumentVersion } from './documentModel'
 
 const supabase = createClient(
@@ -213,6 +215,30 @@ export async function getOwnerOfDocument(
 
   if (error) return null
   return data?.user_id ?? null
+}
+
+/**
+ * Read the genre partition of a document by id (service role). Rows from before migration 038
+ * fall back to their preset's genre.
+ */
+export async function getDocumentGenre(documentId: string): Promise<DocumentGenre> {
+  const withGenre = await supabase
+    .from('documents')
+    .select('genre, formatting_preset')
+    .eq('id', documentId)
+    .single()
+  if (!withGenre.error && withGenre.data) {
+    return resolveDocumentGenre(withGenre.data as { genre?: unknown; formatting_preset?: string | null })
+  }
+
+  // Pre-migration database: no `genre` column yet.
+  const presetOnly = await supabase
+    .from('documents')
+    .select('formatting_preset')
+    .eq('id', documentId)
+    .single()
+  if (presetOnly.error || !presetOnly.data) return 'general'
+  return resolveDocumentGenre(presetOnly.data as { formatting_preset?: string | null })
 }
 
 /** Read the preset key currently assigned to a document. */

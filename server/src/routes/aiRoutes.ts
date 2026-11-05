@@ -7,7 +7,7 @@ import {
 import { chatWithAI, getLearningStats, logAIFeedback, triggerUserFineTune } from '../controllers/aiController'
 import { aiArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
-import { predictionTextSchema } from '../../schemas/predictionSchemas'
+import { predictFormatRequestSchema, predictionTextSchema } from '../../schemas/predictionSchemas'
 import { aiChatRequestSchema } from '../../schemas/aiSchemas'
 import { logFeedbackSchema } from '../../schemas/feedbackSchemas'
 
@@ -16,7 +16,7 @@ const router = Router()
 router.post(
   '/predict',
   aiArcjet,
-  validateBody(predictionTextSchema),
+  validateBody(predictFormatRequestSchema),
   predictFormatting
 )
 

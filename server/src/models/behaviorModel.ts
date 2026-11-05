@@ -1,33 +1,70 @@
 import { getRedisClient } from '../utils/redisClient'
 import {
   BehaviorEvent,
+  DocumentGenre,
   FormatBehaviorPayload,
   LearnedFormatPattern,
 } from '../types/index'
+import { getDocumentForUser } from './documentModel'
+import { resolveDocumentGenre } from '../utils/documentGenre'
 
 export interface StoredBehaviorEvent extends BehaviorEvent {
   userId: string
+  /** Genre partition of the event's document; set by the server, never the client. */
+  genre: DocumentGenre
 }
 
+/** Outcome of logging an event against a document. */
+export type DocumentEventOutcome = 'logged' | 'isolated' | 'unavailable'
+
+/**
+ * Append a behavior event to the document's Redis list, tagged with `{documentId, genre}`.
+ * Learning is partitioned by genre: a text+format pair only feeds that genre's pattern map.
+ * Callers outside this module should use `appendDocumentBehaviorEvent`, which resolves the
+ * genre from the document itself.
+ */
 export async function appendBehaviorEvent(
   userId: string,
-  event: BehaviorEvent
+  event: BehaviorEvent,
+  genre: DocumentGenre
 ): Promise<void> {
   const client = await getRedisClient()
   const key = `behavior:${userId}:${event.documentId}`
-  const payload: StoredBehaviorEvent = { ...event, userId }
+  const payload: StoredBehaviorEvent = { ...event, genre, userId }
   await client.rPush(key, JSON.stringify(payload))
 
-  // Cross-document learning: when the event captures a text+format pair, fold
-  // it into the user's learned-pattern map so other documents can suggest it.
+  // Cross-document learning within one genre: other documents of the same genre can suggest it.
   // A format the user accepted from a suggestion is not a new observation; counting
   // it would let each accept inflate the confidence of the suggestion itself.
   if (payload.payload?.text && !payload.payload.fromSuggestion) {
-    await learnFormatPattern(userId, event.action, payload.payload)
+    await learnFormatPattern(userId, genre, event.action, payload.payload)
   }
 }
 
-const patternsKey = (userId: string): string => `behavior:formats:${userId}`
+/**
+ * Log an event against a document the user can access, stamping the document's genre.
+ * Fails closed: when the document cannot be read the event is dropped, because an event with
+ * no known genre could otherwise land in the wrong partition. Isolated documents are skipped.
+ */
+export async function appendDocumentBehaviorEvent(
+  userId: string,
+  event: BehaviorEvent,
+  userEmail?: string
+): Promise<DocumentEventOutcome> {
+  let genre: DocumentGenre
+  try {
+    const doc = await getDocumentForUser(event.documentId, userId, userEmail)
+    if (doc.is_isolated) return 'isolated'
+    genre = resolveDocumentGenre(doc)
+  } catch {
+    return 'unavailable'
+  }
+  await appendBehaviorEvent(userId, event, genre)
+  return 'logged'
+}
+
+/** Redis key of one user's learned text→format map for one genre. */
+const patternsKey = (userId: string, genre: DocumentGenre): string => `behavior:formats:${userId}:${genre}`
 
 /**
  * Merge one mark flag (bold/italic/underline). A mark the user applied stays
@@ -76,15 +113,16 @@ export function mergeLearnedPattern(
   return map
 }
 
-/** Merge a format-apply event into the user's per-user text→format memory. */
+/** Merge a format-apply event into the user's text→format memory for one genre. */
 export async function learnFormatPattern(
   userId: string,
+  genre: DocumentGenre,
   action: string,
   payload: FormatBehaviorPayload
 ): Promise<void> {
   try {
     const client = await getRedisClient()
-    const key = patternsKey(userId)
+    const key = patternsKey(userId, genre)
     const raw = await client.get(key)
     const map = raw
       ? (JSON.parse(raw) as Record<string, LearnedFormatPattern>)
@@ -98,13 +136,17 @@ export async function learnFormatPattern(
   }
 }
 
-/** Read the user's learned text→format map. Fail-open on Redis outages. */
+/**
+ * Read the user's learned text→format map for one genre. Fail-open on Redis outages.
+ * The legacy un-genred key `behavior:formats:{userId}` is never read: it mixes genres.
+ */
 export async function getLearnedFormatPatterns(
-  userId: string
+  userId: string,
+  genre: DocumentGenre
 ): Promise<Record<string, LearnedFormatPattern>> {
   try {
     const client = await getRedisClient()
-    const raw = await client.get(patternsKey(userId))
+    const raw = await client.get(patternsKey(userId, genre))
     return raw ? (JSON.parse(raw) as Record<string, LearnedFormatPattern>) : {}
   } catch (error) {
     console.warn('Learned-format read failed:', error)

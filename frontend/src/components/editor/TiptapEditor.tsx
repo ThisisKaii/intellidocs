@@ -1586,6 +1586,8 @@ interface ToolbarProps {
   /** Called after a focus request has been handled so the host can clear it. */
   onPageSetupFocusHandled?: () => void
   onOpenPersonalization?: () => void
+  /** Document-type (genre) badge rendered at the start of the right-hand cluster. */
+  genreBadge?: ReactNode
 }
 
 /**
@@ -1628,6 +1630,7 @@ export function TiptapToolbar({
   onApplyStyle,
   onApplyPreset,
   activePreset,
+  genreBadge,
   spreadPreview = false,
   onSpreadPreviewChange,
   zoomLevel = 1,
@@ -3007,6 +3010,8 @@ export function TiptapToolbar({
       )}
 
       <div style={{ flex: 1 }} />
+
+      {genreBadge && <div style={{ display: 'flex', alignItems: 'center', marginRight: '6px' }}>{genreBadge}</div>}
 
       {/* Page setup */}
       <div style={{ position: 'relative' }}>

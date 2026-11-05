@@ -67,6 +67,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--user-id", required=True, help="Supabase user_id (UUID)")
     parser.add_argument(
+        "--genre",
+        required=True,
+        choices=duckdb_store.GENRES,
+        help="Genre partition to train on; events from other genres are never read",
+    )
+    parser.add_argument(
         "--seq-len", type=int, default=5, help="Length of past action sequence"
     )
     parser.add_argument(
@@ -76,22 +82,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_user_action_sequences(
-    conn: duckdb.DuckDBPyConnection, user_id: str, seq_len: int
+    conn: duckdb.DuckDBPyConnection, user_id: str, genre: str, seq_len: int
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Load chronologically ordered user formatting actions from DuckDB and build (input_seq, target_action) pairs."""
-    query = """
-    SELECT action, event_ts
-    FROM behavior_events
-    WHERE user_id = ?
-    ORDER BY event_ts ASC
-    """
-    df = conn.execute(query, [user_id]).fetchdf()
+    """Load one genre partition's chronologically ordered actions and build (input_seq, target_action) pairs."""
+    raw_actions = duckdb_store.fetch_genre_actions(conn, user_id, genre)
 
-    if df.empty or len(df) <= seq_len:
+    if len(raw_actions) <= seq_len:
         return torch.tensor([]), torch.tensor([])
 
     actions = [
-        ACTION_TO_IDX.get(act, 0) for act in df["action"] if act in ACTION_TO_IDX
+        ACTION_TO_IDX.get(act, 0) for act in raw_actions if act in ACTION_TO_IDX
     ]
 
     if len(actions) <= seq_len:
@@ -128,16 +128,17 @@ def train_lstm_model(
 
 
 def save_lstm_model(
-    model: FormattingLSTM, user_id: str, output_dir: str = "ml/models/lstm"
+    model: FormattingLSTM, user_id: str, genre: str, output_dir: str = "ml/models/lstm"
 ) -> str:
-    """Save user-specific PyTorch LSTM model weights and metadata to disk."""
+    """Save a user's per-genre PyTorch LSTM model weights and metadata to disk."""
     os.makedirs(output_dir, exist_ok=True)
-    file_path = os.path.join(output_dir, f"user_{user_id}.pt")
+    file_path = os.path.join(output_dir, f"user_{user_id}__{genre}.pt")
 
     payload = {
         "state_dict": model.state_dict(),
         "vocab": ACTION_VOCAB,
         "action_to_idx": ACTION_TO_IDX,
+        "genre": genre,
         "trained_at": datetime.now(timezone.utc).isoformat(),
     }
     torch.save(payload, file_path)
@@ -154,7 +155,7 @@ def main() -> None:
         return
 
     conn = duckdb_store.connect_duckdb(read_only=True).conn
-    x_data, y_data = load_user_action_sequences(conn, args.user_id, args.seq_len)
+    x_data, y_data = load_user_action_sequences(conn, args.user_id, args.genre, args.seq_len)
     conn.close()
 
     if x_data.numel() == 0:
@@ -162,15 +163,15 @@ def main() -> None:
         return
 
     model = train_lstm_model(x_data, y_data, epochs=args.epochs)
-    output_path = save_lstm_model(model, args.user_id)
+    output_path = save_lstm_model(model, args.user_id, args.genre)
     print(f"✅ LSTM sequence model saved to: {output_path}")
 
-    # Upload to Supabase Storage (object {user_id}.pt) so prediction fetches it
+    # Upload to Supabase Storage (object {user_id}/{genre}.pt) so prediction fetches it
     # from cloud instead of a local directory (plan point 2).
     try:
         from storage import upload_user_model
 
-        if upload_user_model(output_path, args.user_id):
+        if upload_user_model(output_path, args.user_id, args.genre):
             print("✅ LSTM model uploaded to Supabase Storage (user-models).")
         else:
             print("⚠️ Supabase Storage upload failed — model kept locally only.")

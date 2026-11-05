@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { genreSchema } from './genreSchemas'
 
 /**
  * Behavior payload captured at format-apply time (feeds cross-document learning).
@@ -40,6 +41,9 @@ export const behaviorEventSchema = z.object({
   action: z.string().trim().min(1, 'Action is required'),
   timestamp: z.string().datetime('Timestamp must be a valid ISO datetime'),
   documentId: z.string().trim().min(1, 'Document ID is required'),
+  // Accepted so it is not silently stripped, but the server always overwrites it with the
+  // document's own genre: a client can never steer an event into another genre's partition.
+  genre: genreSchema.optional(),
   blockId: z.string().optional(),
   payload: behaviorPayloadSchema.optional(),
   // Composition telemetry (type/paste/backspace) consumed by timeline forensics.

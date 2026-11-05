@@ -25,6 +25,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--user-id", required=True, help="Supabase user_id (UUID)")
     parser.add_argument(
+        "--genre",
+        required=True,
+        choices=duckdb_store.GENRES,
+        help="Genre partition to train on; features from other genres are never read",
+    )
+    parser.add_argument(
         "--min-samples",
         type=int,
         default=3,
@@ -39,14 +45,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_user_features(conn: duckdb.DuckDBPyConnection, user_id: str) -> pd.DataFrame:
-    """Load supervised formatting_features rows for one user."""
+def load_user_features(conn: duckdb.DuckDBPyConnection, user_id: str, genre: str) -> pd.DataFrame:
+    """Load supervised formatting_features rows for one user in ONE genre partition."""
     query = """
     SELECT *
     FROM formatting_features
-    WHERE user_id = ?
+    WHERE user_id = ? AND genre = ?
     """
-    return conn.execute(query, [user_id]).fetchdf()
+    return conn.execute(query, [user_id, duckdb_store.require_genre(genre)]).fetchdf()
 
 
 def select_feature_columns(frame: pd.DataFrame) -> List[str]:
@@ -99,7 +105,7 @@ def main() -> None:
     output_dir = os.getenv("USER_MODEL_DIR", "ml/models/user_models")
 
     conn = duckdb_store.connect_duckdb(read_only=True).conn
-    frame = load_user_features(conn, args.user_id)
+    frame = load_user_features(conn, args.user_id, args.genre)
     conn.close()
 
     if frame.empty:
@@ -122,7 +128,7 @@ def main() -> None:
 
     model = train_user_model(frame, feature_columns)
 
-    output_path = os.path.join(output_dir, f"user_{args.user_id}.pkl")
+    output_path = os.path.join(output_dir, f"user_{args.user_id}__{args.genre}.pkl")
     save_user_model(model, feature_columns, output_path)
 
     print(f"✅ Supervised user model fine-tuned & saved: {output_path}")

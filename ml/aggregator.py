@@ -37,6 +37,9 @@ def ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
     # NOT EXISTS will not backfill the column on a database that already exists.
     conn.execute("ALTER TABLE behavior_events ADD COLUMN IF NOT EXISTS payload TEXT")
     conn.execute("ALTER TABLE behavior_events ADD COLUMN IF NOT EXISTS block_id TEXT")
+    # Genre partition stamped by the server on every event. Rows without one are 'legacy'
+    # and are excluded from training and prediction (see duckdb_store.fetch_genre_actions).
+    conn.execute("ALTER TABLE behavior_events ADD COLUMN IF NOT EXISTS genre TEXT")
 
 
 # Keys removed per DEL call once their events are stored.
@@ -123,6 +126,7 @@ def event_row(event: Dict[str, Any], key: str) -> Optional[tuple]:
         key,
         json.dumps(payload) if payload is not None else None,
         str(event.get("blockId", "")) or None,
+        duckdb_store.normalize_genre(event.get("genre")),
     )
 
 
@@ -158,8 +162,8 @@ def drain_redis(r: Any, conn: Any) -> int:
             """
             INSERT INTO behavior_events
               (user_id, document_id, action, event_ts, event_ts_raw, source_key,
-               payload, block_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               payload, block_id, genre)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )

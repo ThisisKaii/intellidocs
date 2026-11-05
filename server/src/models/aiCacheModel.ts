@@ -1,4 +1,5 @@
 import { getRedisClient } from '../utils/redisClient'
+import { DocumentGenre } from '../types/index'
 
 export interface CachedSuggestion {
   predictedFormat: string
@@ -8,14 +9,15 @@ export interface CachedSuggestion {
 
 const SUGGESTION_TTL_SECONDS = 30
 
-/** Build a stable Redis cache key for a user's suggestion request. */
-function buildSuggestionCacheKey(userId: string, text: string): string {
-  return `ai:suggestions:${userId}:${text.trim().toLowerCase()}`
+/** Build a stable Redis cache key for a user's suggestion request within one genre partition. */
+function buildSuggestionCacheKey(userId: string, genre: DocumentGenre, text: string): string {
+  return `ai:suggestions:${userId}:${genre}:${text.trim().toLowerCase()}`
 }
 
 /** Read a cached formatting suggestion from Redis if it exists. */
 export async function getCachedSuggestion(
   userId: string,
+  genre: DocumentGenre,
   text: string
 ): Promise<CachedSuggestion | null> {
   const normalizedText = text.trim()
@@ -25,7 +27,7 @@ export async function getCachedSuggestion(
   }
 
   const client = await getRedisClient()
-  const key = buildSuggestionCacheKey(userId, normalizedText)
+  const key = buildSuggestionCacheKey(userId, genre, normalizedText)
   const cachedValue = await client.get(key)
 
   if (!cachedValue) {
@@ -53,6 +55,7 @@ export async function getCachedSuggestion(
 /** Store a formatting suggestion in Redis with a short-lived TTL. */
 export async function cacheSuggestion(
   userId: string,
+  genre: DocumentGenre,
   text: string,
   suggestion: CachedSuggestion
 ): Promise<void> {
@@ -63,7 +66,7 @@ export async function cacheSuggestion(
   }
 
   const client = await getRedisClient()
-  const key = buildSuggestionCacheKey(userId, normalizedText)
+  const key = buildSuggestionCacheKey(userId, genre, normalizedText)
 
   await client.set(
     key,
@@ -81,6 +84,7 @@ export async function cacheSuggestion(
 /** Remove a cached formatting suggestion for a specific user and text. */
 export async function clearCachedSuggestion(
   userId: string,
+  genre: DocumentGenre,
   text: string
 ): Promise<void> {
   const normalizedText = text.trim()
@@ -90,6 +94,6 @@ export async function clearCachedSuggestion(
   }
 
   const client = await getRedisClient()
-  const key = buildSuggestionCacheKey(userId, normalizedText)
+  const key = buildSuggestionCacheKey(userId, genre, normalizedText)
   await client.del(key)
 }

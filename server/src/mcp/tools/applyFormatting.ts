@@ -1,4 +1,4 @@
-import { appendBehaviorEvent } from '../../models/behaviorModel'
+import { appendDocumentBehaviorEvent } from '../../models/behaviorModel'
 import { type z } from 'zod'
 import { applyFormattingSchema } from '../../../schemas/mcpSchemas'
 
@@ -19,7 +19,7 @@ export async function applyFormatting(
     }
   }
 
-  await appendBehaviorEvent(ctx.userId, {
+  await appendDocumentBehaviorEvent(ctx.userId, {
     action: `mcp_format_applied:${args.format}`,
     timestamp: new Date().toISOString(),
     documentId: args.documentId,

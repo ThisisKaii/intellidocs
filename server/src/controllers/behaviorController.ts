@@ -1,10 +1,9 @@
 import { Request, Response } from "express";
-import { appendBehaviorEvent, getBehaviorEvents } from "../models/behaviorModel";
+import { appendDocumentBehaviorEvent, getBehaviorEvents } from "../models/behaviorModel";
 import { BehaviorEvent, BehaviorSummaryLatestEvent, BehaviorSummaryResponse } from "../types/index";
 import { runAggregatorOnce } from "../skills/runAggregator";
 import { runFeatureExtractorOnce } from "../skills/featureExtractor";
 import { runFeatureExportOnce } from "../skills/featureExport";
-import { getDocumentById } from "../models/documentModel";
 
 // Increment a count bucket for behavior summary values
 function incrementCount(bucket: Record<string, number>, key: string): void {
@@ -71,7 +70,7 @@ function buildBehaviorSummary(
   }
 }
 
-// Log a behavior event to Redis (skipped if the document is isolated)
+// Log a behavior event to Redis, tagged with the document's genre (skipped if isolated or unreadable)
 export async function logBehaviorEvent(req: Request, res: Response): Promise<void> {
   try {
     const userId = req.user?.id
@@ -87,18 +86,16 @@ export async function logBehaviorEvent(req: Request, res: Response): Promise<voi
       return
     }
 
-    // Check if the document is isolated before logging
-    try {
-      const doc = await getDocumentById(body.documentId, userId)
-      if (doc.is_isolated) {
-        res.status(202).json({ message: "Behavior event skipped (document isolated)" })
-        return
-      }
-    } catch {
-      // If the document can't be fetched, still allow logging
+    // The model stamps the document's own genre; any client-sent genre is overwritten.
+    const outcome = await appendDocumentBehaviorEvent(userId, body, req.user?.email)
+    if (outcome === 'isolated') {
+      res.status(202).json({ message: "Behavior event skipped (document isolated)" })
+      return
     }
-
-    await appendBehaviorEvent(userId, body)
+    if (outcome === 'unavailable') {
+      res.status(202).json({ message: "Behavior event skipped (document unavailable)" })
+      return
+    }
     res.status(202).json({ message: "Behavior event logged" })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

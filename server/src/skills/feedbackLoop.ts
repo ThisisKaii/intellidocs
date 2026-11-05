@@ -1,5 +1,5 @@
 import { createFeedbackRecord, type CreateFeedbackParams } from '../models/feedbackModel'
-import { appendBehaviorEvent } from '../models/behaviorModel'
+import { appendDocumentBehaviorEvent } from '../models/behaviorModel'
 
 export interface ProcessFeedbackInput {
   userId: string
@@ -30,13 +30,16 @@ export async function processAIFeedback(
   }
   await createFeedbackRecord(feedbackParams)
 
-  // 2. Buffer real-time event to Redis behavior stream for DuckDB aggregation
+  // 2. Buffer real-time event to Redis behavior stream for DuckDB aggregation. Feedback with no
+  //    document has no genre, so it is kept in Supabase only and never enters training data.
+  if (!documentId) return
+
   const actionName = accepted
     ? `ai_suggestion_accepted:${predictedFormat}`
     : `ai_suggestion_rejected:${predictedFormat}`
 
-  await appendBehaviorEvent(userId, {
-    documentId: documentId || 'global',
+  await appendDocumentBehaviorEvent(userId, {
+    documentId,
     action: actionName,
     timestamp: new Date().toISOString(),
     payload: {

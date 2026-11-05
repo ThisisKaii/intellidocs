@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { genreSchema } from './genreSchemas'
 import { editorJsonShapeSchema, pageNumberFormatSchema, pageLayoutBaseSchema } from './documentSchemas'
 
 /** Validate incoming text payloads for prediction-related HTTP routes. */
@@ -10,6 +11,14 @@ export const predictionTextSchema = z.object({
     .max(50000, 'Text is too long'),
   /** Isolation mode for research comparisons: baseline/isolated/hybrid. */
   isolationMode: z.enum(['baseline', 'isolated', 'hybrid']).optional(),
+})
+
+/**
+ * Formatting-prediction request. `documentId` is required: the prediction is scoped to that
+ * document's genre partition and its owner's personalization, both resolved on the server.
+ */
+export const predictFormatRequestSchema = predictionTextSchema.extend({
+  documentId: z.string().uuid('A valid document ID is required'),
 })
 
 /** One editor text block sent to the grammar and spelling checkers. */
@@ -95,6 +104,10 @@ export const pythonPredictionResponseSchema = z.object({
   confidence: z.number().min(0).max(1),
   feature_values: z.record(z.number()).default({}),
   isolation_mode: z.enum(['baseline', 'isolated', 'hybrid']).optional(),
+  /** Genre partition the ML service scoped the prediction to (mirrors PredictResponse.genre). */
+  genre: genreSchema.nullable().optional(),
+  /** True only when the user's model for this genre contributed (mirrors PredictResponse.genre_partition_hit). */
+  genre_partition_hit: z.boolean().default(false),
 })
 
 /** Validate page setup returned by the Python document converter. */

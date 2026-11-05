@@ -1,10 +1,12 @@
 import { getLearnedFormatPatterns } from '../models/behaviorModel'
-import { LearnedFormatMatch } from '../types/index'
+import { DocumentGenre, LearnedFormatMatch } from '../types/index'
 
-// Look up the user's learned text→format memory and return the best match for
-// the current text. Returns null when nothing was learned yet or Redis is down.
+// Look up the user's learned text→format memory for ONE genre and return the best match
+// for the current text. Returns null when nothing was learned yet or Redis is down.
+// Patterns learned in another genre are never consulted.
 export async function matchLearnedFormat(
   userId: string | undefined,
+  genre: DocumentGenre,
   text: string | undefined
 ): Promise<LearnedFormatMatch | null> {
   if (!userId || !text) return null
@@ -12,7 +14,7 @@ export async function matchLearnedFormat(
   const normalized = text.trim().toLowerCase().replace(/\s+/g, ' ')
   if (normalized.length < 3) return null
 
-  const patterns = await getLearnedFormatPatterns(userId)
+  const patterns = await getLearnedFormatPatterns(userId, genre)
   let best: LearnedFormatMatch | null = null
 
   for (const [patternKey, pattern] of Object.entries(patterns)) {

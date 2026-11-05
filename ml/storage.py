@@ -53,13 +53,18 @@ def _client():
     )
 
 
-def download_user_model(user_id: str):
-    """Return a local cached path for a user model, or None on any failure.
+def user_model_object(user_id: str, genre: str) -> str:
+    """Storage object for one user's model in one genre partition: `{user_id}/{genre}.pt`."""
+    return f"{user_id}/{genre}.pt"
 
-    Cache lives in temp with a 24h TTL. Falls back to a local `user_models`
-    directory when storage is unreachable.
+
+def download_user_model(user_id: str, genre: str):
+    """Return a local cached path for a user's genre model, or None on any failure.
+
+    Cache lives in temp with a 24h TTL. Only the requested genre's object is ever
+    fetched: a missing model is never substituted with another genre's.
     """
-    object_name = f"{user_id}.pt"
+    object_name = user_model_object(user_id, genre)
     local = _cache_path(object_name)
 
     if _is_fresh(local):
@@ -74,8 +79,8 @@ def download_user_model(user_id: str):
         return None
 
 
-def upload_user_model(local_path: str, user_id: str) -> bool:
-    """Upload a freshly fine-tuned model to the user-models bucket."""
+def upload_user_model(local_path: str, user_id: str, genre: str) -> bool:
+    """Upload a freshly fine-tuned genre model to the user-models bucket."""
     try:
         client = _client()
         client.storage.create_bucket(BUCKET, public=False)
@@ -84,7 +89,9 @@ def upload_user_model(local_path: str, user_id: str) -> bool:
 
     try:
         _client().storage.from_(BUCKET).upload(
-            f"{user_id}.pt", Path(local_path).read_bytes()
+            user_model_object(user_id, genre),
+            Path(local_path).read_bytes(),
+            {"upsert": "true"},
         )
         return True
     except Exception as exc:  # noqa: BLE001

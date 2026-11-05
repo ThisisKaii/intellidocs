@@ -3,6 +3,7 @@ import multer from 'multer'
 import * as documentController from '../controllers/documentController'
 import * as shareController from '../controllers/shareController'
 import * as documentOpenController from '../controllers/documentOpenController'
+import * as documentGenreController from '../controllers/documentGenreController'
 import { validateBody, validateParams, validateQuery } from '../middleware/validate'
 import {
   createDocumentSchema,
@@ -11,6 +12,7 @@ import {
   updateDocumentSchema,
 } from '../../schemas/documentSchemas'
 import { importQuerySchema } from '../../schemas/importSchemas'
+import { detectGenreSchema, setGenreSchema } from '../../schemas/genreSchemas'
 
 const router = Router()
 
@@ -77,6 +79,10 @@ router.post('/images', imageUpload.single('image'), documentController.uploadIma
 router.post('/:id/opened', validateParams(documentIdParamSchema), documentOpenController.markOpened)
 
 router.get('/:id', documentController.getDocument)
+
+/** Genre partition for personalization: structural auto-detection and manual override. */
+router.post('/:id/genre/detect', validateParams(documentIdParamSchema), validateBody(detectGenreSchema), documentGenreController.detectGenre)
+router.patch('/:id/genre', validateParams(documentIdParamSchema), validateBody(setGenreSchema), documentGenreController.setGenre)
 router.put('/:id', validateBody(updateDocumentSchema), documentController.updateDocument)
 
 /** Trash / restore / permanent-delete. Soft-delete must come before hard delete. */

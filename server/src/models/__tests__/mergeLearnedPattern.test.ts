@@ -1,4 +1,5 @@
 jest.mock('../../utils/redisClient', () => ({ getRedisClient: jest.fn() }))
+jest.mock('../documentModel', () => ({ getDocumentForUser: jest.fn() }))
 
 import { appendBehaviorEvent, mergeLearnedPattern } from '../behaviorModel'
 import { getRedisClient } from '../../utils/redisClient'
@@ -30,11 +31,11 @@ describe('mergeLearnedPattern', () => {
     ;(getRedisClient as jest.Mock).mockResolvedValue(client)
     const base = { timestamp: '2026-01-01T00:00:00.000Z', documentId: 'd1' }
 
-    await appendBehaviorEvent('u1', { ...base, action: 'bold', payload: { text: TEXT, bold: true, fromSuggestion: true } })
+    await appendBehaviorEvent('u1', { ...base, action: 'bold', payload: { text: TEXT, bold: true, fromSuggestion: true } }, 'general')
     expect(client.rPush).toHaveBeenCalledTimes(1)
     expect(client.set).not.toHaveBeenCalled()
 
-    await appendBehaviorEvent('u1', { ...base, action: 'bold', payload: { text: TEXT, bold: true } })
+    await appendBehaviorEvent('u1', { ...base, action: 'bold', payload: { text: TEXT, bold: true } }, 'general')
     expect(client.set).toHaveBeenCalledTimes(1)
   })
 })

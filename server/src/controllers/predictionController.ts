@@ -10,10 +10,14 @@ import {
   getCachedSuggestion,
 } from '../models/aiCacheModel'
 import { consumeAIQuota } from '../models/aiQuotaModel'
+import { getDocumentForUser } from '../models/documentModel'
+import { resolveDocumentGenre } from '../utils/documentGenre'
+import type { DocumentGenre } from '../types/index'
 
 interface TextBody {
   text?: string
   isolationMode?: 'baseline' | 'isolated' | 'hybrid'
+  documentId?: string
 }
 
 /** Read and validate the current user id from the authenticated request. */
@@ -92,11 +96,25 @@ export async function predictFormatting(
       return
     }
 
-    const { isolationMode } = req.body as TextBody
-    // Personalization target — frontend sends snake_case user_id (may differ
-    // from the authenticated caller for owner-scoped predictions).
-    const user_id = (req.body as TextBody & { user_id?: string }).user_id
-    const predictionTargetId = user_id || userId
+    const { isolationMode, documentId } = req.body as TextBody
+    if (!documentId) {
+      res.status(400).json({ error: 'documentId is required' })
+      return
+    }
+
+    // The document decides both the genre partition and whose personalization applies (its
+    // owner, so collaborators inherit the document's formatting personality). Neither is
+    // taken from the request body.
+    let genre: DocumentGenre
+    let predictionTargetId: string
+    try {
+      const doc = await getDocumentForUser(documentId, userId, req.user?.email)
+      genre = resolveDocumentGenre(doc)
+      predictionTargetId = doc.user_id
+    } catch {
+      res.status(404).json({ error: 'Document not found' })
+      return
+    }
 
     const allowed = await enforceQuota(userId, 'predict', res)
     if (!allowed) {
@@ -104,7 +122,7 @@ export async function predictFormatting(
     }
 
     try {
-      const cached = await getCachedSuggestion(userId, text)
+      const cached = await getCachedSuggestion(predictionTargetId, genre, text)
 
       if (cached) {
         res.status(200).json({
@@ -119,7 +137,7 @@ export async function predictFormatting(
       console.error('Suggestion cache read failed', error)
     }
 
-    const prediction = await predictFormat({ text, userId: predictionTargetId, isolationMode })
+    const prediction = await predictFormat({ text, userId: predictionTargetId, genre, isolationMode })
 
     // Learned text→format match bypasses the (stale) suggestion cache.
     if (prediction.learned) {
@@ -142,7 +160,7 @@ export async function predictFormatting(
     }
 
     try {
-      await cacheSuggestion(userId, text, {
+      await cacheSuggestion(predictionTargetId, genre, text, {
         predictedFormat: prediction.predictedFormat,
         confidence: prediction.confidence,
         featureValues: prediction.featureValues,
@@ -156,6 +174,8 @@ export async function predictFormatting(
       confidence: prediction.confidence,
       feature_values: prediction.featureValues,
       isolation_mode: prediction.isolationMode,
+      genre,
+      genre_partition_hit: prediction.genrePartitionHit,
       cached: false,
     })
   } catch (error) {

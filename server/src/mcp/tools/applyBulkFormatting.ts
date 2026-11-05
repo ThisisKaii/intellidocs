@@ -1,4 +1,4 @@
-import { appendBehaviorEvent } from '../../models/behaviorModel'
+import { appendDocumentBehaviorEvent } from '../../models/behaviorModel'
 import { type z } from 'zod'
 import { applyBulkFormattingSchema } from '../../../schemas/mcpSchemas'
 
@@ -25,7 +25,7 @@ export async function applyBulkFormatting(
   // Log one behavior event per target range so the learning loop records
   // the exact scope of the bulk edit.
   for (const target of args.targets) {
-    await appendBehaviorEvent(ctx.userId, {
+    await appendDocumentBehaviorEvent(ctx.userId, {
       action: `mcp_bulk_format_applied:${args.format}`,
       timestamp,
       documentId: args.documentId,

@@ -9,14 +9,14 @@ describe('processAIFeedback skill', () => {
   const createRecordMock = feedbackModel.createFeedbackRecord as jest.MockedFunction<
     typeof feedbackModel.createFeedbackRecord
   >
-  const appendEventMock = behaviorModel.appendBehaviorEvent as jest.MockedFunction<
-    typeof behaviorModel.appendBehaviorEvent
+  const appendEventMock = behaviorModel.appendDocumentBehaviorEvent as jest.MockedFunction<
+    typeof behaviorModel.appendDocumentBehaviorEvent
   >
 
   beforeEach(() => {
     jest.clearAllMocks()
     createRecordMock.mockResolvedValue(undefined)
-    appendEventMock.mockResolvedValue(undefined)
+    appendEventMock.mockResolvedValue('logged')
   })
 
   it('persists acceptance feedback to Supabase and logs positive behavior event', async () => {
@@ -47,7 +47,26 @@ describe('processAIFeedback skill', () => {
     )
   })
 
-  it('persists rejection feedback to Supabase and logs negative behavior event', async () => {
+  it('logs a negative behavior event against the document', async () => {
+    await processAIFeedback({
+      userId: 'user-123',
+      documentId: 'doc-456',
+      predictionType: 'chat_preview',
+      predictedFormat: 'blockquote',
+      confidence: 82,
+      accepted: false,
+    })
+
+    expect(appendEventMock).toHaveBeenCalledWith(
+      'user-123',
+      expect.objectContaining({
+        documentId: 'doc-456',
+        action: 'ai_suggestion_rejected:blockquote',
+      })
+    )
+  })
+
+  it('keeps document-less feedback out of the genre-partitioned behavior stream', async () => {
     await processAIFeedback({
       userId: 'user-123',
       predictionType: 'chat_preview',
@@ -65,13 +84,7 @@ describe('processAIFeedback skill', () => {
       accepted: false,
     })
 
-    expect(appendEventMock).toHaveBeenCalledWith(
-      'user-123',
-      expect.objectContaining({
-        documentId: 'global',
-        action: 'ai_suggestion_rejected:blockquote',
-      })
-    )
+    expect(appendEventMock).not.toHaveBeenCalled()
   })
 })
 

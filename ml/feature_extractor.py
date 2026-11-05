@@ -60,6 +60,8 @@ def ensure_feature_table(conn: duckdb.DuckDBPyConnection) -> None:
         conn.execute(f"ALTER TABLE {FEATURE_TABLE} ADD COLUMN IF NOT EXISTS {column} INTEGER")
     for column in ("avg_image_width", "avg_image_height", "max_table_rows", "max_table_cols"):
         conn.execute(f"ALTER TABLE {FEATURE_TABLE} ADD COLUMN IF NOT EXISTS {column} DOUBLE")
+    # Features are partitioned by genre exactly like the events they come from.
+    conn.execute(f"ALTER TABLE {FEATURE_TABLE} ADD COLUMN IF NOT EXISTS genre TEXT")
 
 
 # Ordered feature columns written to formatting_features. The base text-format
@@ -99,7 +101,7 @@ TRAILING_COLUMNS = [
 def feature_column_order() -> List[str]:
     """Every column of formatting_features, in the order rows are produced."""
     return (
-        ["user_id", "document_id", "total_events"]
+        ["user_id", "document_id", "genre", "total_events"]
         + [name for name, _ in BASE_ACTION_COLUMNS]
         + [name for name, _ in MEDIA_COLUMNS]
         + [name for name, _, _ in PAYLOAD_AGGREGATES]
@@ -127,6 +129,7 @@ def extract_features(conn: duckdb.DuckDBPyConnection) -> List[Tuple]:
     SELECT
       user_id,
       document_id,
+      genre,
       COUNT(*) AS total_events,
       {",\n      ".join(counts)},
       {",\n      ".join(aggregates)},
@@ -135,9 +138,10 @@ def extract_features(conn: duckdb.DuckDBPyConnection) -> List[Tuple]:
       min(event_ts) AS window_start,
       max(event_ts) AS window_end
     FROM behavior_events
-    GROUP BY user_id, document_id
+    WHERE genre IN ({", ".join("?" for _ in duckdb_store.GENRES)})
+    GROUP BY user_id, genre, document_id
     """
-    return conn.execute(query).fetchall()
+    return conn.execute(query, list(duckdb_store.GENRES)).fetchall()
 
 
 def overwrite_features(conn: duckdb.DuckDBPyConnection, rows: List[Tuple]) -> int:

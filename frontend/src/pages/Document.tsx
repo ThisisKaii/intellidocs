@@ -23,6 +23,8 @@ import GrammarOverlay from '@/components/editor/GrammarOverlay'
 import InlineSuggestionChip from '@/components/editor/InlineSuggestionChip'
 import TwoColumnPrompt from '@/components/TwoColumnPrompt'
 import DocumentTypePrompt from '@/components/DocumentTypePrompt'
+import { GenreBadge } from '@/components/editor/GenreBadge'
+import { buildGenreSignals, type DocumentGenre, type GenreSource } from '@/lib/genreSignals'
 import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
 import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
@@ -307,6 +309,9 @@ export default function Document(): JSX.Element {
   const editorCanvasRef = useRef<HTMLDivElement>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
+  /** Genre partition the document learns in; suggestions never come from another genre. */
+  const [genre, setGenre] = useState<DocumentGenre>('general')
+  const [genreSource, setGenreSource] = useState<GenreSource>('auto')
   const [spreadPreview, setSpreadPreview] = useState<boolean>(false)
   const isIeeePreset = basePresetKey(formattingPreset) === 'ieee'
   // The two-page spread is an IEEE view; leave it when the document stops being IEEE.
@@ -825,6 +830,8 @@ export default function Document(): JSX.Element {
     resetCompositionBaseline(updateWordCount(nextContent))
     setIsIsolated(doc.is_isolated ?? false)
     setFormattingPreset(doc.formatting_preset ?? null)
+    setGenre(doc.genre ?? 'general')
+    setGenreSource(doc.genre_source ?? 'auto')
     setDocOwnerId(doc.user_id ?? null)
     setPageLayout(doc.page_layout ?? null)
     setMissingDocFonts(fontNoticeDismissed(doc.id) ? [] : missingFonts(fontFamiliesIn(nextContent)))
@@ -1370,7 +1377,10 @@ export default function Document(): JSX.Element {
     }
 
     try {
-      const result = await api.formatting.tierCheck(activeText, id ?? '')
+      const response = await api.formatting.tierCheck(activeText, id ?? '')
+      // A genre base-preset fallback is only a suggestion: it goes through the ML suggestion
+      // path, never the auto-apply path used for the document's own preset and bindings.
+      const result = response.tier === 'genre_preset' ? { ...response, tier: 'ml' as const } : response
 
       if (result.format && isFormatAlreadyActive(result.format)) {
         setSuggestions([])
@@ -2454,6 +2464,60 @@ export default function Document(): JSX.Element {
     }
   }, [editor, id, typeOfferKey, readOnly, isHydrating, formattingPreset])
 
+  const isDocOwner = !!docOwnerId && user?.id === docOwnerId
+  const genreSignalKeyRef = useRef<string | null>(null)
+
+  // Genre auto-detection: on load and after preset or page-setup changes, the owner's editor sends
+  // the document's structure to the classifier. A manual override is never auto-replaced.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !id || readOnly || isHydrating || !isDocOwner || genreSource !== 'auto') return
+    const timer = window.setTimeout(() => {
+      if (editor.isDestroyed) return
+      const signals = buildGenreSignals({
+        doc: editor.state.doc,
+        root: editor.view.dom,
+        margins,
+        formattingPreset,
+        twoColumnLayout: pageLayout?.two_column === true,
+      })
+      const key = JSON.stringify(signals)
+      if (genreSignalKeyRef.current === key) return
+      genreSignalKeyRef.current = key
+      api.documents
+        .detectGenre(id, signals)
+        .then((result) => {
+          setGenre(result.genre)
+          setGenreSource(result.genreSource)
+        })
+        .catch(() => undefined)
+    }, 1500)
+    return () => window.clearTimeout(timer)
+  }, [editor, id, readOnly, isHydrating, isDocOwner, genreSource, margins, formattingPreset, pageLayout])
+
+  /** Manually set the document's genre, or (null) hand it back to auto-detection. */
+  function handleGenreChange(next: DocumentGenre | null): void {
+    if (!id) return
+    const previous = { genre, genreSource }
+    if (next) {
+      setGenre(next)
+      setGenreSource('manual')
+    } else {
+      setGenreSource('auto')
+      genreSignalKeyRef.current = null
+    }
+    api.documents
+      .setGenre(id, next)
+      .then((result) => {
+        setGenre(result.genre)
+        setGenreSource(result.genreSource)
+      })
+      .catch((err) => {
+        console.error('Genre update failed', err)
+        setGenre(previous.genre)
+        setGenreSource(previous.genreSource)
+      })
+  }
+
   /** Hide the document-type offer and remember that for this document. */
   function dismissTypeOffer(): void {
     setTypeOffer(null)
@@ -2992,6 +3056,7 @@ export default function Document(): JSX.Element {
               onApplyStyle={handleApplyRibbonStyle}
               onApplyPreset={(key) => { void handleApplyAcademicPreset(key) }}
               activePreset={formattingPreset}
+              genreBadge={<GenreBadge genre={genre} source={genreSource} canEdit={isDocOwner} onChange={handleGenreChange} />}
               spreadPreview={spreadPreview}
               onSpreadPreviewChange={setSpreadPreview}
               showGridlines={showGridlines}

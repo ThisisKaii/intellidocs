@@ -9,6 +9,7 @@ import { resolveFormattingTier } from '../skills/resolveFormattingTier'
 import { inferDocumentStructure } from '../skills/inferDocumentStructure'
 import { predictFormat } from '../skills/predictFormat'
 import { consumeAIQuota } from '../models/aiQuotaModel'
+import { GENRE_BASE_PRESET_KEY } from '../utils/documentGenre'
 
 /** Read and validate the current user id from the authenticated request. */
 function getUserId(req: Request, res: Response): string | null {
@@ -218,9 +219,16 @@ export async function inferStructure(req: Request, res: Response): Promise<void>
 
 // ── Three-tier check ─────────────────────────────────────────────────────────
 
+/** Confidence reported for a genre base-preset rule match. */
+const GENRE_PRESET_CONFIDENCE = 0.8
+
 /**
- * Resolve the three-tier formatting decision for a text block:
- * custom binding → preset rule → ML prediction (confidence-scored).
+ * Resolve the formatting decision for a text block, strictly within the document's genre:
+ * 1. custom binding → document preset rule
+ * 2. the genre's learned patterns → the genre's personal ML model
+ * 3. the genre's base preset
+ * 4. the neutral pretrained model (no user data)
+ * Another genre's patterns or models are never consulted.
  */
 export async function tierCheck(req: Request, res: Response): Promise<void> {
   try {
@@ -236,9 +244,10 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
     const ownerId = await formattingModel.getOwnerOfDocument(documentId)
     const effectiveUserId = ownerId ?? userId
 
-    const [bindings, presetKey] = await Promise.all([
+    const [bindings, presetKey, genre] = await Promise.all([
       formattingModel.getBindings(effectiveUserId),
       formattingModel.getDocumentPreset(documentId, effectiveUserId),
+      formattingModel.getDocumentGenre(documentId),
     ])
 
     const presetRules = presetKey
@@ -247,7 +256,7 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
 
     const tierResult = resolveFormattingTier({ text, bindings, presetRules })
 
-    // Tier 3 fallback — ML prediction with confidence score.
+    // Genre partition: learned patterns and personal model, then genre base preset, then neutral ML.
     if (tierResult.tier === 'none') {
       const quota = await consumeAIQuota(userId, 'tier-check')
       if (!quota.allowed) {
@@ -262,9 +271,9 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
         return
       }
 
-      const prediction = await predictFormat({ text, userId: effectiveUserId })
+      const prediction = await predictFormat({ text, userId: effectiveUserId, genre })
 
-      // Learned text→format match from the user's behavior across documents.
+      // Learned text→format match from the user's documents of the same genre.
       if (prediction.learned) {
         res.status(200).json({
           tier: 'learned',
@@ -276,16 +285,46 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
           fontSize: prediction.learned.fontSize,
           textAlign: prediction.learned.textAlign,
           snippet: prediction.learned.snippet,
-          reason: 'Matches formatting you applied to similar text in another document',
+          genre,
+          reason: 'Matches formatting you applied to similar text in another document of this type',
         })
         return
       }
 
+      // The user's own model for this genre contributed.
+      if (prediction.genrePartitionHit) {
+        res.status(200).json({
+          tier: 'ml',
+          format: prediction.predictedFormat,
+          confidence: prediction.confidence,
+          feature_values: prediction.featureValues,
+          genre,
+        })
+        return
+      }
+
+      // No personal signal in this genre: the genre's own base preset, never another genre's data.
+      const basePreset = await formattingModel.getPresetByKey(GENRE_BASE_PRESET_KEY[genre])
+      const baseResult = resolveFormattingTier({ text, bindings: [], presetRules: basePreset?.rules ?? [] })
+      if (baseResult.tier === 'preset') {
+        res.status(200).json({
+          tier: 'genre_preset',
+          format: baseResult.format,
+          // A rule match, offered as a suggestion (the client never auto-applies this tier).
+          confidence: GENRE_PRESET_CONFIDENCE,
+          reason: baseResult.reason,
+          genre,
+        })
+        return
+      }
+
+      // Neutral pretrained model: holds no user behavior, so it cannot leak across genres.
       res.status(200).json({
         tier: 'ml',
         format: prediction.predictedFormat,
         confidence: prediction.confidence,
         feature_values: prediction.featureValues,
+        genre,
       })
       return
     }
@@ -294,6 +333,7 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
       tier: tierResult.tier,
       format: tierResult.format,
       reason: tierResult.reason,
+      genre,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Tier check failed'

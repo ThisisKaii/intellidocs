@@ -21,8 +21,42 @@ LOCK_BACKOFF_SECONDS = (0.2, 0.5, 1.0)
 
 # Columns copied from the fallback into the primary, in table order.
 EVENT_COLUMNS = (
-    "user_id, document_id, action, event_ts, event_ts_raw, ingested_at, source_key, payload, block_id"
+    "user_id, document_id, action, event_ts, event_ts_raw, ingested_at, source_key, payload, block_id, genre"
 )
+
+# Genres that partition behavior learning (server migration 038). Events from one genre must
+# never train or inform predictions for another.
+GENRES = ("ieee", "thesis", "memo", "general")
+
+# Events ingested before genre tagging. They are kept for audit but excluded from every
+# training and prediction query, because their genre is unknown.
+LEGACY_GENRE = "legacy"
+
+
+def normalize_genre(value: Any) -> str:
+    """A known genre, or 'legacy' for anything else (missing, unknown, wrong type)."""
+    return value if isinstance(value, str) and value in GENRES else LEGACY_GENRE
+
+
+def require_genre(genre: str) -> str:
+    """Reject anything but a trainable genre, so 'legacy' or a typo can never widen a query."""
+    if genre not in GENRES:
+        raise ValueError(f"Unknown genre partition: {genre!r}")
+    return genre
+
+
+def fetch_genre_actions(conn: Any, user_id: str, genre: str, limit: int | None = None, newest_first: bool = False) -> list:
+    """The single read path for a user's behavior actions: always scoped to ONE genre partition.
+
+    Returns action strings ordered by event time (oldest first unless newest_first).
+    """
+    order = "DESC" if newest_first else "ASC"
+    sql = f"SELECT action FROM behavior_events WHERE user_id = ? AND genre = ? ORDER BY event_ts {order}"
+    params: list = [user_id, require_genre(genre)]
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(int(limit))
+    return [row[0] for row in conn.execute(sql, params).fetchall()]
 
 _last_kind = "primary"
 
@@ -123,6 +157,8 @@ def sync_fallback_to_primary(primary_conn: Any) -> int:
         count = primary_conn.execute("SELECT count(*) FROM fallback_db.behavior_events").fetchone()[0]
         if not count:
             return 0
+        # A fallback file created before genre tagging lacks the column the copy selects.
+        primary_conn.execute("ALTER TABLE fallback_db.behavior_events ADD COLUMN IF NOT EXISTS genre TEXT")
         # DuckDB can't write two databases in one transaction, so copy first and
         # clear after: a failure between the steps can only repeat rows, never lose them.
         primary_conn.execute(

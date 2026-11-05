@@ -1,3 +1,4 @@
+import type { DocumentGenre } from '../../types/index'
 import axios from 'axios'
 import FormData from 'form-data'
 import { createReadStream } from 'fs'
@@ -32,6 +33,8 @@ export interface PredictionResponse {
   confidence: number
   featureValues: Record<string, number>
   isolationMode: string
+  /** True only when the user's model for the requested genre contributed. */
+  genrePartitionHit: boolean
 }
 
 /** Isolation modes control how the user model contributes to a prediction. */
@@ -114,10 +117,11 @@ export async function probeMlHealth(timeoutMs = 2000): Promise<{
   }
 }
 
-/** Send a formatting prediction request to the FastAPI service. */
+/** Send a formatting prediction request to the FastAPI service, scoped to one genre partition. */
 export async function requestFormatPrediction(
   text: string,
-  options?: {
+  options: {
+    genre: DocumentGenre
     fontSize?: number
     isBold?: boolean
     isItalic?: boolean
@@ -132,12 +136,13 @@ export async function requestFormatPrediction(
     `${mlApiUrl}/predict`,
     {
       text,
-      user_id: options?.userId,
-      font_size: options?.fontSize,
-      is_bold: options?.isBold,
-      is_italic: options?.isItalic,
-      x_position: options?.xPosition,
-      isolation_mode: options?.isolationMode,
+      user_id: options.userId,
+      font_size: options.fontSize,
+      is_bold: options.isBold,
+      is_italic: options.isItalic,
+      x_position: options.xPosition,
+      isolation_mode: options.isolationMode,
+      genre: options.genre,
     }
   )
   const data = pythonPredictionResponseSchema.parse(response.data)
@@ -147,6 +152,7 @@ export async function requestFormatPrediction(
     confidence: data.confidence,
     featureValues: data.feature_values ?? {},
     isolationMode: data.isolation_mode ?? 'hybrid',
+    genrePartitionHit: data.genre_partition_hit,
   }
 }
 

@@ -5,6 +5,7 @@
 
 import type { JSONContent } from '@tiptap/core'
 import type { PageLayoutData } from '@/lib/pageLayout'
+import type { GenreSignals } from '@/lib/genreSignals'
 import { supabase } from '../lib/supabase'
 import type { GrammarBlock } from '@/lib/grammarBlocks'
 import { generateCitationKey, type CitationData, type CitationReference } from '@/lib/citationFormats'
@@ -60,6 +61,20 @@ export interface ReviewRecord {
 /** The editor's own document (ProseMirror `editor.getJSON()`), stored beside the HTML (migration 037). */
 export type EditorJson = JSONContent
 
+/** Genre partition for personalization (migration 038); learning never crosses genres. */
+export type DocumentGenre = 'ieee' | 'thesis' | 'memo' | 'general'
+
+/** Whether a document's genre came from structural detection or a manual override. */
+export type GenreSource = 'auto' | 'manual'
+
+/** Result of genre detection or a manual override. */
+export interface GenreResult {
+  genre: DocumentGenre
+  genreSource: GenreSource
+  confidence?: number
+  reasons?: string[]
+}
+
 export interface DocumentRecord {
   id: string
   user_id: string
@@ -81,6 +96,9 @@ export interface DocumentRecord {
   formatting_history: unknown[]
   is_isolated: boolean
   formatting_preset: string | null
+  /** Genre partition (migration 038); absent on databases without the migration. */
+  genre?: DocumentGenre
+  genre_source?: GenreSource
   /** Citation style and references saved with the document (migration 029). */
   citation_data?: CitationData | null
   /** Header/footer art, per-section headers and page numbering from an import (migration 032). */
@@ -318,7 +336,10 @@ export interface FormatBinding {
 }
 
 export interface TierCheckResponse {
-  tier: 'binding' | 'preset' | 'ml' | 'learned' | 'none'
+  /** `genre_preset` is the document genre's base preset, used when the genre has no personal data. */
+  tier: 'binding' | 'preset' | 'ml' | 'learned' | 'genre_preset' | 'none'
+  /** Genre partition the answer was resolved in; never another genre's data. */
+  genre?: DocumentGenre
   format?: string
   confidence?: number
   reason?: string
@@ -1114,6 +1135,22 @@ export const api = {
     delete: async (id: string): Promise<null> => {
       return fetchAPI<null>(`documents/${id}`, {
         method: 'DELETE',
+      })
+    },
+    /** Classify the document's genre from its structure (stored only while in auto mode). */
+    detectGenre: async (id: string, signals: GenreSignals): Promise<GenreResult> => {
+      return fetchAPI<GenreResult>(`documents/${id}/genre/detect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signals }),
+      })
+    },
+    /** Override the document's genre, or pass null to return it to auto-detection. */
+    setGenre: async (id: string, genre: DocumentGenre | null): Promise<GenreResult> => {
+      return fetchAPI<GenreResult>(`documents/${id}/genre`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ genre }),
       })
     },
     /** Toggle the is_isolated flag on a document. */
