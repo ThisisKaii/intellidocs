@@ -58,6 +58,7 @@ export default function AuthCallback(): JSX.Element {
           role: result.role,
           verificationStatus: result.verificationStatus,
           requestedRole: result.requestedRole ?? null,
+          plan: result.plan ?? 'free',
         },
         session.access_token,
         session.refresh_token

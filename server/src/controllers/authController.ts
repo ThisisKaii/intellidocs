@@ -1,7 +1,8 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
-import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole } from '../models/userModel'
+import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow } from '../models/userModel'
+import { effectivePlan } from '../utils/plan'
 import { resolvePendingShares } from '../models/shareModel'
 import * as accountModel from '../models/accountModel'
 import type { ChangePasswordBody, DeleteAccountBody } from '../../schemas/authSchemas'
@@ -82,6 +83,7 @@ export async function login(req: Request, res: Response): Promise<void> {
         role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'user',
         verificationStatus: profile?.verification_status ?? 'approved',
         requestedRole: await getRequestedRole(data.user.id),
+        plan: effectivePlan(await getPlanRow(data.user.id)),
         displayName: data.user.user_metadata?.display_name ?? null,
         avatarUrl: data.user.user_metadata?.avatar_url ?? null,
       },
@@ -137,6 +139,7 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
       role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'user',
       verificationStatus: profile?.verification_status ?? 'approved',
       requestedRole: await getRequestedRole(user.id),
+      plan: effectivePlan(await getPlanRow(user.id)),
       message: 'Google authentication successful',
     })
   } catch {

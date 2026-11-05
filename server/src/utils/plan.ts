@@ -21,3 +21,23 @@ export function effectivePlan(row: PlanRow | null | undefined, now: Date = new D
   const renewsAt = row.plan_renews_at ? Date.parse(row.plan_renews_at) : NaN
   return Number.isFinite(renewsAt) && renewsAt > now.getTime() ? 'pro' : 'free'
 }
+
+/** Milliseconds in one mock billing period. */
+const PERIOD_MS = BILLING_PERIOD_DAYS * 24 * 60 * 60 * 1000
+
+/**
+ * The next billing date of an uncancelled subscription: the stored renewal date rolled forward by
+ * whole periods until it is in the future (the mock auto-renews without writing anything).
+ */
+export function nextRenewal(renewsAt: string | null | undefined, now: Date = new Date()): string | null {
+  if (!renewsAt) return null
+  let at = Date.parse(renewsAt)
+  if (!Number.isFinite(at)) return null
+  while (at <= now.getTime()) at += PERIOD_MS
+  return new Date(at).toISOString()
+}
+
+/** The renewal date one period from `from`. */
+export function periodEnd(from: Date): string {
+  return new Date(from.getTime() + PERIOD_MS).toISOString()
+}

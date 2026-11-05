@@ -14,6 +14,15 @@ export type DocumentGenre = 'ieee' | 'thesis' | 'memo' | 'general'
 /** Whether a document's genre came from the classifier or the user. */
 export type GenreSource = 'auto' | 'manual'
 
+/** The signed-in user's mock subscription, as the billing page shows it. */
+export interface SubscriptionStatus {
+  plan: Plan
+  startedAt: string | null
+  /** Next billing date, or the date Pro ends when the subscription is cancelled. */
+  renewsAt: string | null
+  canceledAt: string | null
+}
+
 /** Signed-in user's own storage usage versus their account quota. */
 export interface StorageSummary {
   usedBytes: number

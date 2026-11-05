@@ -2,6 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
+  CreditCard,
   Database,
   GraduationCap,
   Mail,
@@ -21,14 +22,16 @@ import { ConnectedAccountsSection } from '@/components/settings/ConnectedAccount
 import { EditorPersonalizationSection } from '@/components/settings/EditorPersonalizationSection'
 import { AcademicVerificationSection } from '@/components/settings/AcademicVerificationSection'
 import { DataSection } from '@/components/settings/DataSection'
+import { BillingSection } from '@/components/settings/BillingSection'
 
-type SectionKey = 'profile' | 'security' | 'editor' | 'applications' | 'data'
+type SectionKey = 'profile' | 'security' | 'editor' | 'applications' | 'billing' | 'data'
 
 const SECTIONS: Array<{ key: SectionKey; label: string; icon: LucideIcon }> = [
   { key: 'profile', label: 'Profile', icon: UserCog },
   { key: 'security', label: 'Security', icon: ShieldCheck },
   { key: 'editor', label: 'Editor & AI', icon: Sparkles },
   { key: 'applications', label: 'Academic verification', icon: GraduationCap },
+  { key: 'billing', label: 'Plan & billing', icon: CreditCard },
   { key: 'data', label: 'Data & account', icon: Database },
 ]
 
@@ -141,6 +144,7 @@ export default function SettingsPage(): JSX.Element {
             {section === 'applications' && (
               <AcademicVerificationSection role={role} verificationStatus={user?.verificationStatus} requestedRole={user?.requestedRole ?? null} />
             )}
+            {section === 'billing' && <BillingSection />}
             {section === 'data' && <DataSection />}
           </div>
         </div>

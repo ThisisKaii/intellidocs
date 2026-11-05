@@ -20,6 +20,7 @@ import healthRoutes from './routes/healthRoutes'
 import plagiarismRoutes from './routes/plagiarismRoutes'
 import citationRoutes from './routes/citationRoutes'
 import reviewRoutes from './routes/reviewRoutes'
+import billingRoutes from './routes/billingRoutes'
 import devReviewRoutes from './routes/devReviewRoutes'
 import mcpRouter from './mcp/mcpServer'
 import { authMiddleware, requireApprovedProfessor } from './middleware/authMiddleware'
@@ -65,6 +66,7 @@ app.use('/profile', authMiddleware, profileRoutes)
 app.use('/plagiarism', authMiddleware, plagiarismRoutes)
 app.use('/citations', authMiddleware, citationRoutes)
 app.use('/reviews', authMiddleware, reviewRoutes)
+app.use('/billing', authMiddleware, billingRoutes)
 // No login: mounted only outside production, and each route also checks the caller is local.
 if (process.env.NODE_ENV !== 'production') {
   app.use('/dev/reviews', devReviewRoutes)

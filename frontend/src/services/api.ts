@@ -38,6 +38,15 @@ interface User {
 /** Mock subscription plan (migration 040). */
 export type Plan = 'free' | 'pro'
 
+/** The signed-in user's mock subscription. */
+export interface SubscriptionStatus {
+  plan: Plan
+  startedAt: string | null
+  /** Next billing date, or the date Pro ends once cancelled. */
+  renewsAt: string | null
+  canceledAt: string | null
+}
+
 export type PageNumberFormat = 'none' | 'number' | 'roman'
 
 export type PageSizeKey = 'short' | 'long' | 'a4' | 'letter' | 'legal'
@@ -227,6 +236,7 @@ interface GoogleSyncResponse {
   role: RoleName
   verificationStatus: 'pending' | 'approved' | 'rejected'
   requestedRole?: RoleName | null
+  plan?: Plan
   message: string
 }
 
@@ -917,6 +927,19 @@ export const api = {
     } catch {
       // Warming is best effort; the real request reports any problem.
     }
+  },
+
+  /** Mock Pro subscription (demo flow: no payment details are ever sent). */
+  billing: {
+    get: async (): Promise<SubscriptionStatus> => fetchAPI<SubscriptionStatus>('billing'),
+    checkout: async (): Promise<SubscriptionStatus> =>
+      fetchAPI<SubscriptionStatus>('billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: 'pro' }),
+      }),
+    cancel: async (): Promise<SubscriptionStatus> => fetchAPI<SubscriptionStatus>('billing/cancel', { method: 'POST' }),
+    resume: async (): Promise<SubscriptionStatus> => fetchAPI<SubscriptionStatus>('billing/resume', { method: 'POST' }),
   },
 
   auth: {

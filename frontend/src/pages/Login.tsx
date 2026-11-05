@@ -34,6 +34,7 @@ function Login(): JSX.Element {
         role: response.user.role,
         verificationStatus: response.user.verificationStatus,
         requestedRole: response.user.requestedRole ?? null,
+        plan: response.user.plan ?? 'free',
         displayName: response.user.displayName ?? null,
         avatarUrl: response.user.avatarUrl ?? null,
       },
