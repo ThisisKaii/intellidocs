@@ -11,7 +11,7 @@ void initOpenReplay()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip">
       <App />
     </div>
   </React.StrictMode>,

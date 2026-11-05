@@ -137,12 +137,14 @@
     font-size: 16px;
     line-height: 1.5;
     letter-spacing: normal;
-    overflow-x: hidden;
+    /* clip, not hidden: hidden turns the element into a scroll container, which breaks
+       position: sticky (the landing navbar) for everything inside it. */
+    overflow-x: clip;
   }
 
   #root {
     min-height: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 }
 

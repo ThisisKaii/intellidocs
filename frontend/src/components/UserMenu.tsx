@@ -50,6 +50,7 @@ export function UserMenu(): JSX.Element {
       <button
         onClick={handleOpen}
         title="Account"
+        aria-label="Account"
         aria-haspopup="menu"
         aria-expanded={open}
         className="relative inline-flex items-center justify-center w-10 h-10 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer transition-colors hover:bg-foreground/5"
