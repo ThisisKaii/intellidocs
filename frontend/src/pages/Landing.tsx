@@ -19,7 +19,7 @@ export default function Landing(): JSX.Element {
   return (
     <div className="min-h-screen bg-white text-slate-900">
       {/* ── Navigation ─────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/85 backdrop-blur-md">
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6" aria-label="Main">
           <LogoLockup size={28} />
           <div className="flex items-center gap-1 text-sm font-medium text-slate-600">
