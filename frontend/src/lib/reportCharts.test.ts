@@ -5,7 +5,7 @@ import type { ReportTimeseries, SystemReport } from '../types/admin'
 const report: SystemReport = {
   totalUsers: 10,
   pendingApplicants: 1,
-  byRole: { student: 7, professor: 2, admin: 1 },
+  byRole: { user: 0, student: 7, professor: 2, admin: 1 },
   totalDocuments: 30,
   activeDocuments: 28,
   softDeletedDocuments: 2,
@@ -54,6 +54,6 @@ describe('fullReportCsv', () => {
   it('puts every chart in one file with its title', () => {
     const csv = fullReportCsv(buildChartSpecs(report, series), report.generatedAt)
     expect(csv.startsWith('IntelliDocs system report,2026-10-25T00:00:00Z')).toBe(true)
-    expect(csv).toContain('Users by role\r\nRole,Users\r\nStudent,7')
+    expect(csv).toContain('Users by role\r\nRole,Users\r\nUser,0\r\nStudent,7')
   })
 })

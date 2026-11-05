@@ -169,7 +169,7 @@ export async function getPendingApplicants(): Promise<AdminApplicant[]> {
   }
 
   return (data || []).map((p) => {
-    const currentRole = (p.roles as { role_name?: string } | null)?.role_name ?? 'student'
+    const currentRole = (p.roles as { role_name?: string } | null)?.role_name ?? 'user'
     const roleName = requestedByUser.get(p.user_id) ?? currentRole
     const raw = notificationMap[p.user_id]?.metadata ?? {}
     const strValue = (value: unknown): string | null => (typeof value === 'string' ? value : null)

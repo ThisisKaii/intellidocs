@@ -19,7 +19,7 @@ import { PasswordSection } from '@/components/settings/PasswordSection'
 import { TwoFactorAuthSection } from '@/components/settings/TwoFactorAuthSection'
 import { ConnectedAccountsSection } from '@/components/settings/ConnectedAccountsSection'
 import { EditorPersonalizationSection } from '@/components/settings/EditorPersonalizationSection'
-import { FacultyApplicationSection } from '@/components/settings/FacultyApplicationSection'
+import { AcademicVerificationSection } from '@/components/settings/AcademicVerificationSection'
 import { DataSection } from '@/components/settings/DataSection'
 
 type SectionKey = 'profile' | 'security' | 'editor' | 'applications' | 'data'
@@ -28,11 +28,12 @@ const SECTIONS: Array<{ key: SectionKey; label: string; icon: LucideIcon }> = [
   { key: 'profile', label: 'Profile', icon: UserCog },
   { key: 'security', label: 'Security', icon: ShieldCheck },
   { key: 'editor', label: 'Editor & AI', icon: Sparkles },
-  { key: 'applications', label: 'Faculty access', icon: GraduationCap },
+  { key: 'applications', label: 'Academic verification', icon: GraduationCap },
   { key: 'data', label: 'Data & account', icon: Database },
 ]
 
 const ROLE_LABELS: Record<string, string> = {
+  user: 'Basic',
   student: 'Student',
   professor: 'Professor',
   admin: 'Admin',
@@ -55,7 +56,7 @@ function verificationLabel(status: string | undefined): string {
 /** Read-only account facts: email, role, and professor verification. */
 function AccountInfoSection(): JSX.Element {
   const { user } = useAuth()
-  const role = user?.role ?? 'student'
+  const role = user?.role ?? 'user'
 
   return (
     <section className="rounded-xl bg-card border border-border p-6 shadow-sm">
@@ -92,8 +93,8 @@ export default function SettingsPage(): JSX.Element {
   const [params, setParams] = useSearchParams()
   const requested = params.get('section')
   const section: SectionKey = SECTIONS.some((s) => s.key === requested) ? (requested as SectionKey) : 'profile'
-  const role = user?.role ?? 'student'
-  // Administrators already have every permission, so there is no faculty application for them.
+  const role = user?.role ?? 'user'
+  // Administrators already have every permission, so there is no academic application for them.
   const sections = SECTIONS.filter((s) => !(s.key === 'applications' && role === 'admin'))
 
   return (
@@ -138,7 +139,7 @@ export default function SettingsPage(): JSX.Element {
             )}
             {section === 'editor' && <EditorPersonalizationSection />}
             {section === 'applications' && (
-              <FacultyApplicationSection role={role} verificationStatus={user?.verificationStatus} requestedRole={user?.requestedRole ?? null} />
+              <AcademicVerificationSection role={role} verificationStatus={user?.verificationStatus} requestedRole={user?.requestedRole ?? null} />
             )}
             {section === 'data' && <DataSection />}
           </div>

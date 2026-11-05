@@ -10,6 +10,8 @@ import { inferDocumentStructure } from '../skills/inferDocumentStructure'
 import { predictFormat } from '../skills/predictFormat'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 import { GENRE_BASE_PRESET_KEY } from '../utils/documentGenre'
+import { canUsePreset, PRESET_LOCKED_CODE } from '../skills/canUsePreset'
+import { getOwnRoleStatus } from '../models/userModel'
 
 /** Read and validate the current user id from the authenticated request. */
 function getUserId(req: Request, res: Response): string | null {
@@ -114,6 +116,12 @@ export async function setDocumentPreset(req: Request, res: Response): Promise<vo
     const presetExists = await formattingModel.resolvePresetKey(userId, preset)
     if (!presetExists) {
       res.status(400).json({ error: `Unknown preset "${preset}"` })
+      return
+    }
+
+    const { role } = await getOwnRoleStatus(userId)
+    if (!canUsePreset(role, preset)) {
+      res.status(403).json({ error: 'Thesis presets require verified student status.', code: PRESET_LOCKED_CODE })
       return
     }
 

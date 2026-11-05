@@ -27,7 +27,7 @@ export function DataSection(): JSX.Element {
     api.auth.storage().then(setStorage).catch(() => setStorage(null))
   }, [])
 
-  const used = storage ? Math.min(100, Math.round((storage.usedBytes / storage.quotaBytes) * 100)) : 0
+  const used = storage && storage.quotaBytes !== null ? Math.min(100, Math.round((storage.usedBytes / storage.quotaBytes) * 100)) : 0
 
   /** Download everything the account holds as one JSON file. */
   async function exportData(): Promise<void> {
@@ -82,7 +82,7 @@ export function DataSection(): JSX.Element {
       <div className="mb-5">
         <div className="mb-1.5 flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Storage used</span>
-          <span className="font-medium tabular-nums">{storage ? `${formatBytes(storage.usedBytes)} of ${formatBytes(storage.quotaBytes)}` : '—'}</span>
+          <span className="font-medium tabular-nums">{storage ? `${formatBytes(storage.usedBytes)} of ${storage.quotaBytes === null ? 'unlimited (Pro)' : formatBytes(storage.quotaBytes)}` : '—'}</span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-secondary" role="progressbar" aria-valuenow={used} aria-valuemin={0} aria-valuemax={100} aria-label="Storage used">
           <div className={`h-full rounded-full ${used >= 90 ? 'bg-destructive' : 'bg-primary'}`} style={{ width: `${used}%` }} />

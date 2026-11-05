@@ -29,10 +29,14 @@ interface User {
   displayName?: string | null
   /** Link to the profile photo, or null when none is set. */
   avatarUrl?: string | null
-  role?: 'student' | 'professor' | 'admin'
+  role?: RoleName
   verificationStatus?: 'pending' | 'approved' | 'rejected'
-  requestedRole?: 'student' | 'professor' | 'admin' | null
+  requestedRole?: RoleName | null
+  plan?: Plan
 }
+
+/** Mock subscription plan (migration 040). */
+export type Plan = 'free' | 'pro'
 
 export type PageNumberFormat = 'none' | 'number' | 'roman'
 
@@ -220,24 +224,27 @@ interface LoginResponse {
 
 interface GoogleSyncResponse {
   user: User
-  role: 'student' | 'professor' | 'admin'
+  role: RoleName
   verificationStatus: 'pending' | 'approved' | 'rejected'
-  requestedRole?: 'student' | 'professor' | 'admin' | null
+  requestedRole?: RoleName | null
   message: string
 }
 
 /** Signed-in user's own storage usage vs their account quota. */
 export interface StorageSummary {
   usedBytes: number
-  quotaBytes: number
-  role: 'student' | 'professor' | 'admin'
+  /** Null when the plan has unlimited storage (Pro). */
+  quotaBytes: number | null
+  role: RoleName
+  plan?: Plan
 }
 
 /** The signed-in user's live role and verification status. */
 export interface RoleStatusResponse {
-  role: 'student' | 'professor' | 'admin'
+  role: RoleName
   verificationStatus: 'pending' | 'approved' | 'rejected'
-  requestedRole?: 'student' | 'professor' | 'admin' | null
+  requestedRole?: RoleName | null
+  plan?: Plan
 }
 
 /** The signed-in user's latest application and the administrator's decision on it. */

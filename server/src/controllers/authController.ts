@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
-import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, getOwnApplicationStatus, getRequestedRole } from '../models/userModel'
+import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole } from '../models/userModel'
 import { resolvePendingShares } from '../models/shareModel'
 import * as accountModel from '../models/accountModel'
 import type { ChangePasswordBody, DeleteAccountBody } from '../../schemas/authSchemas'
@@ -18,7 +18,7 @@ interface GoogleAuthBody {
   accessToken: string
 }
 
-/** Register a new user with email and password. All users default to student role. */
+/** Register a new user with email and password. New users start on the baseline `user` role. */
 export async function register(req: Request, res: Response): Promise<void> {
   try {
     const { email, password } = req.body as AuthBody
@@ -35,21 +35,9 @@ export async function register(req: Request, res: Response): Promise<void> {
       return
     }
 
-    // All new users default to student role
+    // New users start on the baseline role; academic verification upgrades it.
     if (data.user) {
-      const { data: roleRow } = await supabase
-        .from('roles')
-        .select('role_id')
-        .eq('role_name', 'student')
-        .single()
-
-      if (roleRow) {
-        await supabase.from('user_profiles').upsert({
-          user_id: data.user.id,
-          role_id: roleRow.role_id,
-          verification_status: 'approved',
-        })
-      }
+      await ensureUserProfile(data.user.id)
 
       // Resolve any document shares that were pending on this email.
       await resolvePendingShares(data.user.id, email)
@@ -91,7 +79,7 @@ export async function login(req: Request, res: Response): Promise<void> {
     res.status(200).json({
       user: {
         ...data.user,
-        role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'student',
+        role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'user',
         verificationStatus: profile?.verification_status ?? 'approved',
         requestedRole: await getRequestedRole(data.user.id),
         displayName: data.user.user_metadata?.display_name ?? null,
@@ -128,24 +116,8 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
 
     const user = userData.user
 
-    // Fetch or create student role (Google users default to student)
-    const { data: studentRole } = await supabase
-      .from('roles')
-      .select('role_id')
-      .eq('role_name', 'student')
-      .single()
-
-    // Upsert user profile — create if first time, no-op if already exists
-    if (studentRole) {
-      await supabase.from('user_profiles').upsert(
-        {
-          user_id: user.id,
-          role_id: studentRole.role_id,
-          verification_status: 'approved',
-        },
-        { onConflict: 'user_id', ignoreDuplicates: true }
-      )
-    }
+    // Create the profile on first sign-in (baseline role); an existing profile is left as is.
+    await ensureUserProfile(user.id)
 
     // Fetch the final profile (may have been created above or already existed)
     const { data: profile } = await supabase
@@ -162,7 +134,7 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
           user.user_metadata?.display_name ?? user.user_metadata?.full_name ?? null,
         avatarUrl: user.user_metadata?.avatar_url ?? null,
       },
-      role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'student',
+      role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'user',
       verificationStatus: profile?.verification_status ?? 'approved',
       requestedRole: await getRequestedRole(user.id),
       message: 'Google authentication successful',
@@ -350,9 +322,8 @@ export async function getApplicationStatus(req: AuthenticatedRequest, res: Respo
 }
 
 /**
- * Submit a student role-application. Regular users may apply for Student
- * status (verified student quota/benefits); submission sets verification to
- * pending for admin review (plan point 19).
+ * Submit a student role-application. Baseline users apply for verified Student status
+ * (25MB quota, thesis presets); they keep their current role until an admin approves.
  */
 export async function applyStudent(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -369,53 +340,14 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
       return
     }
 
-    // Fetch the student role_id
-    const { data: roleRow } = await supabase
-      .from('roles')
-      .select('role_id')
-      .eq('role_name', 'student')
-      .single()
-
-    if (!roleRow) {
-      res.status(500).json({ error: 'Student role not found in system' })
-      return
-    }
-
-    // Upsert the user profile to student with pending verification
-    const { error: upsertError } = await supabase
-      .from('user_profiles')
-      .upsert({
-        user_id: userId,
-        role_id: roleRow.role_id,
-        verification_status: 'pending',
-        requested_role: 'student',
-        phone: studentId,
-      }, { onConflict: 'user_id' })
-
-    if (upsertError) {
-      console.error('applyStudent: user_profiles upsert failed:', upsertError.message)
-      res.status(500).json({ error: `Failed to submit application: ${upsertError.message}` })
-      return
-    }
-
-    // Notify admins for review. A failed insert drops the application from the
-    // admin queue, so it is a submission failure, not something to ignore.
-    const { error: notifError } = await supabase.from('notifications').insert({
-      user_id: userId,
-      type: 'student_application',
-      title: 'Student Application Submitted',
-      message: `Application submitted by ${req.user?.email}. College: ${college}, Degree Program: ${degreeProgram}, Student ID: ${studentId}`,
-      metadata: {
-        studentId,
-        college,
-        degreeProgram,
-        submittedAt: new Date().toISOString(),
-      },
+    const outcome = await createStudentApplication(userId, {
+      email: req.user?.email ?? null,
+      studentId,
+      college,
+      degreeProgram,
     })
-
-    if (notifError) {
-      console.error('applyStudent: notification insert failed:', notifError.message)
-      res.status(500).json({ error: `Failed to submit application: ${notifError.message}` })
+    if (outcome === 'already') {
+      res.status(409).json({ error: 'You already have verified student access' })
       return
     }
 

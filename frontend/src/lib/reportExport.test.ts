@@ -6,7 +6,7 @@ import type { ReportTimeseries, SystemReport } from '../types/admin'
 const report: SystemReport = {
   totalUsers: 3,
   pendingApplicants: 0,
-  byRole: { student: 2, professor: 1, admin: 0 },
+  byRole: { user: 0, student: 2, professor: 1, admin: 0 },
   totalDocuments: 4,
   activeDocuments: 4,
   softDeletedDocuments: 0,

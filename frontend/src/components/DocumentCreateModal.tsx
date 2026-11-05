@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, FileText, GraduationCap, Loader2, X } from 'lucide-react'
+import { Check, FileText, GraduationCap, Loader2, Lock, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   DOCUMENT_BLUEPRINTS,
   getBlueprint,
   type DocumentBlueprint,
 } from './editor/documentBlueprints'
 import type { UserPreset } from '@/services/api'
+import { useAuth } from '@/hooks/useAuth'
+import { canUsePreset } from '@/lib/presetAccess'
 
 interface DocumentCreateModalProps {
   /** Close without creating anything. */
@@ -58,6 +61,8 @@ export default function DocumentCreateModal({
   submitting = false,
   error,
 }: DocumentCreateModalProps): JSX.Element {
+  const { user } = useAuth()
+  const role = user?.role
   const [blueprintKey, setBlueprintKey] = useState<string>(DOCUMENT_BLUEPRINTS[0].key)
   /**
    * Preset key bound to the new document. A standard blueprint binds its own
@@ -88,8 +93,9 @@ export default function DocumentCreateModal({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose, submitting])
 
-  /** Switch blueprint, retitling the document only if the user has not. */
+  /** Switch blueprint, retitling the document only if the user has not. Locked presets can't be picked. */
   function selectBlueprint(blueprint: DocumentBlueprint): void {
+    if (!canUsePreset(role, blueprint.presetKey)) return
     setBlueprintKey(blueprint.key)
     setPresetKey(blueprint.presetKey)
     if (!titleTouched.current) {
@@ -102,6 +108,7 @@ export default function DocumentCreateModal({
    * it was forked from, but the document binds the fork's own key.
    */
   function selectUserPreset(preset: UserPreset): void {
+    if (!canUsePreset(role, preset.key)) return
     setBlueprintKey(preset.base_key)
     setPresetKey(preset.key)
     if (!titleTouched.current) {
@@ -233,6 +240,7 @@ export default function DocumentCreateModal({
                 key={blueprint.key}
                 blueprint={blueprint}
                 active={blueprint.key === blueprintKey}
+                locked={!canUsePreset(role, blueprint.presetKey)}
                 onClick={() => selectBlueprint(blueprint)}
               />
             ))}
@@ -344,12 +352,42 @@ export default function DocumentCreateModal({
 interface BlueprintCardProps {
   blueprint: DocumentBlueprint
   active: boolean
+  /** The blueprint's preset needs a verified role; shows an unlock link instead. */
+  locked?: boolean
   onClick: () => void
 }
 
 /** One selectable standard blueprint in the picker grid. */
-function BlueprintCard({ blueprint, active, onClick }: BlueprintCardProps): JSX.Element {
+function BlueprintCard({ blueprint, active, locked = false, onClick }: BlueprintCardProps): JSX.Element {
   const Icon = blueprint.key === 'uclm_capstone' ? GraduationCap : FileText
+
+  if (locked) {
+    return (
+      <div
+        aria-disabled="true"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: '0.3rem',
+          padding: '0.75rem',
+          borderRadius: '0.625rem',
+          border: '1px dashed var(--border)',
+          textAlign: 'left',
+          position: 'relative',
+        }}
+      >
+        <Lock aria-hidden className="size-3.5" style={{ position: 'absolute', top: '0.6rem', right: '0.6rem', color: 'var(--muted-foreground)' }} />
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', opacity: 0.6 }}>
+          <Icon className="size-4" style={{ color: 'var(--muted-foreground)' }} />
+          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--foreground)' }}>{blueprint.name}</span>
+        </span>
+        <Link to="/settings?section=applications" className="text-xs font-medium text-primary underline-offset-2 hover:underline">
+          Verify as a student to unlock
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <button

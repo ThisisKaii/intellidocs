@@ -49,6 +49,7 @@ describe('getOwnRoleStatus', () => {
       role: 'professor',
       verificationStatus: 'pending',
       requestedRole: null,
+      plan: 'free',
     })
   })
 
@@ -70,27 +71,36 @@ describe('getOwnRoleStatus', () => {
       role: 'professor',
       verificationStatus: 'rejected',
       requestedRole: null,
+      plan: 'free',
     })
   })
 
-  it('falls back to an approved student when no profile row exists yet', async () => {
+  it('falls back to an approved baseline user when no profile row exists yet', async () => {
     givenProfileRow(null)
 
     await expect(getOwnRoleStatus('user-1')).resolves.toEqual({
-      role: 'student',
+      role: 'user',
       verificationStatus: 'approved',
       requestedRole: null,
+      plan: 'free',
     })
   })
 
-  it('falls back to an approved student when the role join is missing', async () => {
+  it('falls back to the baseline user role when the role join is missing', async () => {
     givenProfileRow({ verification_status: 'pending', roles: null })
 
     await expect(getOwnRoleStatus('user-1')).resolves.toEqual({
-      role: 'student',
+      role: 'user',
       verificationStatus: 'pending',
       requestedRole: null,
+      plan: 'free',
     })
+  })
+
+  it('reports an active Pro plan from the plan columns', async () => {
+    givenProfileRow({ verification_status: 'approved', roles: { role_name: 'student' }, plan: 'pro', plan_canceled_at: null })
+
+    await expect(getOwnRoleStatus('user-1')).resolves.toMatchObject({ role: 'student', plan: 'pro' })
   })
 
   it('queries the profile of the requested user only', async () => {

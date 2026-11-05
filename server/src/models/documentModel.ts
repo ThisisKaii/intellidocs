@@ -8,6 +8,7 @@ import { assertWithinStorageQuota } from './userModel'
 import { isShareLinkExpired } from './shareModel'
 import { nextUniqueTitle } from '../utils/uniqueTitle'
 import { extractPreviewSnippet } from '../utils/previewSnippet'
+import { genreForPreset } from '../utils/documentGenre'
 
 export const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -380,12 +381,14 @@ export async function createDocument(
       : {}),
   }
   const layoutColumn = req.page_layout ? { page_layout: req.page_layout } : {}
+  // A document created from a preset starts in that preset's genre partition (migration 038).
+  const genreColumn = req.formatting_preset ? { genre: genreForPreset(req.formatting_preset) } : {}
   // The editor's JSON of `content` (an import the converter wrote JSON for), loaded in place of the HTML.
   const jsonColumn = req.content_json ? { content_json: req.content_json } : {}
 
   let { data, error } = await supabase
     .from('documents')
-    .insert({ ...row, ...layoutColumn, ...jsonColumn, preview_snippet: extractPreviewSnippet(req.content ?? '') })
+    .insert({ ...row, ...layoutColumn, ...jsonColumn, ...genreColumn, preview_snippet: extractPreviewSnippet(req.content ?? '') })
     .select()
     .single()
 

@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
-import { RoleName, StorageSummary, VerificationStatus } from '../types/index'
+import { Plan, RoleName, StorageSummary, VerificationStatus } from '../types/index'
 import { effectivePlan, PlanRow } from '../utils/plan'
 
 const supabase = createClient(
@@ -113,6 +113,8 @@ export interface RoleStatus {
   verificationStatus: VerificationStatus
   /** The role the user applied for; stays set after a rejection so the UI can say which application it was. */
   requestedRole: RoleName | null
+  /** Effective subscription plan (mock Pro, migration 040). */
+  plan: Plan
 }
 
 /**
@@ -134,10 +136,28 @@ export async function getOwnRoleStatus(userId: string): Promise<RoleStatus> {
 
   return {
     requestedRole: await getRequestedRole(userId),
-    role: ((profile?.roles as { role_name?: RoleName } | null)?.role_name) ?? 'student',
+    role: ((profile?.roles as { role_name?: RoleName } | null)?.role_name) ?? 'user',
     verificationStatus:
       (profile?.verification_status as VerificationStatus | undefined) ?? 'approved',
+    plan: effectivePlan(await getPlanRow(userId)),
   }
+}
+
+/**
+ * Create the profile row for a new account with the baseline `user` role. Never touches an
+ * existing row, so signing in again can't reset a verified student or professor. Falls back to
+ * `student` on a database without migration 039 (no `user` role yet).
+ */
+export async function ensureUserProfile(userId: string): Promise<void> {
+  const roleId = (await roleIdByName('user')) ?? (await roleIdByName('student'))
+  if (!roleId) return
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert(
+      { user_id: userId, role_id: roleId, verification_status: 'approved' },
+      { onConflict: 'user_id', ignoreDuplicates: true },
+    )
+  if (error) console.error('ensureUserProfile failed:', error.message)
 }
 
 /** Details a user submits when applying to become a professor. */
@@ -164,30 +184,38 @@ async function roleIdByName(roleName: RoleName): Promise<number | null> {
   return data?.role_id ?? null
 }
 
+/** Roles an academic application can never "upgrade" from, per requested role. */
+const ALREADY_HAS: Record<'student' | 'professor', RoleName[]> = {
+  student: ['student', 'professor', 'admin'],
+  professor: ['professor', 'admin'],
+}
+
 /**
- * Record a professor application. The user keeps their current role while the
- * application is pending; the admin's approval is what grants professor access.
- * Returns 'already' when the user is already an approved professor or admin.
+ * Mark a profile as having a pending academic application. The user keeps their current role
+ * (and quota) while pending; only an admin approval grants the requested role.
+ * Returns 'already' when the user already holds that role or a higher one.
  */
-export async function createProfessorApplication(
+async function markApplicationPending(
   userId: string,
-  input: ProfessorApplicationInput,
-): Promise<'submitted' | 'already'> {
+  requestedRole: 'student' | 'professor',
+  idFields: Record<string, string>,
+): Promise<'pending' | 'already'> {
   const { data: existing } = await supabase
     .from('user_profiles')
     .select('verification_status, roles(role_name)')
     .eq('user_id', userId)
     .maybeSingle()
 
-  const currentRole = (existing?.roles as { role_name?: string } | null)?.role_name
-  if (currentRole === 'admin' || (currentRole === 'professor' && existing?.verification_status === 'approved')) {
+  const currentRole = (existing?.roles as { role_name?: RoleName } | null)?.role_name
+  const approved = existing?.verification_status === 'approved'
+  if (currentRole === 'admin' || (currentRole && approved && ALREADY_HAS[requestedRole].includes(currentRole))) {
     return 'already'
   }
 
   const fields = {
     verification_status: 'pending',
-    requested_role: 'professor',
-    faculty_id: input.facultyId,
+    requested_role: requestedRole,
+    ...idFields,
     decision_note: null,
     decided_at: null,
     decided_by: null,
@@ -198,11 +226,62 @@ export async function createProfessorApplication(
     const { error } = await supabase.from('user_profiles').update(fields).eq('user_id', userId)
     if (error) throw new Error(error.message)
   } else {
-    const studentRole = await roleIdByName('student')
-    if (!studentRole) throw new Error('Student role not found in system')
-    const { error } = await supabase.from('user_profiles').insert({ user_id: userId, role_id: studentRole, ...fields })
+    const baseRole = (await roleIdByName('user')) ?? (await roleIdByName('student'))
+    if (!baseRole) throw new Error('Baseline role not found in system')
+    const { error } = await supabase.from('user_profiles').insert({ user_id: userId, role_id: baseRole, ...fields })
     if (error) throw new Error(error.message)
   }
+  return 'pending'
+}
+
+/** Details a user submits when applying for verified student status. */
+export interface StudentApplicationInput {
+  email: string | null
+  studentId: string
+  college: string
+  degreeProgram: string
+}
+
+/**
+ * Record a student application. The user stays on the baseline role (and quota) until an admin
+ * approves it. Returns 'already' when the user is already a verified student or higher.
+ */
+export async function createStudentApplication(
+  userId: string,
+  input: StudentApplicationInput,
+): Promise<'submitted' | 'already'> {
+  const outcome = await markApplicationPending(userId, 'student', { student_id: input.studentId })
+  if (outcome === 'already') return 'already'
+
+  const { error: notifError } = await supabase.from('notifications').insert({
+    user_id: userId,
+    type: 'student_application',
+    title: 'Student Application Submitted',
+    message: `Application submitted by ${input.email ?? 'a user'}. College: ${input.college}, Degree Program: ${input.degreeProgram}, Student ID: ${input.studentId}`,
+    metadata: {
+      studentId: input.studentId,
+      college: input.college,
+      degreeProgram: input.degreeProgram,
+      submittedAt: new Date().toISOString(),
+    },
+  })
+  if (notifError) throw new Error(notifError.message)
+
+  await notifyAdminsOfApplication(userId, input.email, 'student')
+  return 'submitted'
+}
+
+/**
+ * Record a professor application. The user keeps their current role while the
+ * application is pending; the admin's approval is what grants professor access.
+ * Returns 'already' when the user is already an approved professor or admin.
+ */
+export async function createProfessorApplication(
+  userId: string,
+  input: ProfessorApplicationInput,
+): Promise<'submitted' | 'already'> {
+  const outcome = await markApplicationPending(userId, 'professor', { faculty_id: input.facultyId })
+  if (outcome === 'already') return 'already'
 
   // The applicant's own notification carries the details the admin queue shows.
   const { error: notifError } = await supabase.from('notifications').insert({
@@ -221,20 +300,24 @@ export async function createProfessorApplication(
   })
   if (notifError) throw new Error(notifError.message)
 
-  await notifyAdminsOfApplication(userId, input.email)
+  await notifyAdminsOfApplication(userId, input.email, 'professor')
   return 'submitted'
 }
 
-/** Tell every admin that a new professor application is waiting. Best effort. */
-async function notifyAdminsOfApplication(applicantId: string, email: string | null): Promise<void> {
+/** Tell every admin that a new academic application is waiting. Best effort. */
+async function notifyAdminsOfApplication(
+  applicantId: string,
+  email: string | null,
+  requestedRole: 'student' | 'professor',
+): Promise<void> {
   const adminRole = await roleIdByName('admin')
   if (!adminRole) return
   const { data: admins } = await supabase.from('user_profiles').select('user_id').eq('role_id', adminRole)
   const rows = (admins ?? []).map((admin) => ({
     user_id: admin.user_id,
-    type: 'professor_application_review',
-    title: 'New professor application',
-    message: `${email ?? 'A user'} applied for professor access and is waiting for review.`,
+    type: `${requestedRole}_application_review`,
+    title: `New ${requestedRole} application`,
+    message: `${email ?? 'A user'} applied for ${requestedRole} access and is waiting for review.`,
     metadata: { applicantId },
   }))
   if (rows.length === 0) return

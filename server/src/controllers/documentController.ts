@@ -3,6 +3,8 @@ import * as documentModel from '../models/documentModel'
 import { resolvePendingSharesByUser } from '../models/shareModel'
 import { CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
 import { importLocalFile } from '../skills/importLocalFile'
+import { canUsePreset, PRESET_LOCKED_CODE } from '../skills/canUsePreset'
+import { getOwnRoleStatus } from '../models/userModel'
 import { enqueueLocalImport } from '../skills/processLocalImportJob'
 import { validateImportUpload } from '../skills/validateImportUpload'
 import { getImportJob, listUserImportJobs, settleStaleJob } from '../models/importJobModel'
@@ -204,6 +206,11 @@ export async function createDocument(req: Request, res: Response): Promise<void>
 
     if (!body.title) {
       res.status(400).json({ error: 'Title is required' })
+      return
+    }
+
+    if (body.formatting_preset && !canUsePreset((await getOwnRoleStatus(userId)).role, body.formatting_preset)) {
+      res.status(403).json({ error: 'Thesis presets require verified student status.', code: PRESET_LOCKED_CODE })
       return
     }
 

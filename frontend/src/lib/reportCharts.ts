@@ -41,6 +41,7 @@ export function buildChartSpecs(report: SystemReport, series: ReportTimeseries):
       xLabel: 'Role',
       series: [{ key: 'count', name: 'Users', color: CHART_COLORS.primary }],
       rows: [
+        { role: 'User', count: report.byRole.user ?? 0 },
         { role: 'Student', count: report.byRole.student },
         { role: 'Professor', count: report.byRole.professor },
         { role: 'Admin', count: report.byRole.admin },

@@ -1,6 +1,7 @@
 import { createContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
-import { api, type RoleStatusResponse } from '../services/api'
+import { api, type Plan, type RoleStatusResponse } from '../services/api'
+import type { RoleName } from '../types/admin'
 import { loadAccountPreferences } from '../lib/editorPreferences'
 import { clearDocumentCache } from '../hooks/useDocumentCache'
 import { clearDriveCache } from '../hooks/useDriveCache'
@@ -28,9 +29,11 @@ async function fetchRoleStatus(): Promise<RoleStatusResponse | null> {
 export interface UserAuthData {
   id: string
   email: string
-  role?: 'student' | 'professor' | 'admin'
+  role?: RoleName
   verificationStatus?: 'pending' | 'approved' | 'rejected'
-  requestedRole?: 'student' | 'professor' | 'admin' | null
+  requestedRole?: RoleName | null
+  /** Mock subscription plan; drives the Pro badge. */
+  plan?: Plan
   displayName?: string | null
   /** Link to the profile photo, or null/undefined to show initials. */
   avatarUrl?: string | null
@@ -157,7 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (
         prev.role === status.role &&
         prev.verificationStatus === status.verificationStatus &&
-        (prev.requestedRole ?? null) === (status.requestedRole ?? null)
+        (prev.requestedRole ?? null) === (status.requestedRole ?? null) &&
+        (prev.plan ?? 'free') === (status.plan ?? 'free')
       ) {
         return prev
       }
@@ -166,6 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: status.role,
         verificationStatus: status.verificationStatus,
         requestedRole: status.requestedRole ?? null,
+        plan: status.plan ?? 'free',
       }
       localStorage.setItem('authUser', JSON.stringify(next))
       return next

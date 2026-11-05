@@ -11,6 +11,7 @@ import type { ChartSpec } from './reportCharts'
 import type { AdminUserRecord, RoleName, SystemReport } from '../types/admin'
 
 const roleLabels: Record<RoleName, string> = {
+  user: 'User',
   student: 'Student',
   professor: 'Professor',
   admin: 'Administrator',

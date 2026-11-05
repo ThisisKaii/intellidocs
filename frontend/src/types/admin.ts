@@ -1,4 +1,5 @@
-export type RoleName = 'student' | 'professor' | 'admin'
+/** `user` is the baseline role; `student` and `professor` come from admin-approved academic verification. */
+export type RoleName = 'user' | 'student' | 'professor' | 'admin'
 export type VerificationStatus = 'pending' | 'approved' | 'rejected'
 
 /** Application metadata attached to a pending verification applicant. */

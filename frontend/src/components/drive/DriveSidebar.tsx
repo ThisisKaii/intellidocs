@@ -263,22 +263,22 @@ function DriveSidebar({
             <HardDrive className="size-3.5" /> Storage
           </span>
           <span className="text-xs text-foreground font-semibold tabular-nums">
-            {storage ? `${formatBytes(storage.usedBytes)} / ${formatBytes(storage.quotaBytes)}` : '— / —'}
+            {storage ? `${formatBytes(storage.usedBytes)} / ${storage.quotaBytes === null ? 'Unlimited' : formatBytes(storage.quotaBytes)}` : '— / —'}
           </span>
         </div>
         <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">
           <div
             className="h-full bg-primary rounded-full"
-            style={{ width: storage ? `${Math.min(100, Math.round((storage.usedBytes / storage.quotaBytes) * 100))}%` : '0%' }}
+            style={{ width: storage && storage.quotaBytes !== null ? `${Math.min(100, Math.round((storage.usedBytes / storage.quotaBytes) * 100))}%` : '0%' }}
           />
         </div>
-        {storage && storage.usedBytes / storage.quotaBytes >= 0.8 && (
+        {storage && storage.quotaBytes !== null && storage.usedBytes / storage.quotaBytes >= 0.8 && (
           <p className="m-0 mt-2 text-xs text-destructive">
             {storage.usedBytes >= storage.quotaBytes ? 'Storage full.' : 'Almost full.'} Delete documents or empty the Trash to free space.
           </p>
         )}
         <div className="flex items-center justify-between mt-2 text-xs">
-          <span className="font-semibold text-primary">{storage ? `${capitalize(storage.role)} Tier` : 'Student Tier'}</span>
+          <span className="font-semibold text-primary">{storage ? (storage.plan === 'pro' ? 'Pro' : storage.role === 'user' ? 'Basic Tier' : `${capitalize(storage.role)} Tier`) : '—'}</span>
           <span className="text-muted-foreground">UCLM Capstone</span>
         </div>
       </div>

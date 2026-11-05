@@ -125,7 +125,7 @@ export async function exportAccountData(userId: string, email: string): Promise<
       id: userId,
       email,
       display_name: (authUser?.user?.user_metadata?.display_name as string | undefined) ?? null,
-      role: ((profile?.roles as { role_name?: string } | null)?.role_name) ?? 'student',
+      role: ((profile?.roles as { role_name?: string } | null)?.role_name) ?? 'user',
     },
     documents: (documents.data ?? []) as Array<Record<string, unknown>>,
     folders: (folders.data ?? []) as Array<Record<string, unknown>>,

@@ -24,6 +24,7 @@ import InlineSuggestionChip from '@/components/editor/InlineSuggestionChip'
 import TwoColumnPrompt from '@/components/TwoColumnPrompt'
 import DocumentTypePrompt from '@/components/DocumentTypePrompt'
 import { GenreBadge } from '@/components/editor/GenreBadge'
+import { canUsePreset } from '@/lib/presetAccess'
 import { buildGenreSignals, type DocumentGenre, type GenreSource } from '@/lib/genreSignals'
 import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
 import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
@@ -256,6 +257,8 @@ export default function Document(): JSX.Element {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved')
   // True while the server refuses saves because the account is out of storage.
   const [storageFull, setStorageFull] = useState(false)
+  /** Set when a baseline user picks a thesis preset, which needs student verification. */
+  const [presetLocked, setPresetLocked] = useState(false)
   /** Unsaved edits from an earlier session that are newer than the server copy. */
   const [recoveredDraft, setRecoveredDraft] = useState<LocalDraft | null>(null)
   const [helpOpen, setHelpOpen] = useState<boolean>(false)
@@ -2454,7 +2457,7 @@ export default function Document(): JSX.Element {
     api.formatting
       .inferStructure(text.slice(0, 3000))
       .then((result) => {
-        if (!cancelled && result.presetKey && ACADEMIC_PRESETS.some((p) => p.key === result.presetKey)) {
+        if (!cancelled && result.presetKey && ACADEMIC_PRESETS.some((p) => p.key === result.presetKey) && canUsePreset(user?.role, result.presetKey)) {
           setTypeOffer({ presetKey: result.presetKey, typeLabel: result.typeLabel })
         }
       })
@@ -2462,7 +2465,7 @@ export default function Document(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [editor, id, typeOfferKey, readOnly, isHydrating, formattingPreset])
+  }, [editor, id, typeOfferKey, readOnly, isHydrating, formattingPreset, user?.role])
 
   const isDocOwner = !!docOwnerId && user?.id === docOwnerId
   const genreSignalKeyRef = useRef<string | null>(null)
@@ -2614,6 +2617,10 @@ export default function Document(): JSX.Element {
   async function handleApplyAcademicPreset(key: string): Promise<void> {
     const preset = ACADEMIC_PRESETS.find((p) => p.key === key)
     if (!preset) return
+    if (!canUsePreset(user?.role, key)) {
+      setPresetLocked(true)
+      return
+    }
     setPageSize(preset.pageSize)
     setMargins({ ...preset.margins })
     setOrientation(preset.orientation)
@@ -3309,6 +3316,43 @@ export default function Document(): JSX.Element {
                   Keep saved version
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* A thesis preset was picked by an account without student verification */}
+          {presetLocked && (
+            <div
+              role="status"
+              style={{
+                position: 'fixed',
+                bottom: '7.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(30rem, calc(100vw - 2rem))',
+                zIndex: 42,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.625rem 0.875rem',
+                borderRadius: '0.625rem',
+                border: '1px solid var(--border)',
+                borderLeft: '3px solid var(--primary)',
+                backgroundColor: 'var(--card)',
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.12)',
+              }}
+            >
+              <p style={{ margin: 0, flex: 1, fontSize: '0.8125rem', color: 'var(--foreground)' }}>
+                Thesis presets are part of verified student access.{' '}
+                <Link to="/settings?section=applications" style={{ color: 'var(--primary)', fontWeight: 600 }}>Apply for verification</Link>
+              </p>
+              <button
+                type="button"
+                onClick={() => setPresetLocked(false)}
+                aria-label="Dismiss"
+                style={{ height: '1.75rem', padding: '0 0.625rem', borderRadius: '0.4375rem', border: '1px solid var(--border)', background: 'transparent', color: 'var(--foreground)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Dismiss
+              </button>
             </div>
           )}
 

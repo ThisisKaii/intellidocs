@@ -33,12 +33,14 @@ import {
 } from '../types/admin'
 
 const roleLabels: Record<RoleName, string> = {
+  user: 'User',
   student: 'Student',
   professor: 'Professor',
   admin: 'Administrator',
 }
 
-const roleIds: Record<RoleName, number> = { student: 1, professor: 2, admin: 3 }
+/** Matches public.roles: ids 1-3 from migration 007, `user` pinned to 4 by migration 039. */
+const roleIds: Record<RoleName, number> = { student: 1, professor: 2, admin: 3, user: 4 }
 
 /** Compact "3h ago" relative timestamp for review cards. */
 function timeAgo(iso: string): string {

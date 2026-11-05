@@ -1,4 +1,4 @@
-import { createProfessorApplication } from '../../models/userModel'
+import { createProfessorApplication, createStudentApplication } from '../../models/userModel'
 
 /** Rows the stubbed database returns, per table, plus every write it received. */
 const state: {
@@ -80,5 +80,50 @@ describe('createProfessorApplication', () => {
       (w) => w.table === 'notifications' && Array.isArray(w.payload),
     )
     expect((adminNotice?.payload as Array<{ user_id: string }>).map((n) => n.user_id)).toEqual(['a1', 'a2'])
+  })
+})
+
+describe('createStudentApplication', () => {
+  const student = { email: 'stu@example.com', studentId: '2026-0001', college: 'Engineering', degreeProgram: 'BSCS' }
+
+  beforeEach(() => {
+    state.profile = null
+    state.admins = []
+    state.writes = []
+  })
+
+  it('keeps the baseline role while pending and stores the student ID in its own column', async () => {
+    state.profile = { verification_status: 'approved', roles: { role_name: 'user' } }
+
+    await expect(createStudentApplication('u1', student)).resolves.toBe('submitted')
+
+    const update = state.writes.find((w) => w.table === 'user_profiles' && w.op === 'update')
+    expect(update?.payload).toMatchObject({ verification_status: 'pending', requested_role: 'student', student_id: '2026-0001' })
+    expect(update?.payload).not.toHaveProperty('role_id')
+    expect(update?.payload).not.toHaveProperty('phone')
+  })
+
+  it.each(['student', 'professor'])('refuses an approved %s', async (role) => {
+    state.profile = { verification_status: 'approved', roles: { role_name: role } }
+
+    await expect(createStudentApplication('u1', student)).resolves.toBe('already')
+    expect(state.writes).toHaveLength(0)
+  })
+
+  it('creates the profile on the baseline role when none exists', async () => {
+    await expect(createStudentApplication('u1', student)).resolves.toBe('submitted')
+
+    const insert = state.writes.find((w) => w.table === 'user_profiles' && w.op === 'insert')
+    expect(insert?.payload).toMatchObject({ role_id: 1, requested_role: 'student', verification_status: 'pending' })
+  })
+
+  it('notifies admins with a student review notice', async () => {
+    state.profile = { verification_status: 'approved', roles: { role_name: 'user' } }
+    state.admins = [{ user_id: 'a1' }]
+
+    await createStudentApplication('u1', student)
+
+    const adminNotice = state.writes.find((w) => w.table === 'notifications' && Array.isArray(w.payload))
+    expect((adminNotice?.payload as Array<{ type: string }>)[0].type).toBe('student_application_review')
   })
 })

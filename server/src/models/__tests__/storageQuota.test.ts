@@ -1,7 +1,12 @@
 import { assertWithinStorageQuota, clearStorageCache, STORAGE_QUOTA_BYTES } from '../userModel'
 
 /** What the stubbed database returns for the storage lookups. */
-const state: { used: number | Error; role: string; rpcCalls: number } = { used: 0, role: 'student', rpcCalls: 0 }
+const state: { used: number | Error; role: string; plan: Record<string, string | null>; rpcCalls: number } = {
+  used: 0,
+  role: 'student',
+  plan: {},
+  rpcCalls: 0,
+}
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => ({
@@ -9,7 +14,7 @@ jest.mock('@supabase/supabase-js', () => ({
       const query: Record<string, unknown> = {}
       query.select = jest.fn(() => query)
       query.eq = jest.fn(() => query)
-      query.maybeSingle = jest.fn(async () => ({ data: { roles: { role_name: state.role } }, error: null }))
+      query.maybeSingle = jest.fn(async () => ({ data: { roles: { role_name: state.role }, ...state.plan }, error: null }))
       return query
     }),
     rpc: jest.fn(async () => {
@@ -26,12 +31,14 @@ describe('storage quotas', () => {
   beforeEach(() => {
     state.used = 0
     state.role = 'student'
+    state.plan = {}
     state.rpcCalls = 0
     clearStorageCache('u1')
     jest.spyOn(console, 'error').mockImplementation(() => undefined)
   })
 
   it('keeps accounts small enough for a free-tier database', () => {
+    expect(STORAGE_QUOTA_BYTES.user).toBe(10 * MB)
     expect(STORAGE_QUOTA_BYTES.student).toBe(25 * MB)
     expect(STORAGE_QUOTA_BYTES.professor).toBe(50 * MB)
     expect(STORAGE_QUOTA_BYTES.admin).toBe(100 * MB)
@@ -57,6 +64,30 @@ describe('storage quotas', () => {
   it('allows the save when the size query fails', async () => {
     state.used = new Error('statement timeout')
     await expect(assertWithinStorageQuota('u1', 5 * MB)).resolves.toBeUndefined()
+  })
+
+  it('holds a baseline user to 10MB', async () => {
+    state.role = 'user'
+    state.used = 9 * MB
+    await expect(assertWithinStorageQuota('u1', 2 * MB)).rejects.toMatchObject({ status: 413 })
+  })
+
+  it('lifts the quota entirely for an active Pro plan', async () => {
+    state.role = 'user'
+    state.plan = { plan: 'pro', plan_canceled_at: null }
+    state.used = 500 * MB
+    await expect(assertWithinStorageQuota('u1', 50 * MB)).resolves.toBeUndefined()
+  })
+
+  it('keeps Pro until the end of a cancelled period, then restores the role quota', async () => {
+    state.role = 'user'
+    state.used = 9 * MB
+    state.plan = { plan: 'pro', plan_canceled_at: '2026-01-01T00:00:00Z', plan_renews_at: '2999-01-01T00:00:00Z' }
+    await expect(assertWithinStorageQuota('u1', 5 * MB)).resolves.toBeUndefined()
+
+    clearStorageCache('u1')
+    state.plan = { plan: 'pro', plan_canceled_at: '2026-01-01T00:00:00Z', plan_renews_at: '2026-02-01T00:00:00Z' }
+    await expect(assertWithinStorageQuota('u1', 5 * MB)).rejects.toMatchObject({ status: 413 })
   })
 
   it('uses the higher quota for a professor', async () => {
