@@ -173,11 +173,13 @@ export async function addDocumentToFolder(
       return
     }
 
-    await folderModel.assignDocumentToFolder(userId, documentId, id)
-    res.status(200).json({ status: 'ok' })
+    // Into a class the student is enrolled in, this hands the document in (its submission folder comes back).
+    const submissionFolder = await folderModel.assignDocumentToFolder(userId, documentId, id)
+    res.status(200).json({ status: 'ok', submissionFolder })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to move document'
-    res.status(500).json({ error: message })
+    const notFound = message === 'Folder not found' || message === 'Document not found'
+    res.status(notFound ? 404 : 500).json({ error: message })
   }
 }
 

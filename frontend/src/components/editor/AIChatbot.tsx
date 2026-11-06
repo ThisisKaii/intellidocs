@@ -3,8 +3,8 @@ import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { undoDepth } from '@tiptap/pm/history'
-import { api, type AIChatPreviewMeta, type RejectedFormattingPreview } from '@/services/api'
-import { applyFormatsToRanges, isChapterHeading, resolveTargetRanges } from './chatFormatting'
+import { api, type AIChatPreviewMeta, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
+import { applyFormatsToRanges, findLearnedBlockRanges, isChapterHeading, resolveTargetRanges } from './chatFormatting'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -22,6 +22,49 @@ interface ChatMessage {
   preview_status?: 'pending' | 'applied' | 'rejected' | null
   /** Document sections an AI answer was based on (undefined for rule-based replies). */
   sources?: Array<{ title: string }>
+  /** "Apply my usual formatting": the learned habits that match blocks of this document. */
+  preview_learned?: LearnedPlace[] | null
+}
+
+/** A learned habit and how many blocks of the open document it matches. */
+interface LearnedPlace extends LearnedFormattingRule {
+  places: number
+}
+
+/** Most chat messages kept per document for the session (about 10 turns). */
+const STORED_MESSAGES = 20
+
+const GREETING: ChatMessage = {
+  role: 'assistant',
+  content: 'Hello! I’m your IntelliDocs AI assistant. I can help you think through formatting, wording, and document edits. I won’t auto-apply changes yet, but I can guide you based on your current document.',
+}
+
+/** Session storage key of one document's chat. */
+const chatStorageKey = (documentId: string): string => `intellidocs:chat:${documentId}`
+
+/**
+ * This document's chat from earlier in the browser session, so a reload or a reopened panel keeps
+ * the conversation (and follow-ups like "now make them bold" keep their context). A pending preview
+ * comes back expired: the document may have changed since it was made.
+ */
+function readStoredChat(documentId: string | undefined): ChatMessage[] {
+  if (!documentId) return [GREETING]
+  try {
+    const raw = sessionStorage.getItem(chatStorageKey(documentId))
+    const parsed: unknown = raw ? JSON.parse(raw) : null
+    if (!Array.isArray(parsed)) return [GREETING]
+    const messages = parsed.filter(
+      (entry: unknown): entry is ChatMessage =>
+        typeof entry === 'object' && entry !== null &&
+        ((entry as ChatMessage).role === 'user' || (entry as ChatMessage).role === 'assistant') &&
+        typeof (entry as ChatMessage).content === 'string'
+    )
+    return messages.length > 0
+      ? messages.map((message) => (message.preview_status === 'pending' ? { ...message, preview_status: null } : message))
+      : [GREETING]
+  } catch {
+    return [GREETING]
+  }
 }
 
 interface ChatHistoryEntry {
@@ -70,12 +113,7 @@ export default function AIChatbot({
   docked = false,
 }: AIChatbotProps): JSX.Element {
   const [open, setOpen] = useState<boolean>(docked)
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content: 'Hello! I’m your IntelliDocs AI assistant. I can help you think through formatting, wording, and document edits. I won’t auto-apply changes yet, but I can guide you based on your current document.',
-    },
-  ])
+  const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredChat(documentId))
   const [input, setInput] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(false)
   const [rejectedPreviews, setRejectedPreviews] = useState<RejectedFormattingPreview[]>([])
@@ -87,6 +125,27 @@ export default function AIChatbot({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Keep the last turns of this document's chat for the browser session. Runs before the switch
+  // below, so on a document change the old messages are never written under the new document.
+  const storedForRef = useRef(documentId)
+  useEffect(() => {
+    if (!documentId || storedForRef.current !== documentId) return
+    try {
+      sessionStorage.setItem(chatStorageKey(documentId), JSON.stringify(messages.slice(-STORED_MESSAGES)))
+    } catch {
+      // Storage full or blocked: the chat still works on this page.
+    }
+  }, [documentId, messages])
+
+  // Another document opened in the same panel: show that document's chat.
+  useEffect(() => {
+    if (storedForRef.current === documentId) return
+    storedForRef.current = documentId
+    setMessages(readStoredChat(documentId))
+    lastPreviewRef.current = null
+    appliedStackRef.current = []
+  }, [documentId])
 
   /** Format a machine-readable format key into a user-facing label. */
   function formatPreviewLabel(format: string): string {
@@ -138,6 +197,10 @@ export default function AIChatbot({
 
   /** Describe a preview as one readable string, e.g. "Bold + Italic + font size 20pt". */
   function describePreview(msg: ChatMessage): string {
+    if (msg.preview_learned) {
+      const places = msg.preview_learned.reduce((sum, rule) => sum + rule.places, 0)
+      return `Your usual formatting — ${places} place${places === 1 ? '' : 's'}`
+    }
     const parts: string[] = []
     if (msg.preview_normalize) parts.push('Clear formatting')
     const formats =
@@ -333,6 +396,10 @@ export default function AIChatbot({
   /** Apply a confirmed formatting preview to the editor (selection or whole doc). */
   function handlePreviewApply(messageIndex: number, msg: ChatMessage): void {
     if (!editor) return
+    if (msg.preview_learned) {
+      applyLearnedPlaces(messageIndex, msg.preview_learned)
+      return
+    }
 
     const formats =
       msg.preview_formats && msg.preview_formats.length > 0
@@ -430,6 +497,38 @@ export default function AIChatbot({
               command_applied: appliedLabel,
             }
           : message
+      )
+    )
+  }
+
+  /** Apply every matched learned habit to its blocks, as one change "undo that" can take back. */
+  function applyLearnedPlaces(messageIndex: number, rules: LearnedPlace[]): void {
+    if (!editor || editor.isDestroyed) return
+    const depthBefore = undoDepth(editor.state)
+    let changed = 0
+    for (const rule of rules) {
+      const ranges = findLearnedBlockRanges(editor.state.doc, rule.key)
+      if (ranges.length === 0) continue
+      applyFormatsToRanges(editor, ranges, rule.formats, rule.fontSize ?? undefined, false)
+      changed += ranges.length
+    }
+    editor.commands.setTextSelection(1)
+
+    api.ai
+      .logFeedback({
+        documentId: documentId || undefined,
+        predictionType: 'chat_preview',
+        predictedFormat: 'learned',
+        accepted: true,
+      })
+      .catch((error) => console.error('Chat preview acceptance feedback log failed', error))
+    onFeedbackLogged?.()
+
+    const label = `your usual formatting on ${changed} place${changed === 1 ? '' : 's'}`
+    if (undoDepth(editor.state) > depthBefore) appliedStackRef.current.push({ depthBefore, label })
+    setMessages((current) =>
+      current.map((message, index) =>
+        index === messageIndex ? { ...message, preview_status: 'applied', command_applied: label } : message
       )
     )
   }
@@ -649,6 +748,31 @@ export default function AIChatbot({
           ? `${basePreviewReason ?? 'Detected a repeated formatting request.'} Previously rejected in this chat; confirm again before applying.`
           : basePreviewReason
 
+      // "Apply my usual formatting": keep only the habits that match blocks of this document.
+      if (previewFormat === 'learned') {
+        const learned: LearnedPlace[] = editor && !editor.isDestroyed
+          ? (response.preview?.learned ?? [])
+              .map((rule) => ({ ...rule, places: findLearnedBlockRanges(editor.state.doc, rule.key).length }))
+              .filter((rule) => rule.places > 0)
+          : []
+        const learnedMsg: ChatMessage = learned.length > 0
+          ? {
+              role: 'assistant',
+              content: response.reply,
+              preview_format: 'learned',
+              preview_scope: 'all',
+              preview_learned: learned,
+              preview_reason: response.preview?.reason ?? null,
+              preview_status: 'pending',
+            }
+          : {
+              role: 'assistant',
+              content: 'None of the paragraphs or headings in this document match your learned habits for this genre yet, so there is nothing to change.',
+            }
+        setMessages((current) => [...current, learnedMsg])
+        return
+      }
+
       const assistantMsg: ChatMessage = {
         role: 'assistant',
         content: `${response.reply}${reconfirmationNote}`,
@@ -847,6 +971,18 @@ export default function AIChatbot({
                           >
                             {m.preview_reason}
                           </div>
+                        )}
+                        {m.preview_learned && (
+                          <ul data-testid="learned-places" style={{ margin: '0.375rem 0 0', paddingLeft: '1rem', fontSize: '0.75rem', lineHeight: 1.45 }}>
+                            {m.preview_learned.slice(0, 8).map((rule) => (
+                              <li key={rule.key}>
+                                “{rule.snippet.length > 48 ? `${rule.snippet.slice(0, 48)}…` : rule.snippet}” →{' '}
+                                {[...rule.formats.map(formatPreviewLabel), ...(rule.fontSize ? [`${rule.fontSize}pt`] : [])].join(' + ')}
+                                {rule.places > 1 ? ` (${rule.places} places)` : ''}
+                              </li>
+                            ))}
+                            {m.preview_learned.length > 8 && <li>…and {m.preview_learned.length - 8} more</li>}
+                          </ul>
                         )}
 
                         {m.preview_status === 'pending' && (

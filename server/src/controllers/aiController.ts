@@ -10,6 +10,14 @@ import { retrieveSections, splitIntoSections, type DocumentSection } from '../sk
 import { getDocumentForUser } from '../models/documentModel'
 import { listFeedbackRows } from '../models/feedbackModel'
 import { summarizeLearning } from '../skills/summarizeLearning'
+import { getLearnedFormatPatterns } from '../models/behaviorModel'
+import { resolveDocumentGenre } from '../utils/documentGenre'
+import {
+  buildLearnedFormattingPlan,
+  genreLabel,
+  isUsualFormattingRequest,
+  learnedFormattingReply,
+} from '../skills/buildLearnedFormattingPlan'
 
 interface ErrorWithStatus {
   status?: number
@@ -352,6 +360,42 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
           resetInSeconds: quota.resetInSeconds,
         },
       })
+      return
+    }
+
+    // "Apply my usual formatting": the habits learned in this document's genre only, as a
+    // preview the editor matches against its blocks and applies in one click.
+    if (isUsualFormattingRequest(message)) {
+      const providerSummary = getProviderSummary()
+      const answer = (reply: string, preview: Record<string, unknown> | null): void => {
+        res.status(200).json({ reply, provider: providerSummary.provider, model: providerSummary.model, mode: preview ? 'preview' : 'chat', preview })
+      }
+      if (!body.documentId) {
+        answer('Open a document first, then ask me to apply your usual formatting to it.', null)
+        return
+      }
+      const doc = await getDocumentForUser(body.documentId, userId, req.user?.email)
+      if (doc.is_isolated) {
+        answer('This document is isolated from learning, so I don’t apply learned habits to it. Turn isolation off in the document settings to use them.', null)
+        return
+      }
+      const genre = resolveDocumentGenre(doc)
+      const rules = buildLearnedFormattingPlan(await getLearnedFormatPatterns(userId, genre))
+      answer(
+        learnedFormattingReply(genre, rules),
+        rules.length === 0
+          ? null
+          : {
+              format: 'learned',
+              label: 'Your usual formatting',
+              confidence: Math.max(...rules.map((rule) => rule.confidence)),
+              reason: `Learned from your ${genreLabel(genre)} documents.`,
+              formats: [],
+              scope: 'all',
+              genre,
+              learned: rules,
+            }
+      )
       return
     }
 

@@ -1,8 +1,20 @@
 import { Request, Response, NextFunction } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import { isMissingSecondFactor } from '../utils/tokenClaims'
+import type { RoleName } from '../types/index'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
+
+/** The role join on a user_profiles row: one object, or an array depending on how the relation is inferred. */
+interface ProfileRoleJoin {
+  roles?: { role_name?: RoleName | null } | Array<{ role_name?: RoleName | null }> | null
+}
+
+/** The role name a profile row joins to, or undefined when it has none. */
+function profileRoleName(profile: ProfileRoleJoin): RoleName | undefined {
+  const roles = Array.isArray(profile.roles) ? profile.roles[0] : profile.roles
+  return roles?.role_name ?? undefined
+}
 
 /** Basic authentication middleware: verifies Supabase Bearer JWT token. */
 export async function authMiddleware(
@@ -66,7 +78,7 @@ export async function requireAdmin(
       return
     }
 
-    const roleName = (profile as any).roles?.role_name
+    const roleName = profileRoleName(profile as ProfileRoleJoin)
     if (roleName !== 'admin') {
       res.status(403).json({ error: '403 Forbidden: Administrator access required' })
       return
@@ -103,7 +115,7 @@ export async function requireApprovedProfessor(
       return
     }
 
-    const roleName = (profile as any).roles?.role_name
+    const roleName = profileRoleName(profile as ProfileRoleJoin)
     const status = profile.verification_status
 
     if (roleName !== 'professor' && roleName !== 'admin') {

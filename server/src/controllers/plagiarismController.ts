@@ -4,7 +4,7 @@ import * as behaviorModel from '../models/behaviorModel'
 import * as folderModel from '../models/folderModel'
 import * as documentModel from '../models/documentModel'
 import * as plagiarismModel from '../models/plagiarismModel'
-import type { PlagiarismScope, ScanDocument } from '../models/plagiarismModel'
+import type { GlobalScopeFilters, PlagiarismScope, ScanDocument } from '../models/plagiarismModel'
 import { runCouncilScan } from '../skills/runCouncilScan'
 import { runOriginalityCheck } from '../skills/runOriginalityCheck'
 import { runWebOriginalityCheck } from '../skills/runWebOriginalityCheck'
@@ -41,7 +41,12 @@ export async function runScan(req: AuthenticatedRequest, res: Response): Promise
       return
     }
 
-    const { documentId, folderId, scope } = req.body as { documentId: string; folderId: string; scope: PlagiarismScope }
+    const { documentId, folderId, scope, filters } = req.body as {
+      documentId: string
+      folderId: string
+      scope: PlagiarismScope
+      filters?: GlobalScopeFilters
+    }
 
     const folder = await folderModel.getFolderById(userId, folderId)
     if (folder.folder_type !== 'class') {
@@ -54,7 +59,10 @@ export async function runScan(req: AuthenticatedRequest, res: Response): Promise
     // from another class is found too; local scans stay inside this folder.
     const peers: Array<ScanDocument & { folder_id?: string }> =
       scope === 'global'
-        ? await plagiarismModel.getProfessorPeerDocuments(userId, documentId)
+        ? await plagiarismModel.getProfessorPeerDocuments(
+            await plagiarismModel.getProfessorClassScope(userId, folderId, filters),
+            documentId,
+          )
         : await plagiarismModel.getFolderPeerDocuments(folderId, documentId)
     const folderByDocument = new Map(peers.map((peer) => [peer.id, peer.folder_id ?? folderId]))
     // The author's composition timeline feeds the forensics verdicts. Reading

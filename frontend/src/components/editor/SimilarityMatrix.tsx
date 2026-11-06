@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type ClassSimilarityMatrix, type PlagiarismScope } from '@/services/api'
+import { api, type ClassSimilarityMatrix, type GlobalScopeFilters, type PlagiarismScope } from '@/services/api'
 
 interface SimilarityMatrixProps {
   classFolderId: string
   /** 'global' also compares with the professor's other classes. */
   scope?: PlagiarismScope
+  /** Global scope only: which of the professor's classes to show matches from. */
+  filters?: GlobalScopeFilters
   onStudentSelect?: (studentId: string) => void
 }
 
@@ -45,7 +47,7 @@ function getColorForSimilarity(sim: number): string {
  * Data comes from the Express API (the council's plagiarism matches); the
  * matrix is built here purely for display.
  */
-export function SimilarityMatrix({ classFolderId, scope = 'local', onStudentSelect }: SimilarityMatrixProps): JSX.Element {
+export function SimilarityMatrix({ classFolderId, scope = 'local', filters, onStudentSelect }: SimilarityMatrixProps): JSX.Element {
   const [data, setData] = useState<ClassSimilarityMatrix | null>(null)
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
@@ -63,7 +65,7 @@ export function SimilarityMatrix({ classFolderId, scope = 'local', onStudentSele
     setError('')
 
     api.professor
-      .folderSimilarity(classFolderId, scope)
+      .folderSimilarity(classFolderId, scope, filters)
       .then((result) => {
         if (!cancelled) setData(result)
       })
@@ -79,7 +81,9 @@ export function SimilarityMatrix({ classFolderId, scope = 'local', onStudentSele
     return () => {
       cancelled = true
     }
-  }, [classFolderId, scope])
+    // The filters object is rebuilt on each render; its contents decide when to reload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classFolderId, scope, JSON.stringify(filters ?? null)])
 
   const rows: MatrixRow[] = useMemo(() => {
     if (!data) return []

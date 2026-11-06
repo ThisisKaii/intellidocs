@@ -167,6 +167,31 @@ export function applyFormatsToRanges(
   }
 }
 
+/** Block text normalized the way learned habits are keyed (behaviorModel.mergeLearnedPattern). */
+export function learnedKey(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 120)
+}
+
+/**
+ * The paragraphs and headings a learned habit applies to: the block's text equals the text the
+ * habit was learned on, or starts with it when that is a phrase of 6+ characters (the same rule
+ * the server uses to suggest a learned format).
+ */
+export function findLearnedBlockRanges(doc: ProseMirrorNode, key: string): TextRange[] {
+  const ranges: TextRange[] = []
+  if (key.length < 3) return ranges
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true
+    if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return false
+    const text = learnedKey(node.textContent)
+    if (text.length > 0 && (text === key || (key.length >= 6 && text.startsWith(key)))) {
+      ranges.push({ from: pos + 1, to: pos + node.nodeSize - 1 })
+    }
+    return false
+  })
+  return ranges
+}
+
 /** Resolve a chat target to the document ranges it means, or an empty list when it is not in the document. */
 export function resolveTargetRanges(doc: ProseMirrorNode, target: string, mode: TargetMode): TextRange[] {
   if (mode === 'title') {

@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
+import { getClassSubmissionLinks } from './folderModel'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -8,6 +9,53 @@ const supabase = createClient(
 
 /** Whether a scan compares inside one class or across all of a professor's classes. */
 export type PlagiarismScope = 'local' | 'global'
+
+/**
+ * Which of the professor's classes a global comparison covers. Empty lists mean every term or
+ * class code; with `includePastTerms` false only classes of the scanned class's term are used.
+ */
+export interface GlobalScopeFilters {
+  academicTerms?: string[]
+  classCodes?: string[]
+  includePastTerms?: boolean
+}
+
+/** Case- and space-insensitive comparison key for terms and class codes. */
+const filterKey = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase()
+
+/**
+ * The professor's class folders a global comparison covers, after the filters. The class being
+ * scanned is always included.
+ */
+export async function getProfessorClassScope(
+  professorId: string,
+  currentFolderId: string,
+  filters: GlobalScopeFilters = {},
+): Promise<string[]> {
+  const { data: folders, error } = await supabase
+    .from('folders')
+    .select('folder_id,class_code,academic_term')
+    .eq('user_id', professorId)
+    .eq('folder_type', 'class')
+
+  if (error) throw new Error(`Failed to load your classes: ${error.message}`)
+  const rows = folders ?? []
+  const currentTerm = filterKey(rows.find((row) => row.folder_id === currentFolderId)?.academic_term as string | null)
+  const terms = new Set((filters.academicTerms ?? []).map(filterKey).filter(Boolean))
+  const codes = new Set((filters.classCodes ?? []).map(filterKey).filter(Boolean))
+
+  const allowed = rows
+    .filter((row) => {
+      if (row.folder_id === currentFolderId) return true
+      const term = filterKey(row.academic_term as string | null)
+      if (filters.includePastTerms === false && term !== currentTerm) return false
+      if (terms.size > 0 && !terms.has(term)) return false
+      if (codes.size > 0 && !codes.has(filterKey(row.class_code as string | null))) return false
+      return true
+    })
+    .map((row) => row.folder_id as string)
+  return allowed.includes(currentFolderId) ? allowed : [currentFolderId, ...allowed]
+}
 
 /** A student taking part in the class similarity comparison. */
 export interface ClassSimilarityStudent {
@@ -66,17 +114,11 @@ async function resolveStudentName(studentId: string): Promise<string> {
 export async function getClassSimilarity(
   folderId: string,
   scope: PlagiarismScope = 'local',
+  /** Global view only: the class folders whose matches are shown (getProfessorClassScope). */
+  globalFolderIds?: string[],
 ): Promise<ClassSimilarityMatrix> {
-  const { data: links, error: linkError } = await supabase
-    .from('folder_documents')
-    .select('document_id')
-    .eq('folder_id', folderId)
-
-  if (linkError) {
-    throw new Error(`Failed to load folder documents: ${linkError.message}`)
-  }
-
-  const documentIds = Array.from(new Set((links ?? []).map((row) => row.document_id)))
+  const links = await getClassSubmissionLinks([folderId])
+  const documentIds = Array.from(new Set(links.map((row) => row.document_id)))
   if (documentIds.length === 0) return { students: [], pairs: [] }
 
   const { data: docs, error: docError } = await supabase
@@ -132,6 +174,8 @@ export async function getClassSimilarity(
     for (const match of matches ?? []) {
       // The local view ignores matches found in the professor's other classes.
       if (scope === 'local' && match.matched_folder_id && match.matched_folder_id !== folderId) continue
+      // The filtered global view leaves out matches from classes outside the chosen terms/codes.
+      if (scope === 'global' && globalFolderIds && match.matched_folder_id && !globalFolderIds.includes(match.matched_folder_id)) continue
       const studentA = studentByScan.get(match.scan_id)
       const studentB =
         match.matched_student_id ??
@@ -238,15 +282,8 @@ export async function getFolderDocument(
   folderId: string,
   documentId: string,
 ): Promise<ScanDocument> {
-  const { data: link, error: linkError } = await supabase
-    .from('folder_documents')
-    .select('document_id')
-    .eq('folder_id', folderId)
-    .eq('document_id', documentId)
-    .maybeSingle()
-
-  if (linkError) throw new Error(`Failed to check folder link: ${linkError.message}`)
-  if (!link) {
+  const links = await getClassSubmissionLinks([folderId])
+  if (!links.some((row) => row.document_id === documentId)) {
     const notFound = new Error('Document is not part of this class folder') as Error & { status: number }
     notFound.status = 404
     throw notFound
@@ -267,15 +304,8 @@ export async function getFolderPeerDocuments(
   folderId: string,
   excludeDocumentId: string,
 ): Promise<ScanDocument[]> {
-  const { data: links, error } = await supabase
-    .from('folder_documents')
-    .select('document_id')
-    .eq('folder_id', folderId)
-
-  if (error) throw new Error(`Failed to load folder documents: ${error.message}`)
-
-  const documentIds = (links ?? [])
-    .map((row) => row.document_id as string)
+  const links = await getClassSubmissionLinks([folderId])
+  const documentIds = Array.from(new Set(links.map((row) => row.document_id)))
     .filter((id) => id !== excludeDocumentId)
 
   if (documentIds.length === 0) return []
@@ -298,32 +328,18 @@ export interface FolderPeerDocument extends ScanDocument {
 export const GLOBAL_PEER_LIMIT = 200
 
 /**
- * Every document submitted to any class folder this professor owns (except the
- * one being scanned), newest first and capped, for a global scan.
+ * Every document submitted to the given class folders of a professor (except the one being
+ * scanned), newest first and capped, for a global scan.
  */
 export async function getProfessorPeerDocuments(
-  professorId: string,
+  folderIds: string[],
   excludeDocumentId: string,
 ): Promise<FolderPeerDocument[]> {
-  const { data: folders, error: folderError } = await supabase
-    .from('folders')
-    .select('folder_id')
-    .eq('user_id', professorId)
-    .eq('folder_type', 'class')
-
-  if (folderError) throw new Error(`Failed to load your classes: ${folderError.message}`)
-  const folderIds = (folders ?? []).map((row) => row.folder_id as string)
   if (folderIds.length === 0) return []
-
-  const { data: links, error: linkError } = await supabase
-    .from('folder_documents')
-    .select('document_id,folder_id')
-    .in('folder_id', folderIds)
-
-  if (linkError) throw new Error(`Failed to load class submissions: ${linkError.message}`)
+  const links = await getClassSubmissionLinks(folderIds)
 
   const folderByDocument = new Map<string, string>()
-  for (const row of links ?? []) {
+  for (const row of links) {
     if (row.document_id !== excludeDocumentId && !folderByDocument.has(row.document_id as string)) {
       folderByDocument.set(row.document_id as string, row.folder_id as string)
     }

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { ClipboardCheck, Globe2, RefreshCw, Square, Users } from 'lucide-react'
-import { api, type PlagiarismScanDetail, type PlagiarismScope } from '@/services/api'
+import { api, type GlobalScopeFilters, type PlagiarismScanDetail, type PlagiarismScope } from '@/services/api'
 import { SimilarityMatrix } from '@/components/editor/SimilarityMatrix'
 import { CouncilInspectionModal } from '@/components/editor/CouncilInspectionModal'
 import { EmptyState } from '@/components/EmptyState'
@@ -10,6 +10,11 @@ interface ScanProgress {
   done: number
   total: number
   title: string
+}
+
+/** Distinct non-empty values, sorted newest-looking first (terms like "2026-T1" sort by year). */
+function distinct(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.map((value) => value?.trim() ?? '').filter(Boolean))).sort().reverse()
 }
 
 /** Local/global toggle, scan runner and similarity matrix for the professor's classes. */
@@ -22,10 +27,18 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [detail, setDetail] = useState<PlagiarismScanDetail | null>(null)
   const cancelRef = useRef(false)
+  const [term, setTerm] = useState('')
+  const [classCode, setClassCode] = useState('')
+  const [includePast, setIncludePast] = useState(true)
 
   const classNames = useMemo(() => Object.fromEntries(classes.map((c) => [c.folder.folder_id, c.folder.name])), [classes])
   const selected = classes.find((c) => c.folder.folder_id === folderId) ?? classes[0]
   const activeFolderId = selected?.folder.folder_id ?? ''
+  const terms = useMemo(() => distinct(classes.map((c) => c.folder.academic_term)), [classes])
+  const classCodes = useMemo(() => distinct(classes.map((c) => c.folder.class_code)), [classes])
+  const filters: GlobalScopeFilters | undefined = scope === 'global'
+    ? { academicTerms: term ? [term] : [], classCodes: classCode ? [classCode] : [], includePastTerms: includePast }
+    : undefined
 
   /** Scan every submission in the selected class in the chosen scope; Stop ends it after the current document. */
   async function runScans(): Promise<void> {
@@ -43,7 +56,7 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
       for (const doc of docs) {
         if (cancelRef.current) break
         setProgress({ done, total: docs.length, title: doc.title || 'Untitled' })
-        await api.plagiarism.runScan(activeFolderId, doc.id, scope)
+        await api.plagiarism.runScan(activeFolderId, doc.id, scope, filters)
         done += 1
       }
       setNotice({ tone: 'ok', text: `${cancelRef.current ? 'Stopped after' : 'Scanned'} ${done} of ${docs.length} submissions (${scope === 'global' ? 'all your classes' : 'this class'}).` })
@@ -107,6 +120,29 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
         </div>
       </div>
 
+      {scope === 'global' && (
+        <div role="group" aria-label="Global filters" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-secondary/40 p-3 text-sm">
+          <label className="flex items-center gap-2">
+            <span className="text-muted-foreground">Term</span>
+            <select aria-label="Academic term" value={term} onChange={(e) => setTerm(e.target.value)} className="h-8 rounded-md border border-border bg-background px-2 text-sm">
+              <option value="">All terms</option>
+              {terms.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-muted-foreground">Class code</span>
+            <select aria-label="Class code" value={classCode} onChange={(e) => setClassCode(e.target.value)} className="h-8 rounded-md border border-border bg-background px-2 text-sm">
+              <option value="">All classes</option>
+              {classCodes.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" aria-label="Include past terms" checked={includePast} onChange={(e) => setIncludePast(e.target.checked)} className="size-4" />
+            <span>Include past terms</span>
+          </label>
+        </div>
+      )}
+
       <p className="text-xs text-muted-foreground">
         {scope === 'global'
           ? 'Global: each submission is also compared with submissions in your other classes, and the matrix shows which class a match came from.'
@@ -126,7 +162,7 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
       )}
 
       <div className="rounded-xl border border-border bg-card p-4">
-        <SimilarityMatrix key={`${activeFolderId}:${scope}:${refreshKey}`} classFolderId={activeFolderId} scope={scope} onStudentSelect={(id) => { void inspect(id) }} />
+        <SimilarityMatrix key={`${activeFolderId}:${scope}:${refreshKey}`} classFolderId={activeFolderId} scope={scope} filters={filters} onStudentSelect={(id) => { void inspect(id) }} />
       </div>
 
       <CouncilInspectionModal isOpen={detail !== null} onClose={() => setDetail(null)} detail={detail} classNames={classNames} />

@@ -20,7 +20,9 @@ def _open(page, api: Api, content: str = "<p>e2e scratch document</p>") -> str:
 
 
 def _open_suggestions(page, tab: str) -> None:
-    page.get_by_role("button", name="Suggestions").first.click()
+    # The side-panel tab reads "Suggestions" plus its count; the genre badge's label also mentions
+    # suggestions, so match the tab's whole name.
+    page.get_by_role("button", name=re.compile(r"^Suggestions(\s+\d+)?$")).first.click()
     page.get_by_role("tab", name=tab).click()
 
 

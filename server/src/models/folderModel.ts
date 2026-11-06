@@ -147,12 +147,9 @@ async function getClassFolderStats(
     studentsByFolder.set(row.folder_id, set)
   }
 
-  const { data: links } = await supabase
-    .from('folder_documents')
-    .select('folder_id,document_id')
-    .in('folder_id', classFolderIds)
+  const links = await getClassSubmissionLinks(classFolderIds)
 
-  const documentIds = Array.from(new Set((links || []).map((row) => row.document_id)))
+  const documentIds = Array.from(new Set(links.map((row) => row.document_id)))
   let ownerByDocument = new Map<string, string>()
   if (documentIds.length > 0) {
     // Metadata only — never select `content` here (it can be multi-MB).
@@ -165,7 +162,7 @@ async function getClassFolderStats(
 
   for (const folderId of classFolderIds) {
     const students = studentsByFolder.get(folderId) || new Set<string>()
-    const submissions = (links || []).filter(
+    const submissions = links.filter(
       (row) =>
         row.folder_id === folderId && students.has(ownerByDocument.get(row.document_id) ?? '')
     ).length
@@ -491,10 +488,18 @@ export async function assignDocumentToFolder(
   userId: string,
   documentId: string,
   folderId: string
-): Promise<void> {
+): Promise<Folder | null> {
   await requireDocument(userId, documentId)
-  await requireFolder(userId, folderId)
+  if (!(await getOwnedFolder(userId, folderId))) {
+    // Not the user's folder: a student enrolled in this class hands the document in.
+    return submitDocumentToClass(userId, documentId, folderId)
+  }
+  await linkDocument(documentId, folderId)
+  return null
+}
 
+/** Move a document into one folder (a document lives in at most one folder). */
+async function linkDocument(documentId: string, folderId: string): Promise<void> {
   const { error: deleteError } = await supabase
     .from('folder_documents')
     .delete()
@@ -516,6 +521,139 @@ export async function assignDocumentToFolder(
   }
 }
 
+/** Ids of the documents linked directly to one folder. */
+async function folderDocumentIds(folderId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('folder_documents')
+    .select('document_id')
+    .eq('folder_id', folderId)
+
+  if (error) {
+    throw new Error(`Failed to read folder contents: ${error.message}`)
+  }
+  return (data ?? []).map((row) => row.document_id as string)
+}
+
+/**
+ * Every document handed in to these class folders, with the class it counts for. A submission is
+ * linked to the class folder itself or to a folder directly inside it (a student's submission or
+ * workspace folder).
+ */
+export async function getClassSubmissionLinks(
+  classFolderIds: string[]
+): Promise<Array<{ document_id: string; folder_id: string }>> {
+  if (classFolderIds.length === 0) return []
+
+  const { data: children, error: childError } = await supabase
+    .from('folders')
+    .select('folder_id,parent_id')
+    .in('parent_id', classFolderIds)
+
+  if (childError) {
+    throw new Error(`Failed to read class submission folders: ${childError.message}`)
+  }
+
+  const classOf = new Map<string, string>(classFolderIds.map((id) => [id, id]))
+  for (const child of children ?? []) classOf.set(child.folder_id as string, child.parent_id as string)
+
+  const { data: links, error: linkError } = await supabase
+    .from('folder_documents')
+    .select('folder_id,document_id')
+    .in('folder_id', Array.from(classOf.keys()))
+
+  if (linkError) {
+    throw new Error(`Failed to read class submissions: ${linkError.message}`)
+  }
+
+  return (links ?? []).map((row) => ({
+    document_id: row.document_id as string,
+    folder_id: classOf.get(row.folder_id as string) ?? (row.folder_id as string),
+  }))
+}
+
+/** Name of a student's submission folder: "[Student Name] - [Student ID] - [Submission Title]". */
+export function submissionFolderName(studentName: string, studentNumber: string | null, title: string): string {
+  const parts = [studentName.trim() || 'Student', studentNumber?.trim() || 'No ID', title.trim() || 'Untitled document']
+  return parts.join(' - ').slice(0, 120)
+}
+
+/**
+ * Hand a student's document in to a class they are enrolled in. The document moves into its own
+ * submission folder inside the class, named "[Student Name] - [Student ID] - [Submission Title]".
+ * Handing the same document in again reuses (and renames) its submission folder.
+ */
+export async function submitDocumentToClass(
+  studentId: string,
+  documentId: string,
+  classFolderId: string
+): Promise<Folder> {
+  const { data: classFolder } = await supabase
+    .from('folders')
+    .select('*')
+    .eq('folder_id', classFolderId)
+    .maybeSingle()
+
+  const { data: enrolled } = await supabase
+    .from('class_enrollments')
+    .select('student_id')
+    .eq('folder_id', classFolderId)
+    .eq('student_id', studentId)
+    .maybeSingle()
+
+  if (!classFolder || classFolder.folder_type !== 'class' || !enrolled) {
+    throw new Error('Folder not found')
+  }
+
+  const [{ data: doc }, { data: profile }, { data: authUser }] = await Promise.all([
+    supabase.from('documents').select('title').eq('id', documentId).single(),
+    supabase.from('user_profiles').select('student_id').eq('user_id', studentId).maybeSingle(),
+    supabase.auth.admin.getUserById(studentId),
+  ])
+  const studentName =
+    (authUser?.user?.user_metadata?.display_name as string | undefined) ??
+    authUser?.user?.email?.split('@')[0] ??
+    'Student'
+  const name = submissionFolderName(studentName, (profile?.student_id as string | null) ?? null, (doc?.title as string | undefined) ?? '')
+
+  // Already handed in to this class: keep its submission folder, with the current title.
+  const { data: currentLink } = await supabase
+    .from('folder_documents')
+    .select('folder_id, folders!inner(folder_id,parent_id,user_id)')
+    .eq('document_id', documentId)
+    .maybeSingle()
+  const current = (currentLink?.folders ?? null) as { folder_id: string; parent_id: string | null; user_id: string } | null
+
+  let folder: Folder
+  if (current && current.parent_id === classFolderId && current.user_id === studentId) {
+    const { data, error } = await supabase
+      .from('folders')
+      .update({ name, updated_at: new Date().toISOString() })
+      .eq('folder_id', current.folder_id)
+      .select()
+      .single()
+    if (error || !data) throw new Error(`Failed to update the submission folder: ${error?.message ?? 'not found'}`)
+    folder = data
+  } else {
+    const { data, error } = await supabase
+      .from('folders')
+      .insert({
+        user_id: studentId,
+        name,
+        parent_id: classFolderId,
+        folder_type: 'personal',
+        class_code: null,
+        academic_term: null,
+      })
+      .select()
+      .single()
+    if (error || !data) throw new Error(`Failed to create the submission folder: ${error?.message ?? 'no row'}`)
+    folder = data
+  }
+
+  await linkDocument(documentId, folder.folder_id)
+  return folder
+}
+
 /**
  * Fetch all documents currently inside a folder.
  * The owner sees everything; a student enrolled in a class folder sees the
@@ -529,16 +667,12 @@ export async function getDocumentsForFolder(
     throw new Error('Folder not found')
   }
 
-  const { data: folderRows, error: folderError } = await supabase
-    .from('folder_documents')
-    .select('document_id')
-    .eq('folder_id', folderId)
-
-  if (folderError) {
-    throw new Error(`Failed to read folder contents: ${folderError.message}`)
-  }
-
-  const documentIds = (folderRows ?? []).map((row) => row.document_id)
+  // The professor sees a class's submissions, which sit in the students' submission folders inside
+  // it; an enrolled student sees only what is in the class folder itself.
+  const owned = await getOwnedFolder(userId, folderId)
+  const documentIds = owned?.folder_type === 'class'
+    ? Array.from(new Set((await getClassSubmissionLinks([folderId])).map((row) => row.document_id)))
+    : await folderDocumentIds(folderId)
 
   if (documentIds.length === 0) {
     return []

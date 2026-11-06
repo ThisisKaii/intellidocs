@@ -5,6 +5,22 @@ export const runPlagiarismScanSchema = z.object({
   documentId: z.string().trim().min(1, 'documentId is required'),
   folderId: z.string().trim().min(1, 'folderId is required'),
   scope: z.enum(['local', 'global']).default('local'),
+  /** Global scope only: which of the professor's classes to compare against. */
+  filters: z
+    .object({
+      academicTerms: z.array(z.string().trim().max(40)).max(50).optional(),
+      classCodes: z.array(z.string().trim().max(40)).max(100).optional(),
+      includePastTerms: z.boolean().optional(),
+    })
+    .optional(),
+})
+
+/** Read the global-scope filters from similarity query params (comma-separated lists). */
+export const similarityQuerySchema = z.object({
+  scope: z.enum(['local', 'global']).default('local'),
+  terms: z.string().max(2000).optional(),
+  classCodes: z.string().max(4000).optional(),
+  includePast: z.enum(['true', 'false']).optional(),
 })
 
 /** Validate one judge/verdict entry in a council transcript. */

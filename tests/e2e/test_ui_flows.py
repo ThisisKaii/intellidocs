@@ -57,7 +57,7 @@ def test_wrong_password_shows_error_and_stays(page) -> None:
 def test_dashboard_shows_document_list(page) -> None:
     sign_in(page)
     body = page.inner_text("body")
-    assert "My Documents" in body or "Documents" in body, f"no document list: {body[:200]}"
+    assert "My documents" in body, f"no document list: {body[:200]}"
     assert page.query_selector(".ProseMirror") is None, "editor should not be on the dashboard"
 
 

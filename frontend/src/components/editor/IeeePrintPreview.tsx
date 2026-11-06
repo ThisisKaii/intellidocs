@@ -34,7 +34,7 @@ html, body { margin: 0; }
 .ieee-doc { font-family: "Times New Roman", Times, serif; font-size: 10pt; line-height: 1.15; color: #000; text-align: justify; }
 .ieee-doc .ieee-front { column-span: all; text-align: center; }
 .ieee-doc .ieee-front p { margin: 0 0 6pt; }
-.ieee-doc .ieee-front h1 { font-size: 24pt; font-weight: 400; margin: 0 0 12pt; }
+.ieee-doc .ieee-front h1 { font-size: 24pt; font-weight: 400; font-variant: normal; text-transform: none; margin: 0 0 12pt; }
 .ieee-doc .ieee-front p[style*="font-size"] { text-align: justify; font-weight: 700; }
 .ieee-doc .ieee-body { columns: 2; column-gap: 0.25in; column-fill: auto; }
 /* Level 1 is set in small caps, as the Word export writes it. */
@@ -51,6 +51,9 @@ html, body { margin: 0; }
    block must keep its own alignment. */
 .ieee-doc h1[data-align-last-split-element], .ieee-doc h2[data-align-last-split-element], .ieee-doc h3[data-align-last-split-element],
 .ieee-doc [data-caption-kind][data-align-last-split-element], .ieee-doc .ieee-front [data-align-last-split-element] { text-align-last: auto !important; }
+/* It marks a split container too, and text-align-last is inherited: every heading and short line in a
+   split body would be stretched across the column. The containers hold no text of their own. */
+.ieee-doc[data-align-last-split-element], .ieee-doc .ieee-body[data-align-last-split-element], .ieee-doc .ieee-front[data-align-last-split-element] { text-align-last: auto !important; }
 .ieee-doc [data-type='block-math'] { position: relative; margin: 6pt 0; text-indent: 0; }
 .ieee-doc [data-type='block-math'] .katex-display { margin: 0; }
 .ieee-doc [data-type='block-math'][data-number]::after { content: '(' attr(data-number) ')'; position: absolute; right: 0; top: 50%; transform: translateY(-50%); }

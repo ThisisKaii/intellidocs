@@ -115,6 +115,15 @@ describe('IEEE scaffold rules', () => {
     expect(canonicalSectionName('Introduction')).toBe('introduction')
   })
 
+  it('reads thesis chapter headings as their IEEE section', () => {
+    expect(canonicalSectionName('CHAPTER I: INTRODUCTION')).toBe('introduction')
+    expect(canonicalSectionName('Chapter 2 - Review of Related Literature')).toBe('related work')
+    expect(canonicalSectionName('CHAPTER III. METHODOLOGY')).toBe('proposed method')
+    expect(canonicalSectionName('CHAPTER IV: RESULTS AND DISCUSSION')).toBe('results and discussion')
+    expect(canonicalSectionName('CHAPTER V: CONCLUSION AND RECOMMENDATIONS')).toBe('conclusion')
+    expect(canonicalSectionName('CHAPTER I')).toBe('chapter i')
+  })
+
   it('puts the Abstract label in the first paragraph instead of nesting paragraphs', () => {
     expect(mergeRunIn('<strong><em>Abstract</em></strong>—', '<p>Text one.</p><p>Text two.</p>')).toBe(
       '<p><strong><em>Abstract</em></strong>— Text one.</p><p>Text two.</p>'
@@ -169,6 +178,26 @@ describe('convertToIeee in the editor', () => {
     const headings = headingTexts(editor)
     expect(headings.some((h) => h.startsWith('I. Introduction'))).toBe(true)
     expect(headings.some((h) => h.includes('Methodology'))).toBe(true)
+  })
+
+  it('maps a thesis manuscript onto the IEEE sections, dropping the chapter labels', () => {
+    const editor = createEditor(
+      '<h1>Portal Study</h1><p>Abstract—We study portals.</p>' +
+        '<h1>CHAPTER I: INTRODUCTION</h1><p>Intro text.</p>' +
+        '<h1>CHAPTER II: REVIEW OF RELATED LITERATURE</h1><p>Lit text.</p>' +
+        '<h1>CHAPTER III: METHODOLOGY</h1><p>Method text.</p>' +
+        '<h1>CHAPTER IV: RESULTS AND DISCUSSION</h1><p>Result text.</p>' +
+        '<h1>CHAPTER V: CONCLUSION AND RECOMMENDATIONS</h1><p>End text.</p><h1>REFERENCES</h1><p>[1] A.</p>'
+    )
+    convertToIeee(editor)
+    const headings = headingTexts(editor)
+    expect(headings).toContain('I. INTRODUCTION')
+    expect(headings).toContain('II. REVIEW OF RELATED LITERATURE')
+    expect(headings).toContain('III. METHODOLOGY')
+    expect(headings.some((h) => /^V\. RESULTS AND DISCUSSION$/.test(h))).toBe(true)
+    expect(headings.some((h) => /CONCLUSION AND RECOMMENDATIONS$/.test(h))).toBe(true)
+    expect(headings).not.toContain('Unmapped Content')
+    expect(headings.some((h) => /chapter/i.test(h))).toBe(false)
   })
 
   it('keeps a first heading called Introduction as a section, not the paper title', () => {

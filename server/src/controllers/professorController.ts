@@ -6,6 +6,7 @@ import * as documentModel from '../models/documentModel'
 import * as folderModel from '../models/folderModel'
 import * as plagiarismModel from '../models/plagiarismModel'
 import { auditCompliance } from '../skills/auditCompliance'
+import { similarityQuerySchema } from '../../schemas/plagiarismSchemas'
 
 export async function addComment(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -162,8 +163,23 @@ export async function getFolderSimilarity(
       return
     }
 
-    const scope = req.query.scope === 'global' ? 'global' : 'local'
-    const matrix = await plagiarismModel.getClassSimilarity(folderId, scope)
+    const query = similarityQuerySchema.safeParse(req.query)
+    if (!query.success) {
+      res.status(400).json({ error: 'Invalid similarity filters' })
+      return
+    }
+    const { scope, terms, classCodes, includePast } = query.data
+    const list = (value: string | undefined): string[] => (value ?? '').split(',').map((item) => item.trim()).filter(Boolean)
+    // The global view can be narrowed to some terms or class codes, or to this class's term only.
+    const globalFolderIds =
+      scope === 'global'
+        ? await plagiarismModel.getProfessorClassScope(userId, folderId, {
+            academicTerms: list(terms),
+            classCodes: list(classCodes),
+            includePastTerms: includePast !== 'false',
+          })
+        : undefined
+    const matrix = await plagiarismModel.getClassSimilarity(folderId, scope, globalFolderIds)
     res.json(matrix)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load similarity matrix'

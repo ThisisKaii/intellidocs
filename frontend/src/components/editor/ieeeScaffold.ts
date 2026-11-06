@@ -52,6 +52,18 @@ export interface ScaffoldResult {
   leftovers: SourceSection[]
 }
 
+/** A thesis chapter label at the start of a heading: "CHAPTER I:", "Chapter 3 -", "CHAPTER IV." */
+const CHAPTER_PREFIX = /^\s*chapter\s+(?:[ivxlcdm]+|\d+)\b\s*[:.\-\u2013\u2014]?\s*/i
+
+/**
+ * Drops a thesis chapter label, so "CHAPTER I: INTRODUCTION" is matched (and titled) as
+ * "INTRODUCTION". A heading that is only a chapter label is left as it is.
+ */
+export function stripChapterPrefix(text: string): string {
+  const rest = text.replace(CHAPTER_PREFIX, '')
+  return rest.trim().length > 0 ? rest : text
+}
+
 /**
  * Reduces a name to a comparable form: numbering removed, trailing punctuation
  * dropped, lowercased, and internal whitespace collapsed. `I. Introduction` and
@@ -59,7 +71,7 @@ export interface ScaffoldResult {
  * `background`.
  */
 export function normalizeHeadingName(name: string): string {
-  return stripIeeeNumber(name)
+  return stripIeeeNumber(stripChapterPrefix(name))
     .replace(/[:.\s]+$/, '')
     .toLowerCase()
     .replace(/\s+/g, ' ')
@@ -87,6 +99,22 @@ const SECTION_ALIASES: Readonly<Record<string, string>> = {
   'related works': 'related work',
   'literature review': 'related work',
   'review of related literature': 'related work',
+  'review of related literature and studies': 'related work',
+  'related literature and studies': 'related work',
+  'related literature': 'related work',
+  'the problem and its background': 'introduction',
+  'the problem and its setting': 'introduction',
+  'research design and methodology': 'proposed method',
+  'methodology of the study': 'proposed method',
+  'results and discussions': 'results and discussion',
+  'presentation, analysis, and interpretation of data': 'results and discussion',
+  'presentation, analysis and interpretation of data': 'results and discussion',
+  'conclusion and recommendations': 'conclusion',
+  'conclusions and recommendations': 'conclusion',
+  'summary, conclusions, and recommendations': 'conclusion',
+  'summary, conclusions and recommendations': 'conclusion',
+  'summary of findings, conclusions, and recommendations': 'conclusion',
+  'summary of findings, conclusions and recommendations': 'conclusion',
   experiments: 'experimental setup',
   reference: 'references',
   bibliography: 'references',
@@ -219,7 +247,12 @@ export function coerceHeadingLevel(html: string, level: 1 | 2 | 3): string {
   }
 
   const rest = html.slice(match[0].length)
-  return `<h${level}${match[2]}>${match[3]}</h${level}>${rest}`
+  // An IEEE section is titled by its name alone: "CHAPTER I: INTRODUCTION" becomes "INTRODUCTION"
+  // (numbered "I." afterwards). Leading inline tags such as <strong> are kept.
+  const inner = match[3].replace(/^((?:<[^>]+>)*)([^<]*)/, (whole: string, tags: string, text: string): string =>
+    tags + stripChapterPrefix(text)
+  )
+  return `<h${level}${match[2]}>${inner}</h${level}>${rest}`
 }
 
 /** Marker heading placed above source content that matched no IEEE slot. */

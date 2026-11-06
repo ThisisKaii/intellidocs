@@ -492,6 +492,21 @@ export interface AIChatPreview {
   targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
+  /** Genre whose learned habits a `learned` preview carries. */
+  genre?: string
+  /** For format `learned`: the user's habits in this document's genre, for the editor to match. */
+  learned?: LearnedFormattingRule[]
+}
+
+/** One learned formatting habit ("apply my usual formatting"); server: buildLearnedFormattingPlan. */
+export interface LearnedFormattingRule {
+  /** Normalized text (lowercase, single spaces) the habit was learned on. */
+  key: string
+  snippet: string
+  formats: string[]
+  fontSize: number | null
+  count: number
+  confidence: number
 }
 
 /** Snapshot of the last shown preview, sent back so follow-ups resolve to it. */
@@ -606,6 +621,14 @@ export interface DocumentReview {
 
 /** Whether a scan compares inside one class or across all of a professor's classes. */
 export type PlagiarismScope = 'local' | 'global'
+
+/** Which of the professor's classes a global comparison covers (empty = all). */
+export interface GlobalScopeFilters {
+  academicTerms?: string[]
+  classCodes?: string[]
+  /** False: only classes of the scanned class's term. */
+  includePastTerms?: boolean
+}
 
 /** A student taking part in the class similarity comparison. */
 export interface ClassSimilarityStudent {
@@ -1631,8 +1654,18 @@ export const api = {
       })
     },
     /** Class similarity matrix for one of the professor's class folders. */
-    folderSimilarity: async (folderId: string, scope: PlagiarismScope = 'local'): Promise<ClassSimilarityMatrix> => {
-      return fetchAPI<ClassSimilarityMatrix>(`professor/folders/${folderId}/similarity?scope=${scope}`)
+    folderSimilarity: async (
+      folderId: string,
+      scope: PlagiarismScope = 'local',
+      filters?: GlobalScopeFilters
+    ): Promise<ClassSimilarityMatrix> => {
+      const params = new URLSearchParams({ scope })
+      if (scope === 'global' && filters) {
+        if (filters.academicTerms?.length) params.set('terms', filters.academicTerms.join(','))
+        if (filters.classCodes?.length) params.set('classCodes', filters.classCodes.join(','))
+        if (filters.includePastTerms === false) params.set('includePast', 'false')
+      }
+      return fetchAPI<ClassSimilarityMatrix>(`professor/folders/${folderId}/similarity?${params.toString()}`)
     },
   },
 
@@ -1650,11 +1683,16 @@ export const api = {
 
   plagiarism: {
     /** Run a council scan for one submission in a class folder. */
-    runScan: async (folderId: string, documentId: string, scope: PlagiarismScope = 'local'): Promise<PlagiarismScanDetail> => {
+    runScan: async (
+      folderId: string,
+      documentId: string,
+      scope: PlagiarismScope = 'local',
+      filters?: GlobalScopeFilters
+    ): Promise<PlagiarismScanDetail> => {
       return fetchAPI<PlagiarismScanDetail>('plagiarism/scans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId, folderId, scope }),
+        body: JSON.stringify({ documentId, folderId, scope, ...(scope === 'global' && filters ? { filters } : {}) }),
       })
     },
     /** Compare a document with the student's own other documents (nothing stored). */
