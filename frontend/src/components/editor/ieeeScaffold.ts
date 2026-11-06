@@ -249,7 +249,7 @@ export function coerceHeadingLevel(html: string, level: 1 | 2 | 3): string {
   const rest = html.slice(match[0].length)
   // An IEEE section is titled by its name alone: "CHAPTER I: INTRODUCTION" becomes "INTRODUCTION"
   // (numbered "I." afterwards). Leading inline tags such as <strong> are kept.
-  const inner = match[3].replace(/^((?:<[^>]+>)*)([^<]*)/, (whole: string, tags: string, text: string): string =>
+  const inner = match[3].replace(/^((?:<[^>]+>)*)([^<]*)/, (_whole: string, tags: string, text: string): string =>
     tags + stripChapterPrefix(text)
   )
   return `<h${level}${match[2]}>${inner}</h${level}>${rest}`

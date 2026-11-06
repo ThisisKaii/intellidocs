@@ -4,7 +4,9 @@ Usage: python tests/e2e/tools/suggestion_fidelity.py --web http://localhost:5183
 Ground truth = paragraphs whose alignment, bold, italic, size or spacing differ between the clean and the sabotaged DOCX.
 """
 import argparse
+import difflib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -20,11 +22,23 @@ DOCS = ROOT / "tests" / "fixtures" / "import_baselines" / "documents"
 CLEAN, BAD = "V2 INTELLIDOCS (2).docx", "V2 INTELLIDOCS sabotage.docx"
 
 
+def effective_alignment(p):
+    """The paragraph's alignment, or the one its style chain gives it (None = left)."""
+    if p.alignment is not None:
+        return p.alignment
+    style = p.style
+    while style is not None:
+        if style.paragraph_format.alignment is not None:
+            return style.paragraph_format.alignment
+        style = style.base_style
+    return None
+
+
 def props(p):
     """The formatting facts of one paragraph that the sabotage may have changed."""
     runs = [r for r in p.runs if r.text.strip()]
     return {
-        "align": str(p.alignment),
+        "align": str(effective_alignment(p)),
         "bold": any(r.bold for r in runs),
         "italic": any(r.italic for r in runs),
         "size": next((r.font.size.pt for r in runs if r.font.size), None),
@@ -36,8 +50,13 @@ def ground_truth():
     """text -> list of changed property names, for every paragraph that differs."""
     a = [p for p in docx.Document(DOCS / CLEAN).paragraphs if p.text.strip()]
     b = [p for p in docx.Document(DOCS / BAD).paragraphs if p.text.strip()]
+    # The sabotaged copy also merges and rewrites some paragraphs, so pair the two by their text
+    # (positional pairing drifts after the first merge and compares unrelated paragraphs).
+    key = lambda p: re.sub(r"\s+", " ", p.text).strip()
+    matcher = difflib.SequenceMatcher(None, [key(p) for p in a], [key(p) for p in b], autojunk=False)
+    pairs = [(a[i + k], b[j + k]) for i, j, n in matcher.get_matching_blocks() for k in range(n)]
     changed = {}
-    for x, y in zip(a, b):
+    for x, y in pairs:
         px, py = props(x), props(y)
         diff = [k for k in px if px[k] != py[k]]
         if diff:

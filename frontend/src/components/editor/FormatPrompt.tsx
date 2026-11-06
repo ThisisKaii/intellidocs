@@ -12,6 +12,8 @@ export interface FormatSuggestion {
   underline?: boolean
   fontSize?: number | null
   textAlign?: string
+  /** Block CSS a styling suggestion sets (line-height, text-indent, margin-top/bottom). */
+  blockStyle?: Record<string, string>
   suggestionSource?: 'learned' | 'ml'
   /** Format group ID — shared by similar text patterns (e.g., researcher names). */
   formatGroup?: string

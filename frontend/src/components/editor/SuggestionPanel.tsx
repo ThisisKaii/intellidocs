@@ -34,6 +34,8 @@ export interface Suggestion {
   underline?: boolean
   fontSize?: number | null
   textAlign?: string
+  /** Block CSS a styling suggestion sets (line-height, text-indent, margin-top/bottom). */
+  blockStyle?: Record<string, string>
   /** Distinguishes learned matches (behavior memory) from ML model predictions. */
   suggestionSource?: 'learned' | 'ml'
 }

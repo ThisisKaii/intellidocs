@@ -46,6 +46,7 @@ import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } 
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import type { PageLayoutData } from '@/lib/pageLayout'
+import { mergeStyleDecls } from '@/lib/inlineStyle'
 import { dismissFontNotice, fontFamiliesIn, fontNoticeDismissed, missingFonts } from '@/lib/fontAvailability'
 import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
 import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
@@ -1034,7 +1035,7 @@ export default function Document(): JSX.Element {
 
   /** Reproduce a learned suggestion's full format (marks + size + alignment) on the selection or an explicit range. */
   function applyLearnedFormat(
-    s: Pick<Suggestion, 'format' | 'bold' | 'italic' | 'underline' | 'fontSize' | 'textAlign'>,
+    s: Pick<Suggestion, 'format' | 'bold' | 'italic' | 'underline' | 'fontSize' | 'textAlign' | 'blockStyle'>,
     range?: { from: number; to: number }
   ): { from: number; to: number } | null {
     if (!editor || editor.isDestroyed || !editor.isEditable) return null
@@ -1091,6 +1092,17 @@ export default function Document(): JSX.Element {
         const existing = node.marks.find((mark) => mark.type === styleType)
         if (existing?.attrs?.fontSize) {
           tr.addMark(Math.max(pos, textRange.from), Math.min(pos + node.nodeSize, textRange.to), styleType.create({ ...existing.attrs, fontSize: '' }))
+        }
+        return false
+      })
+    }
+    // Line spacing, first-line indent and paragraph spacing live in each block's inline style.
+    if (s.blockStyle && Object.keys(s.blockStyle).length > 0) {
+      const decls = s.blockStyle
+      tr.doc.nodesBetween(from, to, (node, pos) => {
+        if (!node.isTextblock) return true
+        if (node.type.spec.attrs && 'style' in node.type.spec.attrs) {
+          tr.setNodeMarkup(pos, undefined, { ...node.attrs, style: mergeStyleDecls(node.attrs.style as string | null, decls) })
         }
         return false
       })

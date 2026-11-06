@@ -42,6 +42,8 @@ export interface AcademicPreset {
    * IEEE: sections are uppercase, the title is title case at 24pt.
    */
   title?: HeadingStyle
+  /** Alignment of every title-page line, for presets whose documents open with a title page. */
+  titlePageAlign?: 'left' | 'center' | 'right'
   /** Margin sets earlier versions of this preset used, so existing documents do not look drifted. */
   legacyMargins?: MarginValues[]
   /** Extra scoped rules appended to the generated stylesheet. */
@@ -136,6 +138,7 @@ const APA_7TH: PresetInput = {
   baseFontSize: '12pt',
   lineHeight: 2,
   firstLineIndent: '0.5in',
+  titlePageAlign: 'center',
   headings: {
     level1: { textAlign: 'center', fontSize: '12pt', fontWeight: 700, textTransform: 'capitalize' },
     level2: { textAlign: 'left', fontSize: '12pt', fontWeight: 700, textTransform: 'capitalize' },
@@ -187,6 +190,7 @@ const UCLM_CAPSTONE: PresetInput = {
   baseFontSize: '12pt',
   lineHeight: 2,
   firstLineIndent: '0.5in',
+  titlePageAlign: 'center',
   headings: {
     level1: { textAlign: 'center', fontSize: '12pt', fontWeight: 700, textTransform: 'uppercase' },
     level2: { textAlign: 'left', fontSize: '12pt', fontWeight: 700, textTransform: 'none' },
