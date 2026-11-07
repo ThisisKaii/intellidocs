@@ -16,6 +16,7 @@
 
 import sys
 import os
+import time
 import requests
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -28,6 +29,30 @@ PASSWORD = "asd123"
 ARTIFACT_DIR = Path("C:/Users/asus/.gemini/antigravity/brain/9dcfe603-ca1e-4a77-a93d-644ee7188bc7")
 DOCS_DIR = Path("tests/fixtures/import_baselines/documents")
 REF_DIR = Path("tests/fixtures/import_baselines/reference_screenshots")
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+IMPORT_TIMEOUT_S = 240
+
+
+def import_and_wait(path: Path, headers: dict) -> str:
+    """Upload a file (202 + jobId), poll the job every second until it is done, return the document id."""
+    with open(path, "rb") as f:
+        resp = requests.post(f"{API}/documents/import", headers=headers, files={"file": (path.name, f, DOCX_MIME)})
+    assert resp.status_code == 202, f"{path.name} upload failed ({resp.status_code}): {resp.text}"
+    job_id = resp.json()["jobId"]
+    print(f"   Queued import job {job_id}")
+
+    deadline = time.time() + IMPORT_TIMEOUT_S
+    while time.time() < deadline:
+        status = requests.get(f"{API}/documents/imports/{job_id}", headers=headers)
+        assert status.status_code == 200, f"job status failed ({status.status_code}): {status.text}"
+        job = status.json()
+        if job["state"] == "done":
+            assert job.get("documentId"), f"job finished without a document id: {job}"
+            return job["documentId"]
+        if job["state"] == "failed":
+            raise AssertionError(f"{path.name} import failed: {job.get('error')}")
+        time.sleep(1)
+    raise AssertionError(f"{path.name} import did not finish within {IMPORT_TIMEOUT_S}s")
 
 def run_real_import_test():
     print("\n" + "="*60)
@@ -56,30 +81,12 @@ def run_real_import_test():
 
         # Step 2: Upload V2 INTELLIDOCS (2).docx (Correct)
         print("\n2. Uploading Correct Manuscript ('V2 INTELLIDOCS (2).docx')...")
-        cor_path = DOCS_DIR / "V2 INTELLIDOCS (2).docx"
-        with open(cor_path, "rb") as f:
-            resp_cor = requests.post(
-                f"{API}/documents/import",
-                headers=headers,
-                files={"file": (cor_path.name, f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
-            )
-        assert resp_cor.status_code == 201, f"Correct doc upload failed: {resp_cor.text}"
-        doc_cor = resp_cor.json()
-        doc_cor_id = doc_cor["id"]
+        doc_cor_id = import_and_wait(DOCS_DIR / "V2 INTELLIDOCS (2).docx", headers)
         print(f"   Imported successfully! ID: {doc_cor_id}")
 
         # Step 3: Upload V2 INTELLIDOCS sabotage.docx (Sabotaged)
         print("\n3. Uploading Sabotaged Manuscript ('V2 INTELLIDOCS sabotage.docx')...")
-        sab_path = DOCS_DIR / "V2 INTELLIDOCS sabotage.docx"
-        with open(sab_path, "rb") as f:
-            resp_sab = requests.post(
-                f"{API}/documents/import",
-                headers=headers,
-                files={"file": (sab_path.name, f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
-            )
-        assert resp_sab.status_code == 201, f"Sabotaged doc upload failed: {resp_sab.text}"
-        doc_sab = resp_sab.json()
-        doc_sab_id = doc_sab["id"]
+        doc_sab_id = import_and_wait(DOCS_DIR / "V2 INTELLIDOCS sabotage.docx", headers)
         print(f"   Imported successfully! ID: {doc_sab_id}")
 
         # Step 4: Open Correct Document in Editor & Capture

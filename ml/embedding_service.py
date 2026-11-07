@@ -4,6 +4,7 @@ Handles document embedding generation using OpenAI embeddings and pgvector simil
 """
 
 import os
+import re
 import asyncio
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
@@ -122,6 +123,20 @@ async def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
         return [[0.0] * EMBEDDING_DIM] * len(texts)
 
 
+_MATTER_HEADING = re.compile(
+    r"^(table of contents|contents|list of (figures|tables|abbreviations)|acknowledg\w*|dedication"
+    r"|abstract|preface|foreword|references|bibliography|works cited|literature cited"
+    r"|appendix|appendices|index)\b"
+)
+_HEADING_NUMBER = re.compile(r"^((chapter|section|part)\s+)?(([ivxlcdm]+|\d+(\.\d+)*|[a-z])[\s.:)\-]+)?")
+
+
+def _is_matter_heading(text: str) -> bool:
+    """True for front/back-matter headings (TOC, abstract, references, ...), ignoring numbering."""
+    normalized = " ".join(text.lower().split())
+    return bool(_MATTER_HEADING.match(normalized) or _MATTER_HEADING.match(_HEADING_NUMBER.sub("", normalized, count=1)))
+
+
 def extract_paragraphs(html_content: str, min_length: int = 50) -> List[Tuple[int, str, int, int]]:
     """
     Extract paragraphs from HTML content.
@@ -129,39 +144,42 @@ def extract_paragraphs(html_content: str, min_length: int = 50) -> List[Tuple[in
     Skips front/back matter (title, TOC, references).
     """
     from bs4 import BeautifulSoup
-    import re
-    
+
     soup = BeautifulSoup(html_content, 'html.parser')
-    
-    # Remove front/back matter elements
-    for tag in soup.find_all(['h1', 'h2', 'h3']):
-        text = tag.get_text().strip().lower()
-        if any(keyword in text for keyword in [
-            'table of contents', 'contents', 'acknowledg', 'dedication',
-            'abstract', 'preface', 'foreword', 'references', 'bibliography',
-            'appendix', 'appendices', 'index'
-        ]):
-            # Mark as front/back matter
-            tag['data-matter'] = 'true'
-    
+
+    headings = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
+    blocks = ['p', 'div', 'blockquote', 'li', 'td', 'th']
+
     paragraphs = []
     char_pos = 0
     para_index = 0
-    
-    # Find all text blocks
-    for elem in soup.find_all(['p', 'div', 'blockquote', 'li', 'td', 'th']):
-        # Skip if inside front/back matter
-        if elem.find_parent(attrs={'data-matter': 'true'}):
+    # Level of the front/back-matter heading whose section we are in, or None.
+    # A heading is a sibling of its section's paragraphs, not their parent, so
+    # the section is tracked while walking the document in order.
+    matter_level = None
+
+    for elem in soup.find_all(headings + blocks):
+        if elem.name in headings:
+            level = int(elem.name[1])
+            if _is_matter_heading(elem.get_text(' ', strip=True)):
+                if matter_level is None or level <= matter_level:
+                    matter_level = level
+            elif matter_level is not None and level <= matter_level:
+                matter_level = None
             continue
-            
+
+        if matter_level is not None:
+            continue
+
+        # Containers holding other blocks are represented by those blocks, so
+        # nested text (li > p, td > p, div > p) is only extracted once.
+        if elem.find(blocks) is not None:
+            continue
+
         text = elem.get_text(' ', strip=True)
         if len(text) < min_length:
             continue
-            
-        # Skip if it's just a heading (likely already processed)
-        if elem.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-            continue
-            
+
         # Find character positions in original HTML
         elem_html = str(elem)
         start_pos = html_content.find(elem_html, char_pos)

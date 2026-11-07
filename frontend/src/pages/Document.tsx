@@ -305,8 +305,17 @@ export default function Document(): JSX.Element {
   const [activeGrammarIssue, setActiveGrammarIssue] = useState<GrammarIssue | null>(null)
   /** Document range of the text the open grammar popover belongs to (it follows that text). */
   const [activeGrammarAnchor, setActiveGrammarAnchor] = useState<{ from: number; to: number } | null>(null)
-  const [suggestionRange, setSuggestionRange] = useState<{ from: number; to: number } | null>(null)
-  const [suggestionAnchor, setSuggestionAnchor] = useState<{ x: number; y: number } | null>(null)
+  const [suggestionRange, setSuggestionRangeState] = useState<{ from: number; to: number } | null>(null)
+  const [suggestionAnchor, setSuggestionAnchorState] = useState<{ x: number; y: number } | null>(null)
+  // Callers pass fresh objects on every scanner sync and editor transaction; keeping the previous
+  // object when nothing moved lets React bail out instead of re-rendering into the anchor effect
+  // again (that cycle hit "Maximum update depth exceeded" during fast typing).
+  const setSuggestionRange = useCallback((next: { from: number; to: number } | null): void => {
+    setSuggestionRangeState((prev) => (prev === next || (prev && next && prev.from === next.from && prev.to === next.to) ? prev : next))
+  }, [])
+  const setSuggestionAnchor = useCallback((next: { x: number; y: number } | null): void => {
+    setSuggestionAnchorState((prev) => (prev === next || (prev && next && prev.x === next.x && prev.y === next.y) ? prev : next))
+  }, [])
   /** Spotlight rect (canvas-relative px) shown briefly after an outline jump. */
   const [flashCoords, setFlashCoords] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [flashKey, setFlashKey] = useState<number>(0)
@@ -2190,7 +2199,9 @@ export default function Document(): JSX.Element {
   const [grammarPages, setGrammarPages] = useState<Map<GrammarIssue, number>>(new Map())
   useEffect(() => {
     if (!editor || editor.isDestroyed || grammarIssues.length === 0) {
-      setGrammarPages(new Map())
+      // Keep the existing empty map: this effect re-runs on every keystroke (content), and a new
+      // Map each time re-rendered the page per keystroke until React hit its update-depth limit.
+      setGrammarPages((prev) => (prev.size === 0 ? prev : new Map()))
       return
     }
     const timer = window.setTimeout(() => {

@@ -17,14 +17,35 @@ Flow:
 - Test B: click outline block -> SuggestionActionsMenu (chooser) opens
 """
 
+import sys
 import time
 from pathlib import Path
+
+import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 WEB = "http://localhost:5173"
+API = "http://localhost:3000"
 EMAIL = "test@test.com"
 PASSWORD = "asd123"
-DOC_ID = "a3c5c8ac-29c6-4f9a-a996-884ba169f81d"
+# Seeded so grammar underlines and a formatting suggestion appear predictably on a fresh document.
+SEED_CONTENT = (
+    "<p>Their going to the park after class to study for the exam.</p>"
+    "<p>The students recieved teh results of the experiment yesterday.</p>"
+)
+GRAMMAR_POPOVER = "[data-testid='grammar-popover']"
+FORMAT_CHIP = "[role='dialog'][aria-label^='Formatting suggestion']"
+
+
+def create_seeded_document(token: str) -> str:
+    """Create a fresh document for this run, so the test never depends on a stale fixed id."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    created = requests.post(f"{API}/documents", headers=headers, json={"title": "e2e overlay collision"}, timeout=20)
+    assert created.status_code in (200, 201), f"creating document failed: {created.status_code} {created.text[:200]}"
+    doc_id = created.json()["id"]
+    saved = requests.put(f"{API}/documents/{doc_id}", headers=headers, json={"content": SEED_CONTENT}, timeout=20)
+    assert saved.status_code == 200, f"seeding document failed: {saved.status_code} {saved.text[:200]}"
+    return doc_id
 
 ARTIFACT_DIR = Path("C:/Users/asus/.gemini/antigravity/brain/9dcfe603-ca1e-4a77-a93d-644ee7188bc7")
 
@@ -59,7 +80,11 @@ def run_test():
 
         # ── Step 2: Open Document ────────────────────────────────────────────
         print("\n=== STEP 2: Opening Document ===")
-        page.goto(f"{WEB}/document/{DOC_ID}", wait_until="domcontentloaded")
+        token = page.evaluate("() => localStorage.getItem('authToken')")
+        assert token, "no auth token in localStorage after sign-in"
+        doc_id = create_seeded_document(token)
+        print(f"[OK] Created seeded document {doc_id}")
+        page.goto(f"{WEB}/document/{doc_id}", wait_until="domcontentloaded")
         page.wait_for_selector(".ProseMirror", timeout=15000)
         page.wait_for_timeout(2500)
         print("[OK] Document loaded")
@@ -68,9 +93,7 @@ def run_test():
 
         # ── Step 3: Idle check — no overlays should be visible ───────────────
         print("\n=== STEP 3: Verify Idle State ===")
-        idle_grammar = page.locator("text='Grammar & Spelling'").filter(
-            has=page.locator("[style*='position: fixed']")
-        ).is_visible()
+        idle_grammar = page.locator(GRAMMAR_POPOVER).first.is_visible()
         idle_menu = page.locator("text='Suggestions on this line'").is_visible()
         results["idle_grammar_overlay"] = "PASS" if not idle_grammar else "FAIL"
         results["idle_actions_menu"] = "PASS" if not idle_menu else "FAIL"
@@ -161,8 +184,8 @@ def run_test():
             print("[OK] Grammar underline (.grammar-issue) appeared")
             results["grammar_underline_appears"] = "PASS"
         except PWTimeout:
-            print("[WARN] .grammar-issue not found after check")
-            results["grammar_underline_appears"] = "WARN"
+            print("[FAIL] .grammar-issue not found after check")
+            results["grammar_underline_appears"] = "FAIL — seeded errors were not underlined"
 
         screenshot(page, "overlay_t3_after_grammar_check")
 
@@ -189,7 +212,7 @@ def run_test():
                 print(f"  [wait] attempt {attempt}/8 — no outline yet (agentic elements: {outline_count})")
                 page.wait_for_timeout(500)
 
-        results["formatting_outline_appears"] = "PASS" if highlight_found else "WARN"
+        results["formatting_outline_appears"] = "PASS" if highlight_found else "FAIL — no formatting outline"
         print(f"  Formatting outline: {results['formatting_outline_appears']}")
         # Debug: log all elements with 'suggestion' or 'agentic' in class
         all_suggestion_els = page.locator("[class*='suggestion'], [class*='agentic']").count()
@@ -204,7 +227,7 @@ def run_test():
             page.wait_for_timeout(1200)
 
             # Could be GrammarOverlay OR SuggestionActionsMenu (if outline also present on same pos)
-            grammar_open = page.locator("text='Grammar & Spelling'").is_visible()
+            grammar_open = page.locator(GRAMMAR_POPOVER).first.is_visible()
             menu_open = page.locator("text='Suggestions on this line'").is_visible()
 
             print(f"  GrammarOverlay opened:   {grammar_open}")
@@ -238,15 +261,9 @@ def run_test():
                 outline.click()
                 page.wait_for_timeout(1200)
 
-                grammar_open_b = page.locator("text='Grammar & Spelling'").is_visible()
+                grammar_open_b = page.locator(GRAMMAR_POPOVER).first.is_visible()
                 menu_open_b = page.locator("text='Suggestions on this line'").is_visible()
-
-                # InlineSuggestionChip renders as a fixed-position div with border-radius: 999px
-                # (pill shape) containing the format label + confidence badge.
-                # Use count()>0 and a specific attribute selector to avoid strict-mode errors.
-                # The chip div: position: fixed; border-radius: 999px; z-index: 900
-                chip_els = page.locator("div[style*='border-radius: 999px'][style*='position: fixed']")
-                chip_open_b = chip_els.count() > 0
+                chip_open_b = page.locator(FORMAT_CHIP).first.is_visible()
 
                 print(f"  GrammarOverlay:              {grammar_open_b}")
                 print(f"  SuggestionActionsMenu:       {menu_open_b}")
@@ -264,7 +281,7 @@ def run_test():
                     if grammar_opt.is_visible():
                         grammar_opt.click()
                         page.wait_for_timeout(1000)
-                        after_choice = page.locator("text='Grammar & Spelling'").is_visible()
+                        after_choice = page.locator(GRAMMAR_POPOVER).first.is_visible()
                         results["chooser_grammar_option"] = "PASS" if after_choice else "FAIL"
                         print(f"  GrammarOverlay after Grammar choice: {after_choice}")
                         page.keyboard.press("Escape")
@@ -326,6 +343,8 @@ def run_test():
 
         browser.close()
 
+    return 1 if any(val.startswith("FAIL") for val in results.values()) else 0
+
 
 if __name__ == "__main__":
-    run_test()
+    sys.exit(run_test())
