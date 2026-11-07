@@ -88,8 +88,11 @@ def main():
         browser = pw.chromium.launch(channel="chrome")
         for name, truth in cases:
             sug = scan(browser, name, args.web, args.preset)
-            hit = {t for t in truth if any(x["preview"].strip() and t.startswith(x["preview"].strip()) for x in sug)}
-            wrong = [x for x in sug if not any(t.startswith(x["preview"].strip()) for t in truth)]
+            # Previews and truth texts are compared with whitespace normalised (a no-break space in the
+            # source shows as a plain space in the editor's preview).
+            flat = lambda text: re.sub(r"\s+", " ", text).strip()
+            hit = {t for t in truth if any(flat(x["preview"]) and flat(t).startswith(flat(x["preview"])) for x in sug)}
+            wrong = [x for x in sug if not any(flat(t).startswith(flat(x["preview"])) for t in truth)]
             print(f"{name}: {len(sug)} suggestions; altered {len(truth)}; found {len(hit)}; unwanted {len(wrong)}")
             for x in wrong[:6]:
                 print(f"   unwanted {x['format']:<10} {x['confidence']:>3} {x['preview']!r}")

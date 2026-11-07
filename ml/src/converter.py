@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import docx
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import parse_xml
+from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Emu
 from docx.table import Table
@@ -5153,6 +5153,105 @@ def _snap_right_tabs(doc: docx.Document) -> None:
             tab.set(qn("w:pos"), str(int(width_twips)))
 
 
+_WORD_LIST: Any = None
+
+
+def _known_words(words: List[str]) -> Set[str]:
+    """Which of these (lowercase) words are English words, by pyspellchecker's word list (loaded once)."""
+    global _WORD_LIST
+    if _WORD_LIST is None:
+        from spellchecker import SpellChecker  # ships with the ML service (grammar checks)
+
+        _WORD_LIST = SpellChecker()
+    return set(_WORD_LIST.known([w for w in words if w]))
+
+
+def _joins_without_space(left: str, right: str) -> bool:
+    """Whether a PDF line break between `left` and `right` cut one word in two ("Behavi|oral").
+
+    A pair that spells a word joins ("Extract|ion"); a lowercase fragment that is no word of its own
+    continues the word before it ("Barka|n"); anything else is two words ("machine|learning").
+    """
+    left_word = re.search(r"([A-Za-z]+)$", left.rstrip())
+    right_word = re.match(r"([A-Za-z]+)", right.lstrip())
+    if not left_word or not right_word:
+        return False
+    a, b = left_word.group(1), right_word.group(1)
+    if not b[0].islower():
+        return False
+    known = _known_words([b.lower(), (a + b).lower()])
+    if (a + b).lower() in known:
+        return True
+    # The word list counts single letters and odd short forms as words; only common ones are.
+    fragment = b.lower() not in known or (len(b) <= 2 and b.lower() not in _SHORT_WORDS)
+    return fragment
+
+
+# A cell paragraph indent up to this (0.25in) is pdf2docx's stand-in for cell padding, not a real indent.
+_PADDING_LIKE_INDENT_TWIPS = 360
+
+_SHORT_WORDS = frozenset(
+    "a i an as at be by do go he if in is it me my no of on or so to up us we".split()
+)
+
+
+def _reflow_pdf_table_cells(doc: docx.Document) -> int:
+    """Let table cell text flow again, as it did in the document the PDF was made from.
+
+    pdf2docx keeps each PDF line of a cell as a forced line break, often in the middle of a word
+    ("Behavi|oral Tracki|ng"), so the editor's (slightly different) column widths break every
+    fragment once more and the table grows to twice its height. It also fakes vertical centring with
+    large space-before and fixes each row's height. Here the breaks are joined (no space inside a
+    cut word), the fake centring becomes real vertical centring, and exact row heights become
+    minimums. Returns how many breaks were joined.
+    """
+    joined = 0
+    for tc in doc.element.body.iter(qn("w:tc")):
+        centred = False
+        for p in tc.iter(qn("w:p")):
+            # pdf2docx stands in for cell padding with a small paragraph indent; the cell gets real
+            # padding later (_table_cell_margins), so the indent would inset the text twice.
+            ind = p.find(qn("w:pPr") + "/" + qn("w:ind"))
+            if ind is not None:
+                for side in ("left", "start", "right", "end"):
+                    value = ind.get(qn(f"w:{side}"))
+                    if value is not None and 0 < abs(int(float(value))) <= _PADDING_LIKE_INDENT_TWIPS:
+                        ind.set(qn(f"w:{side}"), "0")
+            spacing = p.find(qn("w:pPr") + "/" + qn("w:spacing"))
+            if spacing is not None and int(spacing.get(qn("w:before")) or 0) > 0:
+                spacing.set(qn("w:before"), "0")
+                centred = True
+            order = {element: index for index, element in enumerate(p.iter())}
+            texts = list(p.iter(qn("w:t")))
+            for br in list(p.iter(qn("w:br"))):
+                if br.get(qn("w:type")) not in (None, "textWrapping"):
+                    continue
+                left = next((t for t in reversed(texts) if order[t] < order[br]), None)
+                right = next((t for t in texts if order[t] > order[br]), None)
+                if left is not None and right is not None and left.text and right.text:
+                    if _joins_without_space(left.text, right.text):
+                        left.text = left.text.rstrip()
+                        right.text = right.text.lstrip()
+                    elif not left.text.endswith(" ") and not right.text.startswith(" "):
+                        left.text += " "
+                    left.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                br.getparent().remove(br)
+                joined += 1
+        if centred:
+            tc_pr = tc.find(qn("w:tcPr"))
+            if tc_pr is None:
+                tc_pr = OxmlElement("w:tcPr")
+                tc.insert(0, tc_pr)
+            if tc_pr.find(qn("w:vAlign")) is None:
+                valign = OxmlElement("w:vAlign")
+                valign.set(qn("w:val"), "center")
+                tc_pr.append(valign)
+    for height in doc.element.body.iter(qn("w:trHeight")):
+        if height.get(qn("w:hRule")) == "exact":
+            height.set(qn("w:hRule"), "atLeast")
+    return joined
+
+
 def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     """Convert a PDF by normalizing it to DOCX with pdf2docx, repairing what
     pdf2docx drops (page breaks, headings, running headers, image weight), then
@@ -5180,6 +5279,7 @@ def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     _strip_running_furniture(doc, page_break_after, furniture)
     _infer_heading_styles(doc, page_break_after)
     _snap_right_tabs(doc)
+    _reflow_pdf_table_cells(doc)
     _realign_from_pdf(doc, file_bytes, page_break_after)
     _merge_picture_rows_from_pdf(doc, file_bytes, page_break_after)
     doc.part._is_pdf_import = True  # pdf2docx leaves cell padding at zero; see _table_cell_margins

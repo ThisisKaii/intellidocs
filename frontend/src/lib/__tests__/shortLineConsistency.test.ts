@@ -68,6 +68,33 @@ describe('findShortLineDeviations', () => {
     const captions = [centered('Figure 1: A'), centered('<em>Figure 2: B</em>'), centered('Figure 3: C'), centered('Table 1')].join('')
     expect(sweep('<h1>CHAPTER I</h1>' + captions)).toEqual(['Figure 2: B: italic'])
   })
+
+  it("judges a chapter's bold one-line headings with its level-2 headings, by alignment", () => {
+    const sub = (text: string, align: string): string => `<h2 style="text-align:${align}">${text}</h2>`
+    const bold = (text: string, align: string): string => `<p style="text-align:${align}"><strong>${text}</strong></p>`
+    const chapter = `<h1>CHAPTER II</h1>${sub('Behavioral Tracking', 'left')}${bold('Machine Learning Engine', 'left')}${sub('Natural Language Interface', 'center')}${bold('User Outcomes', 'center')}`
+    // Two left, two centred: no usual alignment, so the preset's left-aligned sections decide.
+    expect(sweep(chapter, UCLM)).toEqual([
+      'Natural Language Interface: center-aligned instead of left',
+      'User Outcomes: center-aligned instead of left',
+    ])
+    // ALL-CAPS labels and sentences are not sub-headings.
+    expect(sweep(`<h1>CHAPTER II</h1>${bold('RELATED STUDIES', 'center')}${bold('This is a sentence.', 'center')}`, UCLM)).toEqual([])
+  })
+
+  it('sets a figure title like the other figure titles (the line above each figure caption)', () => {
+    const figure = (title: string, n: number): string => `${centered(title)}${centered(`Figure ${n}: ${title}`)}`
+    const html = `<h1>CHAPTER II</h1>${figure('<strong>Comet</strong>', 1)}${figure('<strong>CoEdIT</strong>', 2)}${figure('<strong>Talk</strong>', 3)}${figure('DocEdit', 4)}${figure('ReWriteLM', 5)}`
+    expect(sweep(html)).toEqual(['DocEdit: not bold', 'ReWriteLM: not bold'])
+  })
+
+  it('sets a table title (the line under its caption) like the captions usually are', () => {
+    const captions = [centered('Figure 1: A'), centered('Figure 2: B'), centered('Figure 3: C')].join('')
+    expect(sweep(`<h1>CHAPTER II</h1>${captions}${left('Table 1')}${left('COMPARATIVE MATRIX')}`)).toEqual([
+      'Table 1: left-aligned instead of center',
+      'COMPARATIVE MATRIX: left-aligned instead of center like the captions',
+    ])
+  })
 })
 
 describe('inline style helpers', () => {

@@ -113,4 +113,17 @@ describe('findBodyDeviations', () => {
     expect(source.lineHeight).toBe('preset')
     expect(deviations.map((d) => d.differences)).toEqual([['line spacing 1 instead of 2']])
   })
+
+  it('flags extra space above a paragraph between two prose paragraphs', () => {
+    const spaced = `<p style="text-align:justify; margin-top:12pt">${SENTENCE} spaced</p>`
+    const { deviations } = sweep(documentHtml(10, spaced))
+    expect(deviations.map((d) => d.differences)).toEqual([['12pt space above instead of 0pt']])
+    expect(blockStyleFor(deviations[0].fix)).toEqual({ 'margin-top': '0pt' })
+  })
+
+  it('does not judge space above after a heading, caption, table or blank line', () => {
+    const afterHeading = `<h2>Scope</h2><p style="text-align:justify; margin-top:12pt">${SENTENCE} after heading</p>`
+    const afterBlank = `<p></p><p style="text-align:justify; margin-top:12pt">${SENTENCE} after blank</p>`
+    expect(sweep(documentHtml(10, afterHeading + afterBlank)).deviations).toEqual([])
+  })
 })

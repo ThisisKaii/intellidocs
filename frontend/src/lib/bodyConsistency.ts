@@ -14,6 +14,11 @@ export interface BodyStyle {
   lineHeight: number | null
   /** First-line indent in pt (a leading tab counts as 0.5in), or null when the paragraph does not say. */
   firstIndentPt: number | null
+  /**
+   * Space above the paragraph (pt; none set counts as 0). Null where space is expected anyway: a
+   * paragraph after a heading, caption, list, table or figure is not judged on it.
+   */
+  spaceBeforePt: number | null
 }
 
 /** The body properties a document (or its preset) settles on; a missing key has no clear answer. */
@@ -117,6 +122,7 @@ export function bodyStyleOf(node: ProseMirrorNode): BodyStyle {
     effectiveSizePt: fontSize ?? lengthToPt(readStyleDecl(style, 'font-size')),
     lineHeight: readLineHeight(style),
     firstIndentPt: leadingTab ? Math.max(textIndent ?? 0, 0) + TAB_INDENT_PT : textIndent,
+    spaceBeforePt: lengthToPt(readStyleDecl(style, 'margin-top')) ?? 0,
   }
 }
 
@@ -133,15 +139,19 @@ function sizesDiffer(modal: number | null, style: number | null): boolean {
 }
 
 /** How far numeric properties may differ and still read as the same; also their counting granularity. */
-const TOLERANCE: Record<'effectiveSizePt' | 'lineHeight' | 'firstIndentPt', number> = {
+const TOLERANCE: Record<'effectiveSizePt' | 'lineHeight' | 'firstIndentPt' | 'spaceBeforePt', number> = {
   effectiveSizePt: 0.5,
   lineHeight: 0.15,
   firstIndentPt: 9,
+  spaceBeforePt: 6,
 }
 
 type NumericProperty = keyof typeof TOLERANCE
-/** Paragraph spacing is left out: authors vary it on purpose (more space before a new section). */
-const NUMERIC: NumericProperty[] = ['lineHeight', 'firstIndentPt']
+/**
+ * Space after a paragraph is left out: authors vary it on purpose (more room before a new section).
+ * Space before is judged only between two paragraphs of prose (see spaceBeforePt).
+ */
+const NUMERIC: NumericProperty[] = ['lineHeight', 'firstIndentPt', 'spaceBeforePt']
 
 /** The value most paragraphs share, when it covers enough of them; numbers are bucketed by their tolerance. */
 function usualValue<T>(values: T[], bucket: (value: T) => string, total: number): { value: T } | null {
@@ -181,8 +191,11 @@ function settleBaseline(
   settle('fontSize', usualValue(styles.map((s) => s.fontSize), (v) => (v === null || !sizesDiffer(null, v) ? 'inherited' : String(v)), total))
   for (const key of NUMERIC) {
     const known = styles.map((s) => s[key]).filter((v): v is number => v !== null)
-    // A property most paragraphs leave unset is judged only where it is set.
-    if (known.length >= Math.max(MIN_PROSE_BLOCKS / 2, total / 2)) {
+    // A property most paragraphs leave unset is judged only where it is set. Space above is judged
+    // only between two prose paragraphs, which can be a minority (blank spacer lines are common), so
+    // it settles from enough such pairs rather than from half the body.
+    const enough = key === 'spaceBeforePt' ? MIN_PROSE_BLOCKS : Math.max(MIN_PROSE_BLOCKS / 2, total / 2)
+    if (known.length >= enough) {
       settle(key, usualValue(known, numberBucket(TOLERANCE[key]), known.length))
     }
   }
@@ -206,6 +219,7 @@ const describeNumber: Record<NumericProperty, (style: number, usual: number) => 
   effectiveSizePt: (s, u) => `${s}pt instead of ${u}pt`,
   lineHeight: (s, u) => `line spacing ${s} instead of ${u}`,
   firstIndentPt: (s, u) => (s === 0 ? 'no first-line indent' : u === 0 ? 'an indented first line' : `a ${Math.round(s / 72 * 100) / 100}in indent instead of ${Math.round(u / 72 * 100) / 100}in`),
+  spaceBeforePt: (s, u) => `${Math.round(s)}pt space above instead of ${Math.round(u)}pt`,
 }
 
 /** The baseline values a paragraph departs from, and those departures in plain words. */
@@ -256,10 +270,22 @@ export function findBodyDeviations(doc: ProseMirrorNode, preset: PresetBodyRules
   // Cover pages, approval sheets and tables of contents are styled by hand; the body starts at the first chapter.
   let markerSeen = false
   let inProseFrontMatter = false
+  // Whether the block before the current one was a paragraph of prose (space above is judged only then).
+  let previousIsProse = false
   doc.descendants((node, pos) => {
-    if (SKIPPED_ANCESTORS.has(node.type.name)) return false
-    if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return true
+    if (SKIPPED_ANCESTORS.has(node.type.name)) {
+      previousIsProse = false
+      return false
+    }
+    if (node.type.name !== 'paragraph' && node.type.name !== 'heading') {
+      // A table, figure, page break or other object: the paragraph after it may have space above.
+      if (node.isBlock) previousIsProse = false
+      return true
+    }
     const text = node.textContent.trim()
+    const followsProse = previousIsProse
+    const isCaption = /^(table|figure)\s+\d+\s*[:.]/i.test(text)
+    previousIsProse = node.type.name === 'paragraph' && text.length >= MIN_PROSE_CHARS && !isCaption
     if (!markerSeen && BODY_START.test(text)) {
       markerSeen = true
       members.length = 0
@@ -270,7 +296,9 @@ export function findBodyDeviations(doc: ProseMirrorNode, preset: PresetBodyRules
     }
     if (node.type.name !== 'paragraph') return false
     if (text.length >= MIN_PROSE_CHARS && !/^(table|figure)\s+\d+\s*[:.]/i.test(text) && !/^\[\d+\]/.test(text) && !MANUAL_LIST_ITEM.test(text)) {
-      const entry = { pos, node, text, style: bodyStyleOf(node) }
+      const style = bodyStyleOf(node)
+      if (!followsProse) style.spaceBeforePt = null
+      const entry = { pos, node, text, style }
       if (markerSeen) members.push(entry)
       else if (inProseFrontMatter) frontProse.push(entry)
       else members.push(entry)
@@ -318,5 +346,6 @@ export function blockStyleFor(fix: BodyBaseline): Record<string, string> {
   const decls: Record<string, string> = {}
   if (typeof fix.lineHeight === 'number') decls['line-height'] = String(fix.lineHeight)
   if (typeof fix.firstIndentPt === 'number') decls['text-indent'] = `${Math.round(fix.firstIndentPt * 100) / 100}pt`
+  if (typeof fix.spaceBeforePt === 'number') decls['margin-top'] = `${Math.round(fix.spaceBeforePt * 100) / 100}pt`
   return decls
 }

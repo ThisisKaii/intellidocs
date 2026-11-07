@@ -2,8 +2,15 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { lengthToPt, readStyleDecl } from './inlineStyle'
 import { FRONT_LABEL, createFrontMatterTracker } from './frontMatter'
 
-/** The kinds of short line that are styled alike within their kind. */
-export type ShortLineGroup = 'title_page' | 'front_label' | 'heading_1' | 'heading_2' | 'heading_3' | 'caption'
+/**
+ * The kinds of short line that are styled alike within their kind. `subheading` groups a chapter's
+ * level-2 headings with its bold one-line paragraph headings (authors mix both); `figure_title` is
+ * the line naming a figure just above its "Figure N" caption; `table_title` is the line under a
+ * "Table N" caption, set like that caption.
+ */
+export type ShortLineGroup =
+  | 'title_page' | 'front_label' | 'heading_1' | 'heading_2' | 'heading_3' | 'caption'
+  | 'subheading' | 'figure_title' | 'table_title'
 
 /** How a heading level should look under a preset. */
 export interface PresetHeadingLook {
@@ -44,6 +51,11 @@ export interface LineDeviation {
 }
 
 const CAPTION = /^(figure|fig\.|table)\s+\d+/i
+const FIGURE_CAPTION = /^(figure|fig\.)\s+\d+/i
+const TABLE_CAPTION = /^table\s+\d+/i
+/** A title line names something: short and not closed like a sentence or a label ("Note:"). */
+const TITLE_MAX_CHARS = 60
+const ENDS_LIKE_SENTENCE = /[.!?:;]$/
 /** Share of a kind one value must cover to be the usual one, and the fewest lines that settle it. */
 const MIN_SHARE = 0.6
 const MIN_MEMBERS = 3
@@ -82,17 +94,21 @@ const JUDGED: Record<ShortLineGroup, Array<keyof LineStyle>> = {
   title_page: ['textAlign'],
   front_label: ['textAlign', 'bold'],
   heading_1: ['textAlign', 'bold', 'italic', 'sizePt'],
-  heading_2: ['textAlign', 'bold', 'italic', 'sizePt'],
+  // A level-2 heading's alignment is judged with its chapter's other sub-headings (subheading).
+  heading_2: ['bold', 'italic', 'sizePt'],
   heading_3: ['textAlign', 'bold', 'italic', 'sizePt'],
   caption: ['textAlign', 'bold', 'italic'],
+  subheading: ['textAlign'],
+  figure_title: ['textAlign', 'bold'],
+  table_title: ['textAlign'],
 }
 
 /** The preset's look for a kind, where it has one. */
 function presetLook(group: ShortLineGroup, preset: PresetLineRules | null): Partial<LineStyle> | null {
   if (!preset) return null
   if (group === 'title_page') return preset.titlePageAlign ? { textAlign: preset.titlePageAlign } : null
-  const level = group === 'heading_2' ? 2 : group === 'heading_3' ? 3 : 1
-  if (group === 'caption') return null
+  if (group === 'caption' || group === 'figure_title' || group === 'table_title') return null
+  const level = group === 'heading_2' || group === 'subheading' ? 2 : group === 'heading_3' ? 3 : 1
   const look = preset.headings[level]
   // Front-matter labels are set like chapter headings.
   return { textAlign: look.textAlign, bold: look.bold, italic: look.italic, sizePt: look.fontSizePt }
@@ -131,35 +147,75 @@ function describe(key: keyof LineStyle, own: LineStyle[keyof LineStyle], wanted:
  * rule is used, when the preset has one. Title-page lines are judged only by a preset's rule.
  */
 export function findShortLineDeviations(doc: ProseMirrorNode, preset: PresetLineRules | null = null): LineDeviation[] {
-  const groups = new Map<ShortLineGroup, Array<{ pos: number; node: ProseMirrorNode; text: string; style: LineStyle }>>()
+  // Text blocks in document order, so a line can be judged by its neighbours (a figure's title sits
+  // just above its caption, a table's title just below its caption).
+  const blocks: Array<{ pos: number; node: ProseMirrorNode; text: string; style: LineStyle; titlePage: boolean; chapter: number }> = []
   const regionOf = createFrontMatterTracker()
-  const add = (group: ShortLineGroup, pos: number, node: ProseMirrorNode): void => {
-    const list = groups.get(group) ?? []
-    list.push({ pos, node, text: node.textContent.trim(), style: lineStyleOf(node) })
-    groups.set(group, list)
-  }
-
+  let chapter = 0
   doc.descendants((node, pos) => {
     if (SKIPPED_ANCESTORS.has(node.type.name)) return false
     if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return true
     const text = node.textContent.replace(/\s+/g, ' ').trim()
     if (!text) return false
+    const isHeading = node.type.name === 'heading'
+    // A chapter opens at each level-1 heading; sub-headings are compared within their chapter.
+    if (isHeading && Number(node.attrs.level) === 1) chapter += 1
     // The title page is the run of short lines a document opens with (see lib/frontMatter).
-    const titlePage = regionOf(text, node.type.name === 'heading') === 'title_page'
-
-    if (CAPTION.test(text) && text.length < 120) add('caption', pos, node)
-    else if (FRONT_LABEL.test(text.replace(/[:.]$/, ''))) add('front_label', pos, node)
-    else if (node.type.name === 'heading' && text.length < 120) {
-      const level = Number(node.attrs.level)
-      add(level === 2 ? 'heading_2' : level === 3 ? 'heading_3' : 'heading_1', pos, node)
-    } else if (titlePage && node.type.name === 'paragraph' && text.length < 200) {
-      add('title_page', pos, node)
-    }
+    const titlePage = regionOf(text, isHeading) === 'title_page'
+    blocks.push({ pos, node, text, style: lineStyleOf(node), titlePage, chapter })
     return false
   })
 
+  // Members by group and scope ("subheading#2" is chapter 2's sub-headings).
+  const groups = new Map<string, { group: ShortLineGroup; members: typeof blocks }>()
+  const add = (group: ShortLineGroup, block: (typeof blocks)[number], scope = ''): void => {
+    const key = `${group}#${scope}`
+    const entry = groups.get(key) ?? { group, members: [] }
+    entry.members.push(block)
+    groups.set(key, entry)
+  }
+  // A table title takes its caption's alignment.
+  const tableTitles: Array<{ block: (typeof blocks)[number]; caption: (typeof blocks)[number] }> = []
+
+  blocks.forEach((block, index) => {
+    const { node, text } = block
+    const isHeading = node.type.name === 'heading'
+    const next = blocks[index + 1]
+    const previous = blocks[index - 1]
+    const titleLike = text.length <= TITLE_MAX_CHARS && !ENDS_LIKE_SENTENCE.test(text) && !CAPTION.test(text)
+
+    if (CAPTION.test(text) && text.length < 120) add('caption', block)
+    else if (titleLike && next && FIGURE_CAPTION.test(next.text)) add('figure_title', block)
+    else if (titleLike && previous && TABLE_CAPTION.test(previous.text)) tableTitles.push({ block, caption: previous })
+    else if (FRONT_LABEL.test(text.replace(/[:.]$/, ''))) add('front_label', block)
+    else if (isHeading && text.length < 120) {
+      const level = Number(node.attrs.level)
+      add(level === 2 ? 'heading_2' : level === 3 ? 'heading_3' : 'heading_1', block)
+      if (level === 2) add('subheading', block, String(block.chapter))
+    } else if (block.chapter > 0 && titleLike && block.style.bold && /[a-z]/.test(text)) {
+      // A bold one-line paragraph inside a chapter is a sub-heading written by hand.
+      add('subheading', block, String(block.chapter))
+    } else if (block.titlePage && node.type.name === 'paragraph' && text.length < 200) {
+      add('title_page', block)
+    }
+  })
+
   const deviations: LineDeviation[] = []
-  for (const [group, members] of groups) {
+  // A table title is set like the captions: their usual alignment, or its own caption's when the
+  // captions have no clear usual one (its caption may itself be the odd one out).
+  const captionAlign = usual(Array.from(groups.values()).filter((g) => g.group === 'caption').flatMap((g) => g.members.map((m) => m.style)), 'textAlign')
+  for (const { block, caption } of tableTitles) {
+    const target = (captionAlign?.value as string | undefined) ?? caption.style.textAlign
+    if (block.style.textAlign === target) continue
+    deviations.push({
+      ...block,
+      group: 'table_title',
+      fix: { textAlign: target },
+      differences: [`${block.style.textAlign}-aligned instead of ${target} like the captions`],
+      fromPreset: false,
+    })
+  }
+  for (const { group, members } of groups.values()) {
     const styles = members.map((member) => member.style)
     const fallback = presetLook(group, preset)
     const wanted: Partial<LineStyle> = {}
@@ -201,5 +257,17 @@ export function findShortLineDeviations(doc: ProseMirrorNode, preset: PresetLine
       }
     }
   }
-  return deviations.sort((a, b) => a.pos - b.pos)
+  // A level-2 heading is judged in two groups (heading_2 and subheading): one suggestion per line.
+  const merged = new Map<number, LineDeviation>()
+  for (const deviation of deviations) {
+    const existing = merged.get(deviation.pos)
+    if (!existing) {
+      merged.set(deviation.pos, deviation)
+      continue
+    }
+    existing.fix = { ...existing.fix, ...deviation.fix }
+    existing.differences = [...existing.differences, ...deviation.differences.filter((d) => !existing.differences.includes(d))]
+    existing.fromPreset = existing.fromPreset || deviation.fromPreset
+  }
+  return Array.from(merged.values()).sort((a, b) => a.pos - b.pos)
 }

@@ -77,6 +77,9 @@ export type StructuralRole =
   | 'title_page'
   | 'front_label'
   | 'preset_body'
+  | 'subheading'
+  | 'figure_title'
+  | 'table_title'
 
 /**
  * Whether the text after a leading number ("3.1", "2.", "IV.", "B.") reads like a heading and
@@ -213,6 +216,9 @@ const LINE_GROUP_LABELS: Record<ShortLineGroup, string> = {
   heading_2: 'Section heading',
   heading_3: 'Subsection heading',
   caption: 'Caption',
+  subheading: 'Section heading',
+  figure_title: 'Figure title',
+  table_title: 'Table title',
 }
 
 /** Regex patterns that indicate heading-like content. */
