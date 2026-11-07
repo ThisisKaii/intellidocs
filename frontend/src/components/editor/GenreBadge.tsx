@@ -23,7 +23,7 @@ interface GenreBadgeProps {
  * menu to override it. Suggestions only ever come from documents of the same genre.
  */
 export function GenreBadge({ genre, source, canEdit, onChange }: GenreBadgeProps): JSX.Element {
-  const label = `${genreShortLabel(genre)} · ${source === 'auto' ? 'Auto' : 'Manual'}`
+  const sourceLabel = source === 'auto' ? 'Auto' : 'Manual'
   const title = `Document type: ${genreShortLabel(genre)} (${source === 'auto' ? 'detected from structure' : 'set manually'}). Formatting suggestions learn only from documents of this type.`
 
   const trigger = (
@@ -35,7 +35,11 @@ export function GenreBadge({ genre, source, canEdit, onChange }: GenreBadgeProps
       className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-transparent px-2.5 text-[11px] font-medium tabular-nums text-muted-foreground transition-[background-color,color,transform] duration-150 ease-out hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] disabled:cursor-default disabled:opacity-80 disabled:hover:bg-transparent"
     >
       <Sparkles aria-hidden className="size-3 opacity-70" strokeWidth={2} />
-      <span>{label}</span>
+      {/* On laptops the toolbar hides the "· Auto" part (toolbar-label); the title still says it. */}
+      <span>
+        {genreShortLabel(genre)}
+        <span className="toolbar-label"> · {sourceLabel}</span>
+      </span>
       {canEdit && <ChevronDown aria-hidden className="size-3 opacity-50" />}
     </button>
   )

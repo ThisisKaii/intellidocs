@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useImports } from '@/context/ImportContext'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
-import { FileText, FolderIcon, GraduationCap, HardDrive, KeyRound, Menu, Plus, Search, Upload } from 'lucide-react'
+import { FileText, FolderIcon, GraduationCap, HardDrive, KeyRound, LayoutDashboard, Menu, Plus, Search, Upload } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -766,8 +766,9 @@ export default function HomePage(): JSX.Element {
               </button>
             </div>
 
-            {/* Center: Search Omnibar (Centered across header) */}
-            <div className="absolute left-1/2 -translate-x-1/2 w-full max-w-xl px-4 pointer-events-auto z-0">
+            {/* Center: Search Omnibar. Centered across the header on wide screens; on laptops it
+                takes the space between the menu and the actions, so it can never overlap them. */}
+            <div className="relative flex-1 min-w-0 max-w-xl px-4 pointer-events-auto z-0 xl:absolute xl:left-1/2 xl:-translate-x-1/2 xl:w-full xl:flex-none">
               <div className="relative w-full">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" strokeWidth={2} />
                 <input
@@ -791,9 +792,11 @@ export default function HomePage(): JSX.Element {
                 <button
                   onClick={() => navigate('/admin')}
                   title="Admin Dashboard"
+                  aria-label="Admin Dashboard"
                   className="hidden md:inline-flex items-center gap-2 h-9 px-3.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold border-none cursor-pointer transition-opacity hover:opacity-90"
                 >
-                  Admin Dashboard
+                  <LayoutDashboard className="size-4" />
+                  <span className="hidden xl:inline">Admin Dashboard</span>
                 </button>
               )}
 

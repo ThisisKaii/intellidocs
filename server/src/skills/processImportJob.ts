@@ -24,6 +24,7 @@ import {
   type DownloadStream,
 } from './streamDownload'
 import { rtfToParagraphs, textToHtml } from './driveTextExtract'
+import { waitForConverter } from './waitForConverter'
 
 /** Files at or below this size convert in one shot; larger ones are queued. */
 export const LARGE_FILE_BYTES = 15 * 1024 * 1024
@@ -152,7 +153,11 @@ export async function processImportJob(job: ImportJob): Promise<void> {
     })
 
     await updateImportJob(job.id, { state: 'converting', progress: CONVERT_START })
+    const wake = await waitForConverter(() => updateImportJob(job.id, { waking: true }))
+    if (wake.wakeMs > 0) await updateImportJob(job.id, { waking: false })
+    const convertStartedAt = Date.now()
     const { html, conversion } = await convertToHtml({ filePath: tempPath, title, mimeType, buffer: null })
+    console.info(`[import] ${title}: converter wake ${Math.round(wake.wakeMs / 1000)}s, convert ${Math.round((Date.now() - convertStartedAt) / 1000)}s`)
 
     // The server owns document creation so the import finishes even when the
     // user has navigated away from the page that started it.

@@ -18,6 +18,8 @@ export interface TrackedImport {
   error: string
   /** Set once the server has created the document. */
   documentId: string
+  /** The server is waiting for a sleeping converter to wake up. */
+  waking?: boolean
 }
 
 /** The server calls the queue needs; injected so tests can fake them. */
@@ -39,7 +41,8 @@ export function isActive(item: TrackedImport): boolean {
 }
 
 /** Map an import state to the label shown under the progress bar. */
-export function phaseLabel(state: TrackedImport['state'], isDrive = false): string {
+export function phaseLabel(state: TrackedImport['state'], isDrive = false, waking = false): string {
+  if (waking && state === 'converting') return 'Waking up the converter… (the first import after a quiet spell takes about a minute)'
   switch (state) {
     case 'uploading':
       return 'Uploading…'
@@ -65,6 +68,7 @@ function fromJob(job: ImportJob): TrackedImport {
     progress: job.state === 'done' ? 100 : job.progress,
     error: job.state === 'failed' ? job.error : '',
     documentId: job.documentId ?? '',
+    waking: job.waking === true,
   }
 }
 

@@ -29,6 +29,8 @@ export const textBlockSchema = z.object({
   centered: z.boolean().default(false),
   /** True for text inside a table cell, where lines are values and labels, not sentences. */
   inCell: z.boolean().default(false),
+  /** Title-page or approval-sheet line (names, institutions, submission clauses), marked by the editor. */
+  region: z.enum(['title_page', 'approval_sheet']).optional(),
 })
 
 /**

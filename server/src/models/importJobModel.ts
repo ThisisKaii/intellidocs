@@ -23,6 +23,8 @@ export interface ImportJob {
   error: string
   /** Id of the document created when the job finished; empty until then. */
   documentId: string
+  /** True while the job waits for a sleeping converter to wake up (absent on older records). */
+  waking?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -106,7 +108,7 @@ export async function getImportJob(jobId: string): Promise<ImportJob | null> {
  */
 export async function updateImportJob(
   jobId: string,
-  patch: Partial<Pick<ImportJob, 'state' | 'progress' | 'error' | 'title' | 'html' | 'documentId'>>
+  patch: Partial<Pick<ImportJob, 'state' | 'progress' | 'error' | 'title' | 'html' | 'documentId' | 'waking'>>
 ): Promise<void> {
   const client = await getRedisClient()
   const existing = await getImportJob(jobId)

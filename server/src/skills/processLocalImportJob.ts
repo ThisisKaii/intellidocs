@@ -3,6 +3,7 @@ import os from 'os'
 import path from 'path'
 import { createImportJob, failImportJob, updateImportJob, type ImportJob } from '../models/importJobModel'
 import { importLocalFile } from './importLocalFile'
+import { waitForConverter } from './waitForConverter'
 
 /** Where a local job's uploaded bytes wait until it is their turn to convert. */
 export function localUploadPath(jobId: string): string {
@@ -22,10 +23,26 @@ const SAVING_PROGRESS = 90
  */
 export async function processLocalImportJob(job: ImportJob): Promise<void> {
   const filePath = localUploadPath(job.id)
+  const startedAt = Date.now()
   try {
     await updateImportJob(job.id, { state: 'converting', progress: CONVERTING_PROGRESS })
     const buffer = await readFile(filePath)
+    // A sleeping converter is woken first, so the file is not sent to it (and dropped to the
+    // fallback converter) while it boots.
+    const wake = /\.(docx|pdf)$/i.test(job.fileName)
+      ? await waitForConverter(() => updateImportJob(job.id, { waking: true }))
+      : { reachable: true, wakeMs: 0 }
+    if (wake.wakeMs > 0) await updateImportJob(job.id, { waking: false })
+    const convertStartedAt = Date.now()
     const document = await importLocalFile(job.userId, { buffer, originalname: job.fileName })
+    console.info(
+      `[import] ${job.fileName}: queued ${Math.round((startedAt - job.createdAt) / 1000)}s, ` +
+        `converter wake ${Math.round(wake.wakeMs / 1000)}s${wake.reachable ? '' : ' (not reachable)'}, ` +
+        `convert+save ${Math.round((Date.now() - convertStartedAt) / 1000)}s`
+    )
+    // The upload is gone before the job reports done, so a client (or the next job reusing the
+    // temp path) never races the cleanup in `finally`.
+    await rm(filePath, { force: true }).catch(() => undefined)
     await updateImportJob(job.id, { state: 'converting', progress: SAVING_PROGRESS })
     await updateImportJob(job.id, {
       state: 'done',

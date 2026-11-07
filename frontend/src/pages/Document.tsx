@@ -47,6 +47,7 @@ import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/format
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import type { PageLayoutData } from '@/lib/pageLayout'
 import { mergeStyleDecls } from '@/lib/inlineStyle'
+import { anchorAtClick } from '@/lib/grammarAnchor'
 import { dismissFontNotice, fontFamiliesIn, fontNoticeDismissed, missingFonts } from '@/lib/fontAvailability'
 import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
 import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
@@ -302,7 +303,8 @@ export default function Document(): JSX.Element {
   const [pendingLearnedFormat, setPendingLearnedFormat] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
   const [activeGrammarIssue, setActiveGrammarIssue] = useState<GrammarIssue | null>(null)
-  const [activeGrammarRect, setActiveGrammarRect] = useState<DOMRect | null>(null)
+  /** Document range of the text the open grammar popover belongs to (it follows that text). */
+  const [activeGrammarAnchor, setActiveGrammarAnchor] = useState<{ from: number; to: number } | null>(null)
   const [suggestionRange, setSuggestionRange] = useState<{ from: number; to: number } | null>(null)
   const [suggestionAnchor, setSuggestionAnchor] = useState<{ x: number; y: number } | null>(null)
   /** Spotlight rect (canvas-relative px) shown briefly after an outline jump. */
@@ -331,6 +333,8 @@ export default function Document(): JSX.Element {
   const [zoomLevel, setZoomLevel] = useState<number>(1)
   /** Latest zoom value for listeners bound with empty dependency lists. */
   const zoomLevelRef = useRef<number>(1)
+  /** Set once the user picks a zoom; the laptop auto-fit then leaves the zoom alone. */
+  const userZoomedRef = useRef<boolean>(false)
   zoomLevelRef.current = zoomLevel
   /** Non-printing alignment gridlines over each page's text area. */
   const [showGridlines, setShowGridlines] = useState<boolean>(false)
@@ -377,7 +381,8 @@ export default function Document(): JSX.Element {
     return () => window.clearTimeout(timer)
   }, [id, referencesKey, citationStyle, references, readOnly, shareToken])
 
-  const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches)
+  // The outline starts closed below 1440 CSS px (laptops, lab monitors) so the page keeps its width; it opens on demand.
+  const [leftPanelOpen, setLeftPanelOpen] = useState<boolean>(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 1440px)').matches)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState<boolean>(false)
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null)
  
@@ -514,6 +519,8 @@ export default function Document(): JSX.Element {
    * being thrown to an unrelated part of the document.
    */
   function applyZoom(nextZoom: number): void {
+    // A zoom the user picked (buttons, keys, wheel, Fit Width) is never overridden by the auto-fit below.
+    userZoomedRef.current = true
     const clamped = clampZoom(nextZoom)
     const container = editorCanvasRef.current
     const current = zoomLevelRef.current
@@ -541,6 +548,26 @@ export default function Document(): JSX.Element {
     const available = container.clientWidth - 32
     applyZoom((available * 0.9) / pageWidthPx)
   }
+
+  // Laptops and lab monitors (1366x768, 125% scaling leaves ~1093 CSS px): when the page does not
+  // fit beside the panels, shrink it to fit, and grow it back (up to 100%) when room returns, e.g.
+  // when a panel closes. Stops for good once the user picks a zoom.
+  useEffect(() => {
+    const container = editorCanvasRef.current
+    if (!editor || !container || isNarrow) return
+    const fit = (): void => {
+      if (userZoomedRef.current) return
+      const preset = PAGE_SIZES[pageSize]
+      const pageWidthPx = orientation === 'landscape' ? preset.height : preset.width
+      // 1rem canvas padding each side, plus a little air around the page.
+      const fitting = clampZoom(Math.min(1, (container.clientWidth - 48) / pageWidthPx))
+      if (Math.abs(fitting - zoomLevelRef.current) > 0.02) setZoomLevel(fitting)
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [editor, isNarrow, pageSize, orientation])
 
   // On a narrow screen, fit the page to the screen width once the canvas is up.
   useEffect(() => {
@@ -2651,30 +2678,40 @@ export default function Document(): JSX.Element {
     scheduleSave()
   }
 
-  /** Grammar underline click — open the anchored fix popover. */
+  /**
+   * Grammar underline click — open the anchored fix popover on the clicked occurrence. The click's
+   * box only says where the user clicked; the popover is anchored to the text's document position,
+   * so it follows the text through scrolling, zoom and reflow.
+   */
   const handleGrammarClick = useCallback(
     (issue: GrammarIssue, rect: DOMRect): void => {
       setActiveGrammarIssue(issue)
-      setActiveGrammarRect(rect)
+      setActiveGrammarAnchor(editor && !editor.isDestroyed ? anchorAtClick(editor, issue, rect) : null)
     },
-    []
+    [editor]
   )
 
-  /** Locate the ProseMirror position of a grammar issue's text in the document. */
-  function findIssuePos(issue: GrammarIssue): number | null {
-    if (!editor || editor.isDestroyed) return null
-    const needle = issue.original.toLowerCase()
-    let found: number | null = null
-    editor.state.doc.descendants((node, pos) => {
-      if (found !== null) return false
-      if (node.isText && node.text) {
-        const idx = node.text.toLowerCase().indexOf(needle)
-        if (idx >= 0) found = pos + idx
+  /** The open grammar popover's anchor box, rebuilt from the document position on every call. */
+  const getActiveGrammarRect = useMemo(() => {
+    if (!editor || editor.isDestroyed || !activeGrammarAnchor) return null
+    const { from, to } = activeGrammarAnchor
+    return (): DOMRect | null => {
+      if (editor.isDestroyed) return null
+      const size = editor.state.doc.content.size
+      if (from > size) return null
+      try {
+        const start = editor.view.coordsAtPos(from)
+        const end = editor.view.coordsAtPos(Math.min(to, size), -1)
+        // Text that wraps onto the next line: anchor to the part on the first line.
+        const sameLine = Math.abs(end.top - start.top) < (start.bottom - start.top) / 2
+        const width = sameLine ? Math.max(end.right - start.left, 12) : 48
+        return new DOMRect(start.left, start.top, width, Math.max(start.bottom - start.top, 14))
+      } catch {
+        return null
       }
-      return found === null
-    })
-    return found
-  }
+    }
+  }, [editor, activeGrammarAnchor])
+
 
   /**
    * Find where a grammar/spelling issue sits: the whole phrase inside one text
@@ -2700,19 +2737,6 @@ export default function Document(): JSX.Element {
     return null
   }
 
-  /** Build a viewport rect for a grammar issue so the fix popover can anchor to it. */
-  function buildIssueRect(issue: GrammarIssue): DOMRect | null {
-    const pos = findIssuePos(issue)
-    if (pos === null || !editor || editor.isDestroyed) return null
-    const start = editor.view.coordsAtPos(pos)
-    const end = editor.view.coordsAtPos(pos + issue.original.length)
-    return new DOMRect(
-      start.left,
-      start.top,
-      Math.max(end.right - start.left, 12),
-      Math.max(start.bottom - start.top, 14)
-    )
-  }
 
   /** Grammar/spelling issues whose text falls inside the highlighted suggestion block. */
   const issuesOnRange = useCallback((): GrammarIssue[] => {
@@ -2749,9 +2773,10 @@ export default function Document(): JSX.Element {
     const issues = issuesOnRange()
     const first = issues[0]
     setActionsMenu(null)
-    if (first) {
-      const rect = buildIssueRect(first)
-      if (rect) handleGrammarClick(first, rect)
+    const anchor = first ? locateIssue(first) : null
+    if (first && anchor) {
+      setActiveGrammarIssue(first)
+      setActiveGrammarAnchor(anchor)
     }
   }
 
@@ -2802,7 +2827,7 @@ export default function Document(): JSX.Element {
     if (!activeGrammarIssue) return
     if (!grammarIssues.includes(activeGrammarIssue)) {
       setActiveGrammarIssue(null)
-      setActiveGrammarRect(null)
+      setActiveGrammarAnchor(null)
     }
   }, [grammarIssues, activeGrammarIssue])
 
@@ -3585,12 +3610,13 @@ export default function Document(): JSX.Element {
       {/* Grammar & spell check — floating popover anchored to a clicked wavy underline */}
       <GrammarOverlay
         issue={activeGrammarIssue}
-        anchorRect={activeGrammarRect}
+        getAnchorRect={getActiveGrammarRect}
+        contextElement={editor && !editor.isDestroyed ? editor.view.dom : null}
         onApply={handleGrammarApply}
         onDismiss={handleGrammarDismiss}
         onClose={() => {
           setActiveGrammarIssue(null)
-          setActiveGrammarRect(null)
+          setActiveGrammarAnchor(null)
         }}
       />
 

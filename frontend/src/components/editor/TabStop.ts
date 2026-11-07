@@ -56,18 +56,37 @@ function leaderBackground(leader: TabLeader): string {
 }
 
 /**
+ * The leader a tab is drawn with. A hand-made table of contents ("Title<tab>12" on a right stop with
+ * no leader) gets dots, as readers expect; documents imported before the converter set the dot
+ * leader itself are shown the same way, without rewriting what is stored.
+ */
+export function displayedLeader(stop: { align: string; leader: TabLeader } | null, isLastTab: boolean, textAfter: string): TabLeader {
+  if (!stop) return 'none'
+  if (stop.leader !== 'none' || stop.align !== 'right' || !isLastTab) return stop.leader
+  return /^\s*(\d+|[ivxlcdm]+)\s*$/i.test(textAfter) ? 'dot' : 'none'
+}
+
+/** The text after a tab, to the paragraph's end. */
+function textAfter(tab: HTMLElement, paragraph: HTMLElement): string {
+  const range = document.createRange()
+  range.setStartAfter(tab)
+  range.setEnd(paragraph, paragraph.childNodes.length)
+  return range.toString()
+}
+
+/**
  * Width of one tab at horizontal position `left`: Word's rule — jump to the next
  * custom stop past it, else to the next default-tab multiple; right/center stops
  * pull back by the width of the text that follows them.
  */
-function tabWidth(tab: HTMLElement, paragraph: HTMLElement, left: number, stops: CustomTabStop[], defaultTab: number, lineEnd: number, scale: number): { width: number; leader: TabLeader } {
+function tabWidth(tab: HTMLElement, paragraph: HTMLElement, left: number, stops: CustomTabStop[], defaultTab: number, lineEnd: number, scale: number): { width: number; stop: CustomTabStop | null } {
   const stop = stops.find((s) => s.pos > left + 1)
-  if (!stop) return { width: (Math.floor(left / defaultTab) + 1) * defaultTab - left, leader: 'none' }
+  if (!stop) return { width: (Math.floor(left / defaultTab) + 1) * defaultTab - left, stop: null }
   const content = stop.align === 'right' || stop.align === 'center' ? followingContentWidth(tab, paragraph) / scale : 0
   const used = stop.align === 'right' ? content : stop.align === 'center' ? content / 2 : 0
   // A stop at (or past) the line end is clamped one px inside it so the text after it cannot wrap.
   const pos = Math.min(stop.pos, lineEnd - 1)
-  return { width: Math.max(0, pos - left - used), leader: stop.leader }
+  return { width: Math.max(0, pos - left - used), stop }
 }
 
 /** Lay out every tab in the editor, paragraph by paragraph and left to right. */
@@ -84,14 +103,16 @@ function layoutTabs(root: HTMLElement): void {
     const box = paragraph.getBoundingClientRect()
     const base = box.left - (parseFloat(style.marginLeft) || 0) * scale
     const lineEnd = (box.right - (parseFloat(style.paddingRight) || 0) * scale - base) / scale
-    for (const tab of tabs) {
+    tabs.forEach((tab, index) => {
       const left = (tab.getBoundingClientRect().left - base) / scale
-      const { width, leader } = tabWidth(tab, paragraph, left, stops, defaultTab, lineEnd, scale)
+      const { width, stop } = tabWidth(tab, paragraph, left, stops, defaultTab, lineEnd, scale)
+      const isLast = index === tabs.length - 1
+      const leader = displayedLeader(stop, isLast, isLast && stop?.align === 'right' && stop.leader === 'none' ? textAfter(tab, paragraph) : '')
       // Write only on a real change: every style write re-flows the paginator.
       if (Math.abs(width - tab.offsetWidth) > WIDTH_EPSILON_PX) tab.style.width = `${width}px`
       const background = leaderBackground(leader)
       if (tab.style.background !== background && !(background === 'none' && tab.style.background === '')) tab.style.background = background
-    }
+    })
   }
 }
 

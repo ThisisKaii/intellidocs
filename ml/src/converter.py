@@ -1850,6 +1850,9 @@ class _ConversionState(threading.local):
         self.last_list_paragraph: Optional[Tuple[List[Inline], Optional[str]]] = None
         # The body (not a header, footer or note) is being written.
         self.in_body = False
+        # The body paragraphs being written belong to a table of contents (or a list of tables or
+        # figures), whose entries get dot leaders (see _toc_region_step).
+        self.in_toc = False
 
 
 _STATE = _ConversionState()
@@ -2094,12 +2097,57 @@ def _default_tab_px(p: Paragraph) -> float:
     return value
 
 
+# The label that opens a table of contents, a list of tables or a list of figures.
+_TOC_LABEL = re.compile(r"^(table\s+of\s+contents|contents|list\s+of\s+(tables|figures|illustrations|abbreviations|appendices))\s*:?$", re.IGNORECASE)
+# A table-of-contents entry: text, a tab, then a page number (arabic or roman).
+_TOC_ENTRY = re.compile(r"\S.*\t\s*(\d+|[ivxlcdm]+)\s*$", re.IGNORECASE)
+
+
+def _toc_region_step(p: Paragraph) -> None:
+    """Track whether the body is inside a table of contents: a TOC or list label opens it, and the
+    first heading-styled paragraph or line of prose after it ends it."""
+    text = p.text.strip()
+    if _TOC_LABEL.match(text):
+        _STATE.in_toc = True
+        return
+    if not _STATE.in_toc or not text:
+        return
+    style_name = ""
+    try:
+        style_name = (p.style.name or "") if p.style is not None else ""
+    except Exception:
+        style_name = ""
+    if style_name.lower().startswith(("heading", "title")) or (len(text) >= 80 and text.endswith((".", "!", "?"))):
+        _STATE.in_toc = False
+
+
+def _is_toc_entry(p: Paragraph) -> bool:
+    """A table-of-contents line: Word's TOC styles, or a "title<tab>page" line inside a TOC region."""
+    try:
+        style_name = (p.style.name or "") if p.style is not None else ""
+    except Exception:
+        style_name = ""
+    if re.match(r"^(toc\s*\d|table of figures)", style_name, re.IGNORECASE):
+        return True
+    return _STATE.in_toc and _TOC_ENTRY.match(p.text) is not None
+
+
 def _paragraph_tab_stops(p: Paragraph) -> List[List[Any]]:
     """Custom tab stops in effect for a paragraph: [[align, position_px, leader], ...] sorted by position.
 
     Stops accumulate from the style chain (base first) and then the paragraph;
-    a ``clear`` stop removes the inherited one at that position.
+    a ``clear`` stop removes the inherited one at that position. In a table of contents, a final
+    right-aligned stop without a leader gets a dot leader: hand-made TOCs often leave it out, and
+    readers expect dots between a title and its page number.
     """
+    stops = _paragraph_tab_stops_as_set(p)
+    if stops and stops[-1][0] == "right" and stops[-1][2] in (None, "none") and _is_toc_entry(p):
+        stops[-1] = [stops[-1][0], stops[-1][1], "dot"]
+    return stops
+
+
+def _paragraph_tab_stops_as_set(p: Paragraph) -> List[List[Any]]:
+    """The tab stops exactly as the document sets them (see _paragraph_tab_stops)."""
     chain: List[Any] = []
     try:
         style = p.style
@@ -3573,6 +3621,7 @@ def _table(
 def _body_to_html(*args: Any, **kwargs: Any) -> str:
     """The document body as the editor's HTML (see _write_body_html); records paragraph JSON when measured."""
     _STATE.in_body = True
+    _STATE.in_toc = False
     try:
         return _write_body_html(*args, **kwargs)
     finally:
@@ -3677,6 +3726,7 @@ def _write_body_html(
 
         if element.tag == qn("w:p"):
             p = Paragraph(element, doc)
+            _toc_region_step(p)
             if _paragraph_page_break_before(p):
                 emit_page_break()
             info = _paragraph_list_info(p, num_to_abstract, abstract_levels)

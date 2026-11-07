@@ -3,7 +3,7 @@ from typing import Any
 
 from spellchecker import SpellChecker
 
-from grammar.blocks import WEB_ADDRESS_PATTERN, is_short_centered_line, normalize_blocks
+from grammar.blocks import WEB_ADDRESS_PATTERN, is_short_centered_line, is_title_page_block, normalize_blocks
 
 
 SPELL_PATTERN = re.compile(r"\b[a-zA-Z']+\b")
@@ -211,10 +211,43 @@ def extract_words(text: str) -> list[str]:
     return SPELL_PATTERN.findall(text)
 
 
+# Titles and initials end in a period without ending a sentence: "Ms. Gian S. Mahusay".
+HONORIFIC_BEFORE = re.compile(r"(?:\b(?:Ms|Mr|Mrs|Dr|Engr|Prof|Atty|Hon|Rev|Sr|Jr|St)|\b[A-Z])\.$")
+# Lines of names: bylines and signatures ("By:", "Adviser:", "Noted by", "Ms. ..."), and "Surname, Given".
+NAME_LINE = re.compile(
+    r"^(?:by\s*:|adviser\s*:?|advisor\s*:?|prepared\s+by|noted\s+by|approved\s+by|checked\s+by|"
+    r"(?:ms|mr|mrs|dr|engr|prof|atty)\.\s)"
+    r"|^[A-Z][a-z'\-]+,\s+[A-Z]",
+    re.IGNORECASE,
+)
+
+
 def is_sentence_start(text: str, start: int) -> bool:
-    """Return True when the word at `start` opens a sentence or a new line."""
+    """Return True when the word at `start` opens a sentence or a new line.
+
+    A word after a title or an initial ("Ms. Gian", "S. Mahusay") is part of a name, not a new sentence.
+    """
     prefix = text[:start].rstrip(" \t\"'“‘([")
-    return prefix == "" or prefix[-1] in ".!?\n"
+    if prefix == "" or prefix[-1] == "\n":
+        return True
+    if prefix[-1] == "." and HONORIFIC_BEFORE.search(prefix.split("\n")[-1]):
+        return False
+    return prefix[-1] in ".!?"
+
+
+def is_name_block(block: dict[str, Any]) -> bool:
+    """A title-page or approval-sheet line, a byline/signature line or a "Surname, Given" line: its capitalised words are names."""
+    return is_title_page_block(block) or NAME_LINE.match(block["text"].strip()) is not None
+
+
+def lowercase_words(text: str) -> list[str]:
+    """The all-lowercase words of a line of names, which are still checked (a typo like "teh" is not a name)."""
+    address_spans = [match.span() for match in WEB_ADDRESS_PATTERN.finditer(text)]
+    return [
+        match.group()
+        for match in SPELL_PATTERN.finditer(text)
+        if match.group().islower() and not any(start <= match.start() < end for start, end in address_spans)
+    ]
 
 
 def extract_checkable_words(text: str) -> list[str]:
@@ -291,21 +324,24 @@ def is_reliable_correction(word: str, suggestion: str | None) -> bool:
 def check_spelling(source: Any) -> dict[str, Any]:
     """Return spelling issues and summary details for plain text or text blocks.
 
-    Short centred lines (title-page names, institutions) are not checked,
-    since proper nouns would otherwise be flagged.
+    Short centred lines (title-page names, institutions) are not checked, and in title-page,
+    approval-sheet, byline and "Surname, Given" lines only lowercase words are, since proper
+    nouns (student and adviser names) would otherwise be flagged.
     """
     blocks = normalize_blocks(source)
-    normalized = "\n".join(
-        block["text"] for block in blocks if not is_short_centered_line(block)
-    )
-    if not normalized:
+    prose = [block for block in blocks if not is_short_centered_line(block) and not is_name_block(block)]
+    name_lines = [block for block in blocks if not is_short_centered_line(block) and is_name_block(block)]
+    normalized = "\n".join(block["text"] for block in prose)
+    if not normalized and not name_lines:
         return {
             "issues": [],
             "count": 0,
             "message": "Text is required.",
         }
 
-    words = extract_checkable_words(normalized)
+    words = extract_checkable_words(normalized) if normalized else []
+    for block in name_lines:
+        words.extend(lowercase_words(block["text"]))
     # Skip single-character fragments — they are either valid (a, I)
     # or artifacts from stripped HTML entities (&#9; → t).
     words = [w for w in words if len(w) >= 2]

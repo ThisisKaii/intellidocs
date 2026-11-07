@@ -1,3 +1,5 @@
+import { createFrontMatterTracker, type FrontMatterRegion } from './frontMatter'
+
 /** The grammar API rejects payloads over 50k characters, so only the head is checked. */
 export const MAX_GRAMMAR_CHARS = 50000
 
@@ -8,6 +10,8 @@ export interface GrammarBlock {
   centered: boolean
   /** True for text inside a table cell, where lines are values and labels, not sentences. */
   inCell?: boolean
+  /** Title-page or approval-sheet line: names, institutions and clauses, not sentences (see lib/frontMatter). */
+  region?: FrontMatterRegion
 }
 
 /** The slice of a ProseMirror node the block builder reads. */
@@ -54,6 +58,7 @@ export function buildGrammarBlocks(doc: GrammarDocLike, maxChars: number = MAX_G
   let total = 0
   // Document position where the table cell being walked ends; blocks before it are inside the cell.
   let cellEnd = -1
+  const regionOf = createFrontMatterTracker()
   doc.descendants((node, pos, parent) => {
     if (total >= maxChars) return false
     if (isCellNode(node)) {
@@ -66,6 +71,8 @@ export function buildGrammarBlocks(doc: GrammarDocLike, maxChars: number = MAX_G
       const align = typeof node.attrs.textAlign === 'string' ? node.attrs.textAlign : 'left'
       const block: GrammarBlock = { text, kind: blockKind(node, parent), align, centered: align === 'center' }
       if (pos < cellEnd) block.inCell = true
+      const region = regionOf(text, node.type.name === 'heading')
+      if (region) block.region = region
       blocks.push(block)
       total += text.length
     }

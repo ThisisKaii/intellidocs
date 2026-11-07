@@ -1,5 +1,6 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { lengthToPt, readStyleDecl } from './inlineStyle'
+import { FRONT_LABEL, createFrontMatterTracker } from './frontMatter'
 
 /** The kinds of short line that are styled alike within their kind. */
 export type ShortLineGroup = 'title_page' | 'front_label' | 'heading_1' | 'heading_2' | 'heading_3' | 'caption'
@@ -42,15 +43,10 @@ export interface LineDeviation {
   fromPreset: boolean
 }
 
-/** Section labels of a thesis's front and back matter, set like chapter headings. */
-const FRONT_LABEL = /^(approval sheet|acknowledge?ments?|dedication|abstract|preface|foreword|table of contents|list of (tables|figures|abbreviations|appendices)|curriculum vitae|references|bibliography|appendices)$/i
-/** The first label after a title page ends it. */
-const TITLE_PAGE_END = /^(approval sheet|acknowledge?ments?|dedication|abstract|preface|foreword|table of contents|introduction|chapter\s+\S+)/i
 const CAPTION = /^(figure|fig\.|table)\s+\d+/i
 /** Share of a kind one value must cover to be the usual one, and the fewest lines that settle it. */
 const MIN_SHARE = 0.6
 const MIN_MEMBERS = 3
-const MAX_TITLE_PAGE_LINES = 25
 
 const SKIPPED_ANCESTORS = new Set([
   'bulletList', 'orderedList', 'listItem', 'table', 'tableRow', 'tableCell', 'tableHeader', 'codeBlock',
@@ -136,8 +132,7 @@ function describe(key: keyof LineStyle, own: LineStyle[keyof LineStyle], wanted:
  */
 export function findShortLineDeviations(doc: ProseMirrorNode, preset: PresetLineRules | null = null): LineDeviation[] {
   const groups = new Map<ShortLineGroup, Array<{ pos: number; node: ProseMirrorNode; text: string; style: LineStyle }>>()
-  let titlePageOpen = true
-  let titlePageLines = 0
+  const regionOf = createFrontMatterTracker()
   const add = (group: ShortLineGroup, pos: number, node: ProseMirrorNode): void => {
     const list = groups.get(group) ?? []
     list.push({ pos, node, text: node.textContent.trim(), style: lineStyleOf(node) })
@@ -149,20 +144,15 @@ export function findShortLineDeviations(doc: ProseMirrorNode, preset: PresetLine
     if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return true
     const text = node.textContent.replace(/\s+/g, ' ').trim()
     if (!text) return false
-    // A title page is the run of short lines a document opens with: the first heading, front-matter
-    // label or sentence of prose ends it.
-    const prose = text.length >= 80 && /[.!?]$/.test(text)
-    if (titlePageOpen && (node.type.name === 'heading' || prose || TITLE_PAGE_END.test(text) || titlePageLines >= MAX_TITLE_PAGE_LINES)) {
-      titlePageOpen = false
-    }
+    // The title page is the run of short lines a document opens with (see lib/frontMatter).
+    const titlePage = regionOf(text, node.type.name === 'heading') === 'title_page'
 
     if (CAPTION.test(text) && text.length < 120) add('caption', pos, node)
     else if (FRONT_LABEL.test(text.replace(/[:.]$/, ''))) add('front_label', pos, node)
     else if (node.type.name === 'heading' && text.length < 120) {
       const level = Number(node.attrs.level)
       add(level === 2 ? 'heading_2' : level === 3 ? 'heading_3' : 'heading_1', pos, node)
-    } else if (titlePageOpen && node.type.name === 'paragraph' && text.length < 200) {
-      titlePageLines += 1
+    } else if (titlePage && node.type.name === 'paragraph' && text.length < 200) {
       add('title_page', pos, node)
     }
     return false

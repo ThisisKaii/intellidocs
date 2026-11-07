@@ -595,6 +595,8 @@ export interface ImportJob {
   error: string
   /** Id of the document the server created; empty until the job is done. */
   documentId: string
+  /** True while the server waits for a sleeping converter to wake up. */
+  waking?: boolean
   createdAt: number
   updatedAt: number
 }

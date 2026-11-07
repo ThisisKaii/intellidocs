@@ -423,6 +423,30 @@ html {
   overflow: hidden;
 }
 
+/* Ribbon folded to its tab strip (chevron or Ctrl+F1): only the Home / Insert / Styles row stays.
+   !important: the tab panels set their own inline `display: contents`, which a plain rule cannot override. */
+.intellidocs-toolbar.is-collapsed > :not(.ribbon-tabs) {
+  display: none !important;
+}
+.intellidocs-toolbar.is-collapsed > .ribbon-tabs {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* Laptops and lab monitors (1366x768, 125% scaling): keep the ribbon to one row by showing the
+   right-hand buttons as icons (their titles still name them) and narrowing the styles strip,
+   which scrolls sideways. Dropdowns are positioned inside the toolbar, so it never scrolls itself. */
+@media (max-width: 1440px), (max-height: 800px) {
+  .intellidocs-toolbar {
+    --style-gallery-max: 120px;
+    gap: 2px !important; /* overrides the toolbar's inline 4px gap */
+  }
+  .intellidocs-toolbar .toolbar-label {
+    display: none;
+  }
+}
+
 /* ── Point 7: multi-resolution responsive layout ── */
 @media (max-width: 1366px) and (min-width: 1025px) {
   .intellidocs-page-editor {

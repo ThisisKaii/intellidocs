@@ -1,6 +1,7 @@
 import os
 import pickle
 import re
+import threading
 from typing import Any, cast
 
 import numpy as np
@@ -244,7 +245,25 @@ def save_model(payload: dict[str, Any], output_path: str) -> None:
         pickle.dump(payload, file_handle)
 
 
+# Loaded grammar models by path: unpickled once per process, then shared (read-only) by every request.
+_CACHED_GRAMMAR_MODEL: dict[str, dict[str, Any]] = {}
+_MODEL_LOCK = threading.Lock()
+
+
 def load_model(model_path: str = MODEL_PATH) -> dict[str, Any]:
+    """The grammar model payload, read from disk on first use and cached for the process."""
+    cached = _CACHED_GRAMMAR_MODEL.get(model_path)
+    if cached is not None:
+        return cached
+    with _MODEL_LOCK:
+        cached = _CACHED_GRAMMAR_MODEL.get(model_path)
+        if cached is None:
+            cached = _read_model(model_path)
+            _CACHED_GRAMMAR_MODEL[model_path] = cached
+    return cached
+
+
+def _read_model(model_path: str) -> dict[str, Any]:
     """Load the grammar model payload from disk."""
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Grammar model not found: {model_path}")
@@ -289,14 +308,18 @@ def build_issue(
 
 
 def detect_repeated_words(text: str) -> list[dict[str, str]]:
-    """Detect repeated adjacent words."""
-    issues: list[dict[str, str]] = []
-    words = WORD_PATTERN.findall(text)
+    """Detect repeated adjacent words.
 
-    for index in range(len(words) - 1):
-        left = words[index]
-        right = words[index + 1]
-        if left.lower() == right.lower():
+    Only words separated by spaces count: a hyphenated reduplication ("Lapu-Lapu", "so-so") is one word.
+    """
+    issues: list[dict[str, str]] = []
+    matches = list(WORD_PATTERN.finditer(text))
+
+    for index in range(len(matches) - 1):
+        left = matches[index].group()
+        right = matches[index + 1].group()
+        between = text[matches[index].end():matches[index + 1].start()]
+        if left.lower() == right.lower() and between.strip() == "":
             issues.append(
                 build_issue(
                     "grammar",
@@ -405,10 +428,27 @@ def split_sentences(text: str) -> list[str]:
     return [sentence.strip() for sentence in sentences]
 
 
+# Characters that render as nothing; a line ending in "." followed by one of these still ends in ".".
+INVISIBLE_TRAILING = "\u200b\u200c\u200d\u2060\ufeff\u00ad"
+TERMINAL_MARKS = (".", "!", "?", "\u2026")
+# A line ending in one of these is unfinished: the mark is replaced by a period, never followed by one.
+REPLACEABLE_ENDINGS = (",", ";", ":")
+
+
+def with_terminal_period(text: str) -> str:
+    """The text ended with a period: a trailing comma, semicolon or colon is replaced, never doubled."""
+    trimmed = text.rstrip()
+    if trimmed.endswith(TERMINAL_MARKS):
+        return trimmed
+    if trimmed.endswith(REPLACEABLE_ENDINGS):
+        return f"{trimmed[:-1].rstrip()}."
+    return f"{trimmed}."
+
+
 def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
     """Detect sentence capitalization and punctuation as grouped issues."""
     issues: list[dict[str, str]] = []
-    normalized = text.strip()
+    normalized = text.strip().rstrip(INVISIBLE_TRAILING).strip()
     if not normalized:
         return issues
 
@@ -416,7 +456,7 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
     if not sentences:
         sentences = [normalized]
 
-    needs_terminal_punctuation = not normalized.endswith((".", "!", "?"))
+    needs_terminal_punctuation = not normalized.endswith(TERMINAL_MARKS)
     final_sentence = sentences[-1] if sentences else normalized
     found_boundary_issue = False
 
@@ -441,7 +481,7 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
         explanation = "Sentences should usually start with a capital letter."
 
         if sentence == final_sentence and needs_terminal_punctuation:
-            suggestion = f"{suggestion}."
+            suggestion = with_terminal_period(suggestion)
             explanation = (
                 "Sentence should start with a capital letter and end with punctuation."
             )
@@ -461,7 +501,7 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
             build_issue(
                 "grammar",
                 final_sentence,
-                f"{final_sentence}.",
+                with_terminal_period(final_sentence),
                 "Sentence may be missing ending punctuation.",
             )
         )

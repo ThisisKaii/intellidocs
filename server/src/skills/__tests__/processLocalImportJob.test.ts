@@ -22,6 +22,10 @@ jest.mock('../../models/importJobModel', () => ({
 jest.mock('../importLocalFile', () => ({
   importLocalFile: (...args: unknown[]) => importLocalFile(...args),
 }))
+// The converter is awake: no health probe leaves the test.
+jest.mock('../waitForConverter', () => ({
+  waitForConverter: async () => ({ reachable: true, wakeMs: 0 }),
+}))
 
 import { existsSync } from 'fs'
 import { enqueueLocalImport, localUploadPath, processLocalImportJob } from '../processLocalImportJob'

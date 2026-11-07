@@ -34,7 +34,8 @@ describe('buildGrammarBlocks', () => {
       ])
     )
     expect(blocks).toEqual([
-      { text: 'A Proposal Project', kind: 'paragraph', align: 'center', centered: true },
+      // The line a document opens with, before its first heading, is title-page furniture.
+      { text: 'A Proposal Project', kind: 'paragraph', align: 'center', centered: true, region: 'title_page' },
       { text: 'Introduction', kind: 'heading', align: 'left', centered: false },
       { text: 'collect data', kind: 'listItem', align: 'left', centered: false },
       { text: 'Body text here.', kind: 'paragraph', align: 'left', centered: false },

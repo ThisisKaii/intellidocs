@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react'
 import { useEditor, useEditorState, EditorContent, type Editor } from '@tiptap/react'
 import { BubbleMenu, FloatingMenu } from '@tiptap/react/menus'
 import type { EditorState } from '@tiptap/pm/state'
@@ -64,6 +64,7 @@ import {
   Quote,
   Code2,
   ChevronDown,
+  ChevronUp,
   Plus,
   Minus,
   Bold,
@@ -113,6 +114,7 @@ import { LetterSpacingExtension } from './LetterSpacingExtension'
 import { IndentExtension } from './IndentExtension'
 import { exportThesisWord, exportThesisPdf } from '@/lib/thesisExport'
 import { exportIeeeDocx } from '@/lib/ieeeExport'
+import { readRibbonCollapsed, writeRibbonCollapsed } from '@/lib/ribbonState'
 import {
   snapshotTableContext,
   snapshotTableShape,
@@ -1642,6 +1644,24 @@ export function TiptapToolbar({
   onOpenPersonalization,
 }: ToolbarProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'styles'>('home')
+  /** Ribbon folded to its tab strip, for more writing space on short screens (Ctrl+F1, as in Word). */
+  const [ribbonCollapsed, setRibbonCollapsed] = useState<boolean>(readRibbonCollapsed)
+  const toggleRibbon = useCallback((): void => {
+    setRibbonCollapsed((current) => {
+      writeRibbonCollapsed(!current)
+      return !current
+    })
+  }, [])
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.ctrlKey && event.key === 'F1') {
+        event.preventDefault()
+        toggleRibbon()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleRibbon])
   const [openFont, setOpenFont] = useState(false)
   const [openSize, setOpenSize] = useState(false)
   const [openColor, setOpenColor] = useState(false)
@@ -1964,7 +1984,7 @@ export function TiptapToolbar({
   return (
     <div
       ref={toolbarRef}
-      className="intellidocs-toolbar"
+      className={`intellidocs-toolbar${ribbonCollapsed ? ' is-collapsed' : ''}`}
       style={{
         position: 'relative',
         display: 'flex',
@@ -1990,7 +2010,7 @@ export function TiptapToolbar({
       />
 
       {/* Modern ribbon tab strip: Home | Insert | Styles */}
-      <div className="flex items-center gap-1.5 w-full pb-2 mb-2 border-b border-border/60">
+      <div className="ribbon-tabs flex items-center gap-1.5 w-full pb-2 mb-2 border-b border-border/60">
         {(['home', 'insert', 'styles'] as const).map((tabName) => (
           <button
             key={tabName}
@@ -1999,6 +2019,8 @@ export function TiptapToolbar({
               e.preventDefault()
               closeAllMenus()
               setActiveTab(tabName)
+              // Picking a tab on a collapsed ribbon opens it again.
+              if (ribbonCollapsed) toggleRibbon()
             }}
             title={tabName === 'home' ? 'Text editing and formatting' : tabName === 'insert' ? 'Insert content into the document' : 'Styles and academic presets'}
             className={`px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer border-none transition-all capitalize ${
@@ -2010,6 +2032,20 @@ export function TiptapToolbar({
             {tabName}
           </button>
         ))}
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault()
+            closeAllMenus()
+            toggleRibbon()
+          }}
+          title={ribbonCollapsed ? 'Show the toolbar (Ctrl+F1)' : 'Hide the toolbar for more writing space (Ctrl+F1)'}
+          aria-label={ribbonCollapsed ? 'Show the toolbar' : 'Hide the toolbar'}
+          aria-expanded={!ribbonCollapsed}
+          className="ml-auto inline-flex items-center justify-center size-7 rounded-md border-none bg-transparent text-muted-foreground hover:bg-secondary/70 hover:text-foreground cursor-pointer"
+        >
+          {ribbonCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+        </button>
       </div>
 
       {/* Home tab — text editing and formatting */}
@@ -2044,7 +2080,8 @@ export function TiptapToolbar({
             alignItems: 'center',
             gap: '2px',
             overflowX: 'auto',
-            maxWidth: '400px',
+            // Narrower on laptops and lab monitors (see .intellidocs-toolbar in index.css).
+            maxWidth: 'var(--style-gallery-max, 400px)',
             scrollbarWidth: 'none',
           }}
         >
@@ -3028,6 +3065,7 @@ export function TiptapToolbar({
             }
             setOpenPageSetup(next)
           }}
+          title="Page setup: size, margins, orientation, headers and footers"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -3046,7 +3084,7 @@ export function TiptapToolbar({
           }}
         >
           <SlidersHorizontal style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-          <span>Page setup</span>
+          <span className="toolbar-label">Page setup</span>
           <ChevronDown style={{ width: '12px', height: '12px', opacity: 0.5 }} />
         </button>
 
@@ -3590,7 +3628,7 @@ export function TiptapToolbar({
             title="Export or import your personalization profile (.idocprofile)"
           >
             <UserCog style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-            <span>Personalization</span>
+            <span className="toolbar-label">Personalization</span>
           </button>
         </div>
       )}
@@ -3624,7 +3662,7 @@ export function TiptapToolbar({
           title="Export or Print Document"
         >
           <Download style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-          <span>Export</span>
+          <span className="toolbar-label">Export</span>
           <ChevronDown style={{ width: '12px', height: '12px', opacity: 0.5 }} />
         </button>
 

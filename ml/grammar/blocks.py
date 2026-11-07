@@ -1,8 +1,22 @@
 import re
 from typing import Any
 
-TERMINAL_PUNCTUATION = (".", "!", "?")
+TERMINAL_PUNCTUATION = (".", "!", "?", "\u2026")
 SHORT_LINE_MAX_WORDS = 12
+# Regions of a document the editor marks: title-page and approval-sheet lines are formal furniture
+# (names, institutions, submission clauses), not sentences.
+FORMAL_REGIONS = frozenset({"title_page", "approval_sheet"})
+# Clauses of a thesis title page, recognised even when the editor sends no region (plain text callers).
+TITLE_PAGE_CLAUSE = re.compile(
+    r"^(?:presented\s+to|submitted\s+(?:to|by|in)|in\s+partial\s+fulfil+ment|"
+    r"for\s+the\s+(?:degree|requirements?)\s+of|requirements?\s+for|"
+    r"(?:university|college|department|school|institute)\s+of|"
+    r"(?:a|an)\s+(?:thesis|capstone|project|proposal|dissertation|research|study)\b|"
+    r"by\s*:|adviser\b|advisor\b|"
+    r"(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b)",
+    re.IGNORECASE,
+)
+TITLE_CLAUSE_MAX_WORDS = 20
 
 # A web address or email: "https://x.y", "www.deped.gov.ph", "name@host.tld", or a bare domain.
 WEB_ADDRESS_PATTERN = re.compile(
@@ -45,6 +59,7 @@ def normalize_blocks(source: Any) -> list[dict[str, Any]]:
                 "align": align,
                 "centered": bool(data.get("centered")) or align == "center",
                 "in_cell": bool(data.get("inCell")),
+                "region": data.get("region") if data.get("region") in FORMAL_REGIONS else None,
             }
         )
     return blocks
@@ -74,8 +89,23 @@ def continues_previous(block: dict[str, Any], previous: dict[str, Any] | None) -
     )
 
 
+def is_title_page_block(block: dict[str, Any]) -> bool:
+    """Return true for title-page or approval-sheet furniture.
+
+    The editor marks those regions; without a mark, a short line that opens with a submission
+    clause ("presented to the Faculty of ...", "In partial fulfillment ...", "University of ...")
+    counts too, so plain-text callers get the same exemption.
+    """
+    if block.get("region") in FORMAL_REGIONS:
+        return True
+    text = block["text"].strip()
+    return len(text.split()) <= TITLE_CLAUSE_MAX_WORDS and TITLE_PAGE_CLAUSE.match(text) is not None
+
+
 def is_prose_block(block: dict[str, Any]) -> bool:
-    """Return true when sentence-style rules apply (not a heading, list item or title line)."""
+    """Return true when sentence-style rules apply (not a heading, list item, title line or title-page clause)."""
     if block["kind"] in ("heading", "listItem"):
+        return False
+    if is_title_page_block(block):
         return False
     return not is_short_centered_line(block)

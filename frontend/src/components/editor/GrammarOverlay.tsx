@@ -1,52 +1,73 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertCircle, Check, X } from 'lucide-react'
+import { autoUpdate, computePosition, flip, hide, offset, shift, type VirtualElement } from '@floating-ui/dom'
 import type { GrammarIssue } from './GrammarPanel'
 
 interface GrammarOverlayProps {
   issue: GrammarIssue | null
-  anchorRect: DOMRect | null
+  /**
+   * The underlined text's box right now, or null when it can no longer be found. Called on every
+   * scroll, resize, zoom and layout change, so the popover stays attached to the text.
+   */
+  getAnchorRect: (() => DOMRect | null) | null
+  /** The scroll container the text lives in (the editor), so its scrolling moves the popover. */
+  contextElement?: Element | null
   onApply: (issue: GrammarIssue, suggestion: string) => void
   onDismiss: (issue: GrammarIssue) => void
   onClose: () => void
 }
 
 const POPOVER_WIDTH = 360
-const POPOVER_OFFSET = 10
 
 interface Position {
   top: number
   left: number
+  /** The underlined text is scrolled out of view: the popover waits, hidden, until it is back. */
+  hidden: boolean
 }
 
-/** Place the popover below the anchor, flipping above when there is no room below. */
-function computePosition(anchorRect: DOMRect, viewport: { width: number; height: number }): Position {
-  const left = Math.min(
-    Math.max(anchorRect.left + anchorRect.width / 2 - POPOVER_WIDTH / 2, 8),
-    viewport.width - POPOVER_WIDTH - 8
-  )
-
-  const spaceBelow = viewport.height - anchorRect.bottom
-  if (spaceBelow > 240) {
-    return { top: anchorRect.bottom + POPOVER_OFFSET, left }
-  }
-  return { top: Math.max(anchorRect.top - POPOVER_OFFSET, 8), left }
-}
-
-/** Floating popover anchored to a clicked wavy-underline issue inside the editor. */
+/**
+ * Floating popover anchored to a clicked wavy-underline issue inside the editor.
+ *
+ * Positioned with Floating UI (as TipTap's BubbleMenu is): below the text, flipping above with its
+ * own height taken into account when there is no room, shifted to stay on screen, and kept in
+ * place by autoUpdate while the page scrolls, zooms or reflows.
+ */
 export default function GrammarOverlay({
   issue,
-  anchorRect,
+  getAnchorRect,
+  contextElement,
   onApply,
   onDismiss,
   onClose,
 }: GrammarOverlayProps): JSX.Element | null {
-  const [position, setPosition] = useState<Position>({ top: 8, left: 8 })
+  const [position, setPosition] = useState<Position>({ top: -9999, left: -9999, hidden: true })
+  const floatingRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
-    if (!anchorRect) return
-    setPosition(computePosition(anchorRect, { width: window.innerWidth, height: window.innerHeight }))
-  }, [anchorRect])
+    const floating = floatingRef.current
+    if (!issue || !getAnchorRect || !floating) return
+    let lastRect = new DOMRect(0, 0, 0, 0)
+    const reference: VirtualElement = {
+      getBoundingClientRect: () => {
+        lastRect = getAnchorRect() ?? lastRect
+        return lastRect
+      },
+      contextElement: contextElement ?? undefined,
+    }
+    const update = (): void => {
+      void computePosition(reference, floating, {
+        placement: 'bottom',
+        strategy: 'fixed',
+        middleware: [offset(8), flip({ padding: 8 }), shift({ padding: 8 }), hide()],
+      }).then(({ x, y, middlewareData }) => {
+        setPosition({ top: y, left: x, hidden: Boolean(middlewareData.hide?.referenceHidden) })
+      })
+    }
+    // animationFrame: canvas zoom and pagination move the text without a scroll or resize event.
+    return autoUpdate(reference, floating, update, { animationFrame: true })
+  }, [issue, getAnchorRect, contextElement])
 
   useEffect(() => {
     if (!issue) return
@@ -57,19 +78,22 @@ export default function GrammarOverlay({
     return () => window.removeEventListener('keydown', handleKey)
   }, [issue, onClose])
 
-  if (!issue || !anchorRect) return null
+  if (!issue || !getAnchorRect) return null
 
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, y: -6, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+        ref={floatingRef}
+        data-testid="grammar-popover"
+        initial={{ opacity: 0, scale: 0.98 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.98 }}
         transition={{ duration: 0.15 }}
         style={{
           position: 'fixed',
           top: position.top,
           left: position.left,
+          visibility: position.hidden ? 'hidden' : 'visible',
           zIndex: 60,
           width: POPOVER_WIDTH,
           maxWidth: 'calc(100vw - 1rem)',

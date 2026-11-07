@@ -20,6 +20,8 @@ if _SRC_DIR not in sys.path:
 if TYPE_CHECKING:
     import pandas as pd
 
+import anyio
+import anyio.to_thread
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -83,6 +85,16 @@ def _warm_up_heavy_modules() -> None:
             step()
         except Exception as exc:  # noqa: BLE001 - graceful degradation on missing artifacts
             print(f"⚠️ Startup warm-up of {step_name} skipped: {exc}")
+    # Run one real check of each kind so the grammar model, NLTK's tagger and the spelling
+    # dictionary are resident before the first user asks (a one-word text never reaches the tagger).
+    try:
+        from grammar.grammar_checker import evaluate_text
+
+        sample = [{"text": "The students submit their final drafts to the adviser today.", "kind": "paragraph"}]
+        evaluate_text(sample)
+        check_spelling(sample)
+    except Exception as exc:  # noqa: BLE001 - warm-up is best effort
+        print(f"⚠️ Startup warm-up of the grammar check skipped: {exc}")
 
 
 @asynccontextmanager
@@ -155,6 +167,8 @@ class TextBlock(BaseModel):
     centered: bool = False
     # True for text inside a table cell: cells hold labels and values, not prose.
     inCell: bool = False
+    # Set by the editor for title-page and approval-sheet lines (names, institutions, clauses).
+    region: Literal["title_page", "approval_sheet"] | None = None
 
 
 class TextCheckRequest(BaseModel):
@@ -687,15 +701,30 @@ async def predict_format_core(request: PredictRequest) -> PredictResponse:
     )
 
 
-@app.post("/grammar/check")
+# Grammar and spelling checks are CPU-bound Python. They run off the event loop, but at most two at a
+# time: more threads only fight over the GIL and starve the loop, so /health and imports would wait
+# behind a burst of checks (20 parallel checks held /health for ~3 s before this limit).
+_TEXT_CHECK_LIMITER: "anyio.CapacityLimiter | None" = None
 
+
+def _text_check_limiter() -> "anyio.CapacityLimiter":
+    """The shared limiter, created inside the running event loop."""
+    global _TEXT_CHECK_LIMITER
+    if _TEXT_CHECK_LIMITER is None:
+        _TEXT_CHECK_LIMITER = anyio.CapacityLimiter(2)
+    return _TEXT_CHECK_LIMITER
+
+
+@app.post("/grammar/check")
 async def grammar_check(request: TextCheckRequest) -> dict[str, Any]:
-    """Run the grammar quality checker on the given text."""
+    """Run the grammar quality checker on the given text (in a worker thread, see _TEXT_CHECK_LIMITER)."""
     try:
         from grammar.grammar_checker import evaluate_text
 
-        return evaluate_text(
-            request.blocks if request.blocks is not None else request.text
+        return await anyio.to_thread.run_sync(
+            evaluate_text,
+            request.blocks if request.blocks is not None else request.text,
+            limiter=_text_check_limiter(),
         )
     except Exception as error:
         raise HTTPException(
@@ -706,10 +735,12 @@ async def grammar_check(request: TextCheckRequest) -> dict[str, Any]:
 
 @app.post("/spelling/check")
 async def spelling_check(request: TextCheckRequest) -> dict[str, Any]:
-    """Run the spelling checker on the given text."""
+    """Run the spelling checker on the given text (in a worker thread, like grammar_check)."""
     try:
-        return check_spelling(
-            request.blocks if request.blocks is not None else request.text
+        return await anyio.to_thread.run_sync(
+            check_spelling,
+            request.blocks if request.blocks is not None else request.text,
+            limiter=_text_check_limiter(),
         )
     except Exception as error:
         raise HTTPException(

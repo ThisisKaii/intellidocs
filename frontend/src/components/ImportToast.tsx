@@ -101,7 +101,7 @@ export function ImportToast({ items, onDismiss, onDismissAll, onOpen }: ImportTo
                 <div style={{ height: '4px', borderRadius: '999px', backgroundColor: 'var(--secondary)', overflow: 'hidden', margin: '0.375rem 0 0.25rem' }}>
                   <div style={{ width: `${Math.min(100, Math.round(item.progress))}%`, height: '100%', backgroundColor: 'var(--primary)', transition: 'width 200ms ease' }} />
                 </div>
-                <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: 0 }}>{phaseLabel(item.state)}</p>
+                <p style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)', margin: 0 }}>{phaseLabel(item.state, false, item.waking)}</p>
               </>
             )}
             {failed && (
