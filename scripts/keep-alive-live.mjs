@@ -5,7 +5,7 @@
 import https from 'node:https';
 
 const SERVER_URL = 'https://intellidocs-server-1yxr.onrender.com/health';
-const ML_URL = 'https://intellidocs-ml.onrender.com/health';
+const ML_URL = 'https://intellidocs-885t.onrender.com/health';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 function ping(name, url) {

@@ -1,20 +1,17 @@
-name: Render Services Keep-Alive
+name: Render Services Keep-Alive (24/7)
 
-# Render's free plan puts services to sleep after 15 idle minutes.
-# ML service takes 60-90s to wake up (loading PyTorch/models); Express server takes ~30-40s.
-# Pinging both every 12 minutes keeps them continuously hot without sleeping.
+# Architecture:
+# - Account 1: Express Server (intellidocs-server-1yxr.onrender.com)
+# - Account 2: Python ML (intellidocs-885t.onrender.com)
 #
-# Schedule:
-# Running every 12 minutes from 12:00 PM (noon) to 12:00 AM (midnight) Philippine Time (PHT, UTC+8):
-# 12:00 PM - 11:59 PM PHT = 04:00 - 15:59 UTC -> '*/12 4-15 * * *'
+# Because they are hosted on two separate Render accounts, each service has its own
+# dedicated 750 free instance-hours pool. Running 24/7 consumes ~720 hours/month per account,
+# staying safely within the 750-hour free limit with 0 risk of suspension.
 #
-# Budget:
-# 12 hours/day * 2 services = 24 instance-hours/day * 30 days = 720 instance-hours/month,
-# staying safely within Render's 750 free instance-hours limit.
-# GitHub Actions runs on Microsoft Azure IP space which is never 429-rate-limited by Cloudflare.
+# GitHub Actions runs on Microsoft Azure runner IP space, completely bypassing Cloudflare 429 rate limits.
 on:
   schedule:
-    - cron: '*/12 4-15 * * *'
+    - cron: '*/12 * * * *'  # Runs every 12 minutes, 24/7
   workflow_dispatch:
 
 permissions: {}
@@ -28,7 +25,7 @@ jobs:
         run: |
           USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
           SERVER_URL="https://intellidocs-server-1yxr.onrender.com/health"
-          ML_URL="https://intellidocs-ml.onrender.com/health"
+          ML_URL="https://intellidocs-885t.onrender.com/health"
 
           ping_url() {
             local name="$1"
@@ -45,7 +42,6 @@ jobs:
             return 1
           }
 
-          # Ping both sequentially so they don't fight for cold-start bandwidth
           ping_url "Server" "$SERVER_URL"
           SERVER_STATUS=$?
 
