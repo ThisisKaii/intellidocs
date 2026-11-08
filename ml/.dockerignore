@@ -21,6 +21,10 @@ reports/
 *.pkl
 *.pt
 *.onnx
+# Render's free plan has no persistent disk, so the two git-tracked models ship in the image.
+# Later rules win, so these re-include them past the models/ and *.pkl exclusions above.
+!models/base_model.pkl
+!models/grammar_model.pkl
 *.log
 Dockerfile
 .dockerignore
