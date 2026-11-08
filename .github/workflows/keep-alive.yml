@@ -5,18 +5,16 @@ name: Render Services Keep-Alive
 # Pinging both every 12 minutes keeps them continuously hot without sleeping.
 #
 # Schedule:
-# Running every 12 minutes from 12:00 AM to 12:00 PM Philippine Time (PHT, UTC+8):
-# 12:00 AM - 07:59 AM PHT = 16:00 - 23:59 UTC -> '*/12 16-23 * * *'
-# 08:00 AM - 11:59 AM PHT = 00:00 - 03:59 UTC -> '*/12 0-3 * * *'
+# Running every 12 minutes from 12:00 PM (noon) to 12:00 AM (midnight) Philippine Time (PHT, UTC+8):
+# 12:00 PM - 11:59 PM PHT = 04:00 - 15:59 UTC -> '*/12 4-15 * * *'
 #
 # Budget:
-# 12 hours/day * 2 services = 24 instance-hours/day * 30 days = 720 instance-hours,
+# 12 hours/day * 2 services = 24 instance-hours/day * 30 days = 720 instance-hours/month,
 # staying safely within Render's 750 free instance-hours limit.
 # GitHub Actions runs on Microsoft Azure IP space which is never 429-rate-limited by Cloudflare.
 on:
   schedule:
-    - cron: '*/12 16-23 * * *'
-    - cron: '*/12 0-3 * * *'
+    - cron: '*/12 4-15 * * *'
   workflow_dispatch:
 
 permissions: {}
