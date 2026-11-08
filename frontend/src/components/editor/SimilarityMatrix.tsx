@@ -209,6 +209,19 @@ export function SimilarityMatrix({ classFolderId, scope = 'local', filters, onSt
                   </div>
                 </td>
                 {rows.map((otherStudent) => {
+                  const isSelf = student.studentId === otherStudent.studentId
+                  if (isSelf) {
+                    return (
+                      <td key={otherStudent.studentId} className="w-20 p-2 text-center border-b border-border/40">
+                        <div
+                          className="w-full h-8 rounded bg-muted/30 flex items-center justify-center text-xs font-medium text-muted-foreground/60 select-none"
+                          title={`${student.studentName} (self)`}
+                        >
+                          —
+                        </div>
+                      </td>
+                    )
+                  }
                   const sim = student.similarities[otherStudent.studentId] ?? 0
                   return (
                     <td key={otherStudent.studentId} className="w-20 p-2 text-center border-b border-border/40">

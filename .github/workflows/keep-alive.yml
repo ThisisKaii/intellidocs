@@ -1,16 +1,22 @@
-name: ML keep-alive (school hours)
+name: Render Services Keep-Alive
 
-# Render's free plan puts a service to sleep after 15 idle minutes, and the ML service then takes
-# a minute or more to wake (imports and models). Pinging it every 10 minutes during school hours
-# keeps grammar checks and imports fast in the labs.
+# Render's free plan puts services to sleep after 15 idle minutes.
+# ML service takes 60-90s to wake up (loading PyTorch/models); Express server takes ~30-40s.
+# Pinging both every 12 minutes keeps them continuously hot without sleeping.
 #
-# Hours: weekdays 07:00-18:00 Philippine time = 23:00-10:00 UTC (Sunday 23:00 UTC is Monday 07:00 PHT).
-# Budget: about 66 runs per weekday (~1,450 Actions minutes a month) and ~240 awake hours a month,
-# inside Render's 750 free instance-hours. The Express server starts in seconds and is not pinged.
+# Schedule:
+# Running every 12 minutes from 12:00 AM to 12:00 PM Philippine Time (PHT, UTC+8):
+# 12:00 AM - 07:59 AM PHT = 16:00 - 23:59 UTC -> '*/12 16-23 * * *'
+# 08:00 AM - 11:59 AM PHT = 00:00 - 03:59 UTC -> '*/12 0-3 * * *'
+#
+# Budget:
+# 12 hours/day * 2 services = 24 instance-hours/day * 30 days = 720 instance-hours,
+# staying safely within Render's 750 free instance-hours limit.
+# GitHub Actions runs on Microsoft Azure IP space which is never 429-rate-limited by Cloudflare.
 on:
   schedule:
-    - cron: '*/10 23 * * 0-4'
-    - cron: '*/10 0-9 * * 1-5'
+    - cron: '*/12 16-23 * * *'
+    - cron: '*/12 0-3 * * *'
   workflow_dispatch:
 
 permissions: {}
@@ -18,15 +24,37 @@ permissions: {}
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
     steps:
-      - name: Ping the ML service
+      - name: Ping Backend Server & ML Service
         run: |
-          for attempt in 1 2; do
-            if curl -fsS --max-time 60 -o /dev/null -w "ML /health %{http_code} in %{time_total}s\n" https://intellidocs-ml.onrender.com/health; then
-              exit 0
-            fi
-            echo "Attempt $attempt failed; retrying"
-            sleep 20
-          done
-          exit 1
+          USER_AGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+          SERVER_URL="https://intellidocs-server-1yxr.onrender.com/health"
+          ML_URL="https://intellidocs-ml.onrender.com/health"
+
+          ping_url() {
+            local name="$1"
+            local url="$2"
+            echo "Pinging $name at $url..."
+            for attempt in 1 2 3; do
+              if curl -fsS --max-time 75 -A "$USER_AGENT" -o /dev/null -w "$name /health returned %{http_code} in %{time_total}s\n" "$url"; then
+                return 0
+              fi
+              echo "Attempt $attempt for $name failed or timed out; retrying in 15s..."
+              sleep 15
+            done
+            echo "Failed to wake $name after 3 attempts"
+            return 1
+          }
+
+          # Ping both sequentially so they don't fight for cold-start bandwidth
+          ping_url "Server" "$SERVER_URL"
+          SERVER_STATUS=$?
+
+          ping_url "ML" "$ML_URL"
+          ML_STATUS=$?
+
+          if [ $SERVER_STATUS -ne 0 ] || [ $ML_STATUS -ne 0 ]; then
+            exit 1
+          fi
+          echo "All live services are active and healthy."
