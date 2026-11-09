@@ -12,7 +12,8 @@ import {
   type HeaderFooterPlacement,
 } from '@/components/editor/TiptapEditor'
 import { PagedEditor } from '@/components/editor/PagedEditor'
-import { LogoLockup } from '@/components/Logo'
+import { LogoMark } from '@/components/Logo'
+import { UserMenu } from '@/components/UserMenu'
 import {
   type BehaviorEventPayload,
   createBehaviorEvent,
@@ -40,7 +41,7 @@ import { PAGE_SIZES } from '@/components/editor/HeaderFooterPlugin'
 import { useAuth } from '@/hooks/useAuth'
 import ShareModal from '@/components/ShareModal'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
-import { ArrowLeft, ShieldCheck, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose } from 'lucide-react'
+import { ShieldCheck, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose, Cloud, CloudOff, RefreshCw } from 'lucide-react'
 import { useGrammarCheck } from '@/hooks/useGrammarCheck'
 import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
@@ -2887,48 +2888,53 @@ export default function Document(): JSX.Element {
       <header className="sticky top-0 z-40 bg-card/80 backdrop-blur-md border-b border-border/80 flex-shrink-0 transition-all">
         {/* Main nav row */}
         <div className="flex items-center justify-between h-14 px-4 sm:px-6 gap-3">
-          {/* Left: back + brand + outline */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          {/* Left: logo (home link) + title + save/sync status */}
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <Link
               to="/dashboard"
-              aria-label="Back to dashboard"
-              className="flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              title="IntelliDocs home"
+              aria-label="IntelliDocs home"
+              className="flex items-center justify-center shrink-0 rounded-lg transition-opacity hover:opacity-80"
             >
-              <ArrowLeft className="size-4" />
+              <LogoMark size={28} />
             </Link>
-            <LogoLockup size={24} />
 
-            {/* Left panel (Outline) toggle button */}
-            <button
-              type="button"
-              onClick={() => setLeftPanelOpen((open) => !open)}
-              title={leftPanelOpen ? 'Hide outline (Ctrl+Shift+\\)' : 'Show outline (Ctrl+Shift+\\)'}
-              aria-label={leftPanelOpen ? 'Hide outline' : 'Show outline'}
-              aria-pressed={leftPanelOpen}
-              className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors ${
-                leftPanelOpen
-                  ? 'bg-secondary text-foreground border-border'
-                  : 'bg-transparent text-muted-foreground border-transparent hover:bg-secondary/60 hover:text-foreground'
-              }`}
-            >
-              {leftPanelOpen ? <PanelLeftClose className="size-3.5" /> : <PanelLeft className="size-3.5" />}
-              <span className="hidden sm:inline">Outline</span>
-            </button>
-          </div>
-
-          {/* Center: inline document title */}
-          <div className="flex-1 max-w-md mx-auto">
             <input
               value={title}
               onChange={handleTitleChange}
               readOnly={readOnly}
               placeholder="Untitled Document"
-              className="w-full text-center text-sm font-semibold text-foreground bg-transparent hover:bg-secondary/40 focus:bg-background border border-transparent focus:border-border rounded-lg px-3 py-1 transition-all outline-none tracking-tight"
+              aria-label="Document title"
+              size={Math.max(16, title.length + 1)}
+              className="min-w-0 max-w-full text-[15px] font-medium text-foreground bg-transparent hover:bg-secondary/40 focus:bg-background border border-transparent focus:border-border rounded-md px-2 py-1 transition-all outline-none tracking-tight truncate"
             />
+
+            {/* Subtle cloud save status */}
+            <span
+              role="status"
+              title={storageFull ? 'Your storage is full. Delete documents or empty the Trash to keep saving; your edits are kept on this device.' : undefined}
+              className={`inline-flex items-center gap-1.5 shrink-0 text-xs whitespace-nowrap ${
+                saveStatus === 'error' ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'
+              }`}
+            >
+              {saveStatus === 'saving' ? (
+                <RefreshCw className="size-3.5 animate-spin" strokeWidth={1.75} />
+              ) : saveStatus === 'error' ? (
+                <CloudOff className="size-3.5" strokeWidth={1.75} />
+              ) : (
+                <Cloud className="size-3.5" strokeWidth={1.75} />
+              )}
+              <span className="hidden md:inline">
+                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved changes' : saveStatus === 'error' ? (storageFull ? 'Storage full' : 'Save failed') : 'Saved to cloud'}
+              </span>
+            </span>
+
+            {/* Sync status: only visible while syncing or offline */}
+            <OfflineIndicator />
           </div>
 
-          {/* Right: save status + actions */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          {/* Right: actions, panel toggles, share, account */}
+          <div className="flex items-center gap-2 shrink-0">
             {/* Live collaborator avatars */}
             {remotePresence.size > 0 && (
               <div className="flex items-center -space-x-1.5 mr-1">
@@ -2958,34 +2964,6 @@ export default function Document(): JSX.Element {
                 )}
               </div>
             )}
-
-            {/* Save status pill */}
-            <div
-              title={storageFull ? 'Your storage is full. Delete documents or empty the Trash to keep saving; your edits are kept on this device.' : undefined}
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all ${
-                saveStatus === 'saving'
-                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
-                  : saveStatus === 'error'
-                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-              }`}
-            >
-              <span
-                className={`size-1.5 rounded-full ${
-                  saveStatus === 'saving'
-                    ? 'bg-blue-500 animate-pulse'
-                    : saveStatus === 'error'
-                      ? 'bg-rose-500'
-                      : 'bg-emerald-500'
-                }`}
-              />
-              <span className="text-[11px]">
-                {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'unsaved' ? 'Unsaved' : saveStatus === 'error' ? (storageFull ? 'Storage full' : 'Save failed') : 'Saved'}
-              </span>
-            </div>
-
-            {/* Offline sync status */}
-            <OfflineIndicator />
 
             {/* Isolation Toggle */}
             <button
@@ -3020,24 +2998,29 @@ export default function Document(): JSX.Element {
               </Link>
             )}
 
-            {/* Share action */}
-            {!readOnly && docOwnerId && user?.id === docOwnerId && (
-              <button
-                type="button"
-                onClick={() => setShareOpen(true)}
-                title="Share this document"
-                className="btn-primary h-8 px-3 text-xs gap-1.5 shadow-sm"
-              >
-                <Share2 className="size-3.5" />
-                <span>Share</span>
-              </button>
-            )}
+            {/* Left panel (Outline) toggle */}
+            <button
+              type="button"
+              onClick={() => setLeftPanelOpen((open) => !open)}
+              title={leftPanelOpen ? 'Hide outline (Ctrl+Shift+\\)' : 'Show outline (Ctrl+Shift+\\)'}
+              aria-label={leftPanelOpen ? 'Hide outline' : 'Show outline'}
+              aria-pressed={leftPanelOpen}
+              className={`flex items-center justify-center size-8 rounded-lg border transition-colors ${
+                leftPanelOpen
+                  ? 'bg-secondary text-foreground border-border'
+                  : 'bg-transparent text-muted-foreground border-transparent hover:bg-secondary hover:text-foreground'
+              }`}
+            >
+              {leftPanelOpen ? <PanelLeftClose className="size-4" strokeWidth={1.75} /> : <PanelLeft className="size-4" strokeWidth={1.75} />}
+            </button>
 
             {/* Assistant toggle */}
             <button
               type="button"
               onClick={() => setRightPanelOpen((open) => !open)}
               title="Toggle assistant panel (Ctrl+\\)"
+              aria-label={rightPanelOpen ? 'Hide assistant panel' : 'Show assistant panel'}
+              aria-pressed={rightPanelOpen}
               className={`flex items-center justify-center size-8 rounded-lg border transition-colors ${
                 rightPanelOpen
                   ? 'bg-secondary text-foreground border-border'
@@ -3046,6 +3029,21 @@ export default function Document(): JSX.Element {
             >
               {rightPanelOpen ? <PanelRightClose className="size-4" strokeWidth={1.75} /> : <PanelRight className="size-4" strokeWidth={1.75} />}
             </button>
+
+            {/* Share action */}
+            {!readOnly && docOwnerId && user?.id === docOwnerId && (
+              <button
+                type="button"
+                onClick={() => setShareOpen(true)}
+                title="Share this document"
+                className="btn-primary h-9 px-4 rounded-full text-sm gap-1.5 shadow-sm ml-1"
+              >
+                <Share2 className="size-3.5" />
+                <span>Share</span>
+              </button>
+            )}
+
+            <UserMenu />
           </div>
         </div>
 

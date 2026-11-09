@@ -706,7 +706,7 @@ export function DriveTable({
 
                         {!isEditing && (
                           <div className="flex items-center gap-0.5 shrink-0">
-                            {onShare && item.kind === 'file' && (
+                            {onShare && item.kind === 'file' && !readOnlyView && (
                               <button
                                 className="flex items-center justify-center w-7 h-7 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-60 transition-all hover:opacity-100 hover:bg-foreground/5 group-hover:opacity-100 shrink-0"
                                 onClick={(e) => {
@@ -731,27 +731,47 @@ export function DriveTable({
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" style={{ minWidth: '160px' }}>
-                              <DropdownMenuItem
-                                onSelect={() => onStartEdit(item.id, item.title, item.kind)}
-                                className="cursor-pointer gap-2 text-sm text-foreground"
-                              >
-                                <Pencil className="size-3.5" /> Rename
-                              </DropdownMenuItem>
-                              {onShare && item.kind === 'file' && (
-                                <DropdownMenuItem
-                                  onSelect={() => onShare(item.id)}
-                                  className="cursor-pointer gap-2 text-sm text-foreground"
-                                >
-                                  <Share2 className="size-3.5" /> Share
-                                </DropdownMenuItem>
+                              {readOnlyView ? (
+                                <>
+                                  <DropdownMenuItem
+                                    onSelect={() => onRestore(item.id)}
+                                    className="cursor-pointer gap-2 text-sm text-foreground"
+                                  >
+                                    <RotateCcw className="size-3.5" /> Restore
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onSelect={() => onDelete(item.id, item.kind)}
+                                    className="cursor-pointer gap-2 text-sm text-destructive"
+                                  >
+                                    <Trash2 className="size-3.5" /> Delete permanently
+                                  </DropdownMenuItem>
+                                </>
+                              ) : (
+                                <>
+                                  <DropdownMenuItem
+                                    onSelect={() => onStartEdit(item.id, item.title, item.kind)}
+                                    className="cursor-pointer gap-2 text-sm text-foreground"
+                                  >
+                                    <Pencil className="size-3.5" /> Rename
+                                  </DropdownMenuItem>
+                                  {onShare && item.kind === 'file' && (
+                                    <DropdownMenuItem
+                                      onSelect={() => onShare(item.id)}
+                                      className="cursor-pointer gap-2 text-sm text-foreground"
+                                    >
+                                      <Share2 className="size-3.5" /> Share
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onSelect={() => onDelete(item.id, item.kind)}
+                                    className="cursor-pointer gap-2 text-sm text-destructive"
+                                  >
+                                    <Trash2 className="size-3.5" /> Delete
+                                  </DropdownMenuItem>
+                                </>
                               )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onSelect={() => onDelete(item.id, item.kind)}
-                                className="cursor-pointer gap-2 text-sm text-destructive"
-                              >
-                                <Trash2 className="size-3.5" /> Delete
-                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                           </div>

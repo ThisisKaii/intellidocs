@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import {
+  Sparkles,
   FileText,
   Clock3,
   Trash,
@@ -12,6 +14,7 @@ import {
 } from 'lucide-react'
 import type { FolderRecord, StorageSummary } from '@/services/api'
 import { LogoMark } from '@/components/Logo'
+import { UpgradeModal } from '@/components/billing/UpgradeModal'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -93,6 +96,8 @@ function DriveSidebar({
   onClose,
   storage,
 }: DriveSidebarProps): JSX.Element {
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+
   function isNavActive(item: SidebarItem): boolean {
     if (selection.type === 'folder') return false
     return item.selectionType === selection.type
@@ -281,7 +286,18 @@ function DriveSidebar({
           <span className="font-semibold text-primary">{storage ? (storage.plan === 'pro' ? 'Pro' : storage.role === 'user' ? 'Basic Tier' : `${capitalize(storage.role)} Tier`) : '—'}</span>
           <span className="text-muted-foreground">UCLM Capstone</span>
         </div>
+        {storage && storage.plan !== 'pro' && (
+          <button
+            type="button"
+            onClick={() => setUpgradeOpen(true)}
+            className="inline-flex items-center gap-1.5 mt-2.5 p-0 text-xs font-semibold text-primary bg-transparent border-none cursor-pointer hover:underline"
+            style={{ fontFamily: 'inherit' }}
+          >
+            <Sparkles className="size-3.5" /> Upgrade storage
+          </button>
+        )}
       </div>
+      <UpgradeModal open={upgradeOpen} onOpenChange={setUpgradeOpen} />
     </aside>
   )
 }

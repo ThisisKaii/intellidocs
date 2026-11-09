@@ -210,7 +210,8 @@ export default function EditorSidePanel({
             padding: '0.5rem 0.75rem',
             borderBottom: '1px solid var(--border)',
             backgroundColor: 'var(--card)',
-            overflowX: 'auto',
+            // Tabs share the width evenly; never a horizontal scrollbar on scaled displays.
+            overflowX: 'hidden',
           }}
         >
           <TabButton
@@ -312,11 +313,16 @@ function TabButton({ active, icon, label, count, onClick }: TabButtonProps): JSX
     <button
       type="button"
       onClick={onClick}
+      title={label}
       style={{
+        // Size to content, shrink (with ellipsis) only when the panel is too narrow.
+        flex: '1 1 auto',
+        minWidth: 0,
         display: 'inline-flex',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: '0.25rem',
-        padding: '0.375rem 0.5rem',
+        padding: '0.375rem 0.375rem',
         borderRadius: '0.5rem',
         fontSize: '0.75rem',
         fontWeight: 600,
@@ -328,11 +334,12 @@ function TabButton({ active, icon, label, count, onClick }: TabButtonProps): JSX
         color: active ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
       }}
     >
-      {icon}
-      {label}
+      <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span>
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
       {count ? (
         <span
           style={{
+            flexShrink: 0,
             fontSize: '0.625rem',
             fontWeight: 700,
             padding: '0 0.3rem',
@@ -386,6 +393,20 @@ function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem' }}>
+      {/* Filters stay pinned while the list scrolls under them. */}
+      <div
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          backgroundColor: 'var(--card)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.75rem',
+          margin: '-0.75rem -0.75rem 0',
+          padding: '0.75rem 0.75rem 0.5rem',
+        }}
+      >
       <div
         role="tablist"
         style={{
@@ -437,6 +458,7 @@ function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
           style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }}
         />
       </label>
+      </div>
       <p style={{ margin: '-0.375rem 0 0', fontSize: '0.6875rem', lineHeight: 1.4, color: 'var(--muted-foreground)' }}>
         Pick an item to jump to it. You accept or dismiss it in the document.
       </p>

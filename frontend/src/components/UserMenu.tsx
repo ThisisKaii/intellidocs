@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, LogOut, Sparkles, CreditCard } from 'lucide-react'
+import { Settings, LogOut, Sparkles, CreditCard, GraduationCap } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { UserAvatar } from '@/components/UserAvatar'
 import { PlanBadge } from '@/components/billing/PlanBadge'
@@ -83,6 +83,21 @@ export function UserMenu(): JSX.Element {
             <span className="flex-1">{isPro ? 'Manage subscription' : 'Upgrade to Pro'}</span>
             <PlanBadge plan={user?.plan} />
           </button>
+
+          {user?.role === 'professor' && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                navigate('/professor')
+              }}
+              className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-foreground bg-transparent border-none cursor-pointer text-left transition-colors hover:bg-foreground/5"
+              style={{ fontFamily: 'inherit' }}
+            >
+              <GraduationCap className="size-4 text-muted-foreground" strokeWidth={1.75} />
+              Professor dashboard
+            </button>
+          )}
 
           <button
             role="menuitem"

@@ -191,7 +191,9 @@ function OutlineEntryItem({ entry, active, count, onClick }: OutlineEntryItemPro
     <li
       style={{
         ...itemStyle,
-        paddingLeft: `${0.5 + indent}rem`,
+        // 0.75rem base matches the panel header; the active 2px border is
+        // subtracted so the icon column stays aligned when highlighted.
+        paddingLeft: active ? `calc(${0.75 + indent}rem - 2px)` : `${0.75 + indent}rem`,
         // Inline background only when active — a transparent inline value
         // would override the stylesheet's hover surface.
         ...(active ? { backgroundColor: 'var(--accent-subtle)' } : {}),

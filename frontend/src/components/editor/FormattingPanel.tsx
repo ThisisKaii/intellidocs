@@ -9,6 +9,8 @@ import {
 import { FORMAT_LABELS } from './SuggestionPanel'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { setEditorPreferences } from '@/lib/editorPreferences'
+import { useAuth } from '@/hooks/useAuth'
+import { canUsePreset } from '@/lib/presetAccess'
 
 const FORMAT_OPTIONS = Object.keys(FORMAT_LABELS)
 
@@ -45,6 +47,7 @@ export default function FormattingPanel({
   rulesOnly = false,
 }: FormattingPanelProps): JSX.Element {
   const prefs = useEditorPreferences()
+  const { user } = useAuth()
   const [presets, setPresets] = useState<FormatPreset[]>([])
   const [bindings, setBindings] = useState<FormatBinding[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -188,11 +191,14 @@ export default function FormattingPanel({
             outline: 'none',
           }}
         >
-          {presets.map((preset) => (
-            <option key={preset.key} value={preset.key}>
-              {preset.name}
-            </option>
-          ))}
+          {presets.map((preset) => {
+            const locked = !canUsePreset(user?.role, preset.key)
+            return (
+              <option key={preset.key} value={preset.key} disabled={locked}>
+                {locked ? `${preset.name} (Verified Students only)` : preset.name}
+              </option>
+            )
+          })}
         </select>
 
         <p

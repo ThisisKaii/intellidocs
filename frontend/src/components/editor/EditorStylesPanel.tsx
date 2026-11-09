@@ -1,11 +1,13 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
-import { Check, Eye, EyeOff, GraduationCap, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, Eye, EyeOff, GraduationCap, Lock, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { STYLE_ITEMS, type StyleItem } from './styleCommands'
 import { ACADEMIC_PRESETS, type AcademicPreset } from './academicPresets'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { setEditorPreferences } from '@/lib/editorPreferences'
+import { useAuth } from '@/hooks/useAuth'
+import { canUsePreset } from '@/lib/presetAccess'
 
 /** A user-created style alias stored in localStorage and bound to a built-in format. */
 interface CustomStyle extends StyleItem {
@@ -115,6 +117,7 @@ export default function EditorStylesPanel({
   // Custom entries lead the strip so the user's own styles/presets come first.
   const allStyles: StyleEntry[] = [...customStyles, ...STYLE_ITEMS]
   const allPresets: PresetEntry[] = [...customPresets, ...ACADEMIC_PRESETS]
+  const { user } = useAuth()
 
   /** Persist a new custom style alias and refresh the list. */
   function addCustomStyle(format: string, label: string, hint: string): void {
@@ -180,13 +183,17 @@ export default function EditorStylesPanel({
         <StripLabel>Presets</StripLabel>
         {allPresets.map((preset) => {
           const key = presetKeyOf(preset)
+          // Locked presets stay clickable so the host page can explain the lock.
+          const locked = !canUsePreset(user?.role, key)
+          const iconStyle = { width: '13px', height: '13px', opacity: 0.7 }
           return (
             <StripButton
               key={isCustomPreset(preset) ? preset.id : preset.key}
               label={preset.name}
-              title={preset.description}
-              icon={<GraduationCap style={{ width: '13px', height: '13px', opacity: 0.7 }} />}
+              title={locked ? `${preset.description} (Verified Students only)` : preset.description}
+              icon={locked ? <Lock style={iconStyle} /> : <GraduationCap style={iconStyle} />}
               active={activePreset === key}
+              locked={locked}
               disabled={!editor}
               drag={editor ? { type: 'application/x-intellidocs-preset', value: key } : undefined}
               onApply={() => onApplyPreset(key)}
@@ -276,6 +283,8 @@ interface StripButtonProps {
   icon?: ReactNode
   active?: boolean
   disabled?: boolean
+  /** Shown dimmed (e.g. a verified-students-only preset) but still clickable. */
+  locked?: boolean
   /** When set, the button can be dragged onto the page carrying this payload. */
   drag?: { type: string; value: string }
   onApply: () => void
@@ -291,6 +300,7 @@ function StripButton({
   icon,
   active = false,
   disabled = false,
+  locked = false,
   drag,
   onApply,
 }: StripButtonProps): JSX.Element {
@@ -327,7 +337,7 @@ function StripButton({
         fontFamily: 'inherit',
         whiteSpace: 'nowrap',
         flexShrink: 0,
-        opacity: disabled ? 0.4 : 1,
+        opacity: disabled ? 0.4 : locked ? 0.6 : 1,
       }}
     >
       {icon}
