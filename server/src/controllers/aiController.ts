@@ -4,7 +4,8 @@ import { buildAIChatSystemPrompt } from '../ai/prompts/systemPrompts'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 import { buildChatContext } from '../skills/buildChatContext'
 import { parseFormattingIntent } from '../skills/parseFormattingIntent'
-import { buildFormattingReply } from '../skills/buildFormattingReply'
+import { buildFormattingReply, buildMultiFormattingReply, summarizeFormattingChange } from '../skills/buildFormattingReply'
+import { splitFormattingOperations } from '../skills/splitFormattingOperations'
 import { documentHasTarget, listOutlineSections } from '../skills/documentSections'
 import { retrieveSections, splitIntoSections, type DocumentSection } from '../skills/retrieveDocumentSections'
 import { getDocumentForUser } from '../models/documentModel'
@@ -54,7 +55,24 @@ interface AIChatPreviewContext {
   target?: string | null
   targetMode?: 'literal' | 'section' | 'title' | null
   normalize?: boolean
-  targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
+  targetCategory?: TargetCategoryName | null
+  /** Every change of a multi-change preview, so "yes" can show them all again. */
+  operations?: PreviewOperation[]
+}
+
+type TargetCategoryName = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'all'
+
+/** One change of a multi-change preview, applied by the editor in order. */
+interface PreviewOperation {
+  formats: string[]
+  fontSize: number | null
+  normalize: boolean
+  scope: 'selection' | 'all'
+  target: string | null
+  targetMode: 'literal' | 'section' | 'title' | null
+  targetCategory: TargetCategoryName
+  /** The change in words, e.g. "Make every chapter heading bold and centered". */
+  summary: string
 }
 
 interface AIProviderSummary {
@@ -78,11 +96,13 @@ interface FormattingPreview {
   /** How the target is meant: literal words, a whole section, or the document title. */
   targetMode?: 'literal' | 'section' | 'title' | null
   /** Block category a bulk request targets: headings, paragraphs, chapter headings, or all. */
-  targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
+  targetCategory?: TargetCategoryName | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
   /** Deterministic reply when no provider call is needed (confirmations/follow-ups). */
   shortCircuitReply?: string | null
+  /** Several independent changes from one request; the fields above describe the first. */
+  operations?: PreviewOperation[]
 }
 
 /** Words that confirm a previously shown preview. */
@@ -213,7 +233,10 @@ function detectFormattingPreview(
       target: lastPreview.target ?? null,
       targetCategory: lastPreview.targetCategory ?? null,
       normalize: lastPreview.normalize ?? false,
-      shortCircuitReply: 'Got it — here is your formatting change again. Confirm or reject below, or tell me what to adjust.',
+      operations: Array.isArray(lastPreview.operations) && lastPreview.operations.length > 0 ? lastPreview.operations : undefined,
+      shortCircuitReply: Array.isArray(lastPreview.operations) && lastPreview.operations.length > 1
+        ? 'Got it — here are those changes again. Confirm or reject below, or tell me what to adjust.'
+        : 'Got it — here is your formatting change again. Confirm or reject below, or tell me what to adjust.',
     }
   }
 
@@ -311,6 +334,57 @@ function detectFormattingPreview(
   }
 }
 
+/**
+ * A request holding several independent changes ("center the chapter heading,
+ * make the section headings Heading 2 and left-align the paragraphs") becomes
+ * one preview carrying every change. Returns null when the message is a single
+ * change, so the one-change flow above handles it unchanged.
+ */
+function detectMultiFormattingPreview(
+  message: string,
+  documentContent: string
+): { preview: FormattingPreview | null; reply: string } | null {
+  const { operations, unresolved } = splitFormattingOperations(message)
+  if (operations.length === 0 || (operations.length === 1 && unresolved.length === 0)) return null
+
+  const found = operations.filter((operation) => !operation.target || documentHasTarget(documentContent, operation.target, operation.targetMode))
+  const missing = operations.filter((operation) => !found.includes(operation)).map((operation) => operation.target ?? '')
+  const previewOperations: PreviewOperation[] = found.map((operation) => {
+    const change = {
+      formats: operation.formats,
+      fontSize: operation.fontSize,
+      normalize: operation.normalize,
+      scope: operation.scope,
+      target: operation.target,
+      targetMode: operation.targetMode,
+      targetCategory: operation.targetCategory,
+    }
+    return { ...change, summary: summarizeFormattingChange(change) }
+  })
+  const reply = buildMultiFormattingReply(previewOperations, missing, unresolved, message)
+  const first = previewOperations[0]
+  if (!first) return { preview: null, reply }
+
+  return {
+    reply,
+    preview: {
+      format: first.formats[0] ?? 'body_text',
+      label: previewOperations.length === 1 ? 'Formatting change' : `${previewOperations.length} formatting changes`,
+      confidence: 0.9,
+      reason: previewOperations.length === 1 ? first.summary : 'Every change below is applied together and can be undone in one step.',
+      formats: first.formats,
+      scope: first.scope,
+      fontSize: first.fontSize,
+      target: first.target,
+      targetMode: first.targetMode,
+      targetCategory: first.targetCategory,
+      normalize: first.normalize,
+      shortCircuitReply: reply,
+      operations: previewOperations,
+    },
+  }
+}
+
 /** Human label for a single preview context (used by confirmation re-display). */
 function labelForFormat(preview: AIChatPreviewContext): string {
   const labels: Record<string, string> = {
@@ -399,7 +473,15 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const preview = detectFormattingPreview(message, body.lastPreview)
+    // Several changes in one request: list them all, and say what was left out.
+    const multi = detectMultiFormattingPreview(message, body.documentContent ?? '')
+    if (multi && !multi.preview) {
+      const providerSummary = getProviderSummary()
+      res.status(200).json({ reply: multi.reply, provider: providerSummary.provider, model: providerSummary.model, mode: 'chat', preview: null })
+      return
+    }
+
+    const preview = multi?.preview ?? detectFormattingPreview(message, body.lastPreview)
 
     // A named section that is not in the document gets an honest answer instead
     // of a preview the editor cannot apply.
@@ -495,6 +577,7 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
             targetMode: preview.targetMode ?? null,
             targetCategory: preview.targetCategory,
             normalize: preview.normalize,
+            operations: preview.operations,
           }
         : null,
     })

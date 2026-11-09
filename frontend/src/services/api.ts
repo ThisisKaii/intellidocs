@@ -473,6 +473,21 @@ export interface RejectedFormattingPreview {
   rejectedAt?: string
 }
 
+export type AIChatTargetCategory = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'all'
+
+/** One change of a multi-change chat preview (server: splitFormattingOperations). */
+export interface AIChatFormattingOperation {
+  formats: string[]
+  fontSize: number | null
+  normalize: boolean
+  scope: 'selection' | 'all'
+  target: string | null
+  targetMode: 'literal' | 'section' | 'title' | null
+  targetCategory: AIChatTargetCategory
+  /** The change in words, e.g. "Make every chapter heading bold and centered". */
+  summary: string
+}
+
 export interface AIChatPreview {
   format: string
   label: string
@@ -488,10 +503,12 @@ export interface AIChatPreview {
   target?: string | null
   /** How the target is meant: literal words, a whole section, or the document title. */
   targetMode?: 'literal' | 'section' | 'title' | null
-  /** Block category a bulk request targets: headings, paragraphs, chapter headings, or all. */
-  targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
+  /** Block category a bulk request targets: headings, section headings, paragraphs, chapter headings, or all. */
+  targetCategory?: AIChatTargetCategory | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
+  /** Several independent changes from one request, applied together; the fields above describe the first. */
+  operations?: AIChatFormattingOperation[]
   /** Genre whose learned habits a `learned` preview carries. */
   genre?: string
   /** For format `learned`: the user's habits in this document's genre, for the editor to match. */
@@ -517,8 +534,9 @@ export interface AIChatPreviewMeta {
   fontSize?: number | null
   target?: string | null
   targetMode?: 'literal' | 'section' | 'title' | null
-  targetCategory?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
+  targetCategory?: AIChatTargetCategory | null
   normalize?: boolean
+  operations?: AIChatFormattingOperation[]
 }
 
 /** Accept/reject counts for one group of suggestions; the rate is a whole percent or null with no data. */

@@ -3,8 +3,8 @@ import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { undoDepth } from '@tiptap/pm/history'
-import { api, type AIChatPreviewMeta, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
-import { applyFormatsToRanges, findLearnedBlockRanges, isChapterHeading, resolveTargetRanges } from './chatFormatting'
+import { api, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatTargetCategory, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
+import { applyFormatsToRanges, applyFormatsToSelection, findCategoryRanges, findLearnedBlockRanges, resolveTargetRanges, type BlockCategory } from './chatFormatting'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -15,8 +15,10 @@ interface ChatMessage {
   preview_scope?: 'selection' | 'all' | null
   preview_target?: string | null
   preview_target_mode?: 'literal' | 'section' | 'title' | null
-  preview_target_category?: 'headings' | 'paragraphs' | 'chapters' | 'all' | null
+  preview_target_category?: AIChatTargetCategory | null
   preview_normalize?: boolean | null
+  /** Every change of a multi-change preview, applied together in order. */
+  preview_operations?: AIChatFormattingOperation[] | null
   preview_font_size?: number | null
   preview_reason?: string | null
   preview_status?: 'pending' | 'applied' | 'rejected' | null
@@ -101,6 +103,25 @@ function alignmentOf(formats: string[]): 'left' | 'center' | 'right' | 'justify'
   return null
 }
 
+/** One formatting change as the editor applies it (a whole preview, or one of its operations). */
+interface PlannedChange {
+  formats: string[]
+  scope: 'selection' | 'all'
+  fontSize?: number
+  target: string | null
+  targetMode: 'literal' | 'section' | 'title' | null
+  targetCategory: AIChatTargetCategory | null
+  normalize: boolean
+}
+
+/** How each block category reads in an "applied" note. */
+const CATEGORY_NOTES: Record<BlockCategory, string> = {
+  headings: 'all headings',
+  sections: 'every section heading',
+  chapters: 'every chapter heading',
+  paragraphs: 'all body paragraphs',
+}
+
 /** Floating AI chatbot for natural language document help. */
 export default function AIChatbot({
   editor,
@@ -178,28 +199,27 @@ export default function AIChatbot({
     return rejectedPreviews.some((preview) => preview.format === format)
   }
 
-  /** Single-format commands used for selection-scope previews. */
-  const SELECTION_COMMANDS: Record<string, ((ed: Editor) => void) | undefined> = {
-    bold: (ed) => ed.chain().focus().toggleBold().run(),
-    italic: (ed) => ed.chain().focus().toggleItalic().run(),
-    underline: (ed) => ed.chain().focus().toggleUnderline().run(),
-    heading1: (ed) => ed.chain().focus().toggleHeading({ level: 1 }).run(),
-    heading2: (ed) => ed.chain().focus().toggleHeading({ level: 2 }).run(),
-    heading3: (ed) => ed.chain().focus().toggleHeading({ level: 3 }).run(),
-    blockquote: (ed) => ed.chain().focus().toggleBlockquote().run(),
-    unordered_list: (ed) => ed.chain().focus().toggleBulletList().run(),
-    ordered_list: (ed) => ed.chain().focus().toggleOrderedList().run(),
-    align_left: (ed) => ed.chain().focus().setTextAlign('left').run(),
-    align_center: (ed) => ed.chain().focus().setTextAlign('center').run(),
-    align_right: (ed) => ed.chain().focus().setTextAlign('right').run(),
-    align_justify: (ed) => ed.chain().focus().setTextAlign('justify').run(),
-  }
+  /**
+   * Single-format commands for the selection (or the block the cursor is in).
+   * They only add formatting: asking for bold on bold text keeps it bold, and
+   * a heading request keeps each block's own alignment and spacing.
+   */
+  const SELECTION_FORMATS = [
+    'bold', 'italic', 'underline', 'heading1', 'heading2', 'heading3', 'blockquote',
+    'unordered_list', 'ordered_list', 'align_left', 'align_center', 'align_right', 'align_justify',
+  ]
+  const SELECTION_COMMANDS: Record<string, ((ed: Editor) => void) | undefined> = Object.fromEntries(
+    SELECTION_FORMATS.map((format) => [format, (ed: Editor) => applyFormatsToSelection(ed, [format])])
+  )
 
   /** Describe a preview as one readable string, e.g. "Bold + Italic + font size 20pt". */
   function describePreview(msg: ChatMessage): string {
     if (msg.preview_learned) {
       const places = msg.preview_learned.reduce((sum, rule) => sum + rule.places, 0)
       return `Your usual formatting — ${places} place${places === 1 ? '' : 's'}`
+    }
+    if (msg.preview_operations && msg.preview_operations.length > 1) {
+      return `${msg.preview_operations.length} changes in one go`
     }
     const parts: string[] = []
     if (msg.preview_normalize) parts.push('Clear formatting')
@@ -239,7 +259,8 @@ export default function AIChatbot({
       }
       if (msg.preview_target_category === 'headings') return '— all headings'
       if (msg.preview_target_category === 'chapters') return '— every chapter heading'
-      if (msg.preview_target_category === 'paragraphs') return '— all paragraphs'
+      if (msg.preview_target_category === 'sections') return '— every section heading'
+      if (msg.preview_target_category === 'paragraphs') return '— all body paragraphs'
       return '— entire document'
     }
     return ''
@@ -295,59 +316,17 @@ export default function AIChatbot({
   }
 
   /**
-   * Apply formats to every heading (or paragraph) block in the document.
-   * Used for category-scoped bulk requests like "make all headings bold and
-   * centered" so the rest of the document is left untouched.
+   * Apply formats to every block of a category (all headings, section headings,
+   * chapter headings or paragraphs), leaving the rest of the document untouched.
    */
   function applyFormatsToBlocks(
-    category: 'headings' | 'paragraphs' | 'chapters',
+    category: BlockCategory,
     formats: string[],
     fontSize?: number,
     normalize = false
   ): void {
     if (!editor || editor.isDestroyed) return
-    const doc = editor.state.doc
-    const ranges: Array<{ from: number; to: number }> = []
-
-    doc.descendants((node, pos) => {
-      const matches =
-        category === 'headings'
-          ? node.type.name === 'heading'
-          : category === 'chapters'
-            ? isChapterHeading(node)
-            : node.type.name === 'paragraph'
-      if (matches) {
-        const from = pos + 1
-        const to = pos + node.nodeSize - 1
-        if (to > from) ranges.push({ from, to })
-      }
-      return true
-    })
-
-    // Apply bottom-up so earlier ranges stay valid while later blocks change.
-    for (let i = ranges.length - 1; i >= 0; i--) {
-      const { from, to } = ranges[i]
-      let chain = editor.chain().focus().setTextSelection({ from, to })
-      if (normalize) {
-        chain = chain.unsetAllMarks()
-      } else {
-        for (const format of formats) {
-          if (format === 'bold') chain = chain.setMark('bold')
-          else if (format === 'italic') chain = chain.setMark('italic')
-          else if (format === 'underline') chain = chain.setMark('underline')
-          else if (format === 'heading1' || format === 'h1') chain = chain.setHeading({ level: 1 })
-          else if (format === 'heading2' || format === 'h2') chain = chain.setHeading({ level: 2 })
-          else if (format === 'heading3' || format === 'h3') chain = chain.setHeading({ level: 3 })
-        }
-      }
-      if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
-      // Alignment is a block attribute; set it after any node-type change so
-      // converting a paragraph to a heading does not reset it.
-      const align = normalize ? null : alignmentOf(formats)
-      if (align) chain = chain.setTextAlign(align)
-      chain.run()
-    }
-
+    applyFormatsToRanges(editor, findCategoryRanges(editor.state.doc, category), formats, fontSize, normalize)
     // Collapse the selection so subsequent typing isn't auto-formatted.
     editor.commands.setTextSelection(editor.state.doc.content.size)
   }
@@ -393,47 +372,28 @@ export default function AIChatbot({
     editor.commands.setTextSelection(editor.state.doc.content.size)
   }
 
-  /** Apply a confirmed formatting preview to the editor (selection or whole doc). */
-  function handlePreviewApply(messageIndex: number, msg: ChatMessage): void {
-    if (!editor) return
-    if (msg.preview_learned) {
-      applyLearnedPlaces(messageIndex, msg.preview_learned)
-      return
-    }
+  /** The words for what one change does: "Bold + Align Center + size 14pt". */
+  function describeChangeParts(change: PlannedChange, fallbackFormat: string): string[] {
+    const parts: string[] = []
+    if (change.normalize) parts.push('Clear formatting')
+    for (const format of change.formats) parts.push(formatPreviewLabel(format))
+    if (change.fontSize) parts.push(`size ${change.fontSize}pt`)
+    if (parts.length === 0) parts.push(formatPreviewLabel(fallbackFormat))
+    return parts
+  }
 
-    const formats =
-      msg.preview_formats && msg.preview_formats.length > 0
-        ? msg.preview_formats
-        : msg.preview_format && msg.preview_format !== 'body_text'
-          ? [msg.preview_format]
-          : []
-    const scope = msg.preview_scope ?? 'selection'
-    const fontSize = msg.preview_font_size ? msg.preview_font_size : undefined
-    const target = msg.preview_target ?? null
-    const targetCategory = msg.preview_target_category ?? null
-    const normalize = msg.preview_normalize ?? false
-
-    const applied: string[] = []
-    if (normalize) applied.push('Clear formatting')
-    for (const format of formats) applied.push(formatPreviewLabel(format))
-    if (fontSize) applied.push(`size ${fontSize}pt`)
-    if (applied.length === 0) applied.push(formatPreviewLabel(msg.preview_format ?? ''))
-
+  /** Apply one change of a preview to the editor and describe what happened. */
+  function applyChange(change: PlannedChange, fallbackFormat: string): string {
+    if (!editor || editor.isDestroyed) return ''
+    const { formats, scope, fontSize, target, targetCategory, normalize } = change
     const scopeNote =
-      scope === 'all' && targetCategory === 'headings'
-        ? ' (all headings)'
-        : scope === 'all' && targetCategory === 'chapters'
-          ? ' (every chapter heading)'
-          : scope === 'all' && targetCategory === 'paragraphs'
-            ? ' (all paragraphs)'
-            : ''
+      scope === 'all' && targetCategory && targetCategory !== 'all' ? ` (${CATEGORY_NOTES[targetCategory]})` : ''
 
     let targetWarning = ''
-    const depthBefore = undoDepth(editor.state)
     if (target && scope === 'all') {
-      const places = applyFormatsToTarget(target, msg.preview_target_mode, formats, fontSize, normalize)
+      const places = applyFormatsToTarget(target, change.targetMode, formats, fontSize, normalize)
       if (places === 0) targetWarning = ` (could not find "${target}" in the document)`
-      else if (msg.preview_target_mode === 'literal' && places > 1) targetWarning = ` (${places} places)`
+      else if (change.targetMode === 'literal' && places > 1) targetWarning = ` (${places} places)`
     } else if (scope === 'all' && targetCategory && targetCategory !== 'all') {
       applyFormatsToBlocks(targetCategory, formats, fontSize, normalize)
     } else if (normalize) {
@@ -442,24 +402,56 @@ export default function AIChatbot({
       applyBulkFormats(formats, fontSize)
     } else {
       onFocusEditor?.()
-      // When no text is selected, apply to the whole current block so the
-      // formatting takes effect on something visible instead of requiring
-      // the user to highlight the target first.
-      if (editor.state.selection.empty) {
-        editor.chain().focus().selectParentNode().run()
-      }
-      for (const format of formats) {
-        const command = SELECTION_COMMANDS[format]
-        if (command) command(editor)
-      }
-      if (fontSize && editor.isEditable) {
-        editor.chain().focus().setMark('textStyle', { fontSize: `${fontSize}pt` }).run()
-      }
+      // With nothing selected this formats the block the cursor is in, so the
+      // change lands on something visible without highlighting first.
+      applyFormatsToSelection(editor, formats, fontSize)
     }
 
-    if (applied.length > 0) {
-      onFormatApplied?.(applied.join('+'))
+    return `${describeChangeParts(change, fallbackFormat).join(' + ')}${target && scope === 'all' ? ` on “${target}”` : ''}${scopeNote}${targetWarning}`
+  }
+
+  /** Apply a confirmed formatting preview to the editor (selection or whole doc). */
+  function handlePreviewApply(messageIndex: number, msg: ChatMessage): void {
+    if (!editor) return
+    if (msg.preview_learned) {
+      applyLearnedPlaces(messageIndex, msg.preview_learned)
+      return
     }
+
+    const single: PlannedChange = {
+      formats:
+        msg.preview_formats && msg.preview_formats.length > 0
+          ? msg.preview_formats
+          : msg.preview_format && msg.preview_format !== 'body_text'
+            ? [msg.preview_format]
+            : [],
+      scope: msg.preview_scope ?? 'selection',
+      fontSize: msg.preview_font_size ? msg.preview_font_size : undefined,
+      target: msg.preview_target ?? null,
+      targetMode: msg.preview_target_mode ?? null,
+      targetCategory: msg.preview_target_category ?? null,
+      normalize: msg.preview_normalize ?? false,
+    }
+    const changes: PlannedChange[] =
+      msg.preview_operations && msg.preview_operations.length > 0
+        ? msg.preview_operations.map((operation) => ({
+            formats: operation.formats,
+            scope: operation.scope,
+            fontSize: operation.fontSize ?? undefined,
+            target: operation.target,
+            targetMode: operation.targetMode,
+            targetCategory: operation.targetCategory,
+            normalize: operation.normalize,
+          }))
+        : [single]
+
+    // Every change of the request is applied here, one after another, and
+    // recorded as one entry so "undo that" takes them all back together.
+    const depthBefore = undoDepth(editor.state)
+    const labels = changes.map((change) => applyChange(change, msg.preview_format ?? ''))
+    const formats = changes.flatMap((change) => change.formats)
+
+    onFormatApplied?.(changes.map((change) => describeChangeParts(change, msg.preview_format ?? '').join('+')).join('+'))
 
     if (documentId) {
       api.behavior
@@ -482,7 +474,7 @@ export default function AIChatbot({
 
     onFeedbackLogged?.()
 
-    const appliedLabel = `${applied.length > 0 ? applied.join(' + ') : formatPreviewLabel(msg.preview_format ?? '')}${target && scope === 'all' ? ` on “${target}”` : ''}${scopeNote}${targetWarning}`
+    const appliedLabel = labels.join('; ')
     // Remember how to take this change back (only when the document really changed).
     if (undoDepth(editor.state) > depthBefore) {
       appliedStackRef.current.push({ depthBefore, label: appliedLabel })
@@ -549,7 +541,8 @@ export default function AIChatbot({
   function undoLastChatChange(): string | null {
     const last = appliedStackRef.current.pop()
     if (!editor || editor.isDestroyed || !last) return null
-    for (let guard = 0; guard < 20 && undoDepth(editor.state) > last.depthBefore; guard += 1) {
+    // Formatting many blocks makes many undo steps (non-adjacent edits are not grouped); the guard only stops a runaway loop.
+    for (let guard = 0; guard < 2000 && undoDepth(editor.state) > last.depthBefore; guard += 1) {
       if (!editor.commands.undo()) break
     }
     return last.label
@@ -787,6 +780,7 @@ export default function AIChatbot({
         preview_target_category: response.preview?.targetCategory ?? null,
         preview_normalize: response.preview?.normalize ?? false,
         preview_font_size: response.preview?.fontSize ?? null,
+        preview_operations: response.preview?.operations && response.preview.operations.length > 0 ? response.preview.operations : null,
         preview_reason: previewFormat ? previewReason : null,
         preview_status: previewFormat ? 'pending' : null,
         sources: previewFormat ? undefined : response.sources,
@@ -807,6 +801,7 @@ export default function AIChatbot({
             targetMode: response.preview?.targetMode ?? null,
             targetCategory: response.preview?.targetCategory ?? null,
             normalize: response.preview?.normalize ?? false,
+            operations: response.preview?.operations,
           }
         : lastPreviewRef.current
 
@@ -954,7 +949,7 @@ export default function AIChatbot({
                           }}
                         >
                           {describePreview(m)}
-                          {m.preview_scope === 'all' && (
+                          {m.preview_scope === 'all' && !(m.preview_operations && m.preview_operations.length > 1) && (
                             <span style={{ fontSize: '0.6875rem', fontWeight: 500, opacity: 0.75 }}>
                               {' '}
                               {previewScopeLabel(m)}
@@ -971,6 +966,13 @@ export default function AIChatbot({
                           >
                             {m.preview_reason}
                           </div>
+                        )}
+                        {m.preview_operations && m.preview_operations.length > 1 && (
+                          <ol data-testid="preview-operations" style={{ margin: '0.375rem 0 0', paddingLeft: '1.1rem', listStyle: 'decimal', fontSize: '0.75rem', lineHeight: 1.45 }}>
+                            {m.preview_operations.map((operation, index) => (
+                              <li key={index}>{operation.summary}</li>
+                            ))}
+                          </ol>
                         )}
                         {m.preview_learned && (
                           <ul data-testid="learned-places" style={{ margin: '0.375rem 0 0', paddingLeft: '1rem', fontSize: '0.75rem', lineHeight: 1.45 }}>

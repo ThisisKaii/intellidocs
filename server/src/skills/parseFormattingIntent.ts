@@ -36,11 +36,14 @@ export interface FormattingIntentResult {
   targetMode: 'literal' | 'section' | 'title' | null
   /**
    * Which blocks a bulk request targets: all headings, all paragraphs, every
-   * chapter heading, or the whole document. Defaults to 'all' when no specific
+   * chapter heading, every section heading (headings other than chapter
+   * headings), or the whole document. Defaults to 'all' when no specific
    * category is named.
    */
-  targetCategory: 'headings' | 'paragraphs' | 'chapters' | 'all'
+  targetCategory: TargetCategory
 }
+
+export type TargetCategory = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'all'
 
 /** Normalize a user message before intent matching. */
 function normalizeMessage(message: string): string {
@@ -76,18 +79,35 @@ const BULK_SCOPE_PHRASES = [
   'remaining',
 ]
 
+/** Section headings named as a group: plural, or singular with "the/all/every/each". */
+const SECTION_CATEGORY_PATTERN =
+  /\b(?:section\s+(?:headings|titles|headers)|sub-?headings)\b|\b(?:all|every|each|the)\s+(?:the\s+)?(?:section\s+(?:heading|title|header)|sub-?heading)\b/
+
+/**
+ * Heading nouns that name WHICH blocks to change ("bold the chapter headings",
+ * "the section heading"), not a heading level to apply. They are removed before
+ * format matching so "bold the section headings" does not also mean "make them
+ * Heading 2". A singular "a section heading" stays a format request.
+ */
+const CATEGORY_NOUN_PATTERN = new RegExp(
+  `${SECTION_CATEGORY_PATTERN.source}|\\b(?:chapter\\s+(?:headings?|titles?|headers?))\\b|\\b(?:all|every|each|the)\\s+(?:the\\s+)?headings\\b`,
+  'g'
+)
+
 /**
  * Detect whether a bulk request names a specific block category. Plural or
  * quantified forms ("all headings", "every paragraph") count; singular
  * references ("this heading") do not — those keep selection scope.
  */
-function detectTargetCategory(message: string): 'headings' | 'paragraphs' | 'chapters' | 'all' {
+function detectTargetCategory(message: string): TargetCategory {
   // "all the chapter headings" names chapters only, not every heading level.
   if (/\bchapter\s+(?:headings?|titles?|headers?)\b|\b(?:all|every|each)\s+(?:the\s+)?chapters?\b/.test(message)) {
     return 'chapters'
   }
+  // "the section headings" / "all subheadings": the headings under the chapters.
+  if (SECTION_CATEGORY_PATTERN.test(message)) return 'sections'
   const headingsPattern =
-    /\b(?:sub-?headings|headings|section (?:headings|titles))\b|\b(?:all|every|each)\s+(?:sub-?heading|section heading|title)\b|\b(?:all|every|each)\s+h[123]\b/
+    /\bheadings\b|\b(?:all|every|each)\s+title\b|\b(?:all|every|each)\s+h[123]\b/
   if (headingsPattern.test(message)) return 'headings'
 
   const paragraphsPattern =
@@ -385,6 +405,9 @@ function detectTarget(message: string): DetectedTarget | null {
   return null
 }
 
+/** Phrases that name Heading 1 itself, as opposed to "as heading" / "make heading". */
+const EXPLICIT_HEADING1_PHRASES = ['heading 1', 'h1', 'main heading', 'title heading'] as const
+
 /** Parse one or more formatting intents from a natural-language chatbot message. */
 export function parseFormattingIntent(
   message: string
@@ -443,22 +466,29 @@ export function parseFormattingIntent(
     },
   ]
 
-  const formats: FormattingIntent[] = []
-  let firstPhrase: string | null = null
-  let firstConfidence = 0
+  // Heading nouns that only say which blocks to change are not formats.
+  const formatText = normalized.replace(CATEGORY_NOUN_PATTERN, ' ').replace(/\s+/g, ' ')
+  const matches: Array<{ format: FormattingIntent; phrase: string; confidence: number }> = []
 
   for (const entry of intentMap) {
-    const matchedPhrase = findMatch(normalized, entry.patterns)
-    if (matchedPhrase) {
-      if (!formats.includes(entry.format)) formats.push(entry.format)
-      if (firstPhrase === null) firstPhrase = matchedPhrase
-      if (firstConfidence === 0) firstConfidence = entry.confidence
-    }
+    const matchedPhrase = findMatch(formatText, entry.patterns)
+    if (matchedPhrase) matches.push({ format: entry.format, phrase: matchedPhrase, confidence: entry.confidence })
   }
+
+  // "Format X as heading 2": the generic "as heading" must not add a Heading 1
+  // next to the level the user actually named.
+  const namesOtherLevel = matches.some((match) => match.format === 'heading2' || match.format === 'heading3')
+  const kept = namesOtherLevel && !findMatch(formatText, EXPLICIT_HEADING1_PHRASES)
+    ? matches.filter((match) => match.format !== 'heading1')
+    : matches
+
+  const formats: FormattingIntent[] = kept.map((match) => match.format)
+  let firstPhrase: string | null = kept[0]?.phrase ?? null
+  let firstConfidence = kept[0]?.confidence ?? 0
 
   // Alignment is detected separately so a message can ask for both a mark and
   // an alignment ("make this bold and center it").
-  const alignment = detectAlignment(normalized)
+  const alignment = detectAlignment(formatText)
   if (alignment && !formats.includes(alignment.format)) {
     formats.push(alignment.format)
     if (firstPhrase === null) firstPhrase = alignment.phrase

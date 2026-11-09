@@ -131,10 +131,83 @@ const ALIGNMENTS: Record<string, 'left' | 'center' | 'right' | 'justify'> = {
   align_justify: 'justify',
 }
 
+/** Heading levels for the heading formats. */
+const HEADING_LEVELS: Record<string, 1 | 2 | 3> = { heading1: 1, h1: 1, heading2: 2, h2: 2, heading3: 3, h3: 3 }
+
+/** Wrapper blocks a format puts text into, by node type name. */
+const WRAPPERS: Record<string, 'bulletList' | 'orderedList' | 'blockquote'> = {
+  unordered_list: 'bulletList',
+  ul: 'bulletList',
+  ordered_list: 'orderedList',
+  ol: 'orderedList',
+  blockquote: 'blockquote',
+}
+
+/** Block categories a bulk chat request can target (mirrors the server's `targetCategory`). */
+export type BlockCategory = 'headings' | 'sections' | 'paragraphs' | 'chapters'
+
+/** Every text block a category names, each as its own range. */
+export function findCategoryRanges(doc: ProseMirrorNode, category: BlockCategory): TextRange[] {
+  const ranges: TextRange[] = []
+  doc.descendants((node, pos) => {
+    const matches =
+      category === 'headings'
+        ? node.type.name === 'heading'
+        : category === 'chapters'
+          ? isChapterHeading(node)
+          : category === 'sections'
+            ? node.type.name === 'heading' && !isChapterHeading(node) && node.attrs?.docRole !== 'title'
+            : // Body paragraphs: not a "CHAPTER n" line or the title styled as a paragraph.
+              node.type.name === 'paragraph' && !isChapterHeading(node) && node.attrs?.docRole !== 'title'
+    if (matches) {
+      const from = pos + 1
+      const to = pos + node.nodeSize - 1
+      if (to > from) ranges.push({ from, to })
+    }
+    return true
+  })
+  return ranges
+}
+
+/** The inside of every text block that overlaps a range, top to bottom. */
+function textblocksIn(doc: ProseMirrorNode, from: number, to: number): TextRange[] {
+  const blocks: TextRange[] = []
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isTextblock) return true
+    blocks.push({ from: pos + 1, to: pos + node.nodeSize - 1 })
+    return false
+  })
+  return blocks
+}
+
 /**
- * Apply (or clear) marks, font size and alignment over each range, bottom-up so
- * earlier positions stay valid. Alignment is set on the whole range after the
- * marks because it is a block attribute.
+ * Turn one text block into a heading. The selection stays inside that block so
+ * TipTap's setNode copies the block's own attributes (alignment, spacing,
+ * section role) instead of resetting them.
+ */
+function setHeadingKeepingAttrs(editor: Editor, block: TextRange, level: 1 | 2 | 3): void {
+  const node = editor.state.doc.nodeAt(block.from - 1)
+  if (node?.type.name === 'heading' && node.attrs.level === level) return
+  editor.chain().setTextSelection(block).setHeading({ level }).run()
+}
+
+/** Put a range into a list or quote block, unless it already is one; never toggles it back out. */
+function wrapOnce(editor: Editor, range: TextRange, wrapper: 'bulletList' | 'orderedList' | 'blockquote'): void {
+  editor.chain().setTextSelection(range).run()
+  if (editor.isActive(wrapper)) return
+  const chain = editor.chain()
+  if (wrapper === 'bulletList') chain.toggleBulletList().run()
+  else if (wrapper === 'orderedList') chain.toggleOrderedList().run()
+  else chain.setBlockquote().run()
+}
+
+/**
+ * Apply (or clear) formatting over each range, bottom-up so earlier positions
+ * stay valid. Everything is additive: a mark the text already has stays, other
+ * marks and styles are left alone, and nothing is toggled off.
+ *
+ * A heading format changes only the first block of a range: for a section
+ * target that is the section's title, not the paragraphs under it.
  */
 export function applyFormatsToRanges(
   editor: Editor,
@@ -145,6 +218,8 @@ export function applyFormatsToRanges(
 ): void {
   const ordered = [...ranges].sort((a, b) => b.from - a.from)
   const align = normalize ? null : formats.map((format) => ALIGNMENTS[format]).find(Boolean) ?? null
+  const level = normalize ? undefined : formats.map((format) => HEADING_LEVELS[format]).find(Boolean)
+  const wrapper = normalize ? undefined : formats.map((format) => WRAPPERS[format]).find(Boolean)
   for (const { from, to } of ordered) {
     let chain = editor.chain().focus().setTextSelection({ from, to })
     if (normalize) {
@@ -153,18 +228,51 @@ export function applyFormatsToRanges(
       else chain = chain.unsetAllMarks()
     } else {
       for (const format of formats) {
-        if (format === 'bold') chain = chain.setMark('bold')
-        else if (format === 'italic') chain = chain.setMark('italic')
-        else if (format === 'underline') chain = chain.setMark('underline')
-        else if (format === 'heading1' || format === 'h1') chain = chain.setHeading({ level: 1 })
-        else if (format === 'heading2' || format === 'h2') chain = chain.setHeading({ level: 2 })
-        else if (format === 'heading3' || format === 'h3') chain = chain.setHeading({ level: 3 })
+        if (format === 'bold' || format === 'italic' || format === 'underline') chain = chain.setMark(format)
       }
     }
     if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
     chain.run()
-    if (align) editor.chain().focus().setTextSelection({ from, to }).setTextAlign(align).run()
+    if (level) {
+      const first = textblocksIn(editor.state.doc, from, to)[0]
+      if (first) setHeadingKeepingAttrs(editor, first, level)
+    }
+    // Alignment is a block attribute; set it after any heading change.
+    if (align) editor.chain().setTextSelection({ from, to }).setTextAlign(align).run()
+    if (wrapper) wrapOnce(editor, { from, to }, wrapper)
   }
+}
+
+/**
+ * Apply formats to the user's selection (or, with nothing selected, the block
+ * the cursor is in). Set semantics: asking for bold on text that is already
+ * bold keeps it bold, and a heading request changes each selected block while
+ * keeping its own attributes.
+ */
+export function applyFormatsToSelection(editor: Editor, formats: string[], fontSize?: number): void {
+  const { selection, doc } = editor.state
+  const blocks = textblocksIn(doc, selection.from, selection.to)
+  const range: TextRange = selection.empty && blocks.length > 0
+    ? { from: blocks[0].from, to: blocks[0].to }
+    : { from: selection.from, to: selection.to }
+  if (range.to <= range.from && !fontSize) return
+
+  let chain = editor.chain().focus().setTextSelection(range)
+  for (const format of formats) {
+    if (format === 'bold' || format === 'italic' || format === 'underline') chain = chain.setMark(format)
+  }
+  if (fontSize) chain = chain.setMark('textStyle', { fontSize: `${fontSize}pt` })
+  chain.run()
+
+  const level = formats.map((format) => HEADING_LEVELS[format]).find(Boolean)
+  if (level) {
+    for (const block of textblocksIn(editor.state.doc, range.from, range.to).reverse()) setHeadingKeepingAttrs(editor, block, level)
+  }
+  const align = formats.map((format) => ALIGNMENTS[format]).find(Boolean)
+  if (align) editor.chain().setTextSelection(range).setTextAlign(align).run()
+  const wrapper = formats.map((format) => WRAPPERS[format]).find(Boolean)
+  if (wrapper) wrapOnce(editor, range, wrapper)
+  editor.chain().setTextSelection(range).run()
 }
 
 /** Block text normalized the way learned habits are keyed (behaviorModel.mergeLearnedPattern). */
