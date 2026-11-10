@@ -462,6 +462,16 @@ export interface DocumentComment {
   highlighted_text: string | null
   comment: string
   created_at: string
+  /** The commenter's name from Auth metadata (added when read, not stored). */
+  author_name?: string | null
+}
+
+/** A rubric breakdown: four criteria, 0-25 each, summing to the grade (migration 044). */
+export interface ReviewRubric {
+  content: number
+  methodology: number
+  formatting: number
+  mechanics: number
 }
 
 export interface DocumentReview {
@@ -473,6 +483,10 @@ export interface DocumentReview {
   status: 'pending' | 'under_review' | 'graded' | 'returned'
   notes: string | null
   reviewed_at: string
+  /** Null for grades given without a rubric, or before migration 044. */
+  rubric?: ReviewRubric | null
+  /** The grader's name from Auth metadata (added when read, not stored). */
+  reviewer_name?: string | null
 }
 
 export interface Notification {

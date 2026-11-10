@@ -8,15 +8,30 @@ export const authBodySchema = z.object({
     .min(6, 'Password must be at least 6 characters long'),
 })
 
+const personName = (label: string) =>
+  z.string().trim().min(1, `${label} is required`).max(50, `${label} must be at most 50 characters`)
+
+/** Validate a sign-up: email, password and the person's first and last name. */
+export const registerSchema = authBodySchema.extend({
+  first_name: personName('First name'),
+  last_name: personName('Last name'),
+})
+
 /** Validate the Google OAuth sync request body. */
 export const googleAuthSchema = z.object({
   accessToken: z.string().min(1, 'Access token is required'),
 })
 
-/** Validate the profile update request body. */
-export const updateProfileSchema = z.object({
-  display_name: z.string().trim().min(1, 'Display name is required').max(100, 'Display name must be at most 100 characters'),
-})
+/**
+ * Validate the profile update request body: first and last name together, or
+ * (older clients) a single display name.
+ */
+export const updateProfileSchema = z.union([
+  z.object({ first_name: personName('First name'), last_name: personName('Last name') }),
+  z.object({
+    display_name: z.string().trim().min(1, 'Display name is required').max(100, 'Display name must be at most 100 characters'),
+  }),
+])
 
 /** Validate a password change. The current password is checked by the server for password accounts. */
 export const changePasswordSchema = z.object({
@@ -46,6 +61,7 @@ export const applyStudentSchema = z.object({
 })
 
 export type AuthBody = z.infer<typeof authBodySchema>
+export type RegisterBody = z.infer<typeof registerSchema>
 export type GoogleAuthBody = z.infer<typeof googleAuthSchema>
 export type ChangePasswordBody = z.infer<typeof changePasswordSchema>
 export type DeleteAccountBody = z.infer<typeof deleteAccountSchema>

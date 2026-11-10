@@ -20,6 +20,7 @@ import {
   VerifyApplicantBody,
   ReportTimeseries,
 } from '../types/admin'
+import type { Rubric } from '@/lib/rubric'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -27,6 +28,8 @@ interface User {
   id: string
   email: string
   displayName?: string | null
+  firstName?: string | null
+  lastName?: string | null
   /** Link to the profile photo, or null when none is set. */
   avatarUrl?: string | null
   role?: RoleName
@@ -257,6 +260,10 @@ export interface RoleStatusResponse {
   verificationStatus: 'pending' | 'approved' | 'rejected'
   requestedRole?: RoleName | null
   plan?: Plan
+  /** Names from Auth metadata (Google's given/family name until confirmed). */
+  firstName?: string | null
+  lastName?: string | null
+  displayName?: string | null
 }
 
 /** The signed-in user's latest application and the administrator's decision on it. */
@@ -647,6 +654,8 @@ export interface DocumentComment {
   highlighted_text: string | null
   comment: string
   created_at: string
+  /** The commenter's name (read from their account). */
+  author_name?: string | null
 }
 
 export interface DocumentReview {
@@ -658,6 +667,16 @@ export interface DocumentReview {
   status: 'pending' | 'under_review' | 'graded' | 'returned'
   notes: string | null
   reviewed_at: string
+  /** Four criteria, 0-25 each; null for a grade given without a rubric. */
+  rubric?: Rubric | null
+  /** The grader's name (read from their account). */
+  reviewer_name?: string | null
+}
+
+/** A submission's professor feedback, as its student sees it. */
+export interface DocumentFeedback {
+  review: DocumentReview | null
+  comments: DocumentComment[]
 }
 
 /** Whether a scan compares inside one class or across all of a professor's classes. */
@@ -1014,11 +1033,11 @@ export const api = {
         body: JSON.stringify({ email, password }),
       })
     },
-    register: async (email: string, password: string): Promise<RegisterResponse> => {
+    register: async (email: string, password: string, firstName: string, lastName: string): Promise<RegisterResponse> => {
       return fetchAPI<RegisterResponse>('auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, first_name: firstName, last_name: lastName }),
       })
     },
     /** The caller's application state and any admin decision note. */
@@ -1059,12 +1078,12 @@ export const api = {
         body: JSON.stringify({ accessToken }),
       })
     },
-    /** Update the signed-in user's display name. */
-    updateProfile: async (displayName: string): Promise<{ user: User; message: string }> => {
+    /** Update the signed-in user's first and last name (stored in Auth metadata). */
+    updateProfile: async (names: { firstName: string; lastName: string }): Promise<{ user: User; message: string }> => {
       return fetchAPI<{ user: User; message: string }>('auth/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: displayName }),
+        body: JSON.stringify({ first_name: names.firstName, last_name: names.lastName }),
       })
     },
     /** Upload a new profile photo (PNG, JPG or WebP up to 2 MB); resolves with its link. */
@@ -1108,6 +1127,10 @@ export const api = {
   },
 
   documents: {
+    /** The professor's grade, rubric and comments on a submission (its owner or reviewing professor only). */
+    getFeedback: async (documentId: string): Promise<DocumentFeedback> => {
+      return fetchAPI<DocumentFeedback>(`documents/${documentId}/feedback`)
+    },
     list: async (): Promise<DocumentRecord[]> => {
       return fetchAPI<DocumentRecord[]>('documents')
     },
@@ -1686,11 +1709,11 @@ export const api = {
     getComments: async (documentId: string): Promise<DocumentComment[]> => {
       return fetchAPI<DocumentComment[]>(`professor/documents/${documentId}/comments`)
     },
-    submitGrade: async (documentId: string, studentId: string, grade: number, notes?: string): Promise<DocumentReview> => {
+    submitGrade: async (documentId: string, studentId: string, grade: number, notes?: string, rubric?: Rubric): Promise<DocumentReview> => {
       return fetchAPI<DocumentReview>('professor/grade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId, studentId, grade, notes }),
+        body: JSON.stringify({ documentId, studentId, grade, notes, rubric }),
       })
     },
     getReview: async (documentId: string): Promise<DocumentReview | null> => {

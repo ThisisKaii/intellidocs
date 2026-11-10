@@ -34,6 +34,16 @@ SEED_CONTENT = (
     "<p>The students recieved teh results of the experiment yesterday.</p>"
 )
 GRAMMAR_POPOVER = "[data-testid='grammar-popover']"
+# (headers, document id) for every document this run created; deleted when the run ends.
+CREATED: list[tuple[dict, str]] = []
+
+
+def delete_created_documents() -> None:
+    """Delete this run's documents so they never pile up in the test account."""
+    for headers, doc_id in CREATED:
+        resp = requests.delete(f"{API}/documents/{doc_id}", headers=headers, timeout=20)
+        print(f"  Cleanup: deleted {doc_id} -> {resp.status_code}")
+    CREATED.clear()
 FORMAT_CHIP = "[role='dialog'][aria-label^='Formatting suggestion']"
 
 
@@ -43,6 +53,7 @@ def create_seeded_document(token: str) -> str:
     created = requests.post(f"{API}/documents", headers=headers, json={"title": "e2e overlay collision"}, timeout=20)
     assert created.status_code in (200, 201), f"creating document failed: {created.status_code} {created.text[:200]}"
     doc_id = created.json()["id"]
+    CREATED.append((headers, doc_id))
     saved = requests.put(f"{API}/documents/{doc_id}", headers=headers, json={"content": SEED_CONTENT}, timeout=20)
     assert saved.status_code == 200, f"seeding document failed: {saved.status_code} {saved.text[:200]}"
     return doc_id
@@ -303,28 +314,6 @@ def run_test():
                     results["outline_click_opens_chooser"] = "FAIL — nothing opened"
 
                 screenshot(page, "overlay_t3_outline_click")
-
-                # ── Step 8C: Verify chooser with real collision ──────────────
-                # The chooser (SuggestionActionsMenu) requires issuesOnRange() > 0.
-                # issuesOnRange() filters grammarIssues where issue.original appears
-                # in the outlined block's text. We can check this by seeing if any
-                # grammar issue has "introduction" as its original text.
-                print("\n=== STEP 8C: Check issuesOnRange condition ===")
-                # Look for "introduciton → introduction" style fix card in the panel
-                intro_issue = page.locator("text='Introduciton'").first
-                if not intro_issue.is_visible():
-                    intro_issue = page.locator("text='introduciton'").first
-                if intro_issue.is_visible():
-                    print("  [INFO] Grammar issue for 'introduciton' IS in panel")
-                    print("  [INFO] But 'introduction' (well-spelled) is the outlined word")
-                    print("  [INFO] issuesOnRange checks if issue.original appears in outlined text")
-                    print("  [INFO] 'introduciton' != 'introduction' → no collision → chip fires correctly")
-                    results["collision_explanation"] = (
-                        "PASS (verified) — 'introduction' (outlined) has no grammar error; "
-                        "chooser requires the outlined word to appear in grammarIssues"
-                    )
-                else:
-                    results["collision_explanation"] = "SKIP — could not locate grammar panel issue"
         else:
             results["outline_click_opens_chooser"] = "SKIP — no formatting outline found"
             print("  [SKIP] No formatting outline to click")
@@ -347,4 +336,8 @@ def run_test():
 
 
 if __name__ == "__main__":
-    sys.exit(run_test())
+    try:
+        code = run_test()
+    finally:
+        delete_created_documents()
+    sys.exit(code)

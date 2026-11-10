@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   AVATAR_MAX_BYTES,
   checkDisplayName,
+  checkPersonName,
+  initialPersonName,
   checkNewEmail,
   passwordFormReady,
   passwordProblems,
@@ -71,5 +73,25 @@ describe('checkNewEmail', () => {
     expect(checkNewEmail('', 'old@school.edu')).toMatch(/Enter/)
     expect(checkNewEmail('not-an-email', 'old@school.edu')).toMatch(/does not look/)
     expect(checkNewEmail(' OLD@school.edu ', 'old@school.edu')).toMatch(/already/)
+  })
+})
+
+describe('checkPersonName', () => {
+  const saved = { firstName: 'Ana', lastName: 'Cruz' }
+  it('needs both names and notices changes', () => {
+    expect(checkPersonName({ firstName: ' Ana ', lastName: 'Cruz' }, saved)).toEqual({ changed: false, error: null })
+    expect(checkPersonName({ firstName: 'Ana', lastName: 'Reyes' }, saved)).toEqual({ changed: true, error: null })
+    expect(checkPersonName({ firstName: '', lastName: 'Cruz' }, saved).error).toMatch(/first name/)
+    expect(checkPersonName({ firstName: 'Ana', lastName: ' ' }, saved).error).toMatch(/last name/)
+    expect(checkPersonName({ firstName: 'x'.repeat(51), lastName: 'Cruz' }, saved).error).toMatch(/50/)
+  })
+})
+
+describe('initialPersonName', () => {
+  it('prefers saved names, else splits the display name', () => {
+    expect(initialPersonName({ firstName: 'Ana', lastName: 'Cruz', displayName: 'Whatever' })).toEqual({ firstName: 'Ana', lastName: 'Cruz' })
+    expect(initialPersonName({ displayName: 'Ana Maria Cruz' })).toEqual({ firstName: 'Ana Maria', lastName: 'Cruz' })
+    expect(initialPersonName({ displayName: 'Cher' })).toEqual({ firstName: 'Cher', lastName: '' })
+    expect(initialPersonName({ displayName: 'ana@x.com' })).toEqual({ firstName: '', lastName: '' })
   })
 })

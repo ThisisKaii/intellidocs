@@ -5,18 +5,18 @@ import { avatarUpload } from '../middleware/avatarUpload'
 import { authMiddleware } from '../middleware/authMiddleware'
 import { authArcjet, signupArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
-import { authBodySchema, googleAuthSchema, updateProfileSchema, applyProfessorSchema, applyStudentSchema, changePasswordSchema, deleteAccountSchema } from '../../schemas/authSchemas'
+import { authBodySchema, registerSchema, googleAuthSchema, updateProfileSchema, applyProfessorSchema, applyStudentSchema, changePasswordSchema, deleteAccountSchema } from '../../schemas/authSchemas'
 
 const router = Router()
 
 router.post('/login', authArcjet, validateBody(authBodySchema), login)
 
-router.post('/register', signupArcjet, validateBody(authBodySchema), register)
+router.post('/register', signupArcjet, validateBody(registerSchema), register)
 
 /** Called by the frontend after Google OAuth redirect to sync the session. */
 router.post('/google', authArcjet, validateBody(googleAuthSchema), googleAuth)
 
-/** Update the signed-in user's own profile (display name). */
+/** Update the signed-in user's own profile (first and last name). */
 router.patch('/profile', authMiddleware, validateBody(updateProfileSchema), updateProfile)
 
 /** Upload or remove the signed-in user's profile photo (PNG/JPG/WebP, up to 2 MB). */

@@ -77,3 +77,30 @@ def test_offsets_point_at_the_extracted_block():
     for index, (para_index, text, start, end) in enumerate(extract_paragraphs(html)):
         assert para_index == index
         assert text in html[start:end]
+
+
+def test_bold_paragraph_matter_headings_are_skipped():
+    """Imported theses often write REFERENCES / ACKNOWLEDGEMENT as bold paragraphs, not <h1>."""
+    html = (
+        "<p><strong>ACKNOWLEDGEMENT</strong></p>"
+        "<p>The researchers thank their adviser and families for the support given throughout this study.</p>"
+        "<p><strong>CHAPTER 1</strong></p>"
+        f"<p>{BODY.format(tag='kept')}</p>"
+        '<p style="font-weight: bold">REFERENCES</p>'
+        "<p>Santos, M. (2021). Mobile learning in senior high schools. Journal of Education, 14(2), 45-61.</p>"
+    )
+    assert texts(html) == [BODY.format(tag="kept")]
+
+
+def test_bold_label_inside_a_real_matter_section_does_not_reopen_the_body():
+    html = (
+        "<h1>References</h1>"
+        "<p><strong>Books</strong></p>"
+        "<p>Doe, A. (2019). A bibliography entry inside the references that exceeds fifty characters.</p>"
+    )
+    assert texts(html) == []
+
+
+def test_bold_sentence_in_the_body_is_still_scanned():
+    sentence = "This whole paragraph is bold for emphasis, and it is long enough to be checked as body text."
+    assert texts(f"<p><strong>{sentence}</strong></p>") == [sentence]

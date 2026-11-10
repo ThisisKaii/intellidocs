@@ -128,7 +128,8 @@ def test_strikethrough_applies_decoration(editor) -> None:
 
 @e2e(M, layer="browser")
 @pytest.mark.parametrize("title,expected_tag", [
-    ("Heading 1", "h1"), ("Heading 2", "h2"), ("Heading 3", "h3"),
+    # The toolbar only has H1/H2 buttons; H3 lives in the slash menu.
+    ("Heading 1", "h1"), ("Heading 2", "h2"),
 ])
 def test_heading_converts_block_type(editor, title: str, expected_tag: str) -> None:
     page, _ = editor

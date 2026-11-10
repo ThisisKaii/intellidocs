@@ -1,0 +1,93 @@
+{
+  "peer_paragraphs": {
+    "s_mobile": "Mobile learning applications have become a common tool in Philippine senior high schools, allowing students to review lessons outside the classroom and at their own pace. Teachers report that learners who use these applications complete more practice exercises each week.",
+    "s_climate": "Rising sea levels threaten coastal barangays in the Visayas, where many families depend on fishing for their livelihood. Local governments have started relocating households away from the shoreline, but the cost of new housing remains a major obstacle for poor communities.",
+    "s_method": "The researchers used a descriptive-correlational design and gathered data through a researcher-made questionnaire validated by three experts. The questionnaire was administered to one hundred twenty respondents selected through stratified random sampling.",
+    "s_sleep": "Insufficient sleep among college students is associated with lower academic performance, poorer concentration during lectures, and higher levels of stress. Students who sleep fewer than six hours a night tend to submit assignments late and score lower on examinations.",
+    "s_ai": "Artificial intelligence tools can help writers by detecting grammatical errors and suggesting clearer sentence structures. However, overreliance on these tools may weaken a student's own ability to revise and edit their work critically.",
+    "s_water": "Access to clean drinking water remains limited in many upland municipalities, forcing residents to collect water from springs and rivers that are often contaminated. Waterborne diseases such as diarrhea and typhoid are therefore more common in these areas than in the lowlands.",
+    "s_purpose": "This study aims to determine the effect of peer tutoring on the mathematics achievement of grade nine students in a public high school in Cebu City during the school year 2023 to 2024."
+  },
+  "acknowledgement": "The researchers would like to express their sincere gratitude to their adviser, their families and friends, and to the Almighty God for the strength and wisdom to finish this study.",
+  "reference_entry": "Santos, M. R., and Cruz, L. P. (2021). Mobile learning in Philippine senior high schools: A descriptive study. Journal of Educational Technology, 14(2), 45-61.",
+  "cases": [
+    {
+      "id": "verbatim_mobile",
+      "label": "copied",
+      "text": "Mobile learning applications have become a common tool in Philippine senior high schools, allowing students to review lessons outside the classroom and at their own pace. Teachers report that learners who use these applications complete more practice exercises each week.",
+      "source": "s_mobile"
+    },
+    {
+      "id": "verbatim_method",
+      "label": "copied",
+      "text": "The researchers used a descriptive-correlational design and gathered data through a researcher-made questionnaire validated by three experts. The questionnaire was administered to one hundred twenty respondents selected through stratified random sampling.",
+      "source": "s_method"
+    },
+    {
+      "id": "light_edit_climate",
+      "label": "copied",
+      "text": "Rising sea levels endanger coastal barangays in the Visayas, where many families rely on fishing for their livelihood. Local governments have begun relocating households away from the shoreline, but the cost of new housing is still a major obstacle for poor communities.",
+      "source": "s_climate"
+    },
+    {
+      "id": "light_edit_sleep",
+      "label": "copied",
+      "text": "Lack of sleep among college students is associated with lower academic performance, poorer concentration in lectures, and higher stress levels. Students who sleep less than six hours a night tend to submit their assignments late and score lower in examinations.",
+      "source": "s_sleep"
+    },
+    {
+      "id": "paraphrase_sleep",
+      "label": "paraphrase",
+      "text": "College students who do not get enough sleep tend to perform worse academically, find it harder to concentrate in lectures, and experience more stress. Those sleeping under six hours nightly often hand in assignments late and get lower examination scores.",
+      "source": "s_sleep"
+    },
+    {
+      "id": "paraphrase_ai",
+      "label": "paraphrase",
+      "text": "Writers can be helped by artificial intelligence tools that detect grammatical errors and suggest clearer sentence structures. Still, relying too much on such tools may weaken the student's own critical ability to revise and edit work.",
+      "source": "s_ai"
+    },
+    {
+      "id": "paraphrase_water",
+      "label": "paraphrase",
+      "text": "In many upland municipalities access to clean drinking water is still limited, so residents collect water from rivers and springs that are frequently contaminated. As a result, waterborne diseases like typhoid and diarrhea are more common there than in lowland areas.",
+      "source": "s_water"
+    },
+    {
+      "id": "paraphrase_mobile_reordered",
+      "label": "paraphrase",
+      "text": "Teachers say that learners using mobile learning applications finish more practice exercises every week. These applications are now a common tool in senior high schools in the Philippines, letting students review lessons at their own pace outside the classroom.",
+      "source": "s_mobile"
+    },
+    {
+      "id": "original_same_topic_mobile",
+      "label": "original",
+      "text": "Our survey found that most grade eleven students in Davao own a smartphone, yet only a third had installed any educational application. Many cited the cost of mobile data and weak signal at home as reasons for preferring printed modules.",
+      "source": null
+    },
+    {
+      "id": "original_same_topic_sleep",
+      "label": "original",
+      "text": "Dormitory residents in our sample reported going to bed after midnight on most school nights, mainly because of online games and part-time work. Their sleep schedules shifted further during examination weeks, when many stayed awake to cram.",
+      "source": null
+    },
+    {
+      "id": "original_same_template_purpose",
+      "label": "original",
+      "text": "This study aims to determine the relationship between social media use and the reading comprehension of grade seven learners in a private school in Iloilo during the first semester.",
+      "source": null
+    },
+    {
+      "id": "original_unrelated",
+      "label": "original",
+      "text": "The cathedral was rebuilt three times after earthquakes in the eighteenth and nineteenth centuries, and each reconstruction left traces of a different architectural style on its facade and bell tower.",
+      "source": null
+    },
+    {
+      "id": "original_method_generic",
+      "label": "original",
+      "text": "Interviews were conducted with eight barangay health workers, and their answers were transcribed and analyzed thematically. Two coders reviewed the transcripts independently before agreeing on the final themes.",
+      "source": null
+    }
+  ]
+}

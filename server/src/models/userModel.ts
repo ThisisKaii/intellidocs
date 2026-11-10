@@ -2,6 +2,8 @@ import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { Plan, RoleName, StorageSummary, VerificationStatus } from '../types/index'
 import { effectivePlan, PlanRow } from '../utils/plan'
+import { namesMetadata, readAccountNames, type AccountNames } from '../utils/accountNames'
+import type { User } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -22,23 +24,48 @@ export const STORAGE_QUOTA_BYTES: Record<RoleName, number> = {
 }
 
 /**
- * Update a user's own display name in Supabase Auth's user_metadata
- * (auth.users.raw_user_meta_data) and return the fresh value.
+ * Create an email/password account with the person's names in Auth metadata
+ * (first_name, last_name and display_name; never user_profiles).
+ */
+export async function registerUser(
+  email: string,
+  password: string,
+  firstName: string,
+  lastName: string,
+): Promise<{ user: User | null; error: string | null }> {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: namesMetadata(firstName, lastName) },
+  })
+  return { user: data.user ?? null, error: error?.message ?? null }
+}
+
+/** A user's names as stored in Auth metadata (Google's fields as fallback). */
+export async function getOwnNames(userId: string): Promise<AccountNames> {
+  const { data } = await supabase.auth.admin.getUserById(userId)
+  return readAccountNames(data?.user?.user_metadata)
+}
+
+/**
+ * Update a user's own names in Supabase Auth's user_metadata
+ * (auth.users.raw_user_meta_data) and return the fresh values. Either first and
+ * last name together, or a single display name (older clients).
  */
 export async function updateOwnProfile(
   userId: string,
-  displayName: string,
-): Promise<string | null> {
+  names: { firstName: string; lastName: string } | { displayName: string },
+): Promise<AccountNames | null> {
   const { data: existing } = await supabase.auth.admin.getUserById(userId)
   const metadata = {
     ...(existing?.user?.user_metadata ?? {}),
-    display_name: displayName,
+    ...('displayName' in names ? { display_name: names.displayName } : namesMetadata(names.firstName, names.lastName)),
   }
   const { data, error } = await supabase.auth.admin.updateUserById(userId, {
     user_metadata: metadata,
   })
   if (error || !data.user) return null
-  return data.user.user_metadata?.display_name ?? null
+  return readAccountNames(data.user.user_metadata)
 }
 
 /**

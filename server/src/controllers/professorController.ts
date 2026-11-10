@@ -7,6 +7,17 @@ import * as folderModel from '../models/folderModel'
 import * as plagiarismModel from '../models/plagiarismModel'
 import { auditCompliance } from '../skills/auditCompliance'
 import { similarityQuerySchema } from '../../schemas/plagiarismSchemas'
+import type { AddCommentInput, SubmitGradeInput } from '../../schemas/professorSchemas'
+
+/**
+ * Send 403 unless the document was handed in to one of this professor's
+ * classes. Returns true when the request may go on.
+ */
+async function ensureCanReview(professorId: string, documentId: string, res: Response): Promise<boolean> {
+  if (await professorModel.professorCanReview(professorId, documentId)) return true
+  res.status(403).json({ error: 'This document was not submitted to one of your classes' })
+  return false
+}
 
 export async function addComment(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -16,7 +27,8 @@ export async function addComment(req: AuthenticatedRequest, res: Response): Prom
       return
     }
 
-    const { documentId, comment, highlightedText } = req.body
+    const { documentId, comment, highlightedText } = req.body as AddCommentInput
+    if (!(await ensureCanReview(userId, documentId, res))) return
     const commentRecord = await professorModel.addComment(
       documentId,
       userId,
@@ -33,7 +45,13 @@ export async function addComment(req: AuthenticatedRequest, res: Response): Prom
 
 export async function getDocumentComments(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
     const documentId = req.params.id
+    if (!(await ensureCanReview(userId, documentId, res))) return
     const comments = await professorModel.getDocumentComments(documentId)
     res.json(comments)
   } catch (err) {
@@ -50,7 +68,13 @@ export async function submitGrade(req: AuthenticatedRequest, res: Response): Pro
       return
     }
 
-    const { documentId, studentId, grade, notes } = req.body
+    const { documentId, studentId, grade, notes, rubric } = req.body as SubmitGradeInput
+    if (!(await ensureCanReview(reviewerId, documentId, res))) return
+    // The grade goes to the document's owner, never to an id the client made up.
+    if ((await professorModel.getDocumentOwnerId(documentId)) !== studentId) {
+      res.status(400).json({ error: 'That student does not own this document' })
+      return
+    }
 
     // Submit grade review
     const review = await professorModel.submitGrade(
@@ -58,7 +82,8 @@ export async function submitGrade(req: AuthenticatedRequest, res: Response): Pro
       reviewerId,
       studentId,
       grade,
-      notes
+      notes,
+      rubric
     )
 
     // Trigger notification to student
@@ -83,7 +108,13 @@ export async function submitGrade(req: AuthenticatedRequest, res: Response): Pro
 
 export async function getDocumentReview(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
     const documentId = req.params.id
+    if (!(await ensureCanReview(userId, documentId, res))) return
     const review = await professorModel.getDocumentReview(documentId)
     res.json(review)
   } catch (err) {

@@ -1,11 +1,12 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
-import { updateOwnProfile, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow } from '../models/userModel'
+import { updateOwnProfile, registerUser, getOwnNames, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow } from '../models/userModel'
 import { effectivePlan } from '../utils/plan'
 import { resolvePendingShares } from '../models/shareModel'
 import * as accountModel from '../models/accountModel'
-import type { ChangePasswordBody, DeleteAccountBody } from '../../schemas/authSchemas'
+import type { ChangePasswordBody, DeleteAccountBody, RegisterBody, UpdateProfileBody } from '../../schemas/authSchemas'
+import { readAccountNames } from '../utils/accountNames'
 import { AuthenticatedRequest } from '../types/express'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
@@ -22,30 +23,25 @@ interface GoogleAuthBody {
 /** Register a new user with email and password. New users start on the baseline `user` role. */
 export async function register(req: Request, res: Response): Promise<void> {
   try {
-    const { email, password } = req.body as AuthBody
+    const { email, password, first_name, last_name } = req.body as RegisterBody
 
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required' })
-      return
-    }
-
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const { user, error } = await registerUser(email, password, first_name, last_name)
 
     if (error) {
-      res.status(400).json({ error: error.message })
+      res.status(400).json({ error })
       return
     }
 
     // New users start on the baseline role; academic verification upgrades it.
-    if (data.user) {
-      await ensureUserProfile(data.user.id)
+    if (user) {
+      await ensureUserProfile(user.id)
 
       // Resolve any document shares that were pending on this email.
-      await resolvePendingShares(data.user.id, email)
+      await resolvePendingShares(user.id, email)
     }
 
     res.status(201).json({
-      user: data.user,
+      user,
       message: 'User registered successfully',
     })
   } catch {
@@ -84,7 +80,7 @@ export async function login(req: Request, res: Response): Promise<void> {
         verificationStatus: profile?.verification_status ?? 'approved',
         requestedRole: await getRequestedRole(data.user.id),
         plan: effectivePlan(await getPlanRow(data.user.id)),
-        displayName: data.user.user_metadata?.display_name ?? null,
+        ...readAccountNames(data.user.user_metadata),
         avatarUrl: data.user.user_metadata?.avatar_url ?? null,
       },
       session: data.session,
@@ -132,8 +128,7 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
       user: {
         id: user.id,
         email: user.email ?? '',
-        displayName:
-          user.user_metadata?.display_name ?? user.user_metadata?.full_name ?? null,
+        ...readAccountNames(user.user_metadata),
         avatarUrl: user.user_metadata?.avatar_url ?? null,
       },
       role: (profile?.roles as { role_name?: string } | null)?.role_name ?? 'user',
@@ -147,7 +142,7 @@ export async function googleAuth(req: Request, res: Response): Promise<void> {
   }
 }
 
-/** Update the signed-in user's own profile fields (display name). */
+/** Update the signed-in user's own profile fields (first and last name). */
 export async function updateProfile(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const userId = req.user?.id
@@ -156,13 +151,11 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
       return
     }
 
-    const { display_name } = req.body as { display_name?: string }
-    if (typeof display_name !== 'string' || display_name.trim().length === 0) {
-      res.status(400).json({ error: 'display_name is required' })
-      return
-    }
-
-    const saved = await updateOwnProfile(userId, display_name.trim())
+    const body = req.body as UpdateProfileBody
+    const saved = await updateOwnProfile(
+      userId,
+      'first_name' in body ? { firstName: body.first_name, lastName: body.last_name } : { displayName: body.display_name.trim() },
+    )
     if (saved === null) {
       res.status(500).json({ error: 'Failed to update profile' })
       return
@@ -172,7 +165,7 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
       user: {
         id: userId,
         email: req.user?.email ?? '',
-        displayName: saved,
+        ...saved,
       },
       message: 'Profile updated successfully',
     })
@@ -267,8 +260,8 @@ export async function getMe(req: AuthenticatedRequest, res: Response): Promise<v
       return
     }
 
-    const roleStatus = await getOwnRoleStatus(userId)
-    res.status(200).json(roleStatus)
+    const [roleStatus, names] = await Promise.all([getOwnRoleStatus(userId), getOwnNames(userId)])
+    res.status(200).json({ ...roleStatus, ...names })
   } catch (err) {
     console.error('getMe: role lookup failed:', err instanceof Error ? err.message : err)
     res.status(500).json({ error: 'Failed to load profile' })

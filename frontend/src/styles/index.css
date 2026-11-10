@@ -1079,12 +1079,8 @@ html {
   outline-offset: 3px;
   background-color: rgba(99, 102, 241, 0.08);
   box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);
-  cursor: pointer;
+  /* Purely visual: the text inside keeps the normal text cursor and takes clicks as usual. */
   animation: agenticOverlayPulse 2s ease-in-out infinite;
-  transition: background-color 150ms ease;
-}
-.agentic-highlight-overlay:hover {
-  background-color: rgba(99, 102, 241, 0.16);
 }
 @keyframes agenticOverlayPulse {
   0%,

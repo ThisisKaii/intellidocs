@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { api, type DocumentRecord, type EditorJson, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
+import { api, type DocumentFeedback, type DocumentRecord, type EditorJson, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
 import {
   TiptapToolbar,
   type Editor,
@@ -47,7 +47,7 @@ import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } 
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import type { PageLayoutData } from '@/lib/pageLayout'
-import { mergeStyleDecls } from '@/lib/inlineStyle'
+import { addLearnedFormatSteps, type LearnedFormatSpec } from '@/lib/learnedFormat'
 import { dismissFontNotice, fontFamiliesIn, fontNoticeDismissed, missingFonts } from '@/lib/fontAvailability'
 import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
 import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
@@ -112,7 +112,8 @@ const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.22
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
 
 /** One plain sentence explaining why a chip suggestion is offered. */
-function describeSuggestionReason(prompt: { suggestionSource?: string; formatGroup?: string; groupMembers?: unknown[] }): string {
+function describeSuggestionReason(prompt: { suggestionSource?: string; formatGroup?: string; groupMembers?: unknown[]; detail?: string }): string {
+  if (prompt.detail) return `${prompt.detail}.`
   if (prompt.suggestionSource === 'learned') return 'You formatted matching text this way before, so IntelliDocs is offering the same look here.'
   if (prompt.formatGroup?.startsWith('blueprint-')) return 'Your document type has a standard style for this part, and a few blocks do not match it yet.'
   if (prompt.formatGroup) return 'Blocks that play the same role in your document are styled differently.'
@@ -293,6 +294,8 @@ export default function Document(): JSX.Element {
   }, [])
   const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches)
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>('assistant')
+  // A professor's grade and comments on this submission (owner or reviewing professor only).
+  const [feedback, setFeedback] = useState<DocumentFeedback | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
@@ -679,13 +682,6 @@ export default function Document(): JSX.Element {
     setFlashKey(Date.now())
     if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current)
     flashTimerRef.current = window.setTimeout(() => setFlashCoords(null), 1700)
-  }
-
-  /** Show a suggestion's review card: right panel open on Suggestions, that card expanded. */
-  function openReviewCard(key: string): void {
-    setRightPanelOpen(true)
-    setSidePanelTab('suggestions')
-    setExpandedSuggestionKey(key)
   }
 
   // Drop any pending flash timer when the page unmounts.
@@ -1083,17 +1079,22 @@ export default function Document(): JSX.Element {
     }
   }
 
-  /** Reproduce a learned suggestion's full format (marks + size + alignment) on the selection or an explicit range. */
+  /**
+   * Reproduce a learned suggestion's full format (marks, size, block style, block
+   * type, alignment) on the selection or an explicit range, plus any extra ranges
+   * (the other blocks of a merged card). Everything goes into ONE transaction, so
+   * one undo reverts the whole card.
+   */
   function applyLearnedFormat(
     s: Pick<Suggestion, 'format' | 'bold' | 'italic' | 'underline' | 'fontSize' | 'textAlign' | 'blockStyle'>,
-    range?: { from: number; to: number }
+    range?: { from: number; to: number },
+    extraRanges: Array<{ from: number; to: number }> = []
   ): { from: number; to: number } | null {
     if (!editor || editor.isDestroyed || !editor.isEditable) return null
 
-    // A caret (no selection) expands to the whole block so marks, size, and
-    // alignment apply without requiring the user to highlight text first —
-    // matching the chatbot's block-level apply behavior. An explicit range
-    // (group apply) is used verbatim.
+    // A caret (no selection) expands to the whole block so the fix applies without
+    // highlighting text first, matching the chatbot's block-level apply. An explicit
+    // range (scanner card or group member) is used verbatim.
     const { from: selFrom, to: selTo } = editor.state.selection
     let from = range?.from ?? selFrom
     let to = range?.to ?? selTo
@@ -1103,74 +1104,27 @@ export default function Document(): JSX.Element {
       to = $pos.after()
     }
 
-    // A selection that straddles block boundaries makes the second mark command
-    // in a sequence (bold then size) silently drop, so marks go over the text
-    // inside the blocks, just like a manual selection would.
-    const doc = editor.state.doc
-    const textFrom = doc.resolve(from).depth === 0 ? from + 1 : from
-    const textTo = doc.resolve(to).depth === 0 ? to - 1 : to
-    const textRange = { from: textFrom, to: Math.max(textFrom, textTo) }
-    // One ProseMirror transaction adds every learned mark; font size merges into
-    // any existing text style so the font family survives.
-    const { schema } = editor.state
+    const size = editor.state.doc.content.size
+    const ranges = [{ from, to }, ...extraRanges].filter((r) => r.from >= 0 && r.to <= size && r.from < r.to)
+    const spec: LearnedFormatSpec = {
+      format: s.format,
+      bold: s.bold,
+      italic: s.italic,
+      underline: s.underline,
+      fontSize: s.fontSize,
+      textAlign: s.textAlign,
+      blockStyle: s.blockStyle,
+    }
+    const quote = s.format === 'blockquote'
     const tr = editor.state.tr
-    for (const [wanted, markName] of [[s.bold, 'bold'], [s.italic, 'italic'], [s.underline, 'underline']] as const) {
-      if (wanted && schema.marks[markName]) tr.addMark(textRange.from, textRange.to, schema.marks[markName].create())
-    }
-    // An explicit false (body-text consistency) takes a stray bold or italic off.
-    for (const [wanted, markName] of [[s.bold, 'bold'], [s.italic, 'italic']] as const) {
-      if (wanted === false && schema.marks[markName]) tr.removeMark(textRange.from, textRange.to, schema.marks[markName])
-    }
-    if (typeof s.fontSize === 'number' && s.fontSize > 0 && schema.marks.textStyle) {
-      const styleType = schema.marks.textStyle
-      editor.state.doc.nodesBetween(textRange.from, textRange.to, (node, pos) => {
-        if (!node.isText) return true
-        const existing = node.marks.find((mark) => mark.type === styleType)
-        tr.addMark(
-          Math.max(pos, textRange.from),
-          Math.min(pos + node.nodeSize, textRange.to),
-          styleType.create({ ...(existing?.attrs ?? {}), fontSize: `${s.fontSize}pt` })
-        )
-        return false
-      })
-    }
-    // fontSize null means the document's usual size is the inherited one: drop an explicit size.
-    if (s.fontSize === null && schema.marks.textStyle) {
-      const styleType = schema.marks.textStyle
-      editor.state.doc.nodesBetween(textRange.from, textRange.to, (node, pos) => {
-        if (!node.isText) return true
-        const existing = node.marks.find((mark) => mark.type === styleType)
-        if (existing?.attrs?.fontSize) {
-          tr.addMark(Math.max(pos, textRange.from), Math.min(pos + node.nodeSize, textRange.to), styleType.create({ ...existing.attrs, fontSize: '' }))
-        }
-        return false
-      })
-    }
-    // Line spacing, first-line indent and paragraph spacing live in each block's inline style.
-    if (s.blockStyle && Object.keys(s.blockStyle).length > 0) {
-      const decls = s.blockStyle
-      tr.doc.nodesBetween(from, to, (node, pos) => {
-        if (!node.isTextblock) return true
-        if (node.type.spec.attrs && 'style' in node.type.spec.attrs) {
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, style: mergeStyleDecls(node.attrs.style as string | null, decls) })
-        }
-        return false
-      })
-    }
+    for (const r of ranges) addLearnedFormatSteps(tr, quote ? { ...spec, format: 'paragraph' } : spec, r)
     if (tr.docChanged) editor.view.dispatch(tr)
-    // Block type first, then alignment LAST — converting a paragraph to a
-    // heading resets the paragraph's text-align attribute, so alignment
-    // must be applied after the node type change to survive.
-    const block = editor.chain().focus().setTextSelection({ from, to })
-    if (s.format === 'blockquote') block.setBlockquote()
-    else if (s.format === 'heading1' || s.format === 'h1') block.setHeading({ level: 1 })
-    else if (s.format === 'heading2' || s.format === 'h2') block.setHeading({ level: 2 })
-    else if (s.format === 'heading3' || s.format === 'h3') block.setHeading({ level: 3 })
-    if (s.textAlign && ['left', 'center', 'right', 'justify'].includes(s.textAlign)) {
-      block.setTextAlign(s.textAlign)
+    // A quote wraps its blocks, which shifts positions, so it goes last and bottom-up.
+    if (quote) {
+      for (const r of [...ranges].sort((a, b) => b.from - a.from)) {
+        editor.chain().setTextSelection(r).setBlockquote().run()
+      }
     }
-    block.run()
-
     return { from, to }
   }
 
@@ -2078,19 +2032,15 @@ export default function Document(): JSX.Element {
     const isLearned = prompt.suggestionSource === 'learned'
 
     const previous = editor.state.selection
-    const ordered = [...members].sort((a, b) => b.from - a.from)
-    for (const member of ordered) {
-      if (isLearned) {
-        // Inconsistency groups must reproduce the captured modal styling on
-        // every deviating block, not just its plain node type.
-        applyLearnedFormat(prompt, { from: member.from, to: member.to })
-      } else {
-        applyFormatToRange(format, member.from, member.to)
-      }
-    }
-    if (suggestionRange) {
-      if (isLearned) applyLearnedFormat(prompt, suggestionRange)
-      else applyFormatToRange(format, suggestionRange.from, suggestionRange.to)
+    if (isLearned) {
+      // The card's block and every member in ONE transaction: one Ctrl+Z undoes the card.
+      const primary = suggestionRange ?? members[0]
+      const rest = suggestionRange ? members : members.slice(1)
+      applyLearnedFormat(prompt, primary, rest)
+    } else {
+      const ordered = [...members].sort((a, b) => b.from - a.from)
+      for (const member of ordered) applyFormatToRange(format, member.from, member.to)
+      if (suggestionRange) applyFormatToRange(format, suggestionRange.from, suggestionRange.to)
     }
     // Focus-safe: restore the caret the user had before the bulk apply.
     editor.chain().setTextSelection({ from: previous.from, to: previous.to }).run()
@@ -2182,6 +2132,29 @@ export default function Document(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, grammarIssues, content])
 
+  // Professor feedback for this submission. Share-link and anonymous views have
+  // none to show, and anyone who is not the owner or the reviewing professor gets 403.
+  useEffect(() => {
+    if (!id || !user?.id || shareToken) {
+      setFeedback(null)
+      return
+    }
+    let cancelled = false
+    const load = (): void => {
+      api.documents
+        .getFeedback(id)
+        .then((result) => { if (!cancelled) setFeedback(result) })
+        .catch(() => { if (!cancelled) setFeedback(null) })
+    }
+    load()
+    const onFocus = (): void => { if (document.visibilityState === 'visible') load() }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [id, user?.id, shareToken])
+
   /** Panel card opened on a formatting suggestion: jump to it, spotlight it, and load it for review. */
   function openScannerInDocument(suggestion: ScannerSuggestion): void {
     if (!editor || editor.isDestroyed || readOnly) return
@@ -2194,6 +2167,7 @@ export default function Document(): JSX.Element {
       formatGroup: suggestion.formatGroup,
       groupMembers: suggestion.groupMembers,
       label: suggestion.label,
+      detail: suggestion.detail,
       suggestionSource: suggestion.suggestionSource,
       ...(suggestion.captures ?? {}),
     })
@@ -2729,54 +2703,6 @@ export default function Document(): JSX.Element {
   }
 
 
-  /** Load the highlighted block's formatting suggestion for review in the side panel. */
-  function openFormattingPopup(): void {
-    if (pendingLearnedFormat) {
-      setFormatPrompt(pendingLearnedFormat)
-      setPendingLearnedFormat(null)
-      return
-    }
-    if (scannerActive) {
-      setFormatPrompt({
-        format: scannerActive.format,
-        confidence: scannerActive.confidence,
-        formatGroup: scannerActive.formatGroup,
-        groupMembers: scannerActive.groupMembers,
-        label: scannerActive.label,
-        suggestionSource: scannerActive.suggestionSource,
-        ...(scannerActive.captures ?? {}),
-      })
-    }
-  }
-
-  /** Clicking the outlined text opens its suggestion card in the side panel. */
-  function handleOverlayOpen(): void {
-    // Review happens in the side panel: load the block's suggestion and open its card.
-    if (pendingLearnedFormat) {
-      setFormatPrompt(pendingLearnedFormat)
-      setPendingLearnedFormat(null)
-      openReviewCard('active')
-    } else if (scannerActive) {
-      openFormattingPopup()
-      openReviewCard(scannerActive.key)
-    }
-  }
-
-  // Outlined-block clicks are forwarded from every page editor by the
-  // paginated view, matching how grammar underlines are handled. A ref keeps
-  // the handler current without resubscribing on every render.
-  const overlayOpenRef = useRef(handleOverlayOpen)
-  overlayOpenRef.current = handleOverlayOpen
-
-  useEffect(() => {
-    if (!editor) return
-    const onOverlayClick = (): void => overlayOpenRef.current()
-    editor.on('suggestion-overlay-click', onOverlayClick)
-    return () => {
-      editor.off('suggestion-overlay-click', onOverlayClick)
-    }
-  }, [editor])
-
   // Push grammar issues into the editor's wavy-underline decorations whenever they change.
   useEffect(() => {
     if (!editor || !editor.commands.setGrammarIssues) return
@@ -2829,7 +2755,9 @@ export default function Document(): JSX.Element {
           }
         : null,
     onAcceptFormatting: () => {
-      if (formatPrompt) handlePromptAccept(formatPrompt)
+      // A merged card (several blocks needing the same fix) is accepted as a whole.
+      if (formatPrompt?.groupMembers && formatPrompt.groupMembers.length > 0) handlePromptAcceptAll()
+      else if (formatPrompt) handlePromptAccept(formatPrompt)
       setExpandedSuggestionKey(null)
     },
     onAcceptAllFormatting: () => {
@@ -3536,6 +3464,7 @@ export default function Document(): JSX.Element {
           open={rightPanelOpen}
           compact={isNarrow}
           activeTab={sidePanelTab}
+          feedback={feedback}
           onToggle={() => setRightPanelOpen((open) => !open)}
           onTabChange={setSidePanelTab}
           editor={editor}

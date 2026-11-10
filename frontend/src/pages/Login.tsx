@@ -36,6 +36,8 @@ function Login(): JSX.Element {
         requestedRole: response.user.requestedRole ?? null,
         plan: response.user.plan ?? 'free',
         displayName: response.user.displayName ?? null,
+        firstName: response.user.firstName ?? null,
+        lastName: response.user.lastName ?? null,
         avatarUrl: response.user.avatarUrl ?? null,
       },
       accessToken,

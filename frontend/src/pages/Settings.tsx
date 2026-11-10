@@ -128,7 +128,7 @@ export default function SettingsPage(): JSX.Element {
           <div className="flex min-w-0 flex-1 flex-col gap-6">
             {section === 'profile' && (
               <>
-                <ProfileSection userDisplayName={user?.displayName ?? ''} email={user?.email ?? ''} avatarUrl={user?.avatarUrl ?? null} onSaved={updateUser} />
+                <ProfileSection userDisplayName={user?.displayName ?? ''} userFirstName={user?.firstName ?? null} userLastName={user?.lastName ?? null} email={user?.email ?? ''} avatarUrl={user?.avatarUrl ?? null} onSaved={updateUser} />
                 <EmailSection email={user?.email ?? ''} onEmailChanged={(email) => updateUser({ email })} />
                 <AccountInfoSection />
               </>

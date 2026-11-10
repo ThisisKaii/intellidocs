@@ -349,6 +349,7 @@ def browser():
 def page(browser):
     """A page with categorized console and network failure capture wired up."""
     ctx = browser.new_context(viewport={"width": 1600, "height": 950})
+    ctx.add_init_script(SKIP_NAME_PROMPT)
     pg = ctx.new_page()
     pg.e2e_errors: list[str] = []  # type: ignore[attr-defined]
     pg.console_errors: list[str] = []  # type: ignore[attr-defined]
@@ -403,8 +404,15 @@ def safe_action(page, action_fn: Callable[[], Any], description: str = "action",
     raise TimeoutError(f"Freeze detected on {description} after {max_retries} attempts: {last_err}")
 
 
+# The test account may have no first/last name, which makes the dashboard ask for one
+# (CompleteProfileModal). Tests that are not about onboarding answer "Not now" up front,
+# the same flag the modal's button sets, so the account itself is never changed.
+SKIP_NAME_PROMPT = "try { sessionStorage.setItem('intellidocs:profileNameLater', '1') } catch (e) {}"
+
+
 def sign_in(page, use_cache: bool = True) -> None:
     """Log in through the real UI with optional state caching to avoid throttling."""
+    page.context.add_init_script(SKIP_NAME_PROMPT)
     if use_cache and AUTH_STATE_PATH.exists():
         try:
             with open(AUTH_STATE_PATH, "r", encoding="utf-8") as f:
@@ -574,5 +582,8 @@ def filter_console_noise(page) -> list[str]:
         # React StrictMode mounts the editor twice in dev; tearing down the
         # first Harper worker aborts its in-flight WASM fetch.
         "harper_wasm_bg.wasm",
+        # Requests the browser cancels on navigation (e.g. the fire-and-forget
+        # POST /documents/:id/opened). Also matches "net::ERR_ABORTED".
+        "ERR_ABORTED",
     )
     return [e for e in page.e2e_errors if not any(n in e for n in noise)]  # type: ignore[attr-defined]

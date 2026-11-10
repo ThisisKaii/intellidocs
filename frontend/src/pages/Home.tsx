@@ -16,6 +16,7 @@ import UserMenu from '@/components/UserMenu'
 import DriveImportDialog from '@/components/DriveImportDialog'
 import FolderCreateModal from '@/components/drive/FolderCreateModal'
 import JoinClassModal from '@/components/drive/JoinClassModal'
+import CompleteProfileModal from '@/components/CompleteProfileModal'
 import JoinCodeModal from '@/components/drive/JoinCodeModal'
 import DocumentCreateModal from '@/components/DocumentCreateModal'
 import {
@@ -77,7 +78,23 @@ function ConfirmDialog({
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { user } = useAuth()
+  const { user, updateUser, refreshRole } = useAuth()
+
+  // Accounts without a first and last name (Google sign-ins, older accounts) are
+  // asked once per sign-in. The saved names are re-read first so a stale cached
+  // user never prompts someone who already has them.
+  const missingName = Boolean(user && (!user.firstName || !user.lastName))
+  const [nameChecked, setNameChecked] = useState(false)
+  const [nameLater, setNameLater] = useState(() => {
+    try { return sessionStorage.getItem('intellidocs:profileNameLater') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    if (!missingName || nameChecked) return
+    let cancelled = false
+    void refreshRole().finally(() => { if (!cancelled) setNameChecked(true) })
+    return () => { cancelled = true }
+  }, [missingName, nameChecked, refreshRole])
+  const showProfilePrompt = missingName && nameChecked && !nameLater
 
   const initialFolderId = searchParams.get('folder')
   const initialView = searchParams.get('view')
@@ -1013,6 +1030,17 @@ export default function HomePage(): JSX.Element {
         <ImportFileModal
           onClose={() => setImportFileOpen(false)}
           onImport={importFiles}
+        />
+      )}
+
+      {showProfilePrompt && user && (
+        <CompleteProfileModal
+          initial={{ firstName: user.firstName, lastName: user.lastName, displayName: user.displayName }}
+          onSaved={(names) => updateUser(names)}
+          onLater={() => {
+            try { sessionStorage.setItem('intellidocs:profileNameLater', '1') } catch { /* private mode: hide for this page only */ }
+            setNameLater(true)
+          }}
         />
       )}
 

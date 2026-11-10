@@ -26,6 +26,35 @@ export function checkDisplayName(typed: string, saved: string): DisplayNameCheck
   return { changed: trimmed !== saved.trim(), error: null }
 }
 
+/** First and last name as typed or saved. */
+export interface PersonName {
+  firstName: string
+  lastName: string
+}
+
+/** Check a first and last name against the saved ones: both required, 50 characters each. */
+export function checkPersonName(typed: PersonName, saved: PersonName): DisplayNameCheck {
+  const first = typed.firstName.trim()
+  const last = typed.lastName.trim()
+  const changed = first !== saved.firstName.trim() || last !== saved.lastName.trim()
+  if (!first) return { changed, error: 'Enter your first name.' }
+  if (!last) return { changed, error: 'Enter your last name.' }
+  if (first.length > 50 || last.length > 50) return { changed, error: 'Each name must be 50 characters or fewer.' }
+  return { changed, error: null }
+}
+
+/**
+ * Best guess at first and last name for prefilling: the saved names, else the
+ * display name split at its last space ("Ana Maria Cruz" -> "Ana Maria" / "Cruz").
+ */
+export function initialPersonName(user: { firstName?: string | null; lastName?: string | null; displayName?: string | null }): PersonName {
+  if (user.firstName || user.lastName) return { firstName: user.firstName ?? '', lastName: user.lastName ?? '' }
+  const display = (user.displayName ?? '').trim().replace(/\s+/g, ' ')
+  if (!display || display.includes('@')) return { firstName: '', lastName: '' }
+  const cut = display.lastIndexOf(' ')
+  return cut === -1 ? { firstName: display, lastName: '' } : { firstName: display.slice(0, cut), lastName: display.slice(cut + 1) }
+}
+
 /** The fields of the change-password form. */
 export interface PasswordForm {
   /** True when the account already has a password (Google-only accounts are setting their first). */

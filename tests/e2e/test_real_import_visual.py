@@ -31,6 +31,16 @@ DOCS_DIR = Path("tests/fixtures/import_baselines/documents")
 REF_DIR = Path("tests/fixtures/import_baselines/reference_screenshots")
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 IMPORT_TIMEOUT_S = 240
+# (headers, document id) for every document this run created; deleted when the run ends.
+CREATED: list[tuple[dict, str]] = []
+
+
+def delete_created_documents() -> None:
+    """Delete this run's imported documents so they never pile up in the test account."""
+    for headers, doc_id in CREATED:
+        resp = requests.delete(f"{API}/documents/{doc_id}", headers=headers, timeout=20)
+        print(f"   Cleanup: deleted {doc_id} -> {resp.status_code}")
+    CREATED.clear()
 
 
 def import_and_wait(path: Path, headers: dict) -> str:
@@ -48,6 +58,7 @@ def import_and_wait(path: Path, headers: dict) -> str:
         job = status.json()
         if job["state"] == "done":
             assert job.get("documentId"), f"job finished without a document id: {job}"
+            CREATED.append((headers, job["documentId"]))
             return job["documentId"]
         if job["state"] == "failed":
             raise AssertionError(f"{path.name} import failed: {job.get('error')}")
@@ -198,4 +209,7 @@ def run_real_import_test():
     print("="*60 + "\n")
 
 if __name__ == "__main__":
-    run_real_import_test()
+    try:
+        run_real_import_test()
+    finally:
+        delete_created_documents()

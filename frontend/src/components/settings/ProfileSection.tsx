@@ -2,26 +2,31 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import { Camera, Check, Trash2, UserCog } from 'lucide-react'
 import { api } from '@/services/api'
 import { UserAvatar } from '@/components/UserAvatar'
-import { checkDisplayName, validateAvatarFile } from '@/lib/profileValidation'
+import { checkPersonName, initialPersonName, validateAvatarFile } from '@/lib/profileValidation'
 
 interface ProfileSectionProps {
   userDisplayName: string
+  /** Saved first and last name (Auth metadata); prefilled from the display name when missing. */
+  userFirstName?: string | null
+  userLastName?: string | null
   /** Used for the initials shown when there is no photo. */
   email: string
   avatarUrl: string | null
-  onSaved: (patch: { displayName?: string | null; avatarUrl?: string | null }) => void
+  onSaved: (patch: { displayName?: string | null; firstName?: string | null; lastName?: string | null; avatarUrl?: string | null }) => void
 }
 
-/** Profile photo and display name; the photo uploads at once, the name saves with the button. */
-export function ProfileSection({ userDisplayName, email, avatarUrl, onSaved }: ProfileSectionProps): JSX.Element {
-  const [displayName, setDisplayName] = useState(userDisplayName)
+/** Profile photo and first/last name; the photo uploads at once, the name saves with the button. */
+export function ProfileSection({ userDisplayName, userFirstName, userLastName, email, avatarUrl, onSaved }: ProfileSectionProps): JSX.Element {
+  const [saved, setSaved] = useState(() => initialPersonName({ firstName: userFirstName, lastName: userLastName, displayName: userDisplayName }))
+  const [firstName, setFirstName] = useState(saved.firstName)
+  const [lastName, setLastName] = useState(saved.lastName)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoFeedback, setPhotoFeedback] = useState<{ ok: boolean; text: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const check = checkDisplayName(displayName, userDisplayName)
+  const check = checkPersonName({ firstName, lastName }, saved)
 
   // Leaving with an unsaved name asks first; nothing is asked when the name is untouched.
   useEffect(() => {
@@ -33,7 +38,7 @@ export function ProfileSection({ userDisplayName, email, avatarUrl, onSaved }: P
     return () => window.removeEventListener('beforeunload', warn)
   }, [check.changed])
 
-  /** Save the display name through the server. */
+  /** Save the first and last name through the server (stored in Auth metadata). */
   async function handleSave(e: FormEvent): Promise<void> {
     e.preventDefault()
     if (check.error) {
@@ -43,9 +48,12 @@ export function ProfileSection({ userDisplayName, email, avatarUrl, onSaved }: P
     setSaving(true)
     setFeedback(null)
     try {
-      const res = await api.auth.updateProfile(displayName.trim())
-      onSaved({ displayName: res.user.displayName })
-      setDisplayName(res.user.displayName ?? '')
+      const res = await api.auth.updateProfile({ firstName: firstName.trim(), lastName: lastName.trim() })
+      const next = { firstName: res.user.firstName ?? firstName.trim(), lastName: res.user.lastName ?? lastName.trim() }
+      onSaved({ displayName: res.user.displayName ?? null, ...next })
+      setSaved(next)
+      setFirstName(next.firstName)
+      setLastName(next.lastName)
       setFeedback({ ok: true, text: 'Name saved.' })
     } catch (err) {
       setFeedback({ ok: false, text: err instanceof Error ? err.message : 'Could not save your name. Please try again.' })
@@ -133,22 +141,39 @@ export function ProfileSection({ userDisplayName, email, avatarUrl, onSaved }: P
       </div>
 
       <form onSubmit={(e) => { void handleSave(e) }} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <label htmlFor="display-name" className="text-sm text-muted-foreground">
-            Display name
-          </label>
-          <input
-            id="display-name"
-            type="text"
-            value={displayName}
-            onChange={(e) => { setDisplayName(e.target.value); setFeedback(null) }}
-            maxLength={100}
-            placeholder="Your name"
-            aria-invalid={check.error ? true : undefined}
-            className="settings-input max-w-sm w-full"
-          />
-          <p className="text-xs text-muted-foreground">Shown to people you share documents with.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
+          <div className="flex flex-col gap-2">
+            <label htmlFor="first-name" className="text-sm text-muted-foreground">
+              First name
+            </label>
+            <input
+              id="first-name"
+              type="text"
+              value={firstName}
+              autoComplete="given-name"
+              onChange={(e) => { setFirstName(e.target.value); setFeedback(null) }}
+              maxLength={50}
+              aria-invalid={check.changed && check.error ? true : undefined}
+              className="settings-input w-full"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="last-name" className="text-sm text-muted-foreground">
+              Last name
+            </label>
+            <input
+              id="last-name"
+              type="text"
+              value={lastName}
+              autoComplete="family-name"
+              onChange={(e) => { setLastName(e.target.value); setFeedback(null) }}
+              maxLength={50}
+              aria-invalid={check.changed && check.error ? true : undefined}
+              className="settings-input w-full"
+            />
+          </div>
         </div>
+        <p className="text-xs text-muted-foreground -mt-2">Shown to your professors and to people you share documents with.</p>
 
         {feedback && (
           <p role={feedback.ok ? 'status' : 'alert'} className={`text-sm flex items-center gap-1.5 ${feedback.ok ? 'text-green-600' : 'text-destructive'}`}>

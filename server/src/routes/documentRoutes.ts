@@ -5,6 +5,7 @@ import * as shareController from '../controllers/shareController'
 import * as documentOpenController from '../controllers/documentOpenController'
 import * as documentPinController from '../controllers/documentPinController'
 import * as documentGenreController from '../controllers/documentGenreController'
+import * as documentFeedbackController from '../controllers/documentFeedbackController'
 import { validateBody, validateParams, validateQuery } from '../middleware/validate'
 import {
   createDocumentSchema,
@@ -85,6 +86,9 @@ router.post('/:id/pin', validateParams(documentIdParamSchema), documentPinContro
 router.delete('/:id/pin', validateParams(documentIdParamSchema), documentPinController.unpin)
 
 router.get('/:id', documentController.getDocument)
+
+/** The professor's grade, rubric and comments on a submission (its owner or the reviewing professor). */
+router.get('/:id/feedback', validateParams(documentIdParamSchema), documentFeedbackController.getFeedback)
 
 /** Genre partition for personalization: structural auto-detection and manual override. */
 router.post('/:id/genre/detect', validateParams(documentIdParamSchema), validateBody(detectGenreSchema), documentGenreController.detectGenre)

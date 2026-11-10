@@ -35,6 +35,8 @@ export interface UserAuthData {
   /** Mock subscription plan; drives the Pro badge. */
   plan?: Plan
   displayName?: string | null
+  firstName?: string | null
+  lastName?: string | null
   /** Link to the profile photo, or null/undefined to show initials. */
   avatarUrl?: string | null
 }
@@ -161,7 +163,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         prev.role === status.role &&
         prev.verificationStatus === status.verificationStatus &&
         (prev.requestedRole ?? null) === (status.requestedRole ?? null) &&
-        (prev.plan ?? 'free') === (status.plan ?? 'free')
+        (prev.plan ?? 'free') === (status.plan ?? 'free') &&
+        (status.firstName === undefined || (prev.firstName ?? null) === status.firstName) &&
+        (status.lastName === undefined || (prev.lastName ?? null) === status.lastName)
       ) {
         return prev
       }
@@ -171,6 +175,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verificationStatus: status.verificationStatus,
         requestedRole: status.requestedRole ?? null,
         plan: status.plan ?? 'free',
+        ...(status.firstName !== undefined ? { firstName: status.firstName, lastName: status.lastName ?? null } : {}),
+        ...(status.displayName ? { displayName: status.displayName } : {}),
       }
       localStorage.setItem('authUser', JSON.stringify(next))
       return next

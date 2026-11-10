@@ -39,11 +39,6 @@ declare module '@tiptap/core' {
       setSuggestionPreview: (preview: PreviewSpec | null) => ReturnType
     }
   }
-
-  interface EditorEvents {
-    /** Fired when the pulsing suggestion outline is clicked; rect is in viewport space. */
-    'suggestion-overlay-click': { range: OutlineRange; rect: DOMRect }
-  }
 }
 
 /** Wrapper class for the pulsing suggestion outline. */
@@ -163,7 +158,6 @@ export const SuggestionDecorationsExtension = Extension.create({
   },
 
   addProseMirrorPlugins() {
-    const editor = this.editor
     const key = suggestionKey
 
     return [
@@ -199,17 +193,10 @@ export const SuggestionDecorationsExtension = Extension.create({
           },
         },
         props: {
+          // Purely visual: suggestions are reviewed in the side panel, so a click on the
+          // outlined text places the caret like anywhere else.
           decorations(state) {
             return key.getState(state)?.decorations ?? DecorationSet.empty
-          },
-          handleClick(view, _pos, event) {
-            const target = event.target as Element
-            const wrapper = target.closest?.(`.${SUGGESTION_CLASS}`) as HTMLElement | null
-            if (!wrapper) return false
-            const range = key.getState(view.state)?.ranges.suggestion
-            if (!range) return false
-            editor.emit('suggestion-overlay-click', { range, rect: wrapper.getBoundingClientRect() })
-            return true
           },
         },
       }),

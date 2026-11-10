@@ -22,6 +22,37 @@ def extract_paragraphs(html_content: str, min_length: int = 50) -> List[Tuple[in
     return _extract(html_content, min_length)
 
 
+# Words that carry no topic: dropped before comparing which words two paragraphs share.
+_STOP_WORDS = frozenset(
+    "a an the and or but if of to in on at by for with from as is are was were be been being this that "
+    "these those it its their there they them he she his her we our you your i me my not no so such than "
+    "then too very can may might must will would should could do does did has have had which who whom whose "
+    "what when where why how into over under about after before during while also more most other some any "
+    "each all both only own same just because through between".split()
+)
+_SUFFIXES = ("ations", "ation", "ingly", "ing", "edly", "ed", "ies", "es", "s", "ly", "er", "est", "ment", "ness")
+
+
+def _stem(word: str) -> str:
+    """Crude suffix stripping so "relying"/"reliance"-style variants of a word meet."""
+    for suffix in _SUFFIXES:
+        if len(word) > len(suffix) + 3 and word.endswith(suffix):
+            return word[: -len(suffix)]
+    return word
+
+
+def content_words(text: str) -> Set[str]:
+    """The stemmed topic words of a paragraph (no stop words, nothing under 3 letters)."""
+    return {_stem(word) for word in re.findall(r"[a-z]+", text.lower()) if len(word) > 2 and word not in _STOP_WORDS}
+
+
+def word_containment(a: Set[str], b: Set[str]) -> float:
+    """Share of the smaller paragraph's topic words that the other one also uses (0-1)."""
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
+
+
 class MatchType(Enum):
     VERBATIM = "verbatim"
     PARAPHRASED = "paraphrased"
@@ -44,6 +75,13 @@ class TriageConfig:
     min_paragraph_length: int = 50
     verbatim_threshold: float = 0.95
     paraphrase_threshold: float = 0.80
+    # A paraphrase keeps most of the source's topic words while changing their order and
+    # wording, which the character ratio misses. Tuned on tests/python/plagiarism_corpus.py:
+    # paraphrases share 0.52-0.86 of their topic words with the source, same-topic and
+    # same-template originals at most 0.29.
+    word_containment_threshold: float = 0.45
+    # Short paragraphs share words by chance; the word signal needs at least this many.
+    min_content_words: int = 8
     max_local_matches_per_doc: int = 50
     
     # Stage 2: Context windowing
@@ -275,9 +313,11 @@ class TriageFilter:
         peers: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        Stage 1 (peers mode): lexical pre-filter with difflib.
-        Candidate matches come from direct string comparison against every
-        paragraph of every peer document.
+        Stage 1 (peers mode): lexical pre-filter.
+        Each paragraph is compared with every peer paragraph two ways: the
+        character ratio (difflib, catches copies and light edits) and how many
+        of its topic words the peer paragraph also uses (catches paraphrases
+        that reword and reorder). Either one past its threshold flags it.
         """
         import difflib
 
@@ -295,22 +335,38 @@ class TriageFilter:
                     'document_id': peer_id,
                     'user_id': peer_user,
                     'text': text,
+                    'words': content_words(text),
                 })
 
         if not peer_paragraphs:
             return []
 
         flagged: List[Dict[str, Any]] = []
+        word_floor = self.config.word_containment_threshold
         for (para_idx, text, char_start, char_end) in paragraphs:
+            words = content_words(text)
+            words_count = len(words) >= self.config.min_content_words
             best_ratio = 0.0
+            best_score = 0.0
             best_peer: Optional[Dict[str, Any]] = None
             for peer_para in peer_paragraphs:
-                ratio = difflib.SequenceMatcher(None, text, peer_para['text']).ratio()
-                if ratio > best_ratio:
+                # autojunk off: with it on, any paragraph over 200 characters treats spaces
+                # and common letters as junk, and a light edit drops from ~0.92 to ~0.6.
+                matcher = difflib.SequenceMatcher(None, text, peer_para['text'], autojunk=False)
+                # quick_ratio() is an upper bound, so the exact ratio is only worked out when it can matter.
+                ratio = matcher.ratio() if matcher.quick_ratio() >= self.config.paraphrase_threshold else 0.0
+                containment = word_containment(words, peer_para['words']) if words_count and len(peer_para['words']) >= self.config.min_content_words else 0.0
+                # Each signal only counts once it passes its own threshold.
+                score = max(
+                    ratio if ratio >= self.config.paraphrase_threshold else 0.0,
+                    containment if containment >= word_floor else 0.0,
+                )
+                if score > best_score:
+                    best_score = score
                     best_ratio = ratio
                     best_peer = peer_para
 
-            if best_peer is None or best_ratio < self.config.paraphrase_threshold:
+            if best_peer is None:
                 continue
 
             if best_ratio >= self.config.verbatim_threshold:
@@ -328,7 +384,7 @@ class TriageFilter:
                 'char_end': char_end,
                 'matched_document_id': best_peer['document_id'],
                 'matched_student_id': best_peer['user_id'],
-                'similarity_score': round(best_ratio, 4),
+                'similarity_score': round(best_score, 4),
                 'match_type': match_type.value,
                 'match_severity': severity.value,
                 'source_excerpt': best_peer['text'][:500],

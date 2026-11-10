@@ -15,16 +15,18 @@ import {
   SpellCheck2,
   Wand2,
   HelpCircle,
+  GraduationCap,
 } from 'lucide-react'
 import AIChatbot from './AIChatbot'
 import HistoryPanel from './HistoryPanel'
-import type { DocumentVersion } from '@/services/api'
+import type { DocumentFeedback, DocumentVersion } from '@/services/api'
+import { FeedbackPanel, hasFeedback } from './FeedbackPanel'
 import { FORMAT_LABELS, formatLabel } from './SuggestionPanel'
 import type { ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import type { GrammarIssue } from './GrammarPanel'
 import type { Suggestion } from './SuggestionPanel'
 
-export type SidePanelTab = 'assistant' | 'suggestions' | 'tools' | 'history'
+export type SidePanelTab = 'assistant' | 'suggestions' | 'tools' | 'history' | 'feedback'
 
 type QueueView = 'all' | 'formatting' | 'grammar'
 
@@ -104,6 +106,8 @@ interface EditorSidePanelProps {
   compact?: boolean
   /** Switches the document to an academic preset when the assistant's preset preview is applied. */
   onApplyPreset?: (presetKey: string) => void
+  /** The professor's grade and comments on this submission; the Feedback tab shows when there are any. */
+  feedback?: DocumentFeedback | null
 }
 
 /** Read the remembered suggestion view, defaulting to formatting. */
@@ -151,7 +155,9 @@ export default function EditorSidePanel({
   onOpenHelp,
   compact = false,
   onApplyPreset,
+  feedback = null,
 }: EditorSidePanelProps): JSX.Element {
+  const showFeedback = hasFeedback(feedback)
   const suggestionCount = scannerSuggestions.length + mlSuggestions.length
 
   const asideStyle = compact
@@ -282,6 +288,15 @@ export default function EditorSidePanel({
               onClick={() => onTabChange('history')}
             />
           )}
+          {showFeedback && (
+            <TabButton
+              active={activeTab === 'feedback'}
+              icon={<GraduationCap style={{ width: '14px', height: '14px' }} />}
+              label="Feedback"
+              count={feedback.comments.length + (feedback.review ? 1 : 0)}
+              onClick={() => onTabChange('feedback')}
+            />
+          )}
         </div>
 
         {/* Tab content */}
@@ -299,6 +314,7 @@ export default function EditorSidePanel({
               docked
             />
           </div>
+          {activeTab === 'feedback' && showFeedback && <FeedbackPanel feedback={feedback} />}
           {activeTab === 'history' && !readOnly && (
             <HistoryPanel
               documentId={documentId}
@@ -659,7 +675,7 @@ function AllView({
         summary: (
           <>
             <span style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600 }}>{s.label ?? FORMAT_LABELS[s.format] ?? s.format}</span>
-            <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>“{s.preview}”</span>
+            <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.detail ?? `“${s.preview}”`}</span>
           </>
         ),
         details: <FormattingDetails review={review} cardKey={s.key} fallbackLabel={s.label ?? FORMAT_LABELS[s.format] ?? s.format} />,
@@ -849,17 +865,12 @@ function FormattingDetails({ review, cardKey, fallbackLabel }: { review: Suggest
       <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', lineHeight: 1.45, color: 'var(--muted-foreground)' }}>
         {ready ? (active.reason ?? 'Suggested from the document’s structure and your formatting habits.') : 'Opening this suggestion in the document…'}
       </p>
+      {/* A merged card covers several blocks: its one Accept fixes them all (one undo step). */}
       <CardActions
         disabled={!ready}
         onAccept={review.onAcceptFormatting}
         onDismiss={review.onDismissFormatting}
-        extra={
-          ready && active.similarCount > 0 ? (
-            <button type="button" onClick={review.onAcceptAllFormatting} style={{ ...actionButton, backgroundColor: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)' }}>
-              <Check style={{ width: 13, height: 13 }} /> Accept all ({active.similarCount + 1})
-            </button>
-          ) : undefined
-        }
+        acceptLabel={ready && active.similarCount > 0 ? `Accept all ${active.similarCount + 1}` : 'Accept'}
       />
     </div>
   )
@@ -941,7 +952,7 @@ function FormattingView({
               <>
                 <CardHeader title={s.label ?? FORMAT_LABELS[s.format] ?? s.format} badge={`Page ${s.pageNumber}`} confidence={s.confidence} />
                 <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  “{s.preview}”{members > 0 ? ` and ${members} similar` : ''}
+                  {s.detail ?? `“${s.preview}”${members > 0 ? ` and ${members} similar` : ''}`}
                 </span>
               </>
             }
@@ -1038,10 +1049,11 @@ interface CardHeaderProps {
 
 function CardHeader({ title, badge, confidence, hideBadge = false }: CardHeaderProps): JSX.Element {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.375rem' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.375rem' }}>
+      {/* The title wraps instead of cutting off: labels are short sentences that need reading in full. */}
       <span
         title={title}
-        style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+        style={{ fontSize: '0.8125rem', fontWeight: 600, lineHeight: 1.35, color: 'var(--foreground)', overflowWrap: 'anywhere', minWidth: 0 }}
       >
         {title}
       </span>

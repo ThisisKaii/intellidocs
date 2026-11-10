@@ -15,6 +15,8 @@ export interface FormatSuggestion {
   /** Block CSS a styling suggestion sets (line-height, text-indent, margin-top/bottom). */
   blockStyle?: Record<string, string>
   suggestionSource?: 'learned' | 'ml'
+  /** What the fix matches, in plain words ("Matches the rest of your body text"). */
+  detail?: string
   /** Format group ID — shared by similar text patterns (e.g., researcher names). */
   formatGroup?: string
   /** Other nodes in the same format group. */

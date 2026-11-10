@@ -2,6 +2,7 @@ import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { ClassEnrollment, Document, Folder, FolderType } from '../types/index'
 import { listDocuments } from './documentModel'
+import { readAccountNames } from '../utils/accountNames'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -34,7 +35,7 @@ async function getAuthDirectory(): Promise<Map<string, { email: string | null; d
     for (const user of data?.users || []) {
       directory.set(user.id, {
         email: user.email ?? null,
-        displayName: (user.user_metadata?.display_name as string | undefined) ?? null,
+        displayName: readAccountNames(user.user_metadata).displayName,
       })
     }
 
@@ -668,7 +669,7 @@ export async function submitDocumentToClass(
     supabase.auth.admin.getUserById(studentId),
   ])
   const studentName =
-    (authUser?.user?.user_metadata?.display_name as string | undefined) ??
+    readAccountNames(authUser?.user?.user_metadata).displayName ??
     authUser?.user?.email?.split('@')[0] ??
     'Student'
   const name = submissionFolderName(studentName, (profile?.student_id as string | null) ?? null, (doc?.title as string | undefined) ?? '')
@@ -846,7 +847,7 @@ export async function joinClassByCode(userId: string, rawCode: string): Promise<
   }
 
   const { data: authUser } = await supabase.auth.admin.getUserById(userId)
-  const displayName = (authUser?.user?.user_metadata?.display_name as string | undefined) ?? null
+  const displayName = readAccountNames(authUser?.user?.user_metadata).displayName
   await provisionStudentWorkspaceFolder(userId, found, displayName, authUser?.user?.email ?? null)
 
   return { classFolder: { ...found, join_code: null }, alreadyEnrolled: Boolean(existing) }

@@ -11,6 +11,7 @@ Verifies:
 6. Checks category preset settings in the suggestions panel.
 """
 
+import sys
 import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -164,16 +165,16 @@ def run_test():
 
         # ── Step 4: Verify Presets Tab ───────────────────────────────────────
         print("\n=== STEP 4: Inspecting Preset Category UI ===")
-        page.click("button:has-text('Suggestions')")
+        # Academic presets live in the ribbon's Styles tab as a strip of buttons.
+        page.click("button[title='Styles and academic presets']")
         page.wait_for_timeout(800)
 
-        preset_select = page.locator("select:has(option:has-text('UCLM')), select:has(option:has-text('APA'))").first
-        if preset_select.is_visible():
-            current_preset = preset_select.input_value()
-            results["active_preset"] = f"PASS ({current_preset})"
-            print(f"  Active Preset: {current_preset}")
+        presets = page.locator("button", has_text="UCLM Capstone")
+        if presets.first.is_visible():
+            results["active_preset"] = "PASS (academic presets listed in Styles tab)"
+            print("  Academic presets visible in Styles tab")
         else:
-            results["active_preset"] = "WARN (dropdown not found)"
+            results["active_preset"] = "FAIL (academic presets not found in Styles tab)"
 
         screenshot(page, "chatbot_flow_presets")
 
@@ -188,6 +189,8 @@ def run_test():
 
         browser.close()
 
+    return 1 if any(val.startswith("FAIL") for val in results.values()) else 0
+
 
 if __name__ == "__main__":
-    run_test()
+    sys.exit(run_test())

@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { getClassSubmissionLinks } from './folderModel'
+import { readAccountNames } from '../utils/accountNames'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -94,7 +95,7 @@ async function resolveStudentName(studentId: string): Promise<string> {
     if (error || !data?.user) throw error ?? new Error('User not found')
     const user = data.user
     return (
-      (user.user_metadata?.display_name as string | undefined) ??
+      readAccountNames(user.user_metadata).displayName ??
       user.email?.split('@')[0] ??
       `Student ${studentId.slice(0, 8)}`
     )

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink, Loader2, X } from 'lucide-react'
 import { api, type DocumentComment, type DocumentReview } from '@/services/api'
+import { EMPTY_RUBRIC, parseRubric, RUBRIC_CRITERIA, RUBRIC_MAX, rubricToDraft, rubricTotal, type RubricDraft } from '@/lib/rubric'
+import { CommentThread } from './CommentThread'
 
 export interface GradeTarget {
   documentId: string
@@ -22,6 +24,7 @@ interface GradeDrawerProps {
 export function GradeDrawer({ target, onClose, onGraded }: GradeDrawerProps): JSX.Element {
   const [grade, setGrade] = useState('')
   const [notes, setNotes] = useState('')
+  const [rubric, setRubric] = useState<RubricDraft>({ ...EMPTY_RUBRIC })
   const [comments, setComments] = useState<DocumentComment[]>([])
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
@@ -38,23 +41,37 @@ export function GradeDrawer({ target, onClose, onGraded }: GradeDrawerProps): JS
       if (cancelled) return
       setGrade(review?.grade != null ? String(review.grade) : '')
       setNotes(review?.notes ?? '')
+      setRubric(rubricToDraft(review?.rubric))
       setComments(existing)
       setLoading(false)
     })
     return () => { cancelled = true }
   }, [target.documentId])
 
-  /** Save the grade and notes; the grade must be a number from 0 to 100. */
+  /** A rubric score changed: once all four are filled, they fill in the overall grade. */
+  function setCriterion(key: keyof RubricDraft, value: string): void {
+    const next = { ...rubric, [key]: value }
+    setRubric(next)
+    const parsed = parseRubric(next)
+    if (parsed.rubric) setGrade(String(rubricTotal(parsed.rubric)))
+  }
+
+  /** Save the grade, rubric and notes; the grade must be a number from 0 to 100. */
   async function saveGrade(): Promise<void> {
     const value = Number(grade)
     if (grade.trim() === '' || !Number.isFinite(value) || value < 0 || value > 100) {
       setError('Enter a grade between 0 and 100')
       return
     }
+    const parsed = parseRubric(rubric)
+    if (parsed.error) {
+      setError(parsed.error)
+      return
+    }
     setSaving(true)
     setError('')
     try {
-      const review = await api.professor.submitGrade(target.documentId, target.studentId, value, notes.trim() || undefined)
+      const review = await api.professor.submitGrade(target.documentId, target.studentId, value, notes.trim() || undefined, parsed.rubric ?? undefined)
       onGraded(target.documentId, review)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the grade')
@@ -96,6 +113,26 @@ export function GradeDrawer({ target, onClose, onGraded }: GradeDrawerProps): JS
           <div className="flex justify-center py-10"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
         ) : (
           <>
+            <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+              <legend className="mb-1 text-sm font-medium">Rubric <span className="font-normal text-muted-foreground">(0-{RUBRIC_MAX} each, optional)</span></legend>
+              <div className="grid grid-cols-2 gap-2">
+                {RUBRIC_CRITERIA.map(({ key, label, hint }) => (
+                  <label key={key} className="flex flex-col gap-1 text-xs" title={hint}>
+                    <span className="font-medium text-foreground">{label}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={RUBRIC_MAX}
+                      step="0.5"
+                      aria-label={`${label} score`}
+                      value={rubric[key]}
+                      onChange={(e) => setCriterion(key, e.target.value)}
+                      className="settings-input h-9 w-full"
+                    />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <div className="flex flex-col gap-2">
               <label htmlFor="grade-value" className="text-sm font-medium">Grade (0-100)</label>
               <input id="grade-value" type="number" min={0} max={100} value={grade} onChange={(e) => setGrade(e.target.value)} className="settings-input h-10 w-32" />
@@ -108,13 +145,8 @@ export function GradeDrawer({ target, onClose, onGraded }: GradeDrawerProps): JS
 
             <div className="flex flex-col gap-2 border-t border-border pt-4">
               <h3 className="text-sm font-semibold">Comments</h3>
-              {comments.length === 0 && <p className="text-sm text-muted-foreground">No comments yet.</p>}
-              {comments.map((comment) => (
-                <div key={comment.comment_id} className="rounded-lg border border-border bg-background p-3 text-sm">
-                  {comment.highlighted_text && <p className="mb-1 border-l-2 border-border pl-2 text-xs italic text-muted-foreground">{comment.highlighted_text}</p>}
-                  {comment.comment}
-                </div>
-              ))}
+              <p className="m-0 text-xs text-muted-foreground">The student sees these, with your name and the time, in the document's Feedback tab.</p>
+              <CommentThread comments={comments} />
               <textarea aria-label="New comment" rows={2} value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Write a comment on this submission" className="settings-input resize-none" />
               <button type="button" onClick={() => { void postComment() }} disabled={!newComment.trim()} className="h-9 w-fit rounded-md border border-border px-4 text-sm font-medium hover:bg-secondary disabled:opacity-50">
                 Add comment

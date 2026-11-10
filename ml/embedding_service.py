@@ -137,6 +137,33 @@ def _is_matter_heading(text: str) -> bool:
     return bool(_MATTER_HEADING.match(normalized) or _MATTER_HEADING.match(_HEADING_NUMBER.sub("", normalized, count=1)))
 
 
+# Level given to a heading written as a short all-bold paragraph ("<p><strong>REFERENCES</strong></p>"),
+# the way imported theses often mark sections. It is below every real heading, so an <h1>-<h6>
+# always closes its section, and only another bold-paragraph heading can.
+_BOLD_PARAGRAPH_LEVEL = 7
+_BOLD_STYLE = re.compile(r"font-weight\s*:\s*(bold|[6-9]00)", re.I)
+
+
+def _is_bold_heading_paragraph(elem, text: str) -> bool:
+    """A short paragraph whose whole text is bold: a heading written as a paragraph."""
+    if not text or len(text) > 80:
+        return False
+    if _BOLD_STYLE.search(elem.get("style", "") or ""):
+        return True
+    bold_text = " ".join(
+        node.get_text(" ", strip=True)
+        for node in elem.find_all(["strong", "b"])
+        if not node.find_parent(["strong", "b"]) or node.find_parent(["strong", "b"]) is elem
+    )
+    bold_text = " ".join(bold_text.split())
+    if bold_text == " ".join(text.split()):
+        return True
+    styled = " ".join(
+        node.get_text(" ", strip=True) for node in elem.find_all(style=_BOLD_STYLE)
+    )
+    return " ".join(styled.split()) == " ".join(text.split())
+
+
 def extract_paragraphs(html_content: str, min_length: int = 50) -> List[Tuple[int, str, int, int]]:
     """
     Extract paragraphs from HTML content.
@@ -168,15 +195,25 @@ def extract_paragraphs(html_content: str, min_length: int = 50) -> List[Tuple[in
                 matter_level = None
             continue
 
-        if matter_level is not None:
-            continue
-
         # Containers holding other blocks are represented by those blocks, so
         # nested text (li > p, td > p, div > p) is only extracted once.
         if elem.find(blocks) is not None:
             continue
 
         text = elem.get_text(' ', strip=True)
+
+        # A heading written as a bold paragraph opens or closes a section like <hN> does.
+        if elem.name == 'p' and _is_bold_heading_paragraph(elem, text):
+            if _is_matter_heading(text):
+                if matter_level is None or _BOLD_PARAGRAPH_LEVEL <= matter_level:
+                    matter_level = _BOLD_PARAGRAPH_LEVEL
+                continue
+            if matter_level is not None and _BOLD_PARAGRAPH_LEVEL <= matter_level:
+                matter_level = None
+
+        if matter_level is not None:
+            continue
+
         if len(text) < min_length:
             continue
 

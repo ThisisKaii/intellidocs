@@ -50,6 +50,8 @@ function Register(): JSX.Element {
   const navigate = useNavigate()
   const { login, loginWithGoogle } = useAuth()
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -66,6 +68,10 @@ function Register(): JSX.Element {
     setError('')
     setSuccess('')
 
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('Please enter your first and last name.')
+      return
+    }
     if (!email || !email.includes('@')) {
       setError('Please enter a valid email address.')
       return
@@ -82,12 +88,15 @@ function Register(): JSX.Element {
     setLoading(true)
 
     try {
-      await api.auth.register(email, password)
+      await api.auth.register(email, password, firstName.trim(), lastName.trim())
       const loginResponse = await api.auth.login(email, password)
       login(
         {
           id: loginResponse.user.id,
           email: loginResponse.user.email,
+          displayName: loginResponse.user.displayName ?? null,
+          firstName: loginResponse.user.firstName ?? firstName.trim(),
+          lastName: loginResponse.user.lastName ?? lastName.trim(),
           role: 'student',
           verificationStatus: 'approved',
         },
@@ -306,6 +315,40 @@ function Register(): JSX.Element {
           )}
 
           <form onSubmit={handleSubmit} noValidate>
+            {/* First and last name, side by side */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.11 }}
+              style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}
+            >
+              {([
+                ['reg-first-name', 'First name', firstName, setFirstName, 'given-name'],
+                ['reg-last-name', 'Last name', lastName, setLastName, 'family-name'],
+              ] as const).map(([fieldId, label, value, setValue, autoComplete]) => (
+                <div key={fieldId}>
+                  <label
+                    htmlFor={fieldId}
+                    style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: 'var(--foreground)', marginBottom: '0.4rem' }}
+                  >
+                    {label}
+                  </label>
+                  <input
+                    id={fieldId}
+                    type="text"
+                    required
+                    maxLength={50}
+                    autoComplete={autoComplete}
+                    value={value}
+                    onChange={(event) => setValue(event.target.value)}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
+                    style={inputStyle}
+                  />
+                </div>
+              ))}
+            </motion.div>
+
             {/* Email */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
