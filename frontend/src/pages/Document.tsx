@@ -26,6 +26,7 @@ import TwoColumnPrompt from '@/components/TwoColumnPrompt'
 import DocumentTypePrompt from '@/components/DocumentTypePrompt'
 import { GenreBadge } from '@/components/editor/GenreBadge'
 import { canUsePreset } from '@/lib/presetAccess'
+import { headingLikeLines } from '@/lib/headingLikeLines'
 import { buildGenreSignals, type DocumentGenre, type GenreSource } from '@/lib/genreSignals'
 import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
 import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
@@ -921,12 +922,16 @@ export default function Document(): JSX.Element {
     // Every section the document has (real headings plus bold structural lines
     // such as APPROVAL SHEET or DEDICATION), so the assistant knows what exists
     // even when the text excerpt below is cut short.
-    const outline = extractTOCFromHTML(html).map((entry) => entry.text)
+    // Bold paragraphs that work as section titles ("Statement of the Problem") are listed
+    // too, so the assistant can find and format them by name in long documents.
+    const toc = extractTOCFromHTML(html).map((entry) => entry.text)
+    const seen = new Set(toc.map((text) => text.toLowerCase()))
+    const outline = [...toc, ...headingLikeLines(html).filter((text) => !seen.has(text.toLowerCase()) && Boolean(seen.add(text.toLowerCase())))]
 
     const excerpt = plainText.slice(0, 2500)
     const outlineBlock =
       outline.length > 0
-        ? `\n\nDocument outline:\n- ${outline.slice(0, 60).join('\n- ')}`
+        ? `\n\nDocument outline:\n- ${outline.slice(0, 120).join('\n- ')}`
         : ''
     const truncatedNote =
       plainText.length > 2500
@@ -3543,6 +3548,7 @@ export default function Document(): JSX.Element {
           onFocusEditor={focusEditor}
           onOpenHelp={() => setHelpOpen(true)}
           readOnly={readOnly}
+          onApplyPreset={readOnly ? undefined : (key) => { void handleApplyAcademicPreset(key) }}
           onVersionRestored={(version) => {
             // Push the restored snapshot back into both the editor and the
             // page state so the canvas reflects the restored history point.

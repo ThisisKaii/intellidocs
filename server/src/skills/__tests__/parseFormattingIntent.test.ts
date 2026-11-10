@@ -244,15 +244,25 @@ describe('parseFormattingIntent target modes', () => {
     expect(result.targetMode).toBe('literal')
   })
 
-  it('treats an unquoted section name as the whole section', () => {
+  it('treats an unquoted section name as its title line for title formatting', () => {
     const result = parseFormattingIntent('Change the approval sheet to bold')
     expect(result.target).toBe('approval sheet')
-    expect(result.targetMode).toBe('section')
+    expect(result.targetMode).toBe('heading')
   })
 
-  it('treats chapter references as whole sections', () => {
-    expect(parseFormattingIntent('make chapter two italic').targetMode).toBe('section')
+  it('treats a chapter reference as its title line for title formatting', () => {
+    expect(parseFormattingIntent('make chapter two italic').targetMode).toBe('heading')
     expect(parseFormattingIntent('make chapter two italic').target).toBe('chapter 2')
+  })
+
+  it('covers the whole section when the request says so', () => {
+    expect(parseFormattingIntent('make the entire chapter two italic').targetMode).toBe('section')
+    expect(parseFormattingIntent('bold everything in the approval sheet').targetMode).toBe('section')
+  })
+
+  it('covers the whole section for body changes such as justify or line spacing', () => {
+    expect(parseFormattingIntent('justify chapter 1').targetMode).toBe('section')
+    expect(parseFormattingIntent('double space chapter 2').targetMode).toBe('section')
   })
 
   it('recognises "the title" as the document title', () => {

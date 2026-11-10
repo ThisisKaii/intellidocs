@@ -3,8 +3,8 @@ import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { undoDepth } from '@tiptap/pm/history'
-import { api, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatTargetCategory, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
-import { applyFormatsToRanges, applyFormatsToSelection, findCategoryRanges, findLearnedBlockRanges, resolveTargetRanges, type BlockCategory } from './chatFormatting'
+import { api, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
+import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, resolveTargetRanges, type BlockCategory } from './chatFormatting'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -14,11 +14,15 @@ interface ChatMessage {
   preview_formats?: string[] | null
   preview_scope?: 'selection' | 'all' | null
   preview_target?: string | null
-  preview_target_mode?: 'literal' | 'section' | 'title' | null
+  preview_target_mode?: AIChatTargetMode | null
   preview_target_category?: AIChatTargetCategory | null
   preview_normalize?: boolean | null
   /** Every change of a multi-change preview, applied together in order. */
   preview_operations?: AIChatFormattingOperation[] | null
+  /** Line spacing, first-line indent, font family and letter case of a one-change preview. */
+  preview_style?: AIChatStyleChange | null
+  /** For a preset preview ("Format in APA style"): the preset key Apply switches to. */
+  preview_preset_key?: string | null
   preview_font_size?: number | null
   preview_reason?: string | null
   preview_status?: 'pending' | 'applied' | 'rejected' | null
@@ -84,6 +88,8 @@ interface AIChatbotProps {
   onFocusEditor?: () => void
   /** Render embedded inside a docked panel (no floating button, panel fills parent). */
   docked?: boolean
+  /** Switch the document to an academic preset (page setup, body and heading styles). */
+  onApplyPreset?: (presetKey: string) => void
 }
 
 /** Text-align values for the align_* formats, keyed by format name. */
@@ -109,9 +115,22 @@ interface PlannedChange {
   scope: 'selection' | 'all'
   fontSize?: number
   target: string | null
-  targetMode: 'literal' | 'section' | 'title' | null
+  targetMode: AIChatTargetMode | null
   targetCategory: AIChatTargetCategory | null
   normalize: boolean
+  style: AIChatStyleChange | null
+}
+
+/** Words for the style part of a change: "double spacing", "Times New Roman", "0.5in first-line indent". */
+function styleLabels(style: AIChatStyleChange | null): string[] {
+  if (!style) return []
+  const labels: string[] = []
+  if (style.fontFamily) labels.push(style.fontFamily)
+  if (style.lineSpacing !== null) labels.push(style.lineSpacing === 2 ? 'double spacing' : style.lineSpacing === 1 ? 'single spacing' : `${style.lineSpacing} line spacing`)
+  if (style.firstLineIndentIn !== null) labels.push(`${style.firstLineIndentIn}in first-line indent`)
+  if (style.textCase === 'upper') labels.push('ALL CAPITALS')
+  if (style.textCase === 'title') labels.push('Title Case')
+  return labels
 }
 
 /** How each block category reads in an "applied" note. */
@@ -120,6 +139,7 @@ const CATEGORY_NOTES: Record<BlockCategory, string> = {
   sections: 'every section heading',
   chapters: 'every chapter heading',
   paragraphs: 'all body paragraphs',
+  questions: 'the research questions',
 }
 
 /** Floating AI chatbot for natural language document help. */
@@ -132,6 +152,7 @@ export default function AIChatbot({
   onFeedbackLogged,
   onFocusEditor,
   docked = false,
+  onApplyPreset,
 }: AIChatbotProps): JSX.Element {
   const [open, setOpen] = useState<boolean>(docked)
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredChat(documentId))
@@ -221,6 +242,7 @@ export default function AIChatbot({
     if (msg.preview_operations && msg.preview_operations.length > 1) {
       return `${msg.preview_operations.length} changes in one go`
     }
+    if (msg.preview_preset_key) return msg.preview_reason?.replace(/^Applies the (.+?) preset.*$/, '$1 preset') ?? 'Academic preset'
     const parts: string[] = []
     if (msg.preview_normalize) parts.push('Clear formatting')
     const formats =
@@ -233,6 +255,7 @@ export default function AIChatbot({
       if (!msg.preview_normalize) parts.push(formatPreviewLabel(format))
     }
     if (msg.preview_font_size) parts.push(`font size ${msg.preview_font_size}pt`)
+    parts.push(...styleLabels(msg.preview_style ?? null))
     if (parts.length === 0) parts.push(describePreviewText(msg))
     return parts.join(' + ')
   }
@@ -250,6 +273,7 @@ export default function AIChatbot({
     if (msg.preview_scope === 'all') {
       if (msg.preview_target && msg.preview_target_mode === 'literal') return `— the words “${msg.preview_target}”`
       if (msg.preview_target && msg.preview_target_mode === 'title') return '— the document title'
+      if (msg.preview_target && msg.preview_target_mode === 'heading') return `— the “${msg.preview_target}” heading line`
       if (msg.preview_target) {
         const words = msg.preview_target.split(' ')
         const capitalized = words
@@ -260,6 +284,7 @@ export default function AIChatbot({
       if (msg.preview_target_category === 'headings') return '— all headings'
       if (msg.preview_target_category === 'chapters') return '— every chapter heading'
       if (msg.preview_target_category === 'sections') return '— every section heading'
+      if (msg.preview_target_category === 'questions') return '— the research questions'
       if (msg.preview_target_category === 'paragraphs') return '— all body paragraphs'
       return '— entire document'
     }
@@ -296,8 +321,8 @@ export default function AIChatbot({
     return { tool, args }
   }
 
-  /** Apply set-semantics marks + font size across the whole document. */
-  function applyBulkFormats(formats: string[], fontSize?: number): void {
+  /** Apply set-semantics marks + font size (and line spacing, indent, font, case) across the whole document. */
+  function applyBulkFormats(formats: string[], fontSize?: number, style?: AIChatStyleChange | null): void {
     if (!editor || editor.isDestroyed) return
     let chain = editor.chain().focus().selectAll()
     for (const format of formats) {
@@ -311,6 +336,7 @@ export default function AIChatbot({
     // pass over the same range.
     const align = alignmentOf(formats)
     if (align) editor.chain().focus().selectAll().setTextAlign(align).run()
+    if (hasStyle(style)) applyStyle(editor, { from: 0, to: editor.state.doc.content.size }, style)
     // Collapse the selection so subsequent typing isn't auto-formatted.
     editor.commands.setTextSelection(editor.state.doc.content.size)
   }
@@ -323,10 +349,11 @@ export default function AIChatbot({
     category: BlockCategory,
     formats: string[],
     fontSize?: number,
-    normalize = false
+    normalize = false,
+    style?: AIChatStyleChange | null
   ): void {
     if (!editor || editor.isDestroyed) return
-    applyFormatsToRanges(editor, findCategoryRanges(editor.state.doc, category), formats, fontSize, normalize)
+    applyFormatsToRanges(editor, findCategoryRanges(editor.state.doc, category), formats, fontSize, normalize, style)
     // Collapse the selection so subsequent typing isn't auto-formatted.
     editor.commands.setTextSelection(editor.state.doc.content.size)
   }
@@ -342,12 +369,18 @@ export default function AIChatbot({
     mode: ChatMessage['preview_target_mode'],
     formats: string[],
     fontSize?: number,
-    normalize = false
+    normalize = false,
+    style?: AIChatStyleChange | null
   ): number {
     if (!editor || editor.isDestroyed) return 0
-    const ranges = resolveTargetRanges(editor.state.doc, target, mode ?? 'section')
+    const found = resolveTargetRanges(editor.state.doc, target, mode ?? 'section')
+    // A heading request on quoted words means the line that IS those words,
+    // not every sentence that mentions them.
+    const ranges = mode === 'literal' && formats.some((format) => /^(?:heading[123]|h[123])$/.test(format))
+      ? preferWholeBlocks(editor.state.doc, found)
+      : found
     if (ranges.length === 0) return 0
-    applyFormatsToRanges(editor, ranges, formats, fontSize, normalize)
+    applyFormatsToRanges(editor, ranges, formats, fontSize, normalize, style)
     // Put the caret at the start of the first match and scroll it into view so
     // the change is visible without the user hunting for it.
     const first = Math.min(...ranges.map((range) => range.from))
@@ -378,6 +411,7 @@ export default function AIChatbot({
     if (change.normalize) parts.push('Clear formatting')
     for (const format of change.formats) parts.push(formatPreviewLabel(format))
     if (change.fontSize) parts.push(`size ${change.fontSize}pt`)
+    parts.push(...styleLabels(change.style))
     if (parts.length === 0) parts.push(formatPreviewLabel(fallbackFormat))
     return parts
   }
@@ -385,26 +419,26 @@ export default function AIChatbot({
   /** Apply one change of a preview to the editor and describe what happened. */
   function applyChange(change: PlannedChange, fallbackFormat: string): string {
     if (!editor || editor.isDestroyed) return ''
-    const { formats, scope, fontSize, target, targetCategory, normalize } = change
+    const { formats, scope, fontSize, target, targetCategory, normalize, style } = change
     const scopeNote =
       scope === 'all' && targetCategory && targetCategory !== 'all' ? ` (${CATEGORY_NOTES[targetCategory]})` : ''
 
     let targetWarning = ''
     if (target && scope === 'all') {
-      const places = applyFormatsToTarget(target, change.targetMode, formats, fontSize, normalize)
+      const places = applyFormatsToTarget(target, change.targetMode, formats, fontSize, normalize, style)
       if (places === 0) targetWarning = ` (could not find "${target}" in the document)`
       else if (change.targetMode === 'literal' && places > 1) targetWarning = ` (${places} places)`
     } else if (scope === 'all' && targetCategory && targetCategory !== 'all') {
-      applyFormatsToBlocks(targetCategory, formats, fontSize, normalize)
+      applyFormatsToBlocks(targetCategory, formats, fontSize, normalize, style)
     } else if (normalize) {
       applyNormalize(scope, fontSize)
     } else if (scope === 'all') {
-      applyBulkFormats(formats, fontSize)
+      applyBulkFormats(formats, fontSize, style)
     } else {
       onFocusEditor?.()
       // With nothing selected this formats the block the cursor is in, so the
       // change lands on something visible without highlighting first.
-      applyFormatsToSelection(editor, formats, fontSize)
+      applyFormatsToSelection(editor, formats, fontSize, style)
     }
 
     return `${describeChangeParts(change, fallbackFormat).join(' + ')}${target && scope === 'all' ? ` on “${target}”` : ''}${scopeNote}${targetWarning}`
@@ -415,6 +449,16 @@ export default function AIChatbot({
     if (!editor) return
     if (msg.preview_learned) {
       applyLearnedPlaces(messageIndex, msg.preview_learned)
+      return
+    }
+    // "Format in APA style": the editor switches the whole document to the preset.
+    if (msg.preview_preset_key) {
+      onApplyPreset?.(msg.preview_preset_key)
+      setMessages((current) =>
+        current.map((message, index) =>
+          index === messageIndex ? { ...message, preview_status: 'applied', command_applied: describePreview(message) } : message
+        )
+      )
       return
     }
 
@@ -431,6 +475,7 @@ export default function AIChatbot({
       targetMode: msg.preview_target_mode ?? null,
       targetCategory: msg.preview_target_category ?? null,
       normalize: msg.preview_normalize ?? false,
+      style: msg.preview_style ?? null,
     }
     const changes: PlannedChange[] =
       msg.preview_operations && msg.preview_operations.length > 0
@@ -442,6 +487,7 @@ export default function AIChatbot({
             targetMode: operation.targetMode,
             targetCategory: operation.targetCategory,
             normalize: operation.normalize,
+            style: operation.style ?? null,
           }))
         : [single]
 
@@ -781,6 +827,8 @@ export default function AIChatbot({
         preview_normalize: response.preview?.normalize ?? false,
         preview_font_size: response.preview?.fontSize ?? null,
         preview_operations: response.preview?.operations && response.preview.operations.length > 0 ? response.preview.operations : null,
+        preview_style: response.preview?.style ?? null,
+        preview_preset_key: response.preview?.presetKey ?? null,
         preview_reason: previewFormat ? previewReason : null,
         preview_status: previewFormat ? 'pending' : null,
         sources: previewFormat ? undefined : response.sources,
@@ -801,6 +849,7 @@ export default function AIChatbot({
             targetMode: response.preview?.targetMode ?? null,
             targetCategory: response.preview?.targetCategory ?? null,
             normalize: response.preview?.normalize ?? false,
+            style: response.preview?.style ?? null,
             operations: response.preview?.operations,
           }
         : lastPreviewRef.current

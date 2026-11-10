@@ -1,12 +1,23 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Editor } from '@tiptap/react'
 import { editorExtensions } from '../TiptapEditor'
+import { readFileSync } from 'node:fs'
+import { gunzipSync } from 'node:zlib'
+import { resolve } from 'node:path'
 import {
   applyFormatsToRanges,
   applyFormatsToSelection,
+  applyStyle,
   findCategoryRanges,
+  preferWholeBlocks,
   resolveTargetRanges,
+  findLiteralRanges,
+  type StyleChange,
 } from '../chatFormatting'
+
+/** The chat benchmark's thesis-style document (tests/fixtures/chat_benchmark). */
+const BENCHMARK_THESIS = readFileSync(resolve(__dirname, '../../../../../tests/fixtures/chat_benchmark/thesis.html'), 'utf-8')
+const NO_STYLE: StyleChange = { lineSpacing: null, firstLineIndentIn: null, fontFamily: null, textCase: null }
 
 // The page-break plugin watches for layout changes; jsdom has no layout to watch.
 globalThis.ResizeObserver = class {
@@ -99,5 +110,147 @@ describe('findCategoryRanges', () => {
     const ed = open('<p>CHAPTER 1</p><p>Body one.</p><p>Body two.</p>')
     const texts = findCategoryRanges(ed.state.doc, 'paragraphs').map((range) => ed.state.doc.textBetween(range.from, range.to))
     expect(texts).toEqual(['Body one.', 'Body two.'])
+  })
+})
+
+/** Text of each range, for readable assertions. */
+function textsOf(ed: Editor, ranges: Array<{ from: number; to: number }>): string[] {
+  return ranges.map((range) => ed.state.doc.textBetween(range.from, range.to, ' | '))
+}
+
+describe('12-prompt accuracy benchmark (editor side)', () => {
+  it('#1 a section named without quotes resolves to its title line only', () => {
+    const ed = open(BENCHMARK_THESIS)
+    expect(textsOf(ed, resolveTargetRanges(ed.state.doc, 'statement of the problem', 'heading'))).toEqual(['Statement of the Problem'])
+    // The whole section still includes the text under it.
+    expect(textsOf(ed, resolveTargetRanges(ed.state.doc, 'statement of the problem', 'section'))[0]).toContain('How accurate')
+  })
+
+  it('#2 "chapter 1" as a heading target is the CHAPTER 1 line, not the chapter', () => {
+    const ed = open('<p>CHAPTER 1</p><p>Body that must stay as it is.</p><p>CHAPTER 2</p>')
+    const ranges = resolveTargetRanges(ed.state.doc, 'chapter 1', 'heading')
+    applyFormatsToRanges(ed, ranges, ['bold', 'align_center'], undefined, false)
+    expect(ed.getHTML()).toMatch(/<p[^>]*text-align: center[^>]*><strong>CHAPTER 1<\/strong><\/p><p>Body that must stay as it is\.<\/p>/)
+  })
+
+  it('#3 a heading on quoted words picks the line that is those words, not a sentence mentioning them', () => {
+    const ed = open('<p>The background of the study shows a gap.</p><p><strong>Background of the Study</strong></p>')
+    const ranges = preferWholeBlocks(ed.state.doc, findLiteralRanges(ed.state.doc, 'background of the study'))
+    applyFormatsToRanges(ed, ranges, ['heading2'], undefined, false)
+    const html = ed.getHTML()
+    expect(html).toContain('<p>The background of the study shows a gap.</p>')
+    expect(html).toMatch(/<h2[^>]*><strong>Background of the Study<\/strong><\/h2>/)
+  })
+
+  it('#4 the research questions become ONE numbered list without their typed numbers', () => {
+    const ed = open(BENCHMARK_THESIS)
+    const ranges = findCategoryRanges(ed.state.doc, 'questions')
+    expect(ranges).toHaveLength(1)
+    applyFormatsToRanges(ed, ranges, ['ordered_list'], undefined, false)
+    const html = ed.getHTML()
+    expect(html.match(/<ol/g)).toHaveLength(1)
+    expect(html.match(/<li/g)).toHaveLength(3)
+    expect(html).not.toMatch(/>\s*1\. How long/)
+    expect(html).toContain('This study aims to answer the following questions:</p>')
+  })
+
+  it('#5 section headings include bold-paragraph headings but not chapter lines, chapter titles or body', () => {
+    const ed = open(BENCHMARK_THESIS)
+    expect(textsOf(ed, findCategoryRanges(ed.state.doc, 'sections'))).toEqual([
+      'Background of the Study',
+      'Statement of the Problem',
+      'Significance of the Study',
+      'Scope and Delimitation',
+      'Conceptual Framework',
+    ])
+  })
+
+  it('#6 indent goes on body paragraphs only and keeps their alignment', () => {
+    const ed = open(BENCHMARK_THESIS)
+    applyFormatsToRanges(ed, findCategoryRanges(ed.state.doc, 'paragraphs'), [], undefined, false, { ...NO_STYLE, firstLineIndentIn: 0.5 })
+    const html = ed.getHTML()
+    expect(html).toMatch(/<p style="text-align: justify;? ?text-indent: 0\.5in;?">Students spend/)
+    expect(html).not.toMatch(/<(h[1-3])[^>]*text-indent/)
+    expect(html).not.toMatch(/text-indent[^>]*><strong>Statement of the Problem/)
+  })
+
+  it('#7 double spacing sets line-height 2 on every block and keeps other block styles', () => {
+    const ed = open(BENCHMARK_THESIS)
+    applyStyle(ed, { from: 0, to: ed.state.doc.content.size }, { ...NO_STYLE, lineSpacing: 2 })
+    const html = ed.getHTML()
+    expect(html).toMatch(/<p style="text-align: justify;? ?line-height: 2;?">Students spend/)
+    expect(html).toMatch(/<h2[^>]*line-height: 2[^>]*>Scope and Delimitation/)
+  })
+
+  it('#8 a font family keeps each run’s own size and marks', () => {
+    const ed = open('<p><strong><span style="font-size: 14pt">Big bold</span></strong> plain</p>')
+    applyStyle(ed, { from: 0, to: ed.state.doc.content.size }, { ...NO_STYLE, fontFamily: 'Times New Roman' })
+    const runs: Array<{ text: string; marks: Record<string, Record<string, unknown>> }> = []
+    ed.state.doc.descendants((node) => {
+      if (node.isText) runs.push({ text: node.text ?? '', marks: Object.fromEntries(node.marks.map((mark) => [mark.type.name, mark.attrs])) })
+    })
+    expect(runs).toHaveLength(2)
+    expect(runs[0].marks.bold).toBeDefined()
+    expect(runs[0].marks.textStyle).toMatchObject({ fontFamily: 'Times New Roman', fontSize: '14pt' })
+    expect(runs[1].marks.textStyle).toMatchObject({ fontFamily: 'Times New Roman' })
+    expect(runs[1].marks.bold).toBeUndefined()
+  })
+
+  it('#9 capitalizing the title changes only the letters and keeps marks', () => {
+    const ed = open('<p>IntelliDocs: An <em>Intelligent</em> Editor</p><p>Body.</p>')
+    const title = resolveTargetRanges(ed.state.doc, 'title', 'title')
+    applyFormatsToRanges(ed, title, ['align_center'], undefined, false, { ...NO_STYLE, textCase: 'upper' })
+    const html = ed.getHTML()
+    expect(html).toMatch(/<p style="text-align: center;?">INTELLIDOCS: AN <em>INTELLIGENT<\/em> EDITOR<\/p><p>Body\.<\/p>/)
+  })
+})
+
+describe('section headings on the real V2 thesis import', () => {
+  it('finds the bold-paragraph and H2/H3 section headings and skips front matter, chapter titles, tables and captions', () => {
+    const html = gunzipSync(
+      readFileSync(resolve(__dirname, '../../../../../tests/fixtures/import_baselines/editor_json/V2 INTELLIDOCS (2).docx.html.gz'))
+    ).toString('utf-8')
+    const ed = open(html)
+    const texts = textsOf(ed, findCategoryRanges(ed.state.doc, 'sections'))
+    for (const expected of ['Rationale of the Study', 'Objectives of the Study', 'Significance of the Study', 'Scope and Limitations of the Study', 'General Objective']) {
+      expect(texts).toContain(expected)
+    }
+    for (const unexpected of ['INTRODUCTION', 'CHAPTER I', 'APPROVAL SHEET', 'Term', 'Figure 1: Conceptual Framework', 'REVIEW OF RELATED LITERATURE AND STUDIES']) {
+      expect(texts).not.toContain(unexpected)
+    }
+  })
+
+  it('resolves a named section or chapter to its real title line, not its table-of-contents entry', () => {
+    const html = gunzipSync(
+      readFileSync(resolve(__dirname, '../../../../../tests/fixtures/import_baselines/editor_json/V2 INTELLIDOCS (2).docx.html.gz'))
+    ).toString('utf-8')
+    const ed = open(html)
+    // The table of contents lists "CHAPTER II: REVIEW OF RELATED LITERATURE AND STUDIES11" and
+    // "Significance of the Study6" first; the chat must reach the headings themselves.
+    expect(textsOf(ed, resolveTargetRanges(ed.state.doc, 'chapter 2', 'heading'))).toEqual(['CHAPTER II'])
+    expect(textsOf(ed, resolveTargetRanges(ed.state.doc, 'significance of the study', 'heading'))).toEqual(['Significance of the Study'])
+  })
+})
+
+describe('alignment on imported paragraphs', () => {
+  it('a new alignment replaces the one Word wrote into the paragraph style', () => {
+    const ed = open('<p style="text-align: justify; line-height: 2">Imported paragraph</p><h2 style="text-align: center">Imported heading</h2>')
+    ed.commands.setTextSelection({ from: 1, to: ed.state.doc.content.size - 1 })
+    ed.commands.setTextAlign('left')
+    const html = ed.getHTML()
+    expect(html).not.toContain('justify')
+    expect(html).not.toMatch(/text-align: center/)
+    // Other imported block styles stay.
+    expect(html).toContain('line-height: 2')
+  })
+
+  it('documents saved with the old style copy still show the new alignment', () => {
+    const ed = open('<p>x</p>')
+    ed.commands.setContent({
+      type: 'doc',
+      content: [{ type: 'paragraph', attrs: { textAlign: 'left', style: 'text-align: justify; line-height: 2' }, content: [{ type: 'text', text: 'Saved before the fix' }] }],
+    })
+    expect(ed.getHTML()).toMatch(/<p style="[^"]*text-align: left[^"]*">Saved before the fix<\/p>/)
+    expect(ed.getHTML()).not.toContain('justify')
   })
 })

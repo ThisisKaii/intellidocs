@@ -69,6 +69,8 @@ interface EditorSidePanelProps {
   onOpenHelp?: () => void
   /** Narrow screens: render as a bottom sheet that never covers the page until opened. */
   compact?: boolean
+  /** Switches the document to an academic preset when the assistant's preset preview is applied. */
+  onApplyPreset?: (presetKey: string) => void
 }
 
 /** Read the remembered suggestion view, defaulting to formatting. */
@@ -114,6 +116,7 @@ export default function EditorSidePanel({
   onVersionRestored,
   onOpenHelp,
   compact = false,
+  onApplyPreset,
 }: EditorSidePanelProps): JSX.Element {
   const suggestionCount = scannerSuggestions.length + mlSuggestions.length
 
@@ -258,6 +261,7 @@ export default function EditorSidePanel({
               documentTitle={documentTitle}
               documentContent={documentContent}
               onFocusEditor={onFocusEditor}
+              onApplyPreset={onApplyPreset}
               docked
             />
           </div>

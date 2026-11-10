@@ -1,8 +1,14 @@
 import {
+  hasStyleChange,
+  isBodyChange,
+  namedTitles,
   parseFormattingIntent,
   type FormattingIntent,
   type FormattingIntentResult,
+  type ParseOptions,
+  type StyleChange,
   type TargetCategory,
+  type TargetMode,
 } from './parseFormattingIntent'
 
 /** One independent formatting change inside a chat request. */
@@ -12,8 +18,10 @@ export interface FormattingOperation {
   normalize: boolean
   scope: 'selection' | 'all'
   target: string | null
-  targetMode: 'literal' | 'section' | 'title' | null
+  targetMode: TargetMode | null
   targetCategory: TargetCategory
+  /** Line spacing, first-line indent, font family and letter case. */
+  style: StyleChange
   /** The words of the request this operation came from. */
   text: string
 }
@@ -25,24 +33,38 @@ export interface SplitFormattingResult {
   unresolved: string[]
 }
 
-/** Placeholder wrapping a protected quoted phrase while the message is split. */
-const QUOTE_MARK = '\u0000'
+/** Placeholder wrapping a protected phrase (a quote or a section title) while the message is split. */
+const PROTECT_MARK = '\u0000'
 
 /** Words that make a piece of a request an instruction rather than filler ("please", "thanks"). */
-const INSTRUCTION_VERB = /\b(?:format|apply|make|set|change|turn|align|style|use|put|convert|bold|italici[sz]e|underline|center|centre|justify|indent|space|number)\w*\b/
+const INSTRUCTION_VERB = /\b(?:format|apply|make|set|change|turn|align|style|use|put|convert|bold|italici[sz]e|underline|center|centre|justify|indent|space|spacing|number|capitali[sz]e)\w*\b/
 
-/** Replace quoted phrases with placeholders so separators inside them are not split on. */
-function protectQuotes(message: string): { text: string; quotes: string[] } {
-  const quotes: string[] = []
-  const text = message.replace(/"[^"]*"|“[^”]*”/g, (quoted) => {
-    quotes.push(quoted.replace(/[“”]/g, '"'))
-    return `${QUOTE_MARK}${quotes.length - 1}${QUOTE_MARK}`
-  })
-  return { text, quotes }
+/** Clause separators; a section title containing one ("Scope and Delimitation") must not be split on it. */
+const SEPARATOR = /,|\s(?:and|then|also|plus)\s/i
+
+const EMPTY_STYLE: StyleChange = { lineSpacing: null, firstLineIndentIn: null, fontFamily: null, textCase: null }
+
+/**
+ * Replace quoted phrases, and section titles that contain a separator word, with
+ * placeholders so the split never cuts through them.
+ */
+function protect(message: string, knownTitles: readonly string[]): { text: string; kept: string[] } {
+  const kept: string[] = []
+  const hold = (phrase: string): string => {
+    kept.push(phrase)
+    return `${PROTECT_MARK}${kept.length - 1}${PROTECT_MARK}`
+  }
+  let text = message.replace(/"[^"]*"|“[^”]*”/g, (quoted) => hold(quoted.replace(/[“”]/g, '"')))
+  for (const title of namedTitles(knownTitles)) {
+    if (!SEPARATOR.test(` ${title} `)) continue
+    const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    text = text.replace(new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, 'gi'), (match) => hold(match))
+  }
+  return { text, kept }
 }
 
-function restoreQuotes(text: string, quotes: string[]): string {
-  return text.replace(new RegExp(`${QUOTE_MARK}(\\d+)${QUOTE_MARK}`, 'g'), (_match, index: string) => quotes[Number(index)] ?? '')
+function restore(text: string, kept: string[]): string {
+  return text.replace(new RegExp(`${PROTECT_MARK}(\\d+)${PROTECT_MARK}`, 'g'), (_match, index: string) => kept[Number(index)] ?? '')
 }
 
 /**
@@ -65,7 +87,7 @@ function softPieces(segment: string): string[] {
 }
 
 function hasChange(intent: FormattingIntentResult): boolean {
-  return intent.formats.length > 0 || intent.fontSize !== null || intent.normalize
+  return intent.formats.length > 0 || intent.fontSize !== null || intent.normalize || hasStyleChange(intent.style)
 }
 
 /** True when the piece says where to apply a change (a target, a block category, or "everything"). */
@@ -73,18 +95,43 @@ function hasPlace(intent: FormattingIntentResult): boolean {
   return intent.target !== null || intent.targetCategory !== 'all' || intent.scope === 'all'
 }
 
-function toOperation(intent: FormattingIntentResult, text: string, carried: FormattingIntent[], carriedSize: number | null): FormattingOperation {
-  const formats = [...carried]
+/** Later style values win; unset ones keep the earlier value. */
+function mergeStyle(base: StyleChange, next: StyleChange): StyleChange {
+  return {
+    lineSpacing: next.lineSpacing ?? base.lineSpacing,
+    firstLineIndentIn: next.firstLineIndentIn ?? base.firstLineIndentIn,
+    fontFamily: next.fontFamily ?? base.fontFamily,
+    textCase: next.textCase ?? base.textCase,
+  }
+}
+
+/** Formats, size and style waiting for a place later in the sentence. */
+interface Pending {
+  formats: FormattingIntent[]
+  fontSize: number | null
+  style: StyleChange
+  text: string[]
+}
+
+const emptyPending = (): Pending => ({ formats: [], fontSize: null, style: EMPTY_STYLE, text: [] })
+
+function pendingIsEmpty(pending: Pending): boolean {
+  return pending.formats.length === 0 && pending.fontSize === null && !hasStyleChange(pending.style)
+}
+
+function toOperation(intent: FormattingIntentResult, pending: Pending, piece: string): FormattingOperation {
+  const formats = [...pending.formats]
   for (const format of intent.formats) if (!formats.includes(format)) formats.push(format)
   return {
     formats,
-    fontSize: intent.fontSize ?? carriedSize,
+    fontSize: intent.fontSize ?? pending.fontSize,
     normalize: intent.normalize,
     scope: 'all',
     target: intent.target,
     targetMode: intent.targetMode,
     targetCategory: intent.targetCategory,
-    text,
+    style: mergeStyle(pending.style, intent.style),
+    text: [...pending.text, piece].join(' and '),
   }
 }
 
@@ -96,9 +143,14 @@ function sameOperation(a: FormattingOperation, b: FormattingOperation): boolean 
     a.targetCategory === b.targetCategory &&
     a.normalize === b.normalize &&
     a.fontSize === b.fontSize &&
+    JSON.stringify(a.style) === JSON.stringify(b.style) &&
     a.formats.length === b.formats.length &&
     a.formats.every((format) => b.formats.includes(format))
   )
+}
+
+function carriesChange(operation: FormattingOperation): boolean {
+  return operation.formats.length > 0 || operation.fontSize !== null || operation.normalize || hasStyleChange(operation.style)
 }
 
 /**
@@ -111,56 +163,69 @@ function sameOperation(a: FormattingOperation, b: FormattingOperation): boolean 
  * when nothing follows ("bold the chapter heading and center it"). A place with
  * no format of its own reuses the previous change ("bold chapter 1 and chapter 2").
  * Anything that still lacks a format or a place is reported, never dropped silently.
+ *
+ * `knownTitles` (the open document's outline) lets unquoted section names be
+ * found, and keeps titles such as "Scope and Delimitation" in one piece.
  */
-export function splitFormattingOperations(message: string): SplitFormattingResult {
-  const { text, quotes } = protectQuotes(message)
+export function splitFormattingOperations(message: string, options: ParseOptions = {}): SplitFormattingResult {
+  const { text, kept } = protect(message, options.knownTitles ?? [])
   const operations: FormattingOperation[] = []
   const unresolved: string[] = []
 
   for (const segment of hardSegments(text)) {
-    let pendingFormats: FormattingIntent[] = []
-    let pendingSize: number | null = null
-    let pendingText: string[] = []
+    let pending = emptyPending()
     let lastInSegment: FormattingOperation | null = null
 
     for (const rawPiece of softPieces(segment)) {
-      const piece = restoreQuotes(rawPiece, quotes)
-      const intent = parseFormattingIntent(piece)
+      const piece = restore(rawPiece, kept)
+      const intent = parseFormattingIntent(piece, options)
       const change = hasChange(intent)
       const place = hasPlace(intent)
 
       if (place) {
-        let operation = toOperation(intent, [...pendingText, piece].join(' and '), pendingFormats, pendingSize)
+        let operation = toOperation(intent, pending, piece)
         // A place with no format of its own reuses the previous change ("bold chapter 1 and
         // chapter 2"), or waits for formats later in the sentence ("format all headings
         // and make them bold"); if none come, it is reported at the end of the sentence.
-        if (!change && pendingFormats.length === 0 && pendingSize === null && lastInSegment && carriesChange(lastInSegment)) {
-          operation = { ...operation, formats: [...lastInSegment.formats], fontSize: lastInSegment.fontSize, normalize: lastInSegment.normalize }
+        if (!change && pendingIsEmpty(pending) && lastInSegment && carriesChange(lastInSegment)) {
+          operation = {
+            ...operation,
+            formats: [...lastInSegment.formats],
+            fontSize: lastInSegment.fontSize,
+            normalize: lastInSegment.normalize,
+            style: lastInSegment.style,
+          }
         }
         operations.push(operation)
         lastInSegment = operation
-        pendingFormats = []
-        pendingSize = null
-        pendingText = []
+        pending = emptyPending()
       } else if (change) {
-        for (const format of intent.formats) if (!pendingFormats.includes(format)) pendingFormats.push(format)
-        pendingSize = intent.fontSize ?? pendingSize
-        pendingText.push(piece)
+        for (const format of intent.formats) if (!pending.formats.includes(format)) pending.formats.push(format)
+        pending.fontSize = intent.fontSize ?? pending.fontSize
+        pending.style = mergeStyle(pending.style, intent.style)
+        pending.text.push(piece)
       } else if (INSTRUCTION_VERB.test(piece.toLowerCase())) {
         unresolved.push(piece)
       }
     }
 
     // Formats left over at the end of a sentence belong to its last change.
-    if (pendingFormats.length > 0 || pendingSize !== null) {
+    if (!pendingIsEmpty(pending)) {
       if (lastInSegment) {
-        for (const format of pendingFormats) if (!lastInSegment.formats.includes(format)) lastInSegment.formats.push(format)
-        lastInSegment.fontSize = pendingSize ?? lastInSegment.fontSize
-        lastInSegment.text = [lastInSegment.text, ...pendingText].join(' and ')
+        for (const format of pending.formats) if (!lastInSegment.formats.includes(format)) lastInSegment.formats.push(format)
+        lastInSegment.fontSize = pending.fontSize ?? lastInSegment.fontSize
+        lastInSegment.style = mergeStyle(lastInSegment.style, pending.style)
+        lastInSegment.text = [lastInSegment.text, ...pending.text].join(' and ')
       } else {
-        unresolved.push(pendingText.join(' and '))
+        unresolved.push(pending.text.join(' and '))
       }
     }
+  }
+
+  // A section's title line was meant unless a body change ("and justify it")
+  // joined later in the sentence; then the change covers the whole section.
+  for (const operation of operations) {
+    if (operation.targetMode === 'heading' && isBodyChange(operation.formats, operation.style)) operation.targetMode = 'section'
   }
 
   // Places that never received a format are reported, not applied as empty changes.
@@ -171,8 +236,4 @@ export function splitFormattingOperations(message: string): SplitFormattingResul
   })
   const unique = complete.filter((operation, index) => complete.findIndex((other) => sameOperation(other, operation)) === index)
   return { operations: unique, unresolved }
-}
-
-function carriesChange(operation: FormattingOperation): boolean {
-  return operation.formats.length > 0 || operation.fontSize !== null || operation.normalize
 }

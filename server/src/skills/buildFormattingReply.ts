@@ -1,3 +1,5 @@
+import type { StyleChange, TargetCategory, TargetMode } from './parseFormattingIntent'
+
 /** The facts of a formatting preview that the chat reply describes. */
 export interface FormattingReplyInput {
   formats: string[]
@@ -5,8 +7,10 @@ export interface FormattingReplyInput {
   normalize: boolean
   scope: 'selection' | 'all'
   target: string | null
-  targetMode: 'literal' | 'section' | 'title' | null
-  targetCategory: 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'all' | null
+  targetMode: TargetMode | null
+  targetCategory: TargetCategory | null
+  /** Line spacing, first-line indent, font family and letter case, when asked for. */
+  style?: StyleChange | null
 }
 
 /** Words for each format when it ends a sentence ("... bold and centered"). */
@@ -35,15 +39,47 @@ function joinNatural(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
 }
 
-/** Title-case a section or chapter reference for display ("approval sheet" -> "Approval Sheet"). */
+/** Small words kept lowercase inside a displayed title ("Statement of the Problem"). */
+const MINOR_WORDS = new Set(['a', 'an', 'and', 'as', 'at', 'by', 'for', 'in', 'of', 'on', 'or', 'the', 'to'])
+
+/** Title-case a section or chapter reference for display ("statement of the problem" -> "Statement of the Problem"). */
 function displayTarget(target: string): string {
-  return target.replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+  return target
+    .split(' ')
+    .map((word, index) => (index > 0 && MINOR_WORDS.has(word) ? word : word.replace(/^[a-z]/, (letter) => letter.toUpperCase())))
+    .join(' ')
+}
+
+/** Line spacing in words: "double-spaced", "1.5-spaced". */
+function spacingWords(lineSpacing: number): string {
+  if (lineSpacing === 2) return 'double-spaced'
+  if (lineSpacing === 1) return 'single-spaced'
+  return `${lineSpacing}-spaced`
+}
+
+/** Every change a preview makes, as words that finish "make X ...". */
+function changeWords(input: FormattingReplyInput): string[] {
+  const words = input.formats
+    .filter((format) => !input.normalize || format === 'bold' || format === 'italic' || format === 'underline')
+    .map((format) => FORMAT_PREDICATES[format])
+    .filter((phrase): phrase is string => Boolean(phrase))
+  if (input.fontSize) words.push(`${input.fontSize}pt`)
+  const style = input.style
+  if (style && !input.normalize) {
+    if (style.fontFamily) words.push(`in ${style.fontFamily}`)
+    if (style.lineSpacing !== null) words.push(spacingWords(style.lineSpacing))
+    if (style.firstLineIndentIn !== null) words.push(`indented ${style.firstLineIndentIn}in on the first line`)
+    if (style.textCase === 'upper') words.push('in capital letters')
+    if (style.textCase === 'title') words.push('in title case')
+  }
+  return words
 }
 
 /** Describe what part of the document the change touches. */
 function describeSubject(input: FormattingReplyInput): string {
   if (input.target && input.targetMode === 'literal') return `the words “${input.target}”`
   if (input.target && input.targetMode === 'title') return 'the document title'
+  if (input.target && input.targetMode === 'heading') return `the ${displayTarget(input.target)} heading`
   if (input.target && input.targetMode === 'section') {
     const isChapter = input.target.startsWith('chapter ') || input.target.startsWith('section ')
     return isChapter
@@ -54,6 +90,7 @@ function describeSubject(input: FormattingReplyInput): string {
   if (input.targetCategory === 'paragraphs') return 'every body paragraph'
   if (input.targetCategory === 'chapters') return 'every chapter heading'
   if (input.targetCategory === 'sections') return 'every section heading'
+  if (input.targetCategory === 'questions') return 'the research questions'
   if (input.scope === 'all') return 'the whole document'
   return 'the text you have selected (or the paragraph your cursor is in)'
 }
@@ -61,11 +98,7 @@ function describeSubject(input: FormattingReplyInput): string {
 /** One change as a short instruction: "Make every chapter heading bold and centered". */
 export function summarizeFormattingChange(input: FormattingReplyInput): string {
   const subject = describeSubject(input)
-  const marks = input.formats
-    .filter((format) => !input.normalize || format === 'bold' || format === 'italic' || format === 'underline')
-    .map((format) => FORMAT_PREDICATES[format])
-    .filter((phrase): phrase is string => Boolean(phrase))
-  if (input.fontSize) marks.push(`${input.fontSize}pt`)
+  const marks = changeWords(input)
   if (input.normalize) {
     const what = marks.length > 0 ? `the ${joinNatural(marks.map((m) => m.replace(/ed$/, '')))} formatting` : 'the formatting'
     return `Clear ${what} from ${subject}`
@@ -121,11 +154,7 @@ function pick(options: string[], seed: string): string {
  */
 export function buildFormattingReply(input: FormattingReplyInput, requestText: string): string {
   const subject = describeSubject(input)
-  const marks = input.formats
-    .filter((format) => !input.normalize || format === 'bold' || format === 'italic' || format === 'underline')
-    .map((format) => FORMAT_PREDICATES[format])
-    .filter((phrase): phrase is string => Boolean(phrase))
-  if (input.fontSize) marks.push(`${input.fontSize}pt`)
+  const marks = changeWords(input)
 
   const confirm = pick(
     ['Press Apply when you want it, or Reject to leave it as it is.', 'Say the word and I will apply it, or reject it to keep things as they are.', 'Apply it below if that looks right.'],

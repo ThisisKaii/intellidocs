@@ -128,6 +128,7 @@ import {
 import { ImageResizeBehaviorExtension } from './ImageResizeBehaviorExtension'
 import ImageOptionsToolbar, { type ImageWrapStyle } from './ImageOptionsToolbar'
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
+import { mergeStyleDecls } from '@/lib/inlineStyle'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 /** Download document content as a standalone clean HTML file. */
@@ -290,6 +291,14 @@ function filterStyle(raw: string | null, extra: ReadonlySet<string> = new Set())
     if (ALLOWED_STYLE_PROPS.has(prop) || extra.has(prop)) kept.push(trimmed)
   }
   return kept.length > 0 ? kept.join('; ') : null
+}
+
+/**
+ * A paragraph or heading style without `text-align`. TextAlign owns alignment for
+ * these blocks, so the imported copy is dropped (it would override the toolbar).
+ */
+function withoutTextAlign(style: string | null): string | null {
+  return style ? mergeStyleDecls(style, { 'text-align': '' }) : null
 }
 
 /** Read a margin-*-pt value from an inline style string; 0 when absent. */
@@ -536,8 +545,13 @@ const CustomParagraph = Paragraph.extend({
       },
       style: {
         default: null,
-        parseHTML: (el) => filterStyle(el.getAttribute('style')),
-        renderHTML: (a) => (a.style ? { style: a.style } : {}),
+        // Alignment belongs to TextAlign's own attribute; a copy kept here (from a
+        // Word import) would render after it and undo every later alignment change.
+        parseHTML: (el) => withoutTextAlign(filterStyle(el.getAttribute('style'))),
+        renderHTML: (a) => {
+          const style = withoutTextAlign(a.style as string | null)
+          return style ? { style } : {}
+        },
       },
       /** Ids of the boxes Word hangs beside this paragraph (imports); the page layout holds their content. */
       overlay: {
@@ -1028,8 +1042,13 @@ const CustomHeading = Heading.extend({
        */
       style: {
         default: null,
-        parseHTML: (el) => filterStyle(el.getAttribute('style')),
-        renderHTML: (a) => (a.style ? { style: a.style } : {}),
+        // Alignment belongs to TextAlign's own attribute; a copy kept here (from a
+        // Word import) would render after it and undo every later alignment change.
+        parseHTML: (el) => withoutTextAlign(filterStyle(el.getAttribute('style'))),
+        renderHTML: (a) => {
+          const style = withoutTextAlign(a.style as string | null)
+          return style ? { style } : {}
+        },
       },
       /** Ids of the boxes Word hangs beside this paragraph (imports); the page layout holds their content. */
       overlay: {

@@ -3,7 +3,7 @@ import { aiClient } from '../ai/aiClient'
 import { buildAIChatSystemPrompt } from '../ai/prompts/systemPrompts'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 import { buildChatContext } from '../skills/buildChatContext'
-import { parseFormattingIntent } from '../skills/parseFormattingIntent'
+import { hasStyleChange, looksLikeQuestion, parseFormattingIntent, type StyleChange, type TargetCategory, type TargetMode } from '../skills/parseFormattingIntent'
 import { buildFormattingReply, buildMultiFormattingReply, summarizeFormattingChange } from '../skills/buildFormattingReply'
 import { splitFormattingOperations } from '../skills/splitFormattingOperations'
 import { documentHasTarget, listOutlineSections } from '../skills/documentSections'
@@ -53,14 +53,15 @@ interface AIChatPreviewContext {
   scope?: 'selection' | 'all'
   fontSize?: number | null
   target?: string | null
-  targetMode?: 'literal' | 'section' | 'title' | null
+  targetMode?: TargetMode | null
   normalize?: boolean
   targetCategory?: TargetCategoryName | null
+  style?: StyleChange | null
   /** Every change of a multi-change preview, so "yes" can show them all again. */
   operations?: PreviewOperation[]
 }
 
-type TargetCategoryName = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'all'
+type TargetCategoryName = TargetCategory
 
 /** One change of a multi-change preview, applied by the editor in order. */
 interface PreviewOperation {
@@ -69,8 +70,10 @@ interface PreviewOperation {
   normalize: boolean
   scope: 'selection' | 'all'
   target: string | null
-  targetMode: 'literal' | 'section' | 'title' | null
+  targetMode: TargetMode | null
   targetCategory: TargetCategoryName
+  /** Line spacing, first-line indent, font family and letter case. */
+  style: StyleChange
   /** The change in words, e.g. "Make every chapter heading bold and centered". */
   summary: string
 }
@@ -93,8 +96,8 @@ interface FormattingPreview {
   fontSize?: number | null
   /** Chapter/section reference like "chapter 1" the change should target. */
   target?: string | null
-  /** How the target is meant: literal words, a whole section, or the document title. */
-  targetMode?: 'literal' | 'section' | 'title' | null
+  /** How the target is meant: literal words, a section's title line, a whole section, or the document title. */
+  targetMode?: TargetMode | null
   /** Block category a bulk request targets: headings, paragraphs, chapter headings, or all. */
   targetCategory?: TargetCategoryName | null
   /** True when the change clears existing formatting (revert to normal). */
@@ -103,6 +106,17 @@ interface FormattingPreview {
   shortCircuitReply?: string | null
   /** Several independent changes from one request; the fields above describe the first. */
   operations?: PreviewOperation[]
+  /** Line spacing, first-line indent, font family and letter case. */
+  style?: StyleChange | null
+  /** For format `preset`: the academic preset to apply (e.g. "apa_7th"). */
+  presetKey?: string | null
+}
+
+/** Display names of the academic presets a chat request can ask for. */
+const PRESET_NAMES: Record<string, string> = {
+  apa_7th: 'APA 7th Edition',
+  ieee: 'IEEE Conference',
+  uclm_capstone: 'UCLM Capstone (Thesis)',
 }
 
 /** Words that confirm a previously shown preview. */
@@ -166,12 +180,30 @@ function buildHistoryMessages(
 /** Build preview metadata for formatting-style chat requests. */
 function detectFormattingPreview(
   message: string,
-  lastPreview: AIChatPreviewContext | null | undefined
+  lastPreview: AIChatPreviewContext | null | undefined,
+  knownTitles: readonly string[] = []
 ): FormattingPreview | null {
-  const intent = parseFormattingIntent(message)
+  const intent = parseFormattingIntent(message, { knownTitles })
   const normalized = message.toLowerCase().trim()
-  const hasFormats = intent.formats.length > 0
+  // Style changes (spacing, indent, font, case) count as formats for every check below.
+  const hasFormats = intent.formats.length > 0 || hasStyleChange(intent.style)
   const hasFontSize = intent.fontSize !== null
+
+  // "Format in APA style": the preset itself, applied by the editor in one click
+  // (page setup, fonts and heading styles), instead of a guessed heading change.
+  if (intent.preset && PRESET_NAMES[intent.preset] && intent.formats.length === 0 && !hasStyleChange(intent.style) && !intent.fontSize) {
+    const name = PRESET_NAMES[intent.preset]
+    return {
+      format: 'preset',
+      label: `${name} preset`,
+      confidence: 0.9,
+      reason: `Applies the ${name} preset: its page setup, body text and heading styles.`,
+      formats: [],
+      scope: 'all',
+      presetKey: intent.preset,
+      shortCircuitReply: `I can format this document with the ${name} preset: its margins, body text and heading styles. Press Apply to switch to it, or Reject to keep the current setup.`,
+    }
+  }
 
   // "Format the rest" style continuations inherit the previous preview and
   // widen it to the whole document. The deterministic reply keeps this flow
@@ -233,6 +265,7 @@ function detectFormattingPreview(
       target: lastPreview.target ?? null,
       targetCategory: lastPreview.targetCategory ?? null,
       normalize: lastPreview.normalize ?? false,
+      style: lastPreview.style ?? null,
       operations: Array.isArray(lastPreview.operations) && lastPreview.operations.length > 0 ? lastPreview.operations : undefined,
       shortCircuitReply: Array.isArray(lastPreview.operations) && lastPreview.operations.length > 1
         ? 'Got it — here are those changes again. Confirm or reject below, or tell me what to adjust.'
@@ -281,6 +314,8 @@ function detectFormattingPreview(
     reasonParts.push(`Only the exact words "${intent.target}", wherever they appear.`)
   } else if (intent.target && intent.targetMode === 'title') {
     reasonParts.push('The document title.')
+  } else if (intent.target && intent.targetMode === 'heading') {
+    reasonParts.push(`The "${intent.target.toUpperCase()}" heading line only, not the text under it.`)
   } else if (intent.target) {
     reasonParts.push(`The whole "${intent.target.toUpperCase()}" section: its heading and everything under it.`)
   } else if (intent.normalize && lastPreview?.scope === 'all') {
@@ -290,7 +325,11 @@ function detectFormattingPreview(
   } else if (intent.targetCategory === 'chapters') {
     reasonParts.push('Applies to every chapter heading.')
   } else if (intent.targetCategory === 'paragraphs') {
-    reasonParts.push('Applies to all paragraphs.')
+    reasonParts.push('Applies to all body paragraphs.')
+  } else if (intent.targetCategory === 'sections') {
+    reasonParts.push('Applies to every section heading.')
+  } else if (intent.targetCategory === 'questions') {
+    reasonParts.push('Applies to the research questions (the lines ending in a question mark).')
   } else if (intent.scope === 'all') {
     reasonParts.push('Applies to the whole document.')
   }
@@ -320,7 +359,7 @@ function detectFormattingPreview(
       : (primary ?? 'body_text'),
     label: intent.normalize
       ? 'Clear formatting'
-      : primary ? (labels[primary] ?? primary) : 'Font size',
+      : primary ? (labels[primary] ?? primary) : hasStyleChange(intent.style) ? 'Text style' : 'Font size',
     confidence: intent.confidence,
     reason: reasonParts.length > 0 ? reasonParts.join(' ') : 'Detected a likely formatting request.',
     formats: revertFormats,
@@ -330,6 +369,7 @@ function detectFormattingPreview(
     targetMode: intent.target ? intent.targetMode : (intent.normalize ? (lastPreview?.targetMode ?? null) : null),
     targetCategory: resolvedCategory,
     normalize: intent.normalize,
+    style: intent.normalize ? null : intent.style,
     shortCircuitReply: null,
   }
 }
@@ -342,9 +382,10 @@ function detectFormattingPreview(
  */
 function detectMultiFormattingPreview(
   message: string,
-  documentContent: string
+  documentContent: string,
+  knownTitles: readonly string[]
 ): { preview: FormattingPreview | null; reply: string } | null {
-  const { operations, unresolved } = splitFormattingOperations(message)
+  const { operations, unresolved } = splitFormattingOperations(message, { knownTitles })
   if (operations.length === 0 || (operations.length === 1 && unresolved.length === 0)) return null
 
   const found = operations.filter((operation) => !operation.target || documentHasTarget(documentContent, operation.target, operation.targetMode))
@@ -358,6 +399,7 @@ function detectMultiFormattingPreview(
       target: operation.target,
       targetMode: operation.targetMode,
       targetCategory: operation.targetCategory,
+      style: operation.style,
     }
     return { ...change, summary: summarizeFormattingChange(change) }
   })
@@ -379,6 +421,7 @@ function detectMultiFormattingPreview(
       targetMode: first.targetMode,
       targetCategory: first.targetCategory,
       normalize: first.normalize,
+      style: first.style,
       shortCircuitReply: reply,
       operations: previewOperations,
     },
@@ -473,15 +516,22 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       return
     }
 
+    // Section titles the open document really has, so "Format Statement of the
+    // Problem as Heading 2" finds its target without quotes.
+    const knownTitles = listOutlineSections(body.documentContent ?? '')
+    // A question about the document is answered, never turned into a preview,
+    // even when it mentions formatting words ("What should be bold in chapter 1?").
+    const asksQuestion = looksLikeQuestion(message)
+
     // Several changes in one request: list them all, and say what was left out.
-    const multi = detectMultiFormattingPreview(message, body.documentContent ?? '')
+    const multi = asksQuestion ? null : detectMultiFormattingPreview(message, body.documentContent ?? '', knownTitles)
     if (multi && !multi.preview) {
       const providerSummary = getProviderSummary()
       res.status(200).json({ reply: multi.reply, provider: providerSummary.provider, model: providerSummary.model, mode: 'chat', preview: null })
       return
     }
 
-    const preview = multi?.preview ?? detectFormattingPreview(message, body.lastPreview)
+    const preview = asksQuestion ? null : (multi?.preview ?? detectFormattingPreview(message, body.lastPreview, knownTitles))
 
     // A named section that is not in the document gets an honest answer instead
     // of a preview the editor cannot apply.
@@ -521,6 +571,7 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
           target: preview.target ?? null,
           targetMode: preview.targetMode ?? null,
           targetCategory: preview.targetCategory ?? null,
+          style: preview.style ?? null,
         },
         message
       )
@@ -578,6 +629,8 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
             targetCategory: preview.targetCategory,
             normalize: preview.normalize,
             operations: preview.operations,
+            style: preview.style ?? null,
+            presetKey: preview.presetKey ?? null,
           }
         : null,
     })

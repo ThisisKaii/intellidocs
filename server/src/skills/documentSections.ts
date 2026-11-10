@@ -42,7 +42,7 @@ export function listOutlineSections(documentContent: string): string[] {
  * Whether the document contains a named target: in its outline, or anywhere in
  * the text excerpt the editor sent. The title is always present.
  */
-export function documentHasTarget(documentContent: string, target: string, mode: 'literal' | 'section' | 'title' | null): boolean {
+export function documentHasTarget(documentContent: string, target: string, mode: 'literal' | 'heading' | 'section' | 'title' | null): boolean {
   if (mode === 'title') return true
   const key = normalizeSectionKey(target)
   if (key.length === 0) return true

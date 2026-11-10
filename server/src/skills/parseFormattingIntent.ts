@@ -30,10 +30,10 @@ export interface FormattingIntentResult {
   target: string | null
   /**
    * How the target is meant: 'literal' (a quoted phrase: just those words),
-   * 'section' (a named section or chapter: the heading and everything under it),
-   * or 'title' (the document title).
+   * 'heading' (a named section or chapter: just its title line), 'section'
+   * (the title line and everything under it), or 'title' (the document title).
    */
-  targetMode: 'literal' | 'section' | 'title' | null
+  targetMode: TargetMode | null
   /**
    * Which blocks a bulk request targets: all headings, all paragraphs, every
    * chapter heading, every section heading (headings other than chapter
@@ -41,9 +41,38 @@ export interface FormattingIntentResult {
    * category is named.
    */
   targetCategory: TargetCategory
+  /** Block and text styling beyond marks: line spacing, first-line indent, font family, letter case. */
+  style: StyleChange
+  /** An academic preset the user asked to format with ("format in APA style"), as its preset key. */
+  preset: string | null
 }
 
-export type TargetCategory = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'all'
+export type TargetMode = 'literal' | 'heading' | 'section' | 'title'
+
+export type TargetCategory = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'questions' | 'all'
+
+/** Styling a chat request can set besides marks, headings, lists and alignment. */
+export interface StyleChange {
+  /** Line height as a multiple (1 = single, 1.5, 2 = double). */
+  lineSpacing: number | null
+  /** First-line indent in inches. */
+  firstLineIndentIn: number | null
+  /** Font family name, e.g. "Times New Roman". */
+  fontFamily: string | null
+  /** Letter case to convert the text to. */
+  textCase: 'upper' | 'title' | null
+}
+
+/** True when a style change asks for anything. */
+export function hasStyleChange(style: StyleChange): boolean {
+  return style.lineSpacing !== null || style.firstLineIndentIn !== null || style.fontFamily !== null || style.textCase !== null
+}
+
+/** Options that make target detection document-aware. */
+export interface ParseOptions {
+  /** Section titles that exist in the open document (its outline), matched without quotes. */
+  knownTitles?: readonly string[]
+}
 
 /** Normalize a user message before intent matching. */
 function normalizeMessage(message: string): string {
@@ -77,6 +106,12 @@ const BULK_SCOPE_PHRASES = [
   'all sections',
   'the rest',
   'remaining',
+  'the document',
+  'my document',
+  'the paper',
+  'my paper',
+  'the manuscript',
+  'throughout',
 ]
 
 /** Section headings named as a group: plural, or singular with "the/all/every/each". */
@@ -104,6 +139,8 @@ function detectTargetCategory(message: string): TargetCategory {
   if (/\bchapter\s+(?:headings?|titles?|headers?)\b|\b(?:all|every|each)\s+(?:the\s+)?chapters?\b/.test(message)) {
     return 'chapters'
   }
+  // "the research questions" / "number the questions": the questions a study answers.
+  if (/\b(?:research\s+|sub-?)?questions\b|\bsops?\b/.test(message)) return 'questions'
   // "the section headings" / "all subheadings": the headings under the chapters.
   if (SECTION_CATEGORY_PATTERN.test(message)) return 'sections'
   const headingsPattern =
@@ -317,10 +354,66 @@ const KNOWN_SECTION_NAMES = [
   'list of tables',
   'list of figures',
   'definition of terms',
+  // Thesis and capstone sections students name without quotes.
+  'background of the study',
+  'statement of the problem',
+  'significance of the study',
+  'scope and delimitation',
+  'scope and delimitations',
+  'scope and limitation',
+  'scope and limitations',
+  'scope and limitations of the study',
+  'scope and delimitation of the study',
+  'conceptual framework',
+  'theoretical framework',
+  'research paradigm',
+  'review of related literature',
+  'review of related literature and studies',
+  'related literature',
+  'related studies',
+  'synthesis',
+  'research design',
+  'research methodology',
+  'research locale',
+  'research environment',
+  'research respondents',
+  'respondents of the study',
+  'research instrument',
+  'research instruments',
+  'data gathering procedure',
+  'data gathering procedures',
+  'statistical treatment',
+  'statistical treatment of data',
+  'objectives of the study',
+  'general objective',
+  'specific objectives',
+  'rationale of the study',
+  'rationale',
+  'hypothesis',
+  'hypotheses',
+  'summary of findings',
+  'conclusions',
+  'recommendations',
+  'curriculum vitae',
 ] as const
 
-/** Match a known section name anywhere in the message. */
-const NAMED_SECTION_PATTERN = new RegExp(`\\b(${KNOWN_SECTION_NAMES.join('|')})\\b`)
+/** Escape a literal string for use inside a RegExp. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Section titles a request can name without quotes: the open document's own
+ * outline plus the standard academic names, longest first so the most specific
+ * title wins. Exported so the request splitter keeps them in one piece.
+ */
+export function namedTitles(knownTitles: readonly string[] = []): string[] {
+  const fromDocument = knownTitles
+    .map((title) => title.toLowerCase().replace(/\s+/g, ' ').replace(/[:.]+$/, '').trim())
+    // Specific enough to name, and not a figure or table caption.
+    .filter((title) => title.length >= 6 && title.length <= 80 && /[a-z]/.test(title) && !/^(?:figure|table)\s+\d/.test(title))
+  return [...new Set([...fromDocument, ...KNOWN_SECTION_NAMES])].sort((a, b) => b.length - a.length)
+}
 
 /** True when the whole candidate is a known section name. */
 function isKnownSection(candidate: string): boolean {
@@ -330,7 +423,7 @@ function isKnownSection(candidate: string): boolean {
 /** A detected target and how it should be applied. */
 interface DetectedTarget {
   target: string
-  mode: 'literal' | 'section' | 'title'
+  mode: TargetMode
 }
 
 /**
@@ -339,7 +432,7 @@ interface DetectedTarget {
  * whole section (heading plus everything under it); "the title" means the
  * document title.
  */
-function detectTarget(message: string): DetectedTarget | null {
+function detectTarget(message: string, knownTitles: readonly string[]): DetectedTarget | null {
   // 1. Quoted targets have highest priority. Boundary checks avoid treating
   // an apostrophe in a contraction ("don't") as an opening quote.
   const doubleQuoted = message.match(/"([^"]{2,80})"/)
@@ -393,9 +486,11 @@ function detectTarget(message: string): DetectedTarget | null {
     return { target: `section ${number}`, mode: 'section' }
   }
 
-  // 5. Standard academic section names.
-  const namedMatch = message.match(NAMED_SECTION_PATTERN)
-  if (namedMatch) return { target: namedMatch[1], mode: 'section' }
+  // 5. A section title from the open document or a standard academic name, longest first.
+  const titleMatch = namedTitles(knownTitles).find((title) =>
+    new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(title)}(?:$|[^a-z0-9])`).test(message)
+  )
+  if (titleMatch) return { target: titleMatch, mode: 'section' }
 
   // 6. The document title ("center the title", "make the title bold").
   // "this title heading" is a normal selection request, so require "the/my" or "document title".
@@ -408,9 +503,103 @@ function detectTarget(message: string): DetectedTarget | null {
 /** Phrases that name Heading 1 itself, as opposed to "as heading" / "make heading". */
 const EXPLICIT_HEADING1_PHRASES = ['heading 1', 'h1', 'main heading', 'title heading'] as const
 
+/** Font families students ask for by name, with their display spelling. */
+const FONT_FAMILIES = [
+  'Times New Roman', 'Arial', 'Calibri', 'Cambria', 'Georgia', 'Garamond', 'Helvetica', 'Verdana', 'Tahoma',
+  'Century Gothic', 'Book Antiqua', 'Bookman Old Style', 'Palatino Linotype', 'Courier New', 'Segoe UI', 'Trebuchet MS',
+] as const
+
+/** Line spacing a request asks for, as a multiple of the font size. */
+function detectLineSpacing(message: string): number | null {
+  const numeric = message.match(/\b(?:line[\s-]?)?spac(?:ing|ed|e)\s*(?:of|to|at|=|:)?\s*([1-3](?:\.\d{1,2})?)(?![\d.]|\s*(?:pt|px|in|cm))/)
+  if (numeric && /\bspac(?:ing|ed|e)\b/.test(message) && !/\bparagraph\s+spacing\b/.test(message.slice(0, numeric.index ?? 0) + numeric[0])) {
+    return Number.parseFloat(numeric[1])
+  }
+  if (/\bdouble[\s-]?spac\w*|\bdouble line spacing\b|\bline spacing (?:of |to |at )?double\b/.test(message)) return 2
+  if (/\b(?:1\.5|one and a half)[\s-]?(?:line[\s-]?)?spac\w*/.test(message)) return 1.5
+  if (/\bsingle[\s-]?spac\w*|\bline spacing (?:of |to |at )?single\b/.test(message)) return 1
+  return null
+}
+
+/** First-line indent a request asks for, in inches (0.5in when no amount is given). */
+function detectFirstLineIndent(message: string): number | null {
+  if (!/\bindent(?:ation|ed|s)?\b/.test(message)) return null
+  if (/\b(?:remove|no|without|clear|undo)\s+(?:the\s+|any\s+)?(?:first[\s-]?line\s+)?indent/.test(message)) return null
+  const inches = message.match(/(\d+(?:\.\d+)?)\s*(?:in(?:ch(?:es)?)?\b|")/)
+  if (inches) return Number.parseFloat(inches[1])
+  const centimetres = message.match(/(\d+(?:\.\d+)?)\s*cm\b/)
+  if (centimetres) return Math.round((Number.parseFloat(centimetres[1]) / 2.54) * 100) / 100
+  if (/\bhalf(?:\s+an)?\s+inch\b/.test(message)) return 0.5
+  return 0.5
+}
+
+/** A font family named in the request ("Times New Roman"), in its display spelling. */
+function detectFontFamily(message: string): string | null {
+  return FONT_FAMILIES.find((font) => message.includes(font.toLowerCase())) ?? null
+}
+
+/** Letter case a request asks for: capitals ("capitalize", "all caps") or title case. */
+function detectTextCase(message: string): 'upper' | 'title' | null {
+  if (/\btitle[\s-]?case\b|\bcapitali[sz]e (?:the )?first letters?\b|\bcapitali[sz]e each word\b/.test(message)) return 'title'
+  if (/\bcapitali[sz]e\w*\b|\bupper[\s-]?case\b|\ball[\s-]?caps\b|\ball capital(?:s| letters)?\b|\bin caps\b/.test(message)) return 'upper'
+  return null
+}
+
+/** Styling beyond marks and headings that a request asks for. */
+function detectStyle(message: string): StyleChange {
+  return {
+    lineSpacing: detectLineSpacing(message),
+    firstLineIndentIn: detectFirstLineIndent(message),
+    fontFamily: detectFontFamily(message),
+    textCase: detectTextCase(message),
+  }
+}
+
+/**
+ * An academic preset named as the way to format the document ("format in APA
+ * style", "use the IEEE format"). Citation requests ("cite this in APA") are not
+ * preset requests.
+ */
+function detectPreset(message: string): string | null {
+  if (/\bcit(?:e|es|ing|ation|ations)\b|\breferences?\b|\bbibliograph/.test(message)) return null
+  if (/\bapa\b/.test(message)) return 'apa_7th'
+  if (/\bieee\b/.test(message)) return 'ieee'
+  if (/\buclm\b|\bcapstone (?:format|style|preset|template)\b|\bthesis (?:format|style|preset|template)\b/.test(message)) return 'uclm_capstone'
+  return null
+}
+
+/**
+ * True when the message asks something about the document ("What is the main
+ * objective of this study?", "How do I cite a website?") rather than asking for
+ * a change. Questions are answered, never turned into a formatting preview.
+ * Polite requests ("Can you make the title bold?") are still requests.
+ */
+export function looksLikeQuestion(message: string): boolean {
+  const normalized = normalizeMessage(message)
+  if (/^(?:can|could|would|will) you\b|^(?:please|pls|kindly)\b/.test(normalized)) return false
+  return /^(?:what|what's|whats|why|who|whom|whose|when|where|which|how|is|are|was|were|does|do|did|should|explain|summari[sz]e|describe|tell me|give me|list)\b/.test(normalized)
+}
+
+/**
+ * Words that mean the whole section, not just its title line ("the entire
+ * chapter 2", "everything in the introduction", "the paragraphs of chapter 1").
+ */
+const WHOLE_SECTION_PATTERN = /\b(?:entire|whole|full|all of|everything in|everything under|body of|content of|contents of|text of|text in|paragraphs (?:of|in|under))\b/
+
+/** Changes that belong to body text, so a named section means everything in it. */
+export function isBodyChange(formats: readonly FormattingIntent[], style: StyleChange): boolean {
+  return (
+    formats.some((format) => ['align_left', 'align_right', 'align_justify', 'unordered_list', 'ordered_list', 'blockquote'].includes(format)) ||
+    style.lineSpacing !== null ||
+    style.firstLineIndentIn !== null ||
+    style.fontFamily !== null
+  )
+}
+
 /** Parse one or more formatting intents from a natural-language chatbot message. */
 export function parseFormattingIntent(
-  message: string
+  message: string,
+  options: ParseOptions = {}
 ): FormattingIntentResult {
   const normalized = normalizeMessage(message)
 
@@ -422,7 +611,7 @@ export function parseFormattingIntent(
     {
       format: 'heading1',
       confidence: 0.96,
-      patterns: ['heading 1', 'h1', 'main heading', 'title heading', 'make heading', 'as heading', 'add heading', 'format as heading', 'make this heading', 'apa format', 'apa style', 'format in apa', 'format document', 'format my document', 'academic format'],
+      patterns: ['heading 1', 'h1', 'main heading', 'title heading', 'make heading', 'as heading', 'add heading', 'format as heading', 'make this heading'],
     },
     {
       format: 'heading2',
@@ -462,7 +651,7 @@ export function parseFormattingIntent(
     {
       format: 'ordered_list',
       confidence: 0.92,
-      patterns: ['numbered list', 'ordered list', 'number list', 'numbered items', 'numbers'],
+      patterns: ['numbered list', 'ordered list', 'number list', 'numbered items', 'numbers', 'numbering', 'number the ', 'number them', 'number each', 'number these', 'number those'],
     },
   ]
 
@@ -495,13 +684,27 @@ export function parseFormattingIntent(
     if (firstConfidence === 0) firstConfidence = ALIGNMENT_CONFIDENCE
   }
 
-  const detected = detectTarget(normalized)
+  // Style words are read without quoted target text ("bold "Double Space Rules"").
+  const style = detectStyle(formatText.replace(/"[^"]*"/g, ' '))
+  const detected = detectTarget(normalized, options.knownTitles ?? [])
   const target = detected?.target ?? null
   const targetCategory = detectTargetCategory(normalized)
+  // A named section or chapter means its title line, unless the request says the
+  // whole section or asks for a body change (spacing, indent, lists, justify).
+  const targetMode: TargetMode | null =
+    detected?.mode === 'section' && !WHOLE_SECTION_PATTERN.test(normalized) && !isBodyChange(formats, style)
+      ? 'heading'
+      : (detected?.mode ?? null)
+  // Line spacing and font family with no place named mean the document, as in
+  // a thesis guideline ("double space", "use Times New Roman"), unless the
+  // message points at the selection.
+  const documentWideStyle =
+    (style.lineSpacing !== null || style.fontFamily !== null) && !/\b(?:this|these|selected|selection|highlighted)\b/.test(normalized)
   // A named category ("all headings") is itself a document-wide request.
   const scope: 'selection' | 'all' =
     target !== null ||
     targetCategory !== 'all' ||
+    documentWideStyle ||
     BULK_SCOPE_PHRASES.some((phrase) => normalized.includes(phrase))
       ? 'all'
       : 'selection'
@@ -516,7 +719,9 @@ export function parseFormattingIntent(
     fontSize: detectFontSize(normalized),
     normalize,
     target,
-    targetMode: detected?.mode ?? null,
+    targetMode,
     targetCategory,
+    style,
+    preset: target === null && targetCategory === 'all' ? detectPreset(normalized) : null,
   }
 }

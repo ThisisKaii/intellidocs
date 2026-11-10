@@ -1,5 +1,5 @@
 import { splitFormattingOperations } from '../splitFormattingOperations'
-import { parseFormattingIntent } from '../parseFormattingIntent'
+import { looksLikeQuestion, parseFormattingIntent } from '../parseFormattingIntent'
 import { buildMultiFormattingReply } from '../buildFormattingReply'
 
 describe('splitFormattingOperations', () => {
@@ -9,13 +9,14 @@ describe('splitFormattingOperations', () => {
         'Format research questions as a numbered list. Apply consistent paragraph spacing.'
     )
 
-    expect(operations).toHaveLength(3)
+    expect(operations).toHaveLength(4)
     expect(operations[0]).toMatchObject({ targetCategory: 'chapters' })
     expect(operations[0].formats).toEqual(expect.arrayContaining(['bold', 'align_center']))
     expect(operations[1]).toMatchObject({ targetCategory: 'sections', formats: ['heading2'] })
     expect(operations[2]).toMatchObject({ targetCategory: 'paragraphs', formats: ['align_left'] })
+    expect(operations[3]).toMatchObject({ targetCategory: 'questions', formats: ['ordered_list'] })
     // Nothing is dropped silently: what it cannot place is reported back.
-    expect(unresolved).toEqual(['Format research questions as a numbered list', 'Apply consistent paragraph spacing'])
+    expect(unresolved).toEqual(['Apply consistent paragraph spacing'])
   })
 
   it('splits clauses joined by "and" when each names its own place', () => {
@@ -57,6 +58,108 @@ describe('splitFormattingOperations', () => {
 
   it('finds nothing to split in a plain selection request', () => {
     expect(splitFormattingOperations('Make this bold and center it').operations).toEqual([])
+  })
+})
+
+describe('12-prompt accuracy benchmark (parser side)', () => {
+  it('#1 finds an unquoted section name and changes only its title line', () => {
+    const result = parseFormattingIntent('Format Statement of the Problem as Heading 2')
+    expect(result).toMatchObject({ target: 'statement of the problem', targetMode: 'heading', formats: ['heading2'], scope: 'all' })
+  })
+
+  it('#2 bolds and centers the Chapter 1 title line, not the chapter body', () => {
+    const result = parseFormattingIntent('Make Chapter 1 bold and center it')
+    expect(result).toMatchObject({ target: 'chapter 1', targetMode: 'heading' })
+    expect(result.formats).toEqual(expect.arrayContaining(['bold', 'align_center']))
+  })
+
+  it('#4 targets the research questions for a numbered list', () => {
+    const result = parseFormattingIntent('Convert the research questions into a numbered list')
+    expect(result).toMatchObject({ targetCategory: 'questions', formats: ['ordered_list'], scope: 'all' })
+  })
+
+  it('#5 reads "section headings" as the place and 14pt + bold as the change', () => {
+    const result = parseFormattingIntent('Make all section headings 14pt and bold')
+    expect(result).toMatchObject({ targetCategory: 'sections', fontSize: 14, formats: ['bold'] })
+  })
+
+  it('#6 indents body paragraphs half an inch by default', () => {
+    const result = parseFormattingIntent('Indent all body paragraphs')
+    expect(result.targetCategory).toBe('paragraphs')
+    expect(result.style.firstLineIndentIn).toBe(0.5)
+    expect(parseFormattingIntent('indent the paragraphs 1 inch').style.firstLineIndentIn).toBe(1)
+  })
+
+  it('#7 reads double spacing and numeric line spacing for the whole document', () => {
+    for (const prompt of ['Double space the document', 'Set line spacing to 2.0', 'make it double-spaced']) {
+      const result = parseFormattingIntent(prompt)
+      expect(result.style.lineSpacing).toBe(2)
+      expect(result.scope).toBe('all')
+    }
+    expect(parseFormattingIntent('use 1.5 line spacing').style.lineSpacing).toBe(1.5)
+    expect(parseFormattingIntent('single space this').style.lineSpacing).toBe(1)
+    expect(parseFormattingIntent('single space this').scope).toBe('selection')
+  })
+
+  it('does not read paragraph spacing as line spacing', () => {
+    expect(parseFormattingIntent('Apply consistent paragraph spacing').style.lineSpacing).toBeNull()
+  })
+
+  it('#8 reads the font family and size for the whole document', () => {
+    const result = parseFormattingIntent('Change font to Times New Roman 12pt for the whole document')
+    expect(result.style.fontFamily).toBe('Times New Roman')
+    expect(result.fontSize).toBe(12)
+    expect(result.scope).toBe('all')
+  })
+
+  it('#9 capitalizes and centers the document title', () => {
+    const result = parseFormattingIntent('Capitalize the title and center it')
+    expect(result).toMatchObject({ targetMode: 'title', formats: ['align_center'] })
+    expect(result.style.textCase).toBe('upper')
+    expect(parseFormattingIntent('Put the title in title case').style.textCase).toBe('title')
+  })
+
+  it('#10 asks for the APA preset instead of a Heading 1', () => {
+    const result = parseFormattingIntent('Format in APA style')
+    expect(result.preset).toBe('apa_7th')
+    expect(result.formats).toEqual([])
+    expect(parseFormattingIntent('Use the IEEE format').preset).toBe('ieee')
+    // Citation style is not a document preset.
+    expect(parseFormattingIntent('Cite this source in APA').preset).toBeNull()
+  })
+
+  it('#11 splits three changes, keeping each heading level with its own target', () => {
+    const { operations, unresolved } = splitFormattingOperations(
+      'Format Chapter 2 as Heading 1, Review of Related Literature as Heading 2, and left-align the paragraphs'
+    )
+    expect(operations.map((op) => [op.target, op.targetCategory, op.formats])).toEqual([
+      ['chapter 2', 'all', ['heading1']],
+      ['review of related literature', 'all', ['heading2']],
+      [null, 'paragraphs', ['align_left']],
+    ])
+    expect(unresolved).toEqual([])
+  })
+
+  it('#12 treats a question about the document as a question', () => {
+    expect(looksLikeQuestion('What is the main objective of this study?')).toBe(true)
+    expect(looksLikeQuestion('How do I make the title bold?')).toBe(true)
+    expect(looksLikeQuestion('Can you make the title bold?')).toBe(false)
+    expect(looksLikeQuestion('Make the title bold')).toBe(false)
+  })
+
+  it('finds a section title from the open document outline without quotes', () => {
+    const result = parseFormattingIntent('Make Behavioral Tracking & Feature Extraction italic', {
+      knownTitles: ['CHAPTER II', 'Behavioral Tracking & Feature Extraction'],
+    })
+    expect(result).toMatchObject({ target: 'behavioral tracking & feature extraction', targetMode: 'heading' })
+  })
+
+  it('keeps a section title that contains "and" in one piece', () => {
+    const { operations } = splitFormattingOperations('Make Scope and Delimitation bold and italicize the Conceptual Framework')
+    expect(operations.map((op) => [op.target, op.formats])).toEqual([
+      ['scope and delimitation', ['bold']],
+      ['conceptual framework', ['italic']],
+    ])
   })
 })
 
