@@ -3,6 +3,7 @@ import multer from 'multer'
 import * as documentController from '../controllers/documentController'
 import * as shareController from '../controllers/shareController'
 import * as documentOpenController from '../controllers/documentOpenController'
+import * as documentPinController from '../controllers/documentPinController'
 import * as documentGenreController from '../controllers/documentGenreController'
 import { validateBody, validateParams, validateQuery } from '../middleware/validate'
 import {
@@ -60,6 +61,8 @@ router.get('/shared', documentController.getSharedDocuments)
 router.get('/trash', documentController.getTrashDocuments)
 /** Documents opened in the last 7 days, most recently opened first. Must be before /:id */
 router.get('/recent', documentOpenController.listRecent)
+/** The caller's own pinned documents, most recently pinned first. Must be before /:id */
+router.get('/pinned', documentPinController.listPinned)
 /** Open someone's document with its short share code. Must be before /:id */
 router.post('/join-code', validateBody(joinCodeSchema), shareController.joinWithCode)
 
@@ -77,6 +80,9 @@ router.post('/images', imageUpload.single('image'), documentController.uploadIma
 
 /** The caller just opened this document (feeds "Recent"). */
 router.post('/:id/opened', validateParams(documentIdParamSchema), documentOpenController.markOpened)
+/** Pin / unpin a document for the caller only (their own, or one shared with them). */
+router.post('/:id/pin', validateParams(documentIdParamSchema), documentPinController.pin)
+router.delete('/:id/pin', validateParams(documentIdParamSchema), documentPinController.unpin)
 
 router.get('/:id', documentController.getDocument)
 

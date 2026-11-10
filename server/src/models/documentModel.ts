@@ -24,16 +24,10 @@ const LIST_BASE_COLUMNS =
   'id,user_id,title,header_content,footer_content,show_header,show_footer,header_number_format,footer_number_format,page_size,margins,orientation,formatting_history,is_isolated,formatting_preset,is_deleted,deleted_at,share_permission,share_token,share_expires_at,created_at,updated_at'
 
 /** List columns plus the lightweight grid-preview snippet (migration 026). */
-const LIST_PREVIEW_COLUMNS = `${LIST_BASE_COLUMNS},preview_snippet`
+const LIST_COLUMNS = `${LIST_BASE_COLUMNS},preview_snippet`
 
-/** List columns plus the owner's pin (migration 041). */
-const LIST_COLUMNS = `${LIST_PREVIEW_COLUMNS},is_pinned`
-
-/**
- * Column sets to try, newest first: while migration 041 (is_pinned) or 026
- * (preview_snippet) is not applied yet, the list falls back instead of failing.
- */
-const LIST_COLUMN_FALLBACKS = [LIST_COLUMNS, LIST_PREVIEW_COLUMNS, LIST_BASE_COLUMNS]
+/** Column sets to try, newest first: while migration 026 is not applied, the list falls back instead of failing. */
+const LIST_COLUMN_FALLBACKS = [LIST_COLUMNS, LIST_BASE_COLUMNS]
 
 /** PostgREST/Postgres error codes for an unknown column (a migration not applied yet). */
 const UNDEFINED_COLUMN_CODES = ['42703', 'PGRST204']
@@ -50,8 +44,8 @@ export interface ListResponse<T> {
 }
 
 /**
- * Run a documents list query with `preview_snippet` and `is_pinned`, retrying
- * with an older column set while migration 041 or 026 has not been applied.
+ * Run a documents list query with `preview_snippet`, retrying with the legacy
+ * column set while migration 026 has not been applied.
  * The builder resolves through `unknown` because Supabase's untyped client
  * otherwise rejects the structural `PromiseLike` match.
  */
@@ -447,13 +441,6 @@ export async function updateDocument(
 
   if (!canWrite) {
     const forbidden = new Error('You do not have permission to edit this document') as Error & { status: number }
-    forbidden.status = 403
-    throw forbidden
-  }
-
-  // A pin orders the owner's own dashboard; collaborators must not change it.
-  if (req.is_pinned !== undefined && doc.user_id !== userId) {
-    const forbidden = new Error('Only the owner can pin this document') as Error & { status: number }
     forbidden.status = 403
     throw forbidden
   }

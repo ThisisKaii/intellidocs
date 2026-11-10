@@ -9,6 +9,7 @@ import {
   FolderIcon,
   GraduationCap,
   HardDrive,
+  Pin,
   Upload,
   type LucideIcon,
 } from 'lucide-react'
@@ -32,7 +33,7 @@ interface SidebarItem {
 
 /** Describes which view/section the sidebar has selected. */
 export interface FolderSelection {
-  type: 'all' | 'folder' | 'recent' | 'trash' | 'shared'
+  type: 'all' | 'folder' | 'recent' | 'trash' | 'shared' | 'pinned'
   folderId?: string
   folderName?: string
 }
@@ -49,6 +50,7 @@ interface DriveSidebarProps {
   /** Badge counts for the main navigation items. */
   documentCount?: number
   recentCount?: number
+  pinnedCount?: number
   trashCount?: number
   /** Quick-access folders listed under the navigation. */
   folders?: FolderRecord[]
@@ -76,6 +78,7 @@ const NAV_ITEMS: SidebarItem[] = [
   { id: 'drive', label: 'My documents', icon: FileText, selectionType: 'all' },
   { id: 'recent', label: 'Recent', icon: Clock3, selectionType: 'recent' },
   { id: 'shared', label: 'Shared with me', icon: Share2, selectionType: 'shared' },
+  { id: 'pinned', label: 'Pinned', icon: Pin, selectionType: 'pinned' },
   { id: 'trash', label: 'Trash', icon: Trash, selectionType: 'trash' },
 ]
 
@@ -90,6 +93,7 @@ function DriveSidebar({
   onImportFromDrive,
   documentCount,
   recentCount,
+  pinnedCount,
   trashCount,
   folders,
   isOpen,
@@ -107,6 +111,7 @@ function DriveSidebar({
   function navCount(item: SidebarItem): number | undefined {
     if (item.selectionType === 'all') return documentCount
     if (item.selectionType === 'recent') return recentCount
+    if (item.selectionType === 'pinned') return pinnedCount
     if (item.selectionType === 'trash') return trashCount
     return undefined
   }

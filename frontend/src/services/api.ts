@@ -108,8 +108,6 @@ export interface DocumentRecord {
   orientation: PageOrientation
   formatting_history: unknown[]
   is_isolated: boolean
-  /** The owner pinned it to the top of the dashboard (absent until migration 041 is applied). */
-  is_pinned?: boolean
   formatting_preset: string | null
   /** Genre partition (migration 038); absent on databases without the migration. */
   genre?: DocumentGenre
@@ -1255,13 +1253,17 @@ export const api = {
         body: JSON.stringify({ is_isolated: isIsolated }),
       })
     },
-    /** Pin or unpin a document at the top of the owner's dashboard (owner only). */
-    togglePin: async (id: string, isPinned: boolean): Promise<DocumentRecord> => {
-      return fetchAPI<DocumentRecord>(`documents/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_pinned: isPinned }),
-      })
+    /** The caller's own pinned documents (the "Pinned" view), most recently pinned first. */
+    pinned: async (): Promise<DocumentRecord[]> => {
+      return fetchAPI<DocumentRecord[]>('documents/pinned')
+    },
+    /** Pin a document for the caller only: their own, or one shared with them. */
+    pin: async (id: string): Promise<null> => {
+      return fetchAPI<null>(`documents/${id}/pin`, { method: 'POST' })
+    },
+    /** Remove the caller's pin (other people's pins stay). */
+    unpin: async (id: string): Promise<null> => {
+      return fetchAPI<null>(`documents/${id}/pin`, { method: 'DELETE' })
     },
     /** List version snapshots for a document (owner only, newest first). */
     versions: async (id: string): Promise<DocumentVersion[]> => {

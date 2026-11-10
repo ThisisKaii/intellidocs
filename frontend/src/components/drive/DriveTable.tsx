@@ -89,15 +89,17 @@ interface DriveTableProps {
   /** Changes whenever the list shown changes (module, folder, search); "Show more" starts over. */
   pageResetKey?: string
   /** Which module is shown, so an empty list says the right thing (and "Shared with me" never offers to create). */
-  emptyVariant?: 'default' | 'shared' | 'recent' | 'trash'
+  emptyVariant?: 'default' | 'shared' | 'recent' | 'pinned' | 'trash'
   /** Opens the "enter a share code" dialog (shown in the empty "Shared with me" state). */
   onEnterCode?: () => void
-  /** Pin or unpin a document; omitted where pins do not apply (Shared with me, Trash). */
+  /** Pin or unpin a document for the signed-in user; omitted where pins do not apply (Trash). */
   onTogglePin?: (id: string, pinned: boolean) => void
+  /** Ids of the documents this user pinned (shown with a pin icon; the menu offers Unpin). */
+  pinnedIds?: ReadonlySet<string>
 }
 
 /** What each module says when it has nothing to show. */
-const EMPTY_COPY: Record<'shared' | 'recent' | 'trash', { title: string; body: string }> = {
+const EMPTY_COPY: Record<'shared' | 'recent' | 'pinned' | 'trash', { title: string; body: string }> = {
   shared: {
     title: 'Nothing shared with you yet',
     body: 'Documents others share with you appear here. Got a share code? Enter it to open a document you were invited to.',
@@ -105,6 +107,10 @@ const EMPTY_COPY: Record<'shared' | 'recent' | 'trash', { title: string; body: s
   recent: {
     title: 'Nothing opened this week',
     body: 'Documents you open show up here for 7 days. Open one again to move it back to the top.',
+  },
+  pinned: {
+    title: 'Nothing pinned yet',
+    body: 'Pin a document from its ⋮ menu (in My documents or Shared with me) to keep it here for quick access.',
   },
   trash: {
     title: 'Trash is empty',
@@ -272,6 +278,7 @@ export function DriveTable({
   onShare,
   onFoldersChanged,
   onTogglePin,
+  pinnedIds,
   pageResetKey = '',
   emptyVariant = 'default',
   onEnterCode,
@@ -301,9 +308,9 @@ export function DriveTable({
           margins: d.margins ?? null,
           formattingPreset: d.formatting_preset ?? null,
         },
-        pinned: Boolean(d.is_pinned),
+        pinned: Boolean(pinnedIds?.has(d.id)),
       })),
-    [documents],
+    [documents, pinnedIds],
   )
 
   const handleContextMenu = useCallback((e: React.MouseEvent, item: DriveItem) => {
@@ -351,16 +358,6 @@ export function DriveTable({
 
   const shownItems = items.slice(0, visibleLimit(rows, columns))
   const hidden = hiddenCount(items.length, rows, columns)
-  const hasPinned = shownItems.some((item) => item.pinned)
-
-  /** "Pinned" before the first pinned item, "All files" where the unpinned ones start (only when something is pinned). */
-  function sectionLabel(index: number): string | null {
-    if (!hasPinned) return null
-    const item = shownItems[index]
-    if (index === 0 && item.pinned) return 'Pinned'
-    if (!item.pinned && (index === 0 || shownItems[index - 1].pinned)) return 'All files'
-    return null
-  }
 
   /** Pin / Unpin menu entry for a document. */
   function pinMenuItem(item: DriveItem): JSX.Element | null {
@@ -696,15 +693,9 @@ export function DriveTable({
               {shownItems.map((item, index) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
-                const section = sectionLabel(index)
 
                 return (
                   <Fragment key={item.id}>
-                  {section && (
-                    <h3 className="col-span-full flex items-center gap-1.5 m-0 mt-1 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                      {section === 'Pinned' && <Pin className="size-3.5" />} {section}
-                    </h3>
-                  )}
                   <div
                     draggable={!isEditing}
                     onDragStart={(e) => onDragStart(e, item.id)}
@@ -851,19 +842,13 @@ export function DriveTable({
                 <span className="w-8" />
               </div>
 
-              {shownItems.map((item, index) => {
+              {shownItems.map((item) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
                 const displayName = user?.email?.split('@')[0] || 'Unknown'
-                const section = sectionLabel(index)
 
                 return (
                   <Fragment key={item.id}>
-                  {section && (
-                    <h3 className="flex items-center gap-1.5 m-0 mt-2 px-4 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-                      {section === 'Pinned' && <Pin className="size-3.5" />} {section}
-                    </h3>
-                  )}
                   <div
                     draggable={!isEditing}
                     onDragStart={(e) => onDragStart(e, item.id)}

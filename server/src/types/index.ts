@@ -77,6 +77,8 @@ export interface Document {
   preview_snippet?: string
   /** When the caller last opened this document; set only by the "Recent" list (migration 034). */
   last_opened_at?: string
+  /** When the caller pinned it (only in the Pinned list). */
+  pinned_at?: string
   header_content: string
   footer_content: string
   show_header: boolean
@@ -88,8 +90,6 @@ export interface Document {
   orientation: PageOrientation
   formatting_history: unknown[]
   is_isolated: boolean
-  /** Owner pinned it to the top of the dashboard (migration 041; absent before it). */
-  is_pinned?: boolean
   formatting_preset: string | null
   /** Genre partition for behavior learning (migration 038). */
   genre: DocumentGenre
@@ -178,7 +178,6 @@ export interface UpdateDocumentRequest {
   orientation?: PageOrientation
   formatting_history?: string[]
   is_isolated?: boolean
-  is_pinned?: boolean
   formatting_preset?: string | null
   page_layout?: PageLayout | null
   citation_data?: CitationData

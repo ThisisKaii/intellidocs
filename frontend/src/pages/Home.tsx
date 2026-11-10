@@ -89,6 +89,10 @@ export default function HomePage(): JSX.Element {
   // Documents opened in the last 7 days, most recently opened first (the server keeps the 7-day window).
   const [recentDocuments, setRecentDocuments] = useState<DocumentRecord[]>([])
   const [recentNote, setRecentNote] = useState<string>('')
+  // This user's pinned documents (their own or shared with them), most recently pinned first.
+  const [pinnedDocuments, setPinnedDocuments] = useState<DocumentRecord[]>([])
+  const [pinnedNote, setPinnedNote] = useState<string>('')
+  const pinnedIds = useMemo(() => new Set(pinnedDocuments.map((doc) => doc.id)), [pinnedDocuments])
   const [folderDocuments, setFolderDocuments] = useState<DocumentRecord[]>([])
   const [folders, setFolders] = useState<FolderRecord[]>([])
   const [joinClassOpen, setJoinClassOpen] = useState(false)
@@ -191,6 +195,28 @@ export default function HomePage(): JSX.Element {
     loadFolder()
   }, [selection])
 
+  /* ── Pinned: loaded on arrival (for the sidebar count) and whenever the Pinned view opens. ── */
+  useEffect(() => {
+    let cancelled = false
+    api.documents
+      .pinned()
+      .then((docs) => {
+        if (cancelled) return
+        setPinnedDocuments(docs)
+        setPinnedNote('')
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setPinnedDocuments([])
+        setPinnedNote(
+          err instanceof Error && err.message.includes('migration 042')
+            ? 'Pinned is being set up and will be ready shortly.'
+            : 'Pinned documents could not be loaded right now.',
+        )
+      })
+    return () => { cancelled = true }
+  }, [selection.type])
+
   /* ── Recent: what the user opened this week. Loaded on arrival (for the sidebar count) and
    *    whenever the Recent view opens, so a document opened a moment ago is first. ── */
   useEffect(() => {
@@ -271,6 +297,9 @@ export default function HomePage(): JSX.Element {
       case 'recent':
         docs = recentDocuments
         break
+      case 'pinned':
+        docs = pinnedDocuments
+        break
       case 'shared':
         docs = sharedDocuments
         break
@@ -281,19 +310,16 @@ export default function HomePage(): JSX.Element {
         docs = allDocuments
     }
 
-    // Recent keeps the server's order (most recently OPENED first); every other list is newest-edited first.
-    const ordered =
-      selection.type === 'recent'
+    // Recent and Pinned keep the server's order (most recently opened / pinned first); every other list is newest-edited first.
+    const sorted =
+      selection.type === 'recent' || selection.type === 'pinned'
         ? docs
         : [...docs].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    // The owner's pinned documents lead their own lists (the sort is stable, so each group keeps its order).
-    const pinsApply = selection.type !== 'trash' && selection.type !== 'shared'
-    const sorted = pinsApply ? [...ordered].sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned))) : ordered
 
     const q = query.trim().toLowerCase()
     if (!q) return sorted
     return sorted.filter((d) => d.title.toLowerCase().includes(q))
-  }, [allDocuments, recentDocuments, folderDocuments, sharedDocuments, trashDocuments, selection, query])
+  }, [allDocuments, recentDocuments, pinnedDocuments, folderDocuments, sharedDocuments, trashDocuments, selection, query])
 
   /** Folders to display in the main content area (top-level or sub-folders). */
   const visibleFolders = useMemo((): FolderRecord[] => {
@@ -605,21 +631,22 @@ export default function HomePage(): JSX.Element {
   }
 
   /**
-   * Pin or unpin a document at the top of the owner's lists. The lists change
-   * at once; when saving fails they go back and the reason is shown.
+   * Pin or unpin a document for this user (their own or one shared with them).
+   * The Pinned list changes at once; when saving fails it goes back and the reason is shown.
    */
   async function handleTogglePin(docId: string, pinned: boolean): Promise<void> {
-    const setPin = (value: boolean) => (docs: DocumentRecord[]): DocumentRecord[] =>
-      docs.map((doc) => (doc.id === docId ? { ...doc, is_pinned: value } : doc))
-    setAllDocuments(setPin(pinned))
-    setFolderDocuments(setPin(pinned))
-    setRecentDocuments(setPin(pinned))
+    const previous = pinnedDocuments
+    if (pinned) {
+      const doc = [...allDocuments, ...sharedDocuments, ...recentDocuments, ...folderDocuments].find((d) => d.id === docId)
+      if (doc) setPinnedDocuments((docs) => [doc, ...docs.filter((d) => d.id !== docId)])
+    } else {
+      setPinnedDocuments((docs) => docs.filter((d) => d.id !== docId))
+    }
     try {
-      await api.documents.togglePin(docId, pinned)
+      if (pinned) await api.documents.pin(docId)
+      else await api.documents.unpin(docId)
     } catch (err) {
-      setAllDocuments(setPin(!pinned))
-      setFolderDocuments(setPin(!pinned))
-      setRecentDocuments(setPin(!pinned))
+      setPinnedDocuments(previous)
       setError(err instanceof Error ? `Couldn't ${pinned ? 'pin' : 'unpin'} the document: ${err.message}` : `Couldn't ${pinned ? 'pin' : 'unpin'} the document`)
     }
   }
@@ -712,6 +739,8 @@ export default function HomePage(): JSX.Element {
         return selection.folderName ?? 'Folder'
       case 'recent':
         return 'Recent'
+      case 'pinned':
+        return 'Pinned'
       case 'shared':
         return 'Shared with me'
       case 'trash':
@@ -756,6 +785,7 @@ export default function HomePage(): JSX.Element {
         onImportFromDrive={() => setDriveOpen(true)}
         documentCount={allDocuments.length}
         recentCount={recentDocuments.length}
+        pinnedCount={pinnedDocuments.length}
         trashCount={trashDocuments.length}
         folders={folders}
         isOpen={sidebarOpen}
@@ -868,6 +898,11 @@ export default function HomePage(): JSX.Element {
                 Items in trash are permanently deleted after you confirm. Restore anything you still need.
               </p>
             )}
+            {selection.type === 'pinned' && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {pinnedNote || 'Documents you pinned, from My documents or Shared with me. Only you see your pins.'}
+              </p>
+            )}
             {selection.type === 'recent' && (
               <p className="text-sm text-muted-foreground mt-1">
                 {recentNote || 'Documents you opened in the last 7 days. Opening one again moves it to the top.'}
@@ -914,7 +949,7 @@ export default function HomePage(): JSX.Element {
 
           <DriveTable
             pageResetKey={`${selection.type}:${selection.folderId ?? ''}:${query}`}
-            emptyVariant={selection.type === 'shared' || selection.type === 'recent' || selection.type === 'trash' ? selection.type : 'default'}
+            emptyVariant={selection.type === 'shared' || selection.type === 'recent' || selection.type === 'pinned' || selection.type === 'trash' ? selection.type : 'default'}
             onEnterCode={() => setJoinCodeOpen(true)}
             documents={visibleDocuments}
             folders={visibleFolders}
@@ -940,7 +975,8 @@ export default function HomePage(): JSX.Element {
               })
             }}
             readOnlyView={selection.type === 'trash'}
-            onTogglePin={selection.type === 'trash' || selection.type === 'shared' ? undefined : (docId, pinned) => { void handleTogglePin(docId, pinned) }}
+            onTogglePin={selection.type === 'trash' ? undefined : (docId, pinned) => { void handleTogglePin(docId, pinned) }}
+            pinnedIds={pinnedIds}
             onTitleChange={handleTitleChange}
             onSelect={handleSelect}
             onClearSelection={handleClearSelection}
