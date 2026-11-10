@@ -3,7 +3,8 @@ import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { getBlueprint } from '@/components/editor/documentBlueprints'
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
-import { blockStyleFor, describePresetGap, findBodyDeviations } from '@/lib/bodyConsistency'
+import { blockStyleFor, describePresetGap, findBodyDeviations, findListItemDeviations } from '@/lib/bodyConsistency'
+import { FRONT_LABEL } from '@/lib/frontMatter'
 import { findShortLineDeviations } from '@/lib/shortLineConsistency'
 import { presetRulesFor } from '@/lib/presetRules'
 import { loadSuggestionMemory, rememberSuggestion } from '@/lib/suggestionMemory'
@@ -13,6 +14,7 @@ import {
   bodySuggestionLabel,
   lineSuggestionDetail,
   lineSuggestionLabel,
+  LIST_ITEM_DETAIL,
   sectionDisplayName,
   type LineKind,
   type SuggestedFix,
@@ -94,6 +96,7 @@ export type StructuralRole =
   | 'title_page'
   | 'front_label'
   | 'preset_body'
+  | 'list_item'
   | 'subheading'
   | 'figure_title'
   | 'table_title'
@@ -239,17 +242,34 @@ export function mergeSameFixCandidates(
   return cards.sort((a, b) => b.confidence - a.confidence)
 }
 
+/** A figure or table caption: never a section, even when it was saved as a heading. */
+const CAPTION_LINE = /^(figure|fig\.|table)\s+\d+/i
+
 /**
- * The section each block sits in: the nearest preceding heading, chapter line or
- * heading-like bold line. Blocks before the first one (a title page) have none.
+ * The chapter-level section each block sits in: the nearest preceding top-level heading,
+ * "CHAPTER" line or front-matter label (DEDICATION, ACKNOWLEDGEMENT, ...). Sub-headings and
+ * bold run-in titles inside a chapter do not split it, so the same fix across a chapter's
+ * subsections is one card; captions never name a section. Blocks before the first one (a
+ * title page) have none.
  */
 export function sectionIndex(doc: ProseMirrorNode): (pos: number) => { id: number; name: string } {
+  // The document's top heading level: level 1 usually, level 2 in a document without level-1 headings.
+  let topLevel = 6
+  doc.forEach((node) => {
+    if (node.type.name === 'heading' && !CAPTION_LINE.test(node.textContent.trim())) {
+      topLevel = Math.min(topLevel, Number(node.attrs.level) || 6)
+    }
+  })
   const starts: Array<{ pos: number; name: string }> = []
   doc.forEach((node, offset) => {
-    if (node.type.name === 'heading' || isChapterHeading(node) || isHeadingLikeParagraph(node)) {
-      const text = node.textContent.trim()
-      if (text) starts.push({ pos: offset, name: sectionDisplayName(text) })
-    }
+    const text = node.textContent.trim()
+    if (!text || CAPTION_LINE.test(text)) return
+    const label = text.replace(/[:.]\s*$/, '')
+    const opens =
+      (node.type.name === 'heading' && Number(node.attrs.level) === topLevel) ||
+      isChapterHeading(node) ||
+      ((node.type.name === 'heading' || isHeadingLikeParagraph(node)) && FRONT_LABEL.test(label))
+    if (opens) starts.push({ pos: offset, name: sectionDisplayName(text) })
   })
   return (pos: number) => {
     let found = -1
@@ -342,6 +362,11 @@ interface UseAutoFormatScannerOptions {
   presetKey?: string | null
   /** Document id; accepted and dismissed suggestions are remembered per document. */
   documentId?: string
+  /**
+   * The document's genre. With no preset chosen, a thesis is still held to its conventions
+   * (a centered title page).
+   */
+  genre?: string | null
 }
 
 /**
@@ -358,6 +383,7 @@ export function useAutoFormatScanner({
   minConfidence = 0.68,
   presetKey = null,
   documentId,
+  genre = null,
 }: UseAutoFormatScannerOptions): {
   suggestions: ScannerSuggestion[]
   activeSuggestion: ScannerSuggestion | null
@@ -685,6 +711,33 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
         })
       }
 
+      // ── List-item consistency sweep ──────────────────────────────────
+      // Items of one bullet or numbered list should look alike: one italic or
+      // bold item among plain ones is offered back to the list's own look.
+      for (const deviation of findListItemDeviations(doc).slice(0, MAX_BODY_SUGGESTIONS)) {
+        const key = contentKey(deviation.text, 'inconsistent-list_item', seenKeys)
+        if (dismissedRef.current.has(key)) continue
+        wordings.set(key, { kind: 'body', fix: deviation.fix, presetName: null })
+        candidates.push({
+          key,
+          format: 'paragraph',
+          confidence: 82,
+          from: deviation.pos,
+          to: deviation.pos + deviation.node.nodeSize,
+          pageNumber: estimatePageNumber(deviation.pos),
+          preview: deviation.text.slice(0, 60),
+          label: bodySuggestionLabel(deviation.fix, 1, ''),
+          detail: LIST_ITEM_DETAIL,
+          captures: {
+            role: 'list_item',
+            bold: deviation.fix.bold,
+            italic: deviation.fix.italic,
+            fontSize: deviation.fix.fontSize,
+          },
+          suggestionSource: 'learned',
+        })
+      }
+
       // The whole body against the preset (e.g. every paragraph 11pt where the
       // preset says 12pt): one grouped suggestion, not one per paragraph.
       if (rules && body.presetGaps.length > 0 && body.members.length > 0) {
@@ -728,7 +781,8 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
       // document has no clear majority (e.g. a thesis title page is centered).
       const taken = new Set(candidates.map((candidate) => candidate.from))
       let lineCount = 0
-      for (const deviation of findShortLineDeviations(doc, rules?.lines ?? null)) {
+      const conventions = genre === 'thesis' ? { titlePageAlign: 'center' as const, frontLabelAlign: 'center' as const } : {}
+      for (const deviation of findShortLineDeviations(doc, rules?.lines ?? null, conventions)) {
         if (lineCount >= MAX_LINE_SUGGESTIONS) break
         if (taken.has(deviation.pos)) continue
         const key = contentKey(deviation.text, `inconsistent-${deviation.group}`, seenKeys)
@@ -746,7 +800,11 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
           pageNumber: estimatePageNumber(deviation.pos),
           preview: deviation.text.slice(0, 60),
           label: lineSuggestionLabel(deviation.group, 1),
-          detail: lineSuggestionDetail(deviation.fix, linePreset),
+          detail: lineSuggestionDetail(
+            deviation.fix,
+            linePreset,
+            deviation.fromConvention ? (deviation.group === 'title_page' ? 'thesis title pages are centered' : 'thesis section labels are centered') : undefined,
+          ),
           captures: {
             role: deviation.group,
             bold: deviation.fix.bold,
@@ -796,7 +854,7 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
         return prev
       })
     }, 0)
-  }, [editor, enabled, estimatePageNumber, minConfidence, presetKey])
+  }, [editor, enabled, estimatePageNumber, minConfidence, presetKey, genre])
 
   /**
    * Drop every dismissed key so a rescanned document can earn fresh

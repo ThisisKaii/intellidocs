@@ -1,41 +1,41 @@
 {
- "0200725_[research]_9569504b.docx": {
-  "fixture_sha256": "19562e8ee679cd4675a1ee600a059774800a167fedb5aed4f6f482769461ab6e"
- },
- "0200725_[research]_9569504b.pdf": {
-  "fixture_sha256": "ad908439ab0baee05be145e7674f2e3f0cb9180234ecc0cadb80c5aab2acc1ad"
- },
- "DM-OUHRODI-2026-3750-1.docx": {
-  "fixture_sha256": "ce30bd966a2e57e9b9afcd9a62613a5952372e1694cd69de09d2b2b578262273"
- },
- "DM-OUHRODI-2026-3750-1.pdf": {
-  "fixture_sha256": "596282bdf7543634382170749d39936fb803878cf0621d2bf4f76ef0edb5f917"
- },
- "DM_0440_s_26_SGOD_Conduct-of-World-Teachers-Day.docx": {
-  "fixture_sha256": "359a919e7da6c232bd48c3de19b03fc2440aaaedbcb6e5e283e27b3500a73489"
- },
- "DM_0440_s_26_SGOD_Conduct-of-World-Teachers-Day.pdf": {
-  "fixture_sha256": "e17aa56796be3f93903ff800ab7d227ca1ab8f7364ce32a9845ecbc2c6cf0431"
- },
- "V2 INTELLIDOCS (2) (1).pdf": {
-  "fixture_sha256": "7163aefacd659ce7399b2dde3a11bb061218e94f0a33faf93bed226d8f28c39c"
- },
- "V2 INTELLIDOCS (2).docx": {
-  "fixture_sha256": "3cf73410d76daf0999637bfa9e2b30024816e5a4e27bb421d5dbfaf110e35892"
- },
- "V2 INTELLIDOCS light sabotage.docx": {
-  "fixture_sha256": "69a943fb98c51a77b9b4a5e283ee1789c5f9a81f18130bcd80026efdc2b850eb"
- },
- "V2 INTELLIDOCS sabotage.docx": {
-  "fixture_sha256": "1008a9e0d821b22f5431dd7881f99f2d312accaa88e365255592f47f5277d19f"
- },
- "V2 INTELLIDOCS sabotage.pdf": {
-  "fixture_sha256": "4c80655114b1bd6c219fa8899e99809a1c8c322940f51b5ebc7bb90b7798714f"
- },
- "ieee_sample_paper.docx": {
-  "fixture_sha256": "f4581b6182390e4806cfffa87aa4f3b73999e7e76f6100836296a0da476b5689"
- },
- "ieee_sample_paper.pdf": {
-  "fixture_sha256": "54c18e922a7574022d42b0218cbf760aa9a075a8258d27fbadeeb5aebec9f6fb"
- }
+  "0200725_[research]_9569504b.docx": {
+    "fixture_sha256": "19562e8ee679cd4675a1ee600a059774800a167fedb5aed4f6f482769461ab6e"
+  },
+  "0200725_[research]_9569504b.pdf": {
+    "fixture_sha256": "ad908439ab0baee05be145e7674f2e3f0cb9180234ecc0cadb80c5aab2acc1ad"
+  },
+  "DM-OUHRODI-2026-3750-1.docx": {
+    "fixture_sha256": "ce30bd966a2e57e9b9afcd9a62613a5952372e1694cd69de09d2b2b578262273"
+  },
+  "DM-OUHRODI-2026-3750-1.pdf": {
+    "fixture_sha256": "596282bdf7543634382170749d39936fb803878cf0621d2bf4f76ef0edb5f917"
+  },
+  "DM_0440_s_26_SGOD_Conduct-of-World-Teachers-Day.docx": {
+    "fixture_sha256": "359a919e7da6c232bd48c3de19b03fc2440aaaedbcb6e5e283e27b3500a73489"
+  },
+  "DM_0440_s_26_SGOD_Conduct-of-World-Teachers-Day.pdf": {
+    "fixture_sha256": "e17aa56796be3f93903ff800ab7d227ca1ab8f7364ce32a9845ecbc2c6cf0431"
+  },
+  "V2 INTELLIDOCS (2) (1).pdf": {
+    "fixture_sha256": "7163aefacd659ce7399b2dde3a11bb061218e94f0a33faf93bed226d8f28c39c"
+  },
+  "V2 INTELLIDOCS (2).docx": {
+    "fixture_sha256": "3cf73410d76daf0999637bfa9e2b30024816e5a4e27bb421d5dbfaf110e35892"
+  },
+  "V2 INTELLIDOCS light sabotage.docx": {
+    "fixture_sha256": "69a943fb98c51a77b9b4a5e283ee1789c5f9a81f18130bcd80026efdc2b850eb"
+  },
+  "V2 INTELLIDOCS sabotage.docx": {
+    "fixture_sha256": "1008a9e0d821b22f5431dd7881f99f2d312accaa88e365255592f47f5277d19f"
+  },
+  "V2 INTELLIDOCS sabotage.pdf": {
+    "fixture_sha256": "4c80655114b1bd6c219fa8899e99809a1c8c322940f51b5ebc7bb90b7798714f"
+  },
+  "ieee_sample_paper.docx": {
+    "fixture_sha256": "f4581b6182390e4806cfffa87aa4f3b73999e7e76f6100836296a0da476b5689"
+  },
+  "ieee_sample_paper.pdf": {
+    "fixture_sha256": "54c18e922a7574022d42b0218cbf760aa9a075a8258d27fbadeeb5aebec9f6fb"
+  }
 }

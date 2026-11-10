@@ -48,6 +48,15 @@ export interface LineDeviation {
   differences: string[]
   /** Whether the usual look came from the preset rather than the document. */
   fromPreset: boolean
+  /** Whether it came from the document type's convention (no preset chosen), e.g. a centered thesis title page. */
+  fromConvention?: boolean
+}
+
+/** What a document type expects where no preset says: a thesis title page is centered. */
+export interface LineConventions {
+  titlePageAlign?: 'left' | 'center' | 'right'
+  /** Front-matter labels (APPROVAL SHEET, ACKNOWLEDGEMENT, ...): set like chapter headings, centered in a thesis. */
+  frontLabelAlign?: 'left' | 'center' | 'right'
 }
 
 const CAPTION = /^(figure|fig\.|table)\s+\d+/i
@@ -146,7 +155,11 @@ function describe(key: keyof LineStyle, own: LineStyle[keyof LineStyle], wanted:
  * document's usual value for that kind; where the document has no clear answer the preset's
  * rule is used, when the preset has one. Title-page lines are judged only by a preset's rule.
  */
-export function findShortLineDeviations(doc: ProseMirrorNode, preset: PresetLineRules | null = null): LineDeviation[] {
+export function findShortLineDeviations(
+  doc: ProseMirrorNode,
+  preset: PresetLineRules | null = null,
+  conventions: LineConventions = {},
+): LineDeviation[] {
   // Text blocks in document order, so a line can be judged by its neighbours (a figure's title sits
   // just above its caption, a table's title just below its caption).
   const blocks: Array<{ pos: number; node: ProseMirrorNode; text: string; style: LineStyle; titlePage: boolean; chapter: number }> = []
@@ -220,14 +233,26 @@ export function findShortLineDeviations(doc: ProseMirrorNode, preset: PresetLine
     const fallback = presetLook(group, preset)
     const wanted: Partial<LineStyle> = {}
     const fromPreset = new Set<keyof LineStyle>()
+    let fromConvention = false
     for (const key of JUDGED[group]) {
       // A title page's layout is a convention of the document type, not something its lines vote
-      // on: it is judged only by a preset that defines it.
+      // on (a sabotaged or careless title page is usually wrong on every line at once): it is judged
+      // by the preset when one defines it, else by the document type's convention.
       if (group === 'title_page') {
         if (fallback?.[key] !== undefined) {
           ;(wanted as Record<string, unknown>)[key] = fallback[key]
           fromPreset.add(key)
+        } else if (key === 'textAlign' && conventions.titlePageAlign) {
+          wanted.textAlign = conventions.titlePageAlign
+          fromConvention = true
         }
+        continue
+      }
+      // Front-matter labels follow the same convention when no preset sets them: they are few, and
+      // when all of them were moved together their own vote would endorse the wrong alignment.
+      if (group === 'front_label' && key === 'textAlign' && fallback?.textAlign === undefined && conventions.frontLabelAlign) {
+        wanted.textAlign = conventions.frontLabelAlign
+        fromConvention = true
         continue
       }
       const found = usual(styles, key)
@@ -253,7 +278,14 @@ export function findShortLineDeviations(doc: ProseMirrorNode, preset: PresetLine
         differences.push(describe(key, own, target as LineStyle[keyof LineStyle]))
       }
       if (differences.length > 0) {
-        deviations.push({ ...member, group, fix, differences, fromPreset: Object.keys(fix).some((key) => fromPreset.has(key as keyof LineStyle)) })
+        deviations.push({
+          ...member,
+          group,
+          fix,
+          differences,
+          fromPreset: Object.keys(fix).some((key) => fromPreset.has(key as keyof LineStyle)),
+          ...(fromConvention ? { fromConvention: true } : {}),
+        })
       }
     }
   }

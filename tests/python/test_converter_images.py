@@ -107,3 +107,39 @@ class TestDrawnAspect:
     def test_a_picture_drawn_at_its_own_aspect_is_not_resampled(self):
         document = _doc_with_picture(width_in=2.0, pixels=(400, 200))
         assert _decoded_size(_img_tags(_docx_document_to_result(document)["html"])[0]) == (400, 200)
+
+
+class TestCaptionInThePictureParagraph:
+    """A caption typed in the same paragraph as its picture keeps that paragraph's centering."""
+
+    def _document(self) -> docx.Document:
+        document = docx.Document()
+        paragraph = document.add_paragraph()
+        paragraph.alignment = 1  # center
+        paragraph.add_run().add_picture(io.BytesIO(_png(400, 200)), width=Inches(2))
+        paragraph.add_run("Figure 4: CoEdIT")
+        return document
+
+    def test_the_html_puts_the_caption_in_a_centered_paragraph_after_the_picture(self):
+        html = _docx_document_to_result(self._document())["html"]
+        after = html[html.index("<img"):]
+        caption = re.search(r'/>(<p style="([^"]*)"[^>]*>.*?Figure 4: CoEdIT.*?</p>)', after, re.S)
+        assert caption, after[:300]
+        assert "text-align:center" in caption.group(2)
+
+    def test_the_editor_json_gives_the_caption_the_paragraph_alignment(self):
+        result = _docx_document_to_result(self._document())
+        content = (result.get("content_json") or result.get("json") or {}).get("content", [])
+        if not content:
+            pytest.skip("this converter build writes no editor JSON")
+        caption = next(node for node in content if "Figure 4" in "".join(c.get("text", "") for c in node.get("content", [])))
+        assert caption["type"] == "paragraph"
+        assert caption["attrs"]["textAlign"] == "center"
+
+
+def test_a_picture_inside_an_element_is_left_whole():
+    from converter import _split_paragraph_at_pictures
+
+    assert _split_paragraph_at_pictures("<p>", '<span><img src="x" /></span>after') is None
+    assert _split_paragraph_at_pictures("<p>", '<img src="x" />') is None
+    assert _split_paragraph_at_pictures('<p style="a">', 'A<img src="x" />B') == '<p style="a">A</p><img src="x" /><p style="a">B</p>'

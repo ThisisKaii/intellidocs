@@ -135,7 +135,14 @@ export function lineSuggestionLabel(kind: LineKind, count: number): string {
   }
 }
 
-/** Card subtitle for short lines: the change, then what it matches. */
-export function lineSuggestionDetail(fix: SuggestedFix, presetName: string | null): string {
-  return `${describeFix(fix)} · ${presetName ? `matches the ${presetName} preset` : 'matches the others'}`
+/**
+ * Card subtitle for short lines: the change, then what it matches. `basis` replaces "matches the
+ * others" when the look comes from a convention ("thesis title pages are centered").
+ */
+export function lineSuggestionDetail(fix: SuggestedFix, presetName: string | null, basis?: string): string {
+  const reason = presetName ? `matches the ${presetName} preset` : basis ?? 'matches the others'
+  return `${describeFix(fix)} · ${reason}`
 }
+
+/** Card subtitle for a list item that differs from the other items of its list. */
+export const LIST_ITEM_DETAIL = 'Matches the other items in this list'

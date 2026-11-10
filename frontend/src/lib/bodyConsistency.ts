@@ -258,6 +258,69 @@ function compare(baseline: BodyBaseline, style: BodyStyle): { fix: BodyBaseline;
   return { fix, differences }
 }
 
+/** A sentence that introduces what follows it: it ends in a colon. */
+export function isLeadIn(text: string): boolean {
+  return /:\s*$/.test(text)
+}
+
+/** A list item whose look differs from the other items of its list. */
+export interface ListItemDeviation {
+  pos: number
+  node: ProseMirrorNode
+  text: string
+  /** The other items' usual values of exactly the properties that differ. */
+  fix: Pick<BodyBaseline, 'bold' | 'italic' | 'fontSize'>
+  differences: string[]
+}
+
+/** Fewer items than this give no reliable "usual" look for a list. */
+const MIN_LIST_ITEMS = 3
+
+/**
+ * Items of one bullet or numbered list that look different from the rest of that list: one item
+ * in italics, bold or another size among plain ones. Each list is judged on its own (a list of
+ * bold terms is fine), and a property is only judged when all the other items agree on it.
+ */
+export function findListItemDeviations(doc: ProseMirrorNode): ListItemDeviation[] {
+  const deviations: ListItemDeviation[] = []
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'table' || node.type.name === 'codeBlock') return false
+    if (node.type.name !== 'bulletList' && node.type.name !== 'orderedList') return true
+    const items: Array<{ pos: number; node: ProseMirrorNode; text: string; style: BodyStyle }> = []
+    node.forEach((item, itemOffset) => {
+      const first = item.firstChild
+      if (!first || first.type.name !== 'paragraph') return
+      const text = first.textContent.trim()
+      if (!text) return
+      // The item's paragraph sits one level inside the list item.
+      items.push({ pos: pos + 1 + itemOffset + 1, node: first, text, style: bodyStyleOf(first) })
+    })
+    if (items.length >= MIN_LIST_ITEMS) {
+      items.forEach((item, index) => {
+        const others = items.filter((_, other) => other !== index).map((other) => other.style)
+        const fix: ListItemDeviation['fix'] = {}
+        const differences: string[] = []
+        for (const key of ['bold', 'italic'] as const) {
+          const values = new Set(others.map((style) => style[key]))
+          if (values.size === 1 && !values.has(item.style[key])) {
+            fix[key] = others[0][key]
+            differences.push(item.style[key] ? key : `not ${key}`)
+          }
+        }
+        const sizes = new Set(others.map((style) => (style.fontSize === null ? 'inherited' : String(style.fontSize))))
+        if (sizes.size === 1 && sizesDiffer(others[0].fontSize, item.style.fontSize)) {
+          fix.fontSize = others[0].fontSize
+          differences.push(item.style.fontSize !== null ? `${item.style.fontSize}pt` : 'a different size')
+        }
+        if (differences.length > 0) deviations.push({ pos: item.pos, node: item.node, text: item.text, fix, differences })
+      })
+    }
+    // Nested lists are judged as lists of their own.
+    return true
+  })
+  return deviations
+}
+
 /**
  * Body paragraphs that look different from the rest of the body text, judged property by property
  * against the document's usual body look (the preset fills in properties the document has no clear
@@ -298,6 +361,12 @@ export function findBodyDeviations(doc: ProseMirrorNode, preset: PresetBodyRules
     if (text.length >= MIN_PROSE_CHARS && !/^(table|figure)\s+\d+\s*[:.]/i.test(text) && !/^\[\d+\]/.test(text) && !MANUAL_LIST_ITEM.test(text)) {
       const style = bodyStyleOf(node)
       if (!followsProse) style.spaceBeforePt = null
+      // A lead-in sentence ("…this study aims to:") introduces the list or labelled paragraphs
+      // under it; writers set it flush and tight on purpose, so its indent and space are not judged.
+      if (isLeadIn(text)) {
+        style.firstIndentPt = null
+        style.spaceBeforePt = null
+      }
       const entry = { pos, node, text, style }
       if (markerSeen) members.push(entry)
       else if (inProseFrontMatter) frontProse.push(entry)

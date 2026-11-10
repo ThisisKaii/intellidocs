@@ -1,7 +1,7 @@
 import { Editor } from '@tiptap/core'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { editorExtensions } from '@/components/editor/TiptapEditor'
-import { blockStyleFor, describePresetGap, findBodyDeviations, type PresetBodyRules } from '../bodyConsistency'
+import { blockStyleFor, describePresetGap, findBodyDeviations, findListItemDeviations, type PresetBodyRules } from '../bodyConsistency'
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class {
@@ -125,5 +125,44 @@ describe('findBodyDeviations', () => {
     const afterHeading = `<h2>Scope</h2><p style="text-align:justify; margin-top:12pt">${SENTENCE} after heading</p>`
     const afterBlank = `<p></p><p style="text-align:justify; margin-top:12pt">${SENTENCE} after blank</p>`
     expect(sweep(documentHtml(10, afterHeading + afterBlank)).deviations).toEqual([])
+  })
+})
+
+describe('lead-in sentences', () => {
+  it('does not ask a flush lead-in that ends in a colon for an indent', () => {
+    const leadIn = `<p style="text-align:justify; line-height:2">By embedding these features in a locally relevant platform, this study aspires to:</p>`
+    const { deviations } = sweep(documentHtml(12, leadIn, BODY_STYLE))
+    expect(deviations).toEqual([])
+  })
+
+  it('still flags a lead-in that is bold among plain body text', () => {
+    const leadIn = `<p style="${BODY_STYLE}"><strong>By embedding these features in a locally relevant platform, this study aspires to:</strong></p>`
+    const { deviations } = sweep(documentHtml(12, leadIn, BODY_STYLE))
+    expect(deviations.map((d) => d.fix)).toEqual([{ bold: false }])
+  })
+})
+
+describe('findListItemDeviations', () => {
+  function listSweep(html: string): ReturnType<typeof findListItemDeviations> {
+    const editor = new Editor({ extensions: editorExtensions, content: html })
+    const result = findListItemDeviations(editor.state.doc)
+    editor.destroy()
+    return result
+  }
+
+  it('flags the one italic item of a plain list', () => {
+    const html = '<ul><li><p>Reduce wasted time on formatting</p></li><li><p>Enhance compliance with standards</p></li><li><p><em>Increase productivity and satisfaction</em></p></li></ul>'
+    const found = listSweep(html)
+    expect(found.map((d) => [d.text, d.fix])).toEqual([['Increase productivity and satisfaction', { italic: false }]])
+  })
+
+  it('leaves a list of bold terms alone, and lists too short to judge', () => {
+    expect(listSweep('<ul><li><p><strong>One</strong></p></li><li><p><strong>Two</strong></p></li><li><p><strong>Three</strong></p></li></ul>')).toEqual([])
+    expect(listSweep('<ul><li><p>One</p></li><li><p><em>Two</em></p></li></ul>')).toEqual([])
+  })
+
+  it('does not judge a property the other items disagree on', () => {
+    const html = '<ol><li><p><em>One</em></p></li><li><p>Two</p></li><li><p>Three</p></li><li><p><em>Four</em></p></li></ol>'
+    expect(listSweep(html)).toEqual([])
   })
 })

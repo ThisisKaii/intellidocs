@@ -41,17 +41,24 @@ def test_new_ieee_document_has_template_page_setup_and_numbered_sections(page, a
     page.wait_for_timeout(400)
     page.get_by_text("New document").nth(1).click()
     page.wait_for_timeout(700)
-    page.get_by_text("IEEE Conference Template").first.click()
+    # The template option inside the dialog: documents earlier runs made from the template have the
+    # same words in their titles on the dashboard behind it.
+    page.get_by_role("dialog").get_by_text("IEEE Conference Template").first.click()
     page.get_by_role("button", name="Create document").click()
     page.wait_for_url(re.compile(r"/document/"), timeout=30000)
     page.wait_for_timeout(6000)
     doc_id = page.url.rsplit("/", 1)[-1]
-    doc = api.get(f"/documents/{doc_id}").json()
-    assert doc["page_size"] == "letter"
-    assert doc["margins"] == {"top": 0.75, "bottom": 1, "left": 0.625, "right": 0.625}
-    headings = _headings(page)
-    assert headings[1].startswith("I. Introduction"), headings
-    assert any(h.startswith("VI. Conclusion") for h in headings), headings
+    try:
+        doc = api.get(f"/documents/{doc_id}").json()
+        assert doc["page_size"] == "letter"
+        assert doc["margins"] == {"top": 0.75, "bottom": 1, "left": 0.625, "right": 0.625}
+        headings = _headings(page)
+        assert headings[1].startswith("I. Introduction"), headings
+        assert any(h.startswith("VI. Conclusion") for h in headings), headings
+    finally:
+        # Do not leave a new document in the test account on every run.
+        api.delete(f"/documents/{doc_id}")
+        api.delete(f"/documents/{doc_id}/permanent")
 
 
 @e2e("ieee", requires=(), layer="browser")

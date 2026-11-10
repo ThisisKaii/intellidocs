@@ -1735,9 +1735,12 @@ def _write_picture_split_json(
     heading_level: Optional[int],
     lines: str = "split",
 ) -> Optional[List[Dict[str, Any]]]:
-    """A paragraph with pictures in its text, as ProseMirror splits it: an <img> does not close a
-    paragraph in HTML, so ProseMirror ends the paragraph at the picture block and puts the text after
-    it in a paragraph of its own (no attributes, the block's style marks)."""
+    """A paragraph with pictures in its text, as the editor holds it: the picture is a block, so the
+    paragraph ends at it and the text after it is a paragraph of its own. That paragraph keeps the
+    source paragraph's style (its alignment, spacing and indent): a caption written in the picture's
+    own paragraph stays centered (_split_paragraph_at_pictures writes the HTML the same way). In a
+    heading the text after the picture is a plain paragraph with the heading's style marks, as
+    ProseMirror splits it."""
     segments: List[List[Inline]] = [[]]
     pictures: List[Picture] = []
     for item in items:
@@ -1756,8 +1759,54 @@ def _write_picture_split_json(
         if content is None:
             return None
         if content and not _whitespace_only(content):
-            nodes.append(_write_paragraph_json("", None, _with_block_marks(content, style)))
+            if heading_level is None:
+                nodes.append(_write_paragraph_json(style, tab_attrs, content))
+            else:
+                nodes.append(_write_paragraph_json("", None, _with_block_marks(content, style)))
     return nodes
+
+
+_IMG_TAG = re.compile(r"(<img\s[^>]*/>)")
+_VOID_TAGS = {"br", "img", "hr", "wbr"}
+
+
+def _balanced(fragment: str) -> bool:
+    """Whether every element opened in an HTML fragment is closed in it (no picture inside a span)."""
+    depth = 0
+    for match in re.finditer(r"<(/?)([a-zA-Z][\w-]*)[^>]*?(/?)>", fragment):
+        closing, name, self_closing = match.groups()
+        if self_closing or name.lower() in _VOID_TAGS:
+            continue
+        depth += -1 if closing else 1
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+def _split_paragraph_at_pictures(open_tag: str, inner: str) -> Optional[str]:
+    """A paragraph holding pictures and text, written as the editor will hold it: the paragraph up to
+    the picture, the picture, then each run of text after a picture in a paragraph with the same
+    open tag (style). Without this the editor drops the style of the text after the picture, and a
+    caption written in its picture's paragraph loses its centering. None when there is nothing to
+    split (no text after a picture) or the picture is not a top-level <img> (wrapped, page art, or
+    inside an element)."""
+    if "<img " not in inner or "data-wrap-" in inner or "<page-art" in inner:
+        return None
+    parts = _IMG_TAG.split(inner)
+    if len(parts) < 3 or not all(_balanced(part) for part in parts[0::2]):
+        return None
+
+    def has_content(fragment: str) -> bool:
+        return bool(re.sub(r"<[^>]+>", "", fragment).strip(" ")) or "<br" in fragment or "data-type=" in fragment
+
+    if not any(has_content(part) for part in parts[2::2]):
+        return None
+    out = [f"{open_tag}{parts[0]}</p>"]
+    for picture, after in zip(parts[1::2], parts[2::2]):
+        out.append(picture)
+        if has_content(after):
+            out.append(f"{open_tag}{after}</p>")
+    return "".join(out)
 
 
 def _without_inline_icons(items: List[Inline], inner: str) -> List[Inline]:
@@ -2991,7 +3040,8 @@ def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
     css_parts = filter(None, [align_style, font_css, spacing_style, indent_style])
     css_combined = "; ".join(part.rstrip("; ") for part in css_parts).strip()
     style_attr = f' style="{css_combined};"' if css_combined else ""
-    return f"<p{style_attr}{_tab_attributes(p, inner)}>{inner}</p>"
+    open_tag = f"<p{style_attr}{_tab_attributes(p, inner)}>"
+    return _split_paragraph_at_pictures(open_tag, inner) or f"{open_tag}{inner}</p>"
 
 
 # Heading level, fallback size (pt) and fallback margin, used only when the
@@ -3173,9 +3223,11 @@ def _cell_paragraph(
     indent = _paragraph_indent_css(p)
     pieces = [align_style, color_style, "margin:0", _paragraph_font_css(p), _paragraph_spacing_css(p), indent]
     css = "; ".join(piece.rstrip("; ") for piece in pieces if piece) + ";"
-    html = f'<p style="{css}"{_tab_attributes(p, inner)}>{inner}</p>'
+    open_tag = f'<p style="{css}"{_tab_attributes(p, inner)}>'
+    html = f"{open_tag}{inner}</p>"
     tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p))) if "data-tab" in inner else None
     if any(isinstance(item, Picture) for item in items):
+        html = _split_paragraph_at_pictures(open_tag, inner) or html
         # A picture in a cell paragraph splits it as in the body (cells keep no picture-only shortcut).
         if any(isinstance(item, Picture) and item.wraps for item in items):
             return html, _NOT_WRITTEN

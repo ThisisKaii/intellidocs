@@ -450,6 +450,7 @@ export default function Document(): JSX.Element {
     minConfidence: confidenceThreshold(prefs),
     presetKey: formattingPreset,
     documentId: id,
+    genre,
   })
 
   // Grammar + spelling auto-check runs whatever side-panel tab is open, so the

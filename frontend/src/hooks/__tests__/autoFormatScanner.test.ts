@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyStructuralRole, isHeadingLike, mergeSameFixCandidates, type CandidateWording, type ScannerSuggestion } from '../useAutoFormatScanner'
+import { classifyStructuralRole, isHeadingLike, mergeSameFixCandidates, sectionIndex, type CandidateWording, type ScannerSuggestion } from '../useAutoFormatScanner'
 
 describe('isHeadingLike', () => {
   it('accepts short numbered titles', () => {
@@ -59,5 +59,29 @@ describe('mergeSameFixCandidates', () => {
     expect(cards).toHaveLength(3)
     expect(cards.find((card) => card.key === 'x1')?.groupMembers).toBeUndefined()
     expect(cards.find((card) => card.key === 'd1')?.memberKeys).toEqual(['d1', 'd2'])
+  })
+})
+
+describe('sectionIndex', () => {
+  it('groups by chapter: sub-headings do not split it and captions never name it', async () => {
+    const { Editor } = await import('@tiptap/core')
+    const { editorExtensions } = await import('@/components/editor/TiptapEditor')
+    globalThis.ResizeObserver ??= class { observe(): void {} unobserve(): void {} disconnect(): void {} }
+    const editor = new Editor({
+      extensions: editorExtensions,
+      content: '<h1>DEDICATION</h1><p>To my parents.</p><h1>REVIEW OF RELATED LITERATURE</h1><h2>Machine Learning</h2><p>First.</p>'
+        + '<p><strong>Prediction Engine</strong></p><p>Second.</p><h3>Figure 3: Talk-To-Your-Slides</h3><p>Third.</p>',
+    })
+    const sectionOf = sectionIndex(editor.state.doc)
+    const at = (text: string): { id: number; name: string } => {
+      let found = -1
+      editor.state.doc.forEach((node, offset) => { if (found === -1 && node.textContent === text) found = offset })
+      return sectionOf(found)
+    }
+    expect(at('To my parents.').name).toBe('Dedication')
+    expect(at('First.').name).toBe('Review of Related Literature')
+    expect(at('Second.').id).toBe(at('First.').id)
+    expect(at('Third.').id).toBe(at('First.').id)
+    editor.destroy()
   })
 })

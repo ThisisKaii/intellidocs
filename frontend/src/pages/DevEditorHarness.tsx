@@ -104,6 +104,7 @@ export default function DevEditorHarness() {
     editor,
     enabled: !!editor && new URLSearchParams(window.location.search).has('scan'),
     presetKey: new URLSearchParams(window.location.search).get('preset'),
+    genre: new URLSearchParams(window.location.search).get('genre'),
   })
   useEffect(() => {
     ;(window as unknown as { __scanner?: unknown }).__scanner = scanner.suggestions

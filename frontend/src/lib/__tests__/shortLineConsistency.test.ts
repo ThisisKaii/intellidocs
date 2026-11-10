@@ -113,3 +113,39 @@ describe('inline style helpers', () => {
     expect(mergeStyleDecls('line-height: 1', { 'line-height': '' })).toBeNull()
   })
 })
+
+describe('thesis title-page convention', () => {
+  it('centers a thesis title page with no preset when every line was moved', () => {
+    const titlePage = [left('A Proposal Project'), left('presented to the Faculty'), '<p style="text-align:right">Adviser</p>'].join('')
+    const editor = new Editor({ extensions: editorExtensions, content: titlePage + '<h1>CHAPTER I</h1>' })
+    const result = findShortLineDeviations(editor.state.doc, null, { titlePageAlign: 'center' })
+    editor.destroy()
+    expect(result.map((d) => [d.text, d.fix.textAlign, d.fromConvention])).toEqual([
+      ['A Proposal Project', 'center', true],
+      ['presented to the Faculty', 'center', true],
+      ['Adviser', 'center', true],
+    ])
+  })
+
+  it('lets a preset win over the convention', () => {
+    const editor = new Editor({ extensions: editorExtensions, content: centered('A Proposal Project') + left('By:') + '<h1>CHAPTER I</h1>' })
+    const result = findShortLineDeviations(editor.state.doc, UCLM, { titlePageAlign: 'right' })
+    editor.destroy()
+    expect(result.map((d) => [d.text, d.fix.textAlign, Boolean(d.fromConvention)])).toEqual([['By:', 'center', false]])
+  })
+})
+
+describe('thesis front-label convention', () => {
+  it('centers front-matter labels that were all moved together', () => {
+    const html = '<h1>CHAPTER I</h1><p><strong>A body line here</strong></p>'
+    const labels = ['<p style="text-align:right"><strong>APPROVAL SHEET</strong></p>', '<p><strong>ACKNOWLEDGEMENT</strong></p>', '<p><strong>DEDICATION</strong></p>'].join('')
+    const editor = new Editor({ extensions: editorExtensions, content: labels + html })
+    const result = findShortLineDeviations(editor.state.doc, null, { frontLabelAlign: 'center' })
+    editor.destroy()
+    expect(result.filter((d) => d.group === 'front_label').map((d) => [d.text, d.fix.textAlign])).toEqual([
+      ['APPROVAL SHEET', 'center'],
+      ['ACKNOWLEDGEMENT', 'center'],
+      ['DEDICATION', 'center'],
+    ])
+  })
+})
