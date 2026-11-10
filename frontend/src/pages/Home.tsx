@@ -182,10 +182,13 @@ export default function HomePage(): JSX.Element {
     async function loadFolder(): Promise<void> {
       try {
         setLoading(true)
-        const docs = await api.folders.documents(selection.folderId!)
+        // Contents plus the folders inside (a student's own workspace and submission folders in a class).
+        const [docs, children] = await Promise.all([
+          api.folders.documents(selection.folderId!),
+          api.folders.children(selection.folderId!).catch((): FolderRecord[] => []),
+        ])
         setFolderDocuments(docs)
-        // We don't have a sub-folders endpoint yet, so clear children
-        setCurrentFolderChildren([])
+        setCurrentFolderChildren(children)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load folder')
       } finally {

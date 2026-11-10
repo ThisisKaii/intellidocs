@@ -5,6 +5,7 @@ import {
   deleteFolder,
   enrollStudent,
   getClassRoster,
+  getFolderChildren,
   getFolderDocuments,
   getFolders,
   joinClass,
@@ -31,6 +32,7 @@ router.post('/:id/join-code', regenerateJoinCode)
 router.put('/:id', validateBody(updateFolderSchema), renameFolder)
 router.delete('/:id', deleteFolder)
 router.get('/:id/documents', getFolderDocuments)
+router.get('/:id/children', getFolderChildren)
 router.post('/:id/documents', validateBody(folderDocumentSchema), addDocumentToFolder)
 router.get('/:id/enrollments', getClassRoster)
 router.post('/:id/enrollments', validateBody(enrollStudentSchema), enrollStudent)

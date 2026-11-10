@@ -94,7 +94,10 @@ async function requireDocument(userId: string, documentId: string): Promise<void
   }
 }
 
-/** True when the user owns the folder or is enrolled in its class roster. */
+/**
+ * True when the user owns the folder, is enrolled in its class roster, or
+ * teaches the class it sits in (a student's workspace or submission folder).
+ */
 export async function canReadFolder(userId: string, folderId: string): Promise<boolean> {
   const { data: owned, error: ownedError } = await supabase
     .from('folders')
@@ -112,7 +115,36 @@ export async function canReadFolder(userId: string, folderId: string): Promise<b
     .eq('student_id', userId)
     .maybeSingle()
 
-  return !enrolledError && Boolean(enrolled)
+  if (!enrolledError && enrolled) return true
+
+  // The professor may open the folders their students keep inside the class.
+  const { data: folder } = await supabase
+    .from('folders')
+    .select('parent_id')
+    .eq('folder_id', folderId)
+    .maybeSingle()
+  if (!folder?.parent_id) return false
+  const parent = await getOwnedFolder(userId, folder.parent_id as string)
+  return parent?.folder_type === 'class'
+}
+
+/**
+ * Folders directly inside a folder the user can read. In a class, the
+ * professor sees every student's workspace and submission folders, while a
+ * student sees only their own (never a classmate's).
+ */
+export async function getChildFolders(userId: string, parentId: string): Promise<Folder[]> {
+  if (!(await canReadFolder(userId, parentId))) {
+    throw new Error('Folder not found')
+  }
+  const owner = await getOwnedFolder(userId, parentId)
+  let query = supabase.from('folders').select('*').eq('parent_id', parentId)
+  if (!owner) query = query.eq('user_id', userId)
+  const { data, error } = await query.order('created_at', { ascending: true })
+  if (error) {
+    throw new Error(`Failed to get subfolders: ${error.message}`)
+  }
+  return data ?? []
 }
 
 /** Build a parenthesised SQL id list of the class folders the user is enrolled in. */

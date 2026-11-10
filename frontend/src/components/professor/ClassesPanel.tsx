@@ -11,10 +11,12 @@ interface ClassesPanelProps {
   classes: ClassData[]
   /** Reload the workspace after a class or roster changes. */
   onChanged: () => void
+  /** A class was just created: show it right away, before the reload finishes. */
+  onCreated?: (folder: FolderRecord) => void
 }
 
 /** The professor's classes with their join codes, rosters and a way to start a new class. */
-export function ClassesPanel({ classes, onChanged }: ClassesPanelProps): JSX.Element {
+export function ClassesPanel({ classes, onChanged, onCreated }: ClassesPanelProps): JSX.Element {
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -25,8 +27,9 @@ export function ClassesPanel({ classes, onChanged }: ClassesPanelProps): JSX.Ele
     setSubmitting(true)
     setCreateError('')
     try {
-      await api.folders.create(input.name, input)
+      const folder = await api.folders.create(input.name, input)
       setCreating(false)
+      onCreated?.(folder)
       onChanged()
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create the class')

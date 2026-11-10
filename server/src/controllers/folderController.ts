@@ -152,6 +152,25 @@ export async function getFolderDocuments(
   }
 }
 
+/** The folders directly inside a folder (a class shows each student only their own). */
+export async function getFolderChildren(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+
+    const { id } = req.params
+    if (!id) {
+      res.status(400).json({ error: 'Folder ID is required' })
+      return
+    }
+
+    res.status(200).json(await folderModel.getChildFolders(userId, id))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load subfolders'
+    res.status(message === 'Folder not found' ? 404 : 500).json({ error: message })
+  }
+}
+
 /** Assign a document to the requested folder. */
 export async function addDocumentToFolder(
   req: Request,

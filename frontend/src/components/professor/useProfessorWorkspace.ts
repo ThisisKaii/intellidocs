@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   api,
   type ClassEnrollmentRecord,
@@ -21,6 +21,8 @@ export interface ProfessorWorkspace {
   loading: boolean
   error: string
   reload: () => Promise<void>
+  /** Show a class the moment it is created (its roster and submissions fill in on the next reload). */
+  addClass: (folder: FolderRecord) => void
 }
 
 /** Newest scan per document, so a rescan replaces the old score instead of adding to it. */
@@ -38,8 +40,12 @@ export function useProfessorWorkspace(userId: string | undefined): ProfessorWork
   const [classes, setClasses] = useState<ClassData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Reloads can overlap (the first load is still running when a class is created). Only the most
+  // recent one may write: an older one carries a list fetched before the change and would hide it.
+  const latestReload = useRef(0)
 
   const reload = useCallback(async (): Promise<void> => {
+    const ticket = ++latestReload.current
     setLoading(true)
     setError('')
     try {
@@ -55,11 +61,13 @@ export function useProfessorWorkspace(userId: string | undefined): ProfessorWork
           return { folder, submissions, roster, scans }
         }),
       )
+      if (ticket !== latestReload.current) return
       setClasses(loaded)
     } catch (err) {
+      if (ticket !== latestReload.current) return
       setError(err instanceof Error ? err.message : 'Failed to load your classes')
     } finally {
-      setLoading(false)
+      if (ticket === latestReload.current) setLoading(false)
     }
   }, [userId])
 
@@ -67,5 +75,13 @@ export function useProfessorWorkspace(userId: string | undefined): ProfessorWork
     void reload()
   }, [reload])
 
-  return { classes, loading, error, reload }
+  const addClass = useCallback((folder: FolderRecord): void => {
+    setClasses((current) =>
+      current.some((entry) => entry.folder.folder_id === folder.folder_id)
+        ? current
+        : [...current, { folder, submissions: [], roster: [], scans: [] }]
+    )
+  }, [])
+
+  return { classes, loading, error, reload, addClass }
 }

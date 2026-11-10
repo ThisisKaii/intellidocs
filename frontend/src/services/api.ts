@@ -1575,6 +1575,10 @@ export const api = {
         method: 'DELETE',
       })
     },
+    /** Folders directly inside a folder (in a class, a student gets only their own workspace and submissions). */
+    children: async (id: string): Promise<FolderRecord[]> => {
+      return fetchAPI<FolderRecord[]>(`folders/${id}/children`)
+    },
     documents: async (id: string): Promise<DocumentRecord[]> => {
       return fetchAPI<DocumentRecord[]>(`folders/${id}/documents`)
     },

@@ -34,7 +34,7 @@ export default function ProfessorDashboard(): JSX.Element {
   const [params, setParams] = useSearchParams()
   const requested = params.get('tab')
   const tab: TabKey = TABS.some((t) => t.key === requested) ? (requested as TabKey) : 'overview'
-  const { classes, loading, error, reload } = useProfessorWorkspace(user?.id)
+  const { classes, loading, error, reload, addClass } = useProfessorWorkspace(user?.id)
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -74,7 +74,7 @@ export default function ProfessorDashboard(): JSX.Element {
           ) : (
             <>
               {tab === 'overview' && <ProfessorOverview classes={classes} />}
-              {tab === 'classes' && <ClassesPanel classes={classes} onChanged={() => { void reload() }} />}
+              {tab === 'classes' && <ClassesPanel classes={classes} onCreated={addClass} onChanged={() => { void reload() }} />}
               {tab === 'submissions' && <SubmissionsPanel classes={classes} />}
               {tab === 'plagiarism' && <PlagiarismPanel classes={classes} onScanned={() => { void reload() }} />}
               {tab === 'compliance' && <CompliancePanel classes={classes} userId={user?.id ?? 'anonymous'} />}
