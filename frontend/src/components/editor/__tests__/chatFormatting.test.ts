@@ -3,11 +3,13 @@ import { Editor } from '@tiptap/react'
 import { editorExtensions } from '../TiptapEditor'
 import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
+import { undo, undoDepth } from '@tiptap/pm/history'
 import { resolve } from 'node:path'
 import {
   applyFormatsToRanges,
   applyFormatsToSelection,
   applyStyle,
+  applyPresetToBody,
   findCategoryRanges,
   preferWholeBlocks,
   resolveTargetRanges,
@@ -252,5 +254,33 @@ describe('alignment on imported paragraphs', () => {
     })
     expect(ed.getHTML()).toMatch(/<p style="[^"]*text-align: left[^"]*">Saved before the fix<\/p>/)
     expect(ed.getHTML()).not.toContain('justify')
+  })
+})
+
+describe('applyPresetToBody', () => {
+  const UCLM_BODY = { fontFamily: 'Times New Roman', fontSize: '12pt', lineHeight: 2, firstLineIndent: '0.5in' }
+
+  it('reformats body paragraphs only, keeping their other styles, in one undo step', () => {
+    const ed = open(BENCHMARK_THESIS)
+    const before = ed.getHTML()
+    const depth = undoDepth(ed.state)
+    const changed = applyPresetToBody(ed, UCLM_BODY)
+    const html = ed.getHTML()
+    // The fixture has 10 justified body paragraphs inside the chapters.
+    expect(changed).toBe(10)
+    expect(html).toMatch(/<p style="text-align: justify;? ?line-height: 2;? ?text-indent: 0\.5in;?"><span style="font-family: &quot;?Times New Roman&quot;?;? ?font-size: 12pt;?">Students spend/)
+    // The title page, headings and bold heading lines are untouched.
+    expect(html).toContain('<p>IntelliDocs: An Intelligent Document Editing System for Academic Manuscripts</p>')
+    expect(html).toMatch(/<h2[^>]*>Scope and Delimitation<\/h2>/)
+    expect(html).toContain('<p><strong>Statement of the Problem</strong></p>')
+    expect(undoDepth(ed.state)).toBe(depth + 1)
+    undo(ed.state, ed.view.dispatch)
+    expect(ed.getHTML()).toBe(before)
+  })
+
+  it('leaves table cells alone', () => {
+    const ed = open('<p>CHAPTER 1</p><p>Body paragraph long enough to be body text here.</p><table><tbody><tr><td><p>Cell text</p></td></tr></tbody></table>')
+    expect(applyPresetToBody(ed, UCLM_BODY)).toBe(1)
+    expect(ed.getHTML()).toMatch(/<td[^>]*><p>Cell text<\/p><\/td>/)
   })
 })

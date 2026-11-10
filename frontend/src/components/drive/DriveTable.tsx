@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   DropdownMenu,
@@ -20,6 +20,8 @@ import {
   List,
   MoreVertical,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
   RotateCcw,
   Share2,
@@ -55,6 +57,8 @@ interface DriveItem {
   previewHtml: string
   /** Page setup so the thumbnail matches the real first page. */
   pageSetup: PreviewPageSetup
+  /** The owner pinned it to the top of the list. */
+  pinned: boolean
 }
 
 interface DriveTableProps {
@@ -88,6 +92,8 @@ interface DriveTableProps {
   emptyVariant?: 'default' | 'shared' | 'recent' | 'trash'
   /** Opens the "enter a share code" dialog (shown in the empty "Shared with me" state). */
   onEnterCode?: () => void
+  /** Pin or unpin a document; omitted where pins do not apply (Shared with me, Trash). */
+  onTogglePin?: (id: string, pinned: boolean) => void
 }
 
 /** What each module says when it has nothing to show. */
@@ -139,6 +145,7 @@ function ContextMenuOverlay({
   onDelete,
   onRestore,
   onShare,
+  onTogglePin,
   readOnlyView,
 }: {
   ctx: ContextMenuState
@@ -147,6 +154,8 @@ function ContextMenuOverlay({
   onDelete: () => void
   onRestore: () => void
   onShare?: () => void
+  /** Pin or unpin this document (absent for folders and where pins do not apply). */
+  onTogglePin?: () => void
   readOnlyView: boolean
 }): JSX.Element {
   return (
@@ -181,6 +190,16 @@ function ContextMenuOverlay({
           </>
         ) : (
           <>
+            {onTogglePin && (
+              <button
+                onClick={() => { onTogglePin(); onClose() }}
+                className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-foreground bg-transparent border-none cursor-pointer rounded-lg hover:bg-secondary transition-colors text-left"
+                style={{ fontFamily: 'inherit' }}
+              >
+                {ctx.item.pinned ? <PinOff className="size-3.5 text-muted-foreground" /> : <Pin className="size-3.5 text-muted-foreground" />}
+                {ctx.item.pinned ? 'Unpin' : 'Pin to top'}
+              </button>
+            )}
             <button
               onClick={() => { onRename(); onClose() }}
               className="flex items-center gap-3 w-full px-3 py-2 text-[0.8125rem] font-medium text-foreground bg-transparent border-none cursor-pointer rounded-lg hover:bg-secondary transition-colors text-left"
@@ -252,6 +271,7 @@ export function DriveTable({
   onDragStart,
   onShare,
   onFoldersChanged,
+  onTogglePin,
   pageResetKey = '',
   emptyVariant = 'default',
   onEnterCode,
@@ -281,6 +301,7 @@ export function DriveTable({
           margins: d.margins ?? null,
           formattingPreset: d.formatting_preset ?? null,
         },
+        pinned: Boolean(d.is_pinned),
       })),
     [documents],
   )
@@ -330,6 +351,26 @@ export function DriveTable({
 
   const shownItems = items.slice(0, visibleLimit(rows, columns))
   const hidden = hiddenCount(items.length, rows, columns)
+  const hasPinned = shownItems.some((item) => item.pinned)
+
+  /** "Pinned" before the first pinned item, "All files" where the unpinned ones start (only when something is pinned). */
+  function sectionLabel(index: number): string | null {
+    if (!hasPinned) return null
+    const item = shownItems[index]
+    if (index === 0 && item.pinned) return 'Pinned'
+    if (!item.pinned && (index === 0 || shownItems[index - 1].pinned)) return 'All files'
+    return null
+  }
+
+  /** Pin / Unpin menu entry for a document. */
+  function pinMenuItem(item: DriveItem): JSX.Element | null {
+    if (!onTogglePin || item.kind !== 'file') return null
+    return (
+      <DropdownMenuItem onSelect={() => onTogglePin(item.id, !item.pinned)} className="cursor-pointer gap-2 text-sm text-foreground">
+        {item.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />} {item.pinned ? 'Unpin' : 'Pin to top'}
+      </DropdownMenuItem>
+    )
+  }
 
   return (
     <div ref={containerRef} className="flex flex-col gap-6 min-h-0 pb-12" onClick={handleBackgroundClick} data-drive-background="true">
@@ -435,6 +476,7 @@ export function DriveTable({
                 updatedAt: f.updated_at,
                 previewHtml: '',
                 pageSetup: { pageSize: null, orientation: null, margins: null, formattingPreset: null },
+                pinned: false,
               }
               const isEditing = editing?.id === f.folder_id
               const isSelected = selectedIds.has(f.folder_id)
@@ -654,10 +696,16 @@ export function DriveTable({
               {shownItems.map((item, index) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
+                const section = sectionLabel(index)
 
                 return (
+                  <Fragment key={item.id}>
+                  {section && (
+                    <h3 className="col-span-full flex items-center gap-1.5 m-0 mt-1 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                      {section === 'Pinned' && <Pin className="size-3.5" />} {section}
+                    </h3>
+                  )}
                   <div
-                    key={item.id}
                     draggable={!isEditing}
                     onDragStart={(e) => onDragStart(e, item.id)}
                     onClick={(e) => onSelect(item.id, e)}
@@ -749,6 +797,7 @@ export function DriveTable({
                                 </>
                               ) : (
                                 <>
+                                  {pinMenuItem(item)}
                                   <DropdownMenuItem
                                     onSelect={() => onStartEdit(item.id, item.title, item.kind)}
                                     className="cursor-pointer gap-2 text-sm text-foreground"
@@ -780,10 +829,14 @@ export function DriveTable({
 
                       <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                         <span>Opened {formatDate(item.updatedAt)}</span>
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded">Doc</span>
+                        <span className="inline-flex items-center gap-1">
+                          {item.pinned && <Pin className="size-3 text-primary" aria-label="Pinned" />}
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded">Doc</span>
+                        </span>
                       </div>
                     </div>
                   </div>
+                  </Fragment>
                 )
               })}
             </div>
@@ -798,14 +851,20 @@ export function DriveTable({
                 <span className="w-8" />
               </div>
 
-              {shownItems.map((item) => {
+              {shownItems.map((item, index) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
                 const displayName = user?.email?.split('@')[0] || 'Unknown'
+                const section = sectionLabel(index)
 
                 return (
+                  <Fragment key={item.id}>
+                  {section && (
+                    <h3 className="flex items-center gap-1.5 m-0 mt-2 px-4 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                      {section === 'Pinned' && <Pin className="size-3.5" />} {section}
+                    </h3>
+                  )}
                   <div
-                    key={item.id}
                     draggable={!isEditing}
                     onDragStart={(e) => onDragStart(e, item.id)}
                     onClick={(e) => onSelect(item.id, e)}
@@ -847,8 +906,9 @@ export function DriveTable({
                         </div>
                       ) : (
                         <div>
-                          <span className="text-sm font-semibold text-foreground truncate block" title={item.title}>
-                            {item.title}
+                          <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground min-w-0" title={item.title}>
+                            {item.pinned && <Pin className="size-3.5 shrink-0 text-primary" aria-label="Pinned" />}
+                            <span className="truncate">{item.title}</span>
                           </span>
                           <span className="block md:hidden text-xs text-muted-foreground truncate mt-0.5">
                             Opened • {formatDate(item.updatedAt)}
@@ -910,6 +970,7 @@ export function DriveTable({
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" style={{ minWidth: '160px' }}>
+                              {pinMenuItem(item)}
                               <DropdownMenuItem
                                 onSelect={() => onStartEdit(item.id, item.title, item.kind)}
                                 className="cursor-pointer gap-2 text-sm text-foreground"
@@ -937,6 +998,7 @@ export function DriveTable({
                       )}
                     </div>
                   </div>
+                  </Fragment>
                 )
               })}
             </div>
@@ -968,6 +1030,7 @@ export function DriveTable({
           onRestore={() => onRestore(ctxMenu.item.id)}
           onDelete={() => onDelete(ctxMenu.item.id, ctxMenu.item.kind)}
           onShare={onShare ? () => onShare(ctxMenu.item.id) : undefined}
+          onTogglePin={onTogglePin && ctxMenu.item.kind === 'file' ? () => onTogglePin(ctxMenu.item.id, !ctxMenu.item.pinned) : undefined}
         />
       )}
 

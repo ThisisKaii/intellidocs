@@ -282,10 +282,13 @@ export default function HomePage(): JSX.Element {
     }
 
     // Recent keeps the server's order (most recently OPENED first); every other list is newest-edited first.
-    const sorted =
+    const ordered =
       selection.type === 'recent'
         ? docs
         : [...docs].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    // The owner's pinned documents lead their own lists (the sort is stable, so each group keeps its order).
+    const pinsApply = selection.type !== 'trash' && selection.type !== 'shared'
+    const sorted = pinsApply ? [...ordered].sort((a, b) => Number(Boolean(b.is_pinned)) - Number(Boolean(a.is_pinned))) : ordered
 
     const q = query.trim().toLowerCase()
     if (!q) return sorted
@@ -599,6 +602,26 @@ export default function HomePage(): JSX.Element {
       confirmLabel: 'Delete folder',
       onConfirm: () => void deleteFileSoft(id, kind),
     })
+  }
+
+  /**
+   * Pin or unpin a document at the top of the owner's lists. The lists change
+   * at once; when saving fails they go back and the reason is shown.
+   */
+  async function handleTogglePin(docId: string, pinned: boolean): Promise<void> {
+    const setPin = (value: boolean) => (docs: DocumentRecord[]): DocumentRecord[] =>
+      docs.map((doc) => (doc.id === docId ? { ...doc, is_pinned: value } : doc))
+    setAllDocuments(setPin(pinned))
+    setFolderDocuments(setPin(pinned))
+    setRecentDocuments(setPin(pinned))
+    try {
+      await api.documents.togglePin(docId, pinned)
+    } catch (err) {
+      setAllDocuments(setPin(!pinned))
+      setFolderDocuments(setPin(!pinned))
+      setRecentDocuments(setPin(!pinned))
+      setError(err instanceof Error ? `Couldn't ${pinned ? 'pin' : 'unpin'} the document: ${err.message}` : `Couldn't ${pinned ? 'pin' : 'unpin'} the document`)
+    }
   }
 
   /** Restore trashed documents back into the active list. */
@@ -917,6 +940,7 @@ export default function HomePage(): JSX.Element {
               })
             }}
             readOnlyView={selection.type === 'trash'}
+            onTogglePin={selection.type === 'trash' || selection.type === 'shared' ? undefined : (docId, pinned) => { void handleTogglePin(docId, pinned) }}
             onTitleChange={handleTitleChange}
             onSelect={handleSelect}
             onClearSelection={handleClearSelection}

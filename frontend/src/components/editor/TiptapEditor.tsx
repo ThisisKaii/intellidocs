@@ -1516,21 +1516,86 @@ interface StyleTilePreview {
 
 interface StyleGalleryItem {
   format: string
-  tag: string
+  /** Which current block makes this tile active (see `currentStyleKey`). */
+  styleKey: string
   label: string
+  /** Tooltip: what the style is for in an academic document. */
+  hint: string
   preview: StyleTilePreview
 }
 
-/** Style-tile gallery: formats mapped to block tags for active highlighting. */
+/**
+ * Word-style gallery, in Word's order. The sample sizes are visual cues only;
+ * what a style applies comes from applyStyleCommand (and the active preset).
+ */
 const STYLE_GALLERY: StyleGalleryItem[] = [
-  { format: 'normal',     tag: 'p',          label: 'Normal',      preview: {} },
-  { format: 'h1',         tag: 'h1',         label: 'Chapter heading', preview: { fontSize: '14px', fontWeight: 700 } },
-  { format: 'h2',         tag: 'h2',         label: 'Section heading', preview: { fontSize: '13px', fontWeight: 700 } },
-  { format: 'h3',         tag: 'h3',         label: 'Subsection heading', preview: { fontSize: '12px', fontWeight: 600 } },
-  { format: 'title',      tag: 'h1',         label: 'Title',       preview: { fontSize: '15px', fontWeight: 700 } },
-  { format: 'blockquote', tag: 'blockquote', label: 'Quote',       preview: { fontSize: '11px', fontStyle: 'italic' } },
-  { format: 'caption',    tag: 'p',          label: 'Caption',     preview: { fontSize: '11px', fontStyle: 'italic' } },
+  { format: 'normal',     styleKey: 'p',          label: 'Normal',    hint: 'Normal — body text',                       preview: { fontSize: '12px', fontWeight: 400 } },
+  { format: 'title',      styleKey: 'title',      label: 'Title',     hint: 'Title — the centered document title',      preview: { fontSize: '15px', fontWeight: 700 } },
+  { format: 'h1',         styleKey: 'h1',         label: 'Heading 1', hint: 'Heading 1 — chapter heading',              preview: { fontSize: '14px', fontWeight: 700 } },
+  { format: 'h2',         styleKey: 'h2',         label: 'Heading 2', hint: 'Heading 2 — section heading',              preview: { fontSize: '13px', fontWeight: 700 } },
+  { format: 'h3',         styleKey: 'h3',         label: 'Heading 3', hint: 'Heading 3 — subsection heading',           preview: { fontSize: '12px', fontWeight: 600, fontStyle: 'italic' } },
+  { format: 'blockquote', styleKey: 'blockquote', label: 'Quote',     hint: 'Quote — indented quotation',               preview: { fontSize: '11px', fontStyle: 'italic' } },
+  { format: 'caption',    styleKey: 'caption',    label: 'Caption',   hint: 'Caption — centered italic figure caption', preview: { fontSize: '11px', fontStyle: 'italic' } },
 ]
+
+/** One gallery tile: an "AaBbCc" sample in the style's look above its name, as in Word. */
+function StyleTile({
+  item,
+  active,
+  disabled,
+  wide = false,
+  onApply,
+}: {
+  item: StyleGalleryItem
+  active: boolean
+  disabled: boolean
+  /** Full-width row inside the "More styles" popover. */
+  wide?: boolean
+  onApply: () => void
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={item.hint}
+      aria-pressed={active}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onApply}
+      style={{
+        display: 'flex',
+        flexDirection: wide ? 'row' : 'column',
+        alignItems: wide ? 'center' : 'flex-start',
+        justifyContent: wide ? 'space-between' : 'center',
+        gap: wide ? '12px' : '1px',
+        width: wide ? '100%' : 'var(--style-tile-w, 72px)',
+        height: wide ? '34px' : '36px',
+        padding: wide ? '0 10px' : '2px 7px',
+        borderRadius: '6px',
+        border: active ? '1px solid var(--accent-strong)' : '1px solid var(--border)',
+        backgroundColor: active ? 'var(--accent-subtle)' : 'var(--card)',
+        color: 'var(--foreground)',
+        cursor: disabled ? 'default' : 'pointer',
+        fontFamily: 'inherit',
+        flexShrink: 0,
+        opacity: disabled ? 0.4 : 1,
+        overflow: 'hidden',
+      }}
+    >
+      <span
+        style={{
+          fontSize: item.preview.fontSize ?? '12px',
+          fontWeight: item.preview.fontWeight ?? 400,
+          fontStyle: item.preview.fontStyle ?? 'normal',
+          lineHeight: 1.1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        AaBbCc
+      </span>
+      <span style={{ fontSize: '9.5px', lineHeight: 1.1, color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>{item.label}</span>
+    </button>
+  )
+}
 
 const PRESET_COLORS = [
   '#000000', '#374151', '#6b7280', '#9ca3af', '#ffffff',
@@ -1682,6 +1747,7 @@ export function TiptapToolbar({
     return () => window.removeEventListener('keydown', onKey)
   }, [toggleRibbon])
   const [openFont, setOpenFont] = useState(false)
+  const [openStyles, setOpenStyles] = useState(false)
   const [openSize, setOpenSize] = useState(false)
   const [openColor, setOpenColor] = useState(false)
   const [openHighlight, setOpenHighlight] = useState(false)
@@ -1754,6 +1820,7 @@ export function TiptapToolbar({
 
   function closeAllMenus(): void {
     setOpenFont(false)
+    setOpenStyles(false)
     setOpenSize(false)
     setOpenColor(false)
     setOpenHighlight(false)
@@ -1929,6 +1996,14 @@ export function TiptapToolbar({
     return 'p'
   })()
 
+  /** Which gallery style the caret's block has: the title and captions are told apart from Heading 1 and Normal. */
+  const currentStyleKey = (() => {
+    if (!editor) return 'p'
+    if (editor.isActive('heading') && editor.getAttributes('heading').docRole === 'title') return 'title'
+    if (editor.isActive('paragraph') && editor.getAttributes('paragraph').captionKind) return 'caption'
+    return currentBlockTag
+  })()
+
   const currentFontFamily = (() => {
     if (!editor) return 'Times New Roman'
     const ff = editor.getAttributes('textStyle').fontFamily as string | undefined
@@ -2091,55 +2166,75 @@ export function TiptapToolbar({
 
       <Divider />
 
-      {/* Styles gallery — Word-style inline tiles with More popover */}
-      <div style={{ position: 'relative' }}>
+      {/* Styles gallery — Word-style tiles; "More styles" lists every style at any width */}
+      <div role="group" aria-label="Styles" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px' }}>
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '2px',
-            overflowX: 'auto',
-            // Narrower on laptops and lab monitors (see .intellidocs-toolbar in index.css).
-            maxWidth: 'var(--style-gallery-max, 400px)',
-            scrollbarWidth: 'none',
+            gap: '4px',
+            overflow: 'hidden',
+            // Narrower on laptops and lab monitors (see .intellidocs-toolbar in index.css); whole tiles only.
+            maxWidth: 'var(--style-gallery-max, 392px)',
           }}
         >
-          {STYLE_GALLERY.map((item) => {
-            const active = currentBlockTag === item.tag
-            return (
-              <button
-                key={item.format}
-                type="button"
-                disabled={!editor}
-                title={item.label}
-                onClick={() =>
-                  run(`style_${item.format}`, () => onApplyStyle?.(item.format))
-                }
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: '30px',
-                  padding: '0 9px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: active ? 'var(--accent-subtle)' : 'transparent',
-                  boxShadow: active ? 'inset 0 -2px 0 0 var(--accent-strong)' : 'none',
-                  color: 'var(--foreground)',
-                  fontSize: item.preview.fontSize ?? '12px',
-                  fontStyle: item.preview.fontStyle ?? 'normal',
-                  fontWeight: item.preview.fontWeight ?? 500,
-                  cursor: editor ? 'pointer' : 'default',
-                  fontFamily: 'inherit',
-                  flexShrink: 0,
-                  opacity: editor ? 1 : 0.4,
-                }}
-              >
-                <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>
-              </button>
-            )
-          })}
+          {STYLE_GALLERY.slice(0, 5).map((item) => (
+            <StyleTile
+              key={item.format}
+              item={item}
+              active={currentStyleKey === item.styleKey}
+              disabled={!editor}
+              onApply={() => run(`style_${item.format}`, () => onApplyStyle?.(item.format))}
+            />
+          ))}
         </div>
+        <button
+          type="button"
+          title="More styles"
+          aria-label="More styles"
+          aria-expanded={openStyles}
+          disabled={!editor}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            const next = !openStyles
+            closeAllMenus()
+            setOpenStyles(next)
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '20px',
+            height: '36px',
+            borderRadius: '6px',
+            border: '1px solid var(--border)',
+            backgroundColor: openStyles ? 'var(--accent-subtle)' : 'var(--card)',
+            color: 'var(--muted-foreground)',
+            cursor: editor ? 'pointer' : 'default',
+            padding: 0,
+          }}
+        >
+          <ChevronDown style={{ width: '12px', height: '12px' }} />
+        </button>
+        {openStyles && (
+          <Popover width={220}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '4px' }}>
+              {STYLE_GALLERY.map((item) => (
+                <StyleTile
+                  key={item.format}
+                  item={item}
+                  wide
+                  active={currentStyleKey === item.styleKey}
+                  disabled={!editor}
+                  onApply={() => {
+                    closeAllMenus()
+                    run(`style_${item.format}`, () => onApplyStyle?.(item.format))
+                  }}
+                />
+              ))}
+            </div>
+          </Popover>
+        )}
       </div>
 
       <Divider />

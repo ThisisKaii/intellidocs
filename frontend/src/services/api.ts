@@ -108,6 +108,8 @@ export interface DocumentRecord {
   orientation: PageOrientation
   formatting_history: unknown[]
   is_isolated: boolean
+  /** The owner pinned it to the top of the dashboard (absent until migration 041 is applied). */
+  is_pinned?: boolean
   formatting_preset: string | null
   /** Genre partition (migration 038); absent on databases without the migration. */
   genre?: DocumentGenre
@@ -1251,6 +1253,14 @@ export const api = {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_isolated: isIsolated }),
+      })
+    },
+    /** Pin or unpin a document at the top of the owner's dashboard (owner only). */
+    togglePin: async (id: string, isPinned: boolean): Promise<DocumentRecord> => {
+      return fetchAPI<DocumentRecord>(`documents/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_pinned: isPinned }),
       })
     },
     /** List version snapshots for a document (owner only, newest first). */

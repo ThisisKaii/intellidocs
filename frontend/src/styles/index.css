@@ -439,7 +439,9 @@ html {
    which scrolls sideways. Dropdowns are positioned inside the toolbar, so it never scrolls itself. */
 @media (max-width: 1440px), (max-height: 800px) {
   .intellidocs-toolbar {
-    --style-gallery-max: 120px;
+    /* Two compact tiles (Normal, Title) + the 20px "More styles" button: 120px in all, as before. */
+    --style-gallery-max: 96px;
+    --style-tile-w: 46px;
     gap: 2px !important; /* overrides the toolbar's inline 4px gap */
   }
   .intellidocs-toolbar .toolbar-label {

@@ -145,6 +145,7 @@ export const updateDocumentSchema = z
     orientation: pageOrientationSchema.optional(),
     formatting_history: z.array(z.string()).max(500).optional(),
     is_isolated: z.boolean().optional(),
+    is_pinned: z.boolean().optional(),
     formatting_preset: z.string().max(100).nullable().optional(),
     citation_data: citationDataSchema.optional(),
     page_layout: pageLayoutSchema.nullable().optional(),
@@ -168,6 +169,7 @@ export const updateDocumentSchema = z
       data.orientation !== undefined ||
       data.formatting_history !== undefined ||
       data.is_isolated !== undefined ||
+      data.is_pinned !== undefined ||
       data.formatting_preset !== undefined ||
       data.citation_data !== undefined ||
       data.page_layout !== undefined,

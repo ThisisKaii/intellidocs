@@ -4,7 +4,10 @@ import type { Editor } from '@tiptap/react'
 import { motion } from 'framer-motion'
 import {
   Bot,
+  Check,
+  ChevronDown,
   ChevronRight,
+  X,
   Sparkles,
   History,
   Wrench,
@@ -24,6 +27,34 @@ import type { Suggestion } from './SuggestionPanel'
 export type SidePanelTab = 'assistant' | 'suggestions' | 'tools' | 'history'
 
 type QueueView = 'all' | 'formatting' | 'grammar'
+
+/** The formatting suggestion currently open for review (Document's formatPrompt), shown inside its card. */
+export interface ActiveFormattingReview {
+  /** The card it belongs to; 'active' for a suggestion with no list card (e.g. "apply to the other headings?"). */
+  key: string
+  label: string
+  reason: string | null
+  confidence: number | null
+  /** Other blocks the suggestion also fits ("Accept all"). */
+  similarCount: number
+}
+
+/** Expand / accept / dismiss wiring for the review cards; Document owns the state so document clicks can open a card. */
+export interface SuggestionReview {
+  expandedKey: string | null
+  onExpand: (key: string | null) => void
+  activeFormatting: ActiveFormattingReview | null
+  onAcceptFormatting: () => void
+  onAcceptAllFormatting: () => void
+  onDismissFormatting: () => void
+  onAcceptGrammar: (issue: GrammarIssue, suggestion: string) => void
+  onDismissGrammar: (issue: GrammarIssue) => void
+}
+
+/** Card key of a grammar/spelling issue: its place in the list (Document uses the same key to open it). */
+export function grammarCardKey(issues: readonly GrammarIssue[], issue: GrammarIssue): string {
+  return `g-${issues.indexOf(issue)}`
+}
 
 const VIEW_STORAGE_KEY = 'intellidocs.suggestionView'
 
@@ -49,11 +80,13 @@ interface EditorSidePanelProps {
   /** Page each grammar issue is on, once the layout is known. */
   grammarPages?: Map<GrammarIssue, number>
   onCheckGrammar: () => void
-  /** Jump to a formatting suggestion in the document and open its popup there. */
+  /** Jump to a formatting suggestion in the document and open it for review. */
   onOpenScanner: (suggestion: ScannerSuggestion) => void
   onOpenMl: (suggestion: Suggestion) => void
-  /** Jump to a grammar/spelling issue and open its fix popover there. */
+  /** Jump to a grammar/spelling issue in the document. */
   onOpenGrammar: (issue: GrammarIssue) => void
+  /** In-panel review: which card is open, and its accept / dismiss actions. */
+  review: SuggestionReview
   formattingEnabled: boolean
   grammarEnabled: boolean
   onFormattingEnabledChange: (value: boolean) => void
@@ -106,6 +139,7 @@ export default function EditorSidePanel({
   onOpenScanner,
   onOpenMl,
   onOpenGrammar,
+  review,
   formattingEnabled,
   grammarEnabled,
   onFormattingEnabledChange,
@@ -295,6 +329,7 @@ export default function EditorSidePanel({
               onOpenScanner={onOpenScanner}
               onOpenMl={onOpenMl}
               onOpenGrammar={onOpenGrammar}
+              review={review}
             />
           )}
         </div>
@@ -375,12 +410,22 @@ interface SuggestionQueueProps {
   onOpenScanner: (suggestion: ScannerSuggestion) => void
   onOpenMl: (suggestion: Suggestion) => void
   onOpenGrammar: (issue: GrammarIssue) => void
+  review: SuggestionReview
 }
 
 /** Suggestions tab: a switch between formatting suggestions and grammar/spelling issues. */
 function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
   const { scannerSuggestions, mlSuggestions, grammarIssues, formattingEnabled, grammarEnabled } = props
   const [view, setView] = useState<QueueView>(readStoredView)
+
+  // A card opened from the document (a click on underlined text) must be visible:
+  // leave a view that hides its kind, without changing the remembered choice.
+  const expandedKey = props.review.expandedKey
+  useEffect(() => {
+    if (!expandedKey) return
+    const isGrammar = expandedKey.startsWith('g-')
+    setView((current) => ((isGrammar && current === 'formatting') || (!isGrammar && current === 'grammar') ? 'all' : current))
+  }, [expandedKey])
 
   /** Switch the view and remember it. */
   function chooseView(next: QueueView): void {
@@ -464,7 +509,7 @@ function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
       </label>
       </div>
       <p style={{ margin: '-0.375rem 0 0', fontSize: '0.6875rem', lineHeight: 1.4, color: 'var(--muted-foreground)' }}>
-        Pick an item to jump to it. You accept or dismiss it in the document.
+        Open an item to review it here — the document jumps to it — then Accept or Dismiss.
       </p>
 
       {!enabled ? (
@@ -546,7 +591,38 @@ interface AllItem {
   page: number | null
   category: string
   onOpen: () => void
-  body: ReactNode
+  summary: ReactNode
+  details: ReactNode
+}
+
+/** Open (or close) a card: opening also jumps to the text and loads the suggestion. */
+function toggleCard(review: SuggestionReview, key: string, open: () => void): void {
+  if (review.expandedKey === key) {
+    review.onExpand(null)
+    return
+  }
+  open()
+  review.onExpand(key)
+}
+
+/** The "Suggested now" card for a suggestion that has no list card (e.g. matching the other headings). */
+function ActiveOnlyCard({ review }: { review: SuggestionReview }): JSX.Element | null {
+  const active = review.activeFormatting
+  if (!active || active.key !== 'active') return null
+  return (
+    <ReviewCard
+      expanded={review.expandedKey === 'active'}
+      highlighted
+      onToggle={() => review.onExpand(review.expandedKey === 'active' ? null : 'active')}
+      summary={
+        <>
+          <CardHeader title="Suggested now" badge="Formatting" confidence={active.confidence ?? undefined} />
+          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{active.label}</span>
+        </>
+      }
+      details={<FormattingDetails review={review} cardKey="active" fallbackLabel={active.label} />}
+    />
+  )
 }
 
 /** Every suggestion in one list, grouped by the page it is on. */
@@ -560,6 +636,7 @@ function AllView({
   onOpenScanner,
   onOpenMl,
   onOpenGrammar,
+  review,
 }: SuggestionQueueProps): JSX.Element {
   const items: AllItem[] = []
   if (formattingEnabled) {
@@ -569,7 +646,8 @@ function AllView({
         page: null,
         category: 'Formatting',
         onOpen: () => onOpenMl(s),
-        body: <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{formatLabel(s)}</span>,
+        summary: <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>{formatLabel(s)}</span>,
+        details: <FormattingDetails review={review} cardKey={`ml-${i}`} fallbackLabel={formatLabel(s)} />,
       })
     )
     scannerSuggestions.forEach((s) =>
@@ -578,40 +656,38 @@ function AllView({
         page: s.pageNumber,
         category: 'Formatting',
         onOpen: () => onOpenScanner(s),
-        body: (
+        summary: (
           <>
             <span style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600 }}>{s.label ?? FORMAT_LABELS[s.format] ?? s.format}</span>
             <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>“{s.preview}”</span>
           </>
         ),
+        details: <FormattingDetails review={review} cardKey={s.key} fallbackLabel={s.label ?? FORMAT_LABELS[s.format] ?? s.format} />,
       })
     )
   }
   if (grammarEnabled) {
-    grammarIssues.forEach((issue, i) =>
+    grammarIssues.forEach((issue) =>
       items.push({
-        key: `g-${i}`,
+        key: grammarCardKey(grammarIssues, issue),
         page: grammarPages?.get(issue) ?? null,
         category: issue.kind === 'spelling' ? 'Spelling' : 'Grammar',
         onOpen: () => onOpenGrammar(issue),
-        body: (
-          <span style={{ fontSize: '0.8125rem', fontWeight: 600, wordBreak: 'break-word' }}>
-            <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>{issue.original}</span>
-            <span style={{ color: 'var(--muted-foreground)' }}> → </span>
-            <span style={{ color: 'var(--success)' }}>{issue.suggestion}</span>
-          </span>
-        ),
+        summary: <ChangeDiff issue={issue} />,
+        details: <GrammarDetails issue={issue} review={review} />,
       })
     )
   }
 
-  if (items.length === 0) {
+  const activeOnly = formattingEnabled ? <ActiveOnlyCard review={review} /> : null
+  if (items.length === 0 && !activeOnly) {
     return <EmptyState title="Nothing to review" body="Formatting suggestions, grammar and spelling issues will all be listed here by page." />
   }
 
   const pages = Array.from(new Set(items.map((item) => item.page))).sort((a, b) => (a ?? 9999) - (b ?? 9999))
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {activeOnly}
       {pages.map((page) => (
         <div key={page ?? 'other'} style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
           <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
@@ -620,12 +696,20 @@ function AllView({
           {items
             .filter((item) => item.page === page)
             .map((item) => (
-              <NavCard key={item.key} active={false} onClick={item.onOpen}>
-                <span style={{ display: 'block', marginBottom: '0.125rem' }}>
-                  <Pill>{item.category}</Pill>
-                </span>
-                {item.body}
-              </NavCard>
+              <ReviewCard
+                key={item.key}
+                expanded={review.expandedKey === item.key}
+                onToggle={() => toggleCard(review, item.key, item.onOpen)}
+                summary={
+                  <>
+                    <span style={{ display: 'block', marginBottom: '0.125rem' }}>
+                      <Pill>{item.category}</Pill>
+                    </span>
+                    {item.summary}
+                  </>
+                }
+                details={item.details}
+              />
             ))}
         </div>
       ))}
@@ -633,30 +717,177 @@ function AllView({
   )
 }
 
-/** One clickable row in a suggestion list: the whole card jumps to its place in the document. */
-function NavCard({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }): JSX.Element {
+/**
+ * One suggestion as an expandable card, Grammarly style: the summary row opens
+ * it in place (and jumps to the text); the open card holds the change, why it
+ * is suggested, and Accept / Dismiss. Nothing pops up over the document.
+ */
+function ReviewCard({
+  expanded,
+  highlighted = false,
+  onToggle,
+  summary,
+  details,
+}: {
+  expanded: boolean
+  /** The suggestion currently outlined in the document. */
+  highlighted?: boolean
+  onToggle: () => void
+  summary: ReactNode
+  details: ReactNode
+}): JSX.Element {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (expanded) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [expanded])
+  const emphasized = expanded || highlighted
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
+      ref={ref}
+      data-review-card
+      data-expanded={expanded || undefined}
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.5rem',
-        width: '100%',
-        textAlign: 'left',
-        padding: '0.625rem 0.75rem',
         borderRadius: '0.625rem',
-        border: active ? '1.5px solid var(--primary)' : '1px solid var(--border)',
-        backgroundColor: active ? 'color-mix(in srgb, var(--primary) 7%, var(--card))' : 'var(--card)',
-        color: 'var(--foreground)',
-        cursor: 'pointer',
-        fontFamily: 'inherit',
+        border: emphasized ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+        backgroundColor: emphasized ? 'color-mix(in srgb, var(--primary) 5%, var(--card))' : 'var(--card)',
+        boxShadow: expanded ? '0 4px 14px rgba(0, 0, 0, 0.08)' : 'none',
+        transition: 'box-shadow 160ms, border-color 160ms',
       }}
     >
-      <span style={{ flex: 1, minWidth: 0 }}>{children}</span>
-      <ChevronRight style={{ width: 14, height: 14, flexShrink: 0, color: 'var(--muted-foreground)' }} />
-    </button>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          width: '100%',
+          textAlign: 'left',
+          padding: '0.625rem 0.75rem',
+          border: 'none',
+          background: 'transparent',
+          color: 'var(--foreground)',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ flex: 1, minWidth: 0 }}>{summary}</span>
+        {expanded ? (
+          <ChevronDown style={{ width: 14, height: 14, flexShrink: 0, color: 'var(--muted-foreground)' }} />
+        ) : (
+          <ChevronRight style={{ width: 14, height: 14, flexShrink: 0, color: 'var(--muted-foreground)' }} />
+        )}
+      </button>
+      {expanded && <div style={{ padding: '0 0.75rem 0.75rem' }}>{details}</div>}
+    </div>
+  )
+}
+
+/** "original → suggestion" with the old text struck through and the fix in green. */
+function ChangeDiff({ issue, replacement }: { issue: GrammarIssue; replacement?: string }): JSX.Element {
+  return (
+    <span style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, wordBreak: 'break-word' }}>
+      <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>{issue.original}</span>
+      <span style={{ color: 'var(--muted-foreground)' }}> → </span>
+      <span style={{ color: 'var(--success)', fontWeight: 700 }}>{replacement ?? issue.suggestion}</span>
+    </span>
+  )
+}
+
+/** Accept (primary) and Dismiss (ghost) at the foot of an open card, plus an optional extra action. */
+function CardActions({
+  onAccept,
+  onDismiss,
+  acceptLabel = 'Accept',
+  extra,
+  disabled = false,
+}: {
+  onAccept: () => void
+  onDismiss: () => void
+  acceptLabel?: string
+  extra?: ReactNode
+  disabled?: boolean
+}): JSX.Element {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginTop: '0.625rem' }}>
+      <button type="button" onClick={onAccept} disabled={disabled} style={{ ...actionButton, backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none', opacity: disabled ? 0.5 : 1 }}>
+        <Check style={{ width: 13, height: 13 }} /> {acceptLabel}
+      </button>
+      {extra}
+      <button type="button" onClick={onDismiss} disabled={disabled} style={{ ...actionButton, backgroundColor: 'transparent', color: 'var(--muted-foreground)', border: '1px solid var(--border)', opacity: disabled ? 0.5 : 1 }}>
+        <X style={{ width: 13, height: 13 }} /> Dismiss
+      </button>
+    </div>
+  )
+}
+
+const actionButton: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  height: '1.875rem',
+  padding: '0 0.75rem',
+  borderRadius: '0.5rem',
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+}
+
+/** The open formatting card: the change, why, and its actions (from the suggestion loaded into the document). */
+function FormattingDetails({ review, cardKey, fallbackLabel }: { review: SuggestionReview; cardKey: string; fallbackLabel: string }): JSX.Element {
+  const active = review.activeFormatting
+  const ready = active !== null && active.key === cardKey
+  // The card's summary row already names the change; the open card adds what it does and why.
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
+      <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 700, color: 'var(--success)' }}>
+        {ready ? active.label : fallbackLabel}
+        {ready && active.confidence !== null ? <span style={{ marginLeft: '0.375rem' }}><Pill strong>{Math.round(active.confidence)}%</Pill></span> : null}
+      </p>
+      <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', lineHeight: 1.45, color: 'var(--muted-foreground)' }}>
+        {ready ? (active.reason ?? 'Suggested from the document’s structure and your formatting habits.') : 'Opening this suggestion in the document…'}
+      </p>
+      <CardActions
+        disabled={!ready}
+        onAccept={review.onAcceptFormatting}
+        onDismiss={review.onDismissFormatting}
+        extra={
+          ready && active.similarCount > 0 ? (
+            <button type="button" onClick={review.onAcceptAllFormatting} style={{ ...actionButton, backgroundColor: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)' }}>
+              <Check style={{ width: 13, height: 13 }} /> Accept all ({active.similarCount + 1})
+            </button>
+          ) : undefined
+        }
+      />
+    </div>
+  )
+}
+
+/** The open grammar/spelling card: the change (alternatives for spelling), the rule, Accept / Dismiss. */
+function GrammarDetails({ issue, review }: { issue: GrammarIssue; review: SuggestionReview }): JSX.Element {
+  const choices = Array.from(new Set([issue.suggestion, ...(issue.suggestions ?? [])].filter((choice) => choice && choice.trim().length > 0)))
+  const [choice, setChoice] = useState<string>(choices[0] ?? issue.suggestion)
+  // The summary row shows the category and the change; the open card adds the
+  // choice of correction (spelling), the rule behind it and the actions.
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
+      {choices.length > 1 && <ChangeDiff issue={issue} replacement={choice} />}
+      {choices.length > 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.375rem' }} role="radiogroup" aria-label="Choose a correction">
+          {choices.map((option) => (
+            <FilterChip key={option} active={option === choice} onClick={() => setChoice(option)}>
+              {option}
+            </FilterChip>
+          ))}
+        </div>
+      )}
+      {issue.explanation && (
+        <p style={{ margin: choices.length > 1 ? '0.375rem 0 0' : 0, fontSize: '0.75rem', lineHeight: 1.45, color: 'var(--muted-foreground)' }}>{issue.explanation}</p>
+      )}
+      <CardActions onAccept={() => review.onAcceptGrammar(issue, choice)} onDismiss={() => review.onDismissGrammar(issue)} />
+    </div>
   )
 }
 
@@ -667,16 +898,12 @@ function FormattingView({
   mlSuggestions,
   onOpenScanner,
   onOpenMl,
+  review,
 }: SuggestionQueueProps): JSX.Element {
-  const activeRef = useRef<HTMLDivElement | null>(null)
   const sorted = [...scannerSuggestions].sort((a, b) => a.pageNumber - b.pageNumber || a.from - b.from)
+  const activeOnly = <ActiveOnlyCard review={review} />
 
-  // Keep the card for the suggestion currently outlined in the document in view.
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [activeScannerKey])
-
-  if (sorted.length === 0 && mlSuggestions.length === 0) {
+  if (sorted.length === 0 && mlSuggestions.length === 0 && !review.activeFormatting) {
     return (
       <EmptyState
         title="Nothing to format"
@@ -687,30 +914,39 @@ function FormattingView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {activeOnly}
       {mlSuggestions.map((s, i) => (
-        <NavCard key={`ml-${i}`} active={false} onClick={() => onOpenMl(s)}>
-          <CardHeader
-            title={formatLabel(s)}
-            badge={s.suggestionSource === 'learned' ? 'Learned from you' : 'Suggested'}
-            confidence={s.confidence}
-          />
-          <span style={{ display: 'block', fontSize: '0.75rem', lineHeight: 1.4, color: 'var(--muted-foreground)' }}>{s.reason}</span>
-        </NavCard>
+        <ReviewCard
+          key={`ml-${i}`}
+          expanded={review.expandedKey === `ml-${i}`}
+          onToggle={() => toggleCard(review, `ml-${i}`, () => onOpenMl(s))}
+          summary={
+            <>
+              <CardHeader title={formatLabel(s)} badge={s.suggestionSource === 'learned' ? 'Learned from you' : 'Suggested'} confidence={s.confidence} />
+              <span style={{ display: 'block', fontSize: '0.75rem', lineHeight: 1.4, color: 'var(--muted-foreground)' }}>{s.reason}</span>
+            </>
+          }
+          details={<FormattingDetails review={review} cardKey={`ml-${i}`} fallbackLabel={formatLabel(s)} />}
+        />
       ))}
       {sorted.map((s) => {
-        const isActive = activeScannerKey === s.key
         const members = s.groupMembers?.length ?? 0
         return (
-          <div key={s.key} ref={isActive ? activeRef : undefined}>
-            <NavCard active={isActive} onClick={() => onOpenScanner(s)}>
-              <CardHeader title={s.label ?? FORMAT_LABELS[s.format] ?? s.format} badge={`Page ${s.pageNumber}`} confidence={s.confidence} />
-              <span
-                style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              >
-                “{s.preview}”{members > 0 ? ` and ${members} similar` : ''}
-              </span>
-            </NavCard>
-          </div>
+          <ReviewCard
+            key={s.key}
+            expanded={review.expandedKey === s.key}
+            highlighted={activeScannerKey === s.key}
+            onToggle={() => toggleCard(review, s.key, () => onOpenScanner(s))}
+            summary={
+              <>
+                <CardHeader title={s.label ?? FORMAT_LABELS[s.format] ?? s.format} badge={`Page ${s.pageNumber}`} confidence={s.confidence} />
+                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  “{s.preview}”{members > 0 ? ` and ${members} similar` : ''}
+                </span>
+              </>
+            }
+            details={<FormattingDetails review={review} cardKey={s.key} fallbackLabel={s.label ?? FORMAT_LABELS[s.format] ?? s.format} />}
+          />
         )
       })}
     </div>
@@ -719,7 +955,7 @@ function FormattingView({
 
 type GrammarFilter = 'all' | 'grammar' | 'spelling'
 
-/** Grammar view: filterable issues; each row jumps to the word and opens its fix in the document. */
+/** Grammar view: filterable issues; each card opens in place with the fix and Accept / Dismiss. */
 function GrammarView({
   grammarIssues,
   grammarLoading,
@@ -728,6 +964,7 @@ function GrammarView({
   grammarPages,
   onCheckGrammar,
   onOpenGrammar,
+  review,
 }: SuggestionQueueProps): JSX.Element {
   const [filter, setFilter] = useState<GrammarFilter>('all')
   const grammarCount = grammarIssues.filter((i) => i.kind !== 'spelling').length
@@ -770,16 +1007,23 @@ function GrammarView({
           body={grammarIssues.length === 0 ? 'Grammar and spelling look good.' : 'Switch the filter to see the other issues.'}
         />
       ) : (
-        shown.map((issue, i) => (
-          <NavCard key={`${issue.original}-${i}`} active={false} onClick={() => onOpenGrammar(issue)}>
-            <CardHeader title={issue.kind === 'spelling' ? 'Spelling' : 'Grammar'} badge={grammarPages?.has(issue) ? `Page ${grammarPages.get(issue)}` : ''} hideBadge={!grammarPages?.has(issue)} />
-            <span style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, wordBreak: 'break-word' }}>
-              <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>{issue.original}</span>
-              <span style={{ color: 'var(--muted-foreground)' }}> → </span>
-              <span style={{ color: 'var(--success)' }}>{issue.suggestion}</span>
-            </span>
-          </NavCard>
-        ))
+        shown.map((issue) => {
+          const key = grammarCardKey(grammarIssues, issue)
+          return (
+            <ReviewCard
+              key={key}
+              expanded={review.expandedKey === key}
+              onToggle={() => toggleCard(review, key, () => onOpenGrammar(issue))}
+              summary={
+                <>
+                  <CardHeader title={issue.kind === 'spelling' ? 'Spelling' : 'Grammar'} badge={grammarPages?.has(issue) ? `Page ${grammarPages.get(issue)}` : ''} hideBadge={!grammarPages?.has(issue)} />
+                  <ChangeDiff issue={issue} />
+                </>
+              }
+              details={<GrammarDetails issue={issue} review={review} />}
+            />
+          )
+        })
       )}
     </div>
   )

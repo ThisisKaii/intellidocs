@@ -58,6 +58,21 @@ export function combinedLook(format: string, presetKey: string | null): string {
 }
 
 /**
+ * Split a look into its inline style and its alignment. Alignment belongs to
+ * the block's own TextAlign attribute (a copy inside the inline style is
+ * dropped by the paragraph/heading schema so the alignment buttons win).
+ */
+function splitLook(look: string): { style: string | null; align: 'left' | 'center' | 'right' | 'justify' | null } {
+  const match = /text-align\s*:\s*(left|center|right|justify)/i.exec(look)
+  const style = look
+    .split(';')
+    .map((decl) => decl.trim())
+    .filter((decl) => decl.length > 0 && !/^text-align\s*:/i.test(decl))
+    .join('; ')
+  return { style: style || null, align: match ? (match[1].toLowerCase() as 'left' | 'center' | 'right' | 'justify') : null }
+}
+
+/**
  * Apply a style tile to the block at the current selection. When `from`/`to`
  * are provided the selection is moved there first (used by drag-and-drop).
  * Applied styles are tagged with `style_source: "applied_style"` so the
@@ -85,42 +100,34 @@ export function applyStyleCommand(
     chain.setTextSelection({ from, to })
   }
 
+  // updateAttributes needs the node type the block has after the conversion
+  // ('heading' / 'paragraph'); an empty type name matches nothing and set nothing.
   switch (format) {
     case 'normal':
+      // Plain body text: no heading look carried over from the block it was.
       chain
         .setParagraph()
-        .updateAttributes('', { styleSource: 'applied_style' })
+        .updateAttributes('paragraph', { styleSource: 'applied_style', style: null })
         .run()
       break
     case 'h1':
-      chain
-        .setHeading({ level: 1 })
-        .updateAttributes('', { styleSource: 'applied_style', style: combinedLook('h1', presetKey), docRole: null })
-        .run()
-      break
     case 'h2':
-      chain
-        .setHeading({ level: 2 })
-        .updateAttributes('', { styleSource: 'applied_style', style: combinedLook('h2', presetKey), docRole: null })
-        .run()
-      break
     case 'h3':
-      chain
-        .setHeading({ level: 3 })
-        .updateAttributes('', { styleSource: 'applied_style', style: combinedLook('h3', presetKey), docRole: null })
-        .run()
+    case 'title': {
+      const level = format === 'h2' ? 2 : format === 'h3' ? 3 : 1
+      const { style, align } = splitLook(combinedLook(format, presetKey))
+      let next = chain
+        .setHeading({ level })
+        // The title's look is its own combined format; the role is a hidden tag.
+        .updateAttributes('heading', { styleSource: 'applied_style', style, docRole: format === 'title' ? 'title' : null })
+      if (align) next = next.setTextAlign(align)
+      next.run()
       break
-    case 'title':
-      // The title's look is its own combined format; the role is a hidden tag.
-      chain
-        .setHeading({ level: 1 })
-        .updateAttributes('', { styleSource: 'applied_style', style: combinedLook('title', presetKey), docRole: 'title' })
-        .run()
-      break
+    }
     case 'blockquote':
       chain
         .toggleBlockquote()
-        .updateAttributes('', { styleSource: 'applied_style' })
+        .updateAttributes('paragraph', { styleSource: 'applied_style' })
         .run()
       break
     case 'caption':
@@ -129,7 +136,7 @@ export function applyStyleCommand(
         .setTextAlign('center')
         .setFontSize('11pt')
         .toggleItalic()
-        .updateAttributes('', { styleSource: 'applied_style' })
+        .updateAttributes('paragraph', { styleSource: 'applied_style' })
         .run()
       break
     default:

@@ -350,6 +350,55 @@ export function applyStyle(editor: Editor, range: TextRange, style: StyleChange)
   }
 }
 
+/** A preset's body text: what "Apply to existing paragraphs" writes onto each body paragraph. */
+export interface PresetBodyLook {
+  /** A single family name, e.g. "Times New Roman". */
+  fontFamily: string
+  /** CSS size, e.g. "12pt". */
+  fontSize: string
+  /** Line height as a multiple, e.g. 2 for double spacing. */
+  lineHeight: number
+  /** CSS length, e.g. "0.5in". */
+  firstLineIndent: string
+}
+
+/**
+ * Reformat the existing body paragraphs into a preset's body style: font,
+ * size, line spacing and first-line indent. Only top-level body paragraphs
+ * inside the chapters change (never the title page, headings, heading-like
+ * bold lines, centered lines, captions or table cells). Every other inline
+ * style and mark is kept, and the whole change is ONE transaction, so a
+ * single undo takes it back. Returns how many paragraphs changed.
+ */
+export function applyPresetToBody(editor: Editor, look: PresetBodyLook): number {
+  const { state } = editor
+  const blocks = topBlocks(state.doc)
+  const firstChapter = blocks.findIndex(({ node }) => isChapterHeading(node))
+  const textStyle = state.schema.marks.textStyle
+  const { tr } = state
+  let changed = 0
+  for (const { node, pos } of blocks.slice(firstChapter === -1 ? 0 : firstChapter)) {
+    if (node.type.name !== 'paragraph' || node.textContent.trim().length === 0) continue
+    if (isChapterHeading(node) || isHeadingLikeParagraph(node) || node.attrs?.docRole === 'title') continue
+    if (node.attrs?.textAlign === 'center' || node.attrs?.textAlign === 'right') continue
+    if (node.type.spec.attrs && 'style' in node.type.spec.attrs) {
+      const style = mergeStyleDecls(node.attrs.style as string | null, { 'line-height': String(look.lineHeight), 'text-indent': look.firstLineIndent })
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, style })
+    }
+    if (textStyle) {
+      node.forEach((child, offset) => {
+        if (!child.isText) return
+        const from = pos + 1 + offset
+        const existing = child.marks.find((mark) => mark.type === textStyle)
+        tr.addMark(from, from + child.nodeSize, textStyle.create({ ...(existing?.attrs ?? {}), fontFamily: look.fontFamily, fontSize: look.fontSize }))
+      })
+    }
+    changed += 1
+  }
+  if (tr.docChanged) editor.view.dispatch(tr)
+  return changed
+}
+
 /**
  * For a heading request on a literal phrase, the blocks that ARE that phrase
  * (a title line), not every sentence that mentions it. Falls back to all

@@ -88,6 +88,8 @@ export interface Document {
   orientation: PageOrientation
   formatting_history: unknown[]
   is_isolated: boolean
+  /** Owner pinned it to the top of the dashboard (migration 041; absent before it). */
+  is_pinned?: boolean
   formatting_preset: string | null
   /** Genre partition for behavior learning (migration 038). */
   genre: DocumentGenre
@@ -176,6 +178,7 @@ export interface UpdateDocumentRequest {
   orientation?: PageOrientation
   formatting_history?: string[]
   is_isolated?: boolean
+  is_pinned?: boolean
   formatting_preset?: string | null
   page_layout?: PageLayout | null
   citation_data?: CitationData

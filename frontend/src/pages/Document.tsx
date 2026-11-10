@@ -20,18 +20,17 @@ import {
 } from '@/components/editor/behaviorListener'
 import type { GrammarIssue } from '@/components/editor/GrammarPanel'
 import type { Suggestion } from '@/components/editor/SuggestionPanel'
-import GrammarOverlay from '@/components/editor/GrammarOverlay'
-import InlineSuggestionChip from '@/components/editor/InlineSuggestionChip'
 import TwoColumnPrompt from '@/components/TwoColumnPrompt'
 import DocumentTypePrompt from '@/components/DocumentTypePrompt'
 import { GenreBadge } from '@/components/editor/GenreBadge'
 import { canUsePreset } from '@/lib/presetAccess'
 import { headingLikeLines } from '@/lib/headingLikeLines'
+import { describePresetChanges, presetFontFamily } from '@/lib/presetSummary'
+import { applyPresetToBody } from '@/components/editor/chatFormatting'
 import { buildGenreSignals, type DocumentGenre, type GenreSource } from '@/lib/genreSignals'
 import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
-import SuggestionActionsMenu from '@/components/editor/SuggestionActionsMenu'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
-import EditorSidePanel, { type SidePanelTab } from '@/components/editor/EditorSidePanel'
+import EditorSidePanel, { grammarCardKey, type SidePanelTab, type SuggestionReview } from '@/components/editor/EditorSidePanel'
 import { ACADEMIC_PRESETS, basePresetKey } from '@/components/editor/academicPresets'
 import { hasDriftedFromPreset } from '@/components/editor/documentBlueprints'
 import PresetForkPrompt from '@/components/PresetForkPrompt'
@@ -49,7 +48,6 @@ import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/format
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import type { PageLayoutData } from '@/lib/pageLayout'
 import { mergeStyleDecls } from '@/lib/inlineStyle'
-import { anchorAtClick } from '@/lib/grammarAnchor'
 import { dismissFontNotice, fontFamiliesIn, fontNoticeDismissed, missingFonts } from '@/lib/fontAvailability'
 import { findHeadingPosition } from '@/components/editor/OutlineNavigator'
 import { extractTOCFromHTML } from '@/components/editor/TableOfContents'
@@ -112,14 +110,6 @@ interface RemotePresence {
 const AUTO_FORMAT_DELAY = 1200
 const AUTO_FORMAT_CONFIDENCE_THRESHOLD = 0.22
 const AUTO_FORMAT_SUPPRESSION_MS = 5 * 60 * 1000
-
-/** Where a chip suggestion came from, for the popup badge. */
-function describeSuggestionSource(prompt: { suggestionSource?: string; formatGroup?: string }): 'learned' | 'preset' | 'ml' | 'scanner' {
-  if (prompt.suggestionSource === 'learned') return 'learned'
-  if (prompt.formatGroup?.startsWith('blueprint-')) return 'preset'
-  if (prompt.suggestionSource === 'ml') return 'ml'
-  return 'scanner'
-}
 
 /** One plain sentence explaining why a chip suggestion is offered. */
 function describeSuggestionReason(prompt: { suggestionSource?: string; formatGroup?: string; groupMembers?: unknown[] }): string {
@@ -263,6 +253,12 @@ export default function Document(): JSX.Element {
   const [storageFull, setStorageFull] = useState(false)
   /** Set when a baseline user picks a thesis preset, which needs student verification. */
   const [presetLocked, setPresetLocked] = useState(false)
+  /** "See changes" after a preset applies: what it set up, and the result of reformatting existing text. */
+  const [presetToast, setPresetToast] = useState<{ presetKey: string; summary: string; result: string | null } | null>(null)
+  const presetToastTimer = useRef<number | null>(null)
+  useEffect(() => () => {
+    if (presetToastTimer.current !== null) window.clearTimeout(presetToastTimer.current)
+  }, [])
   /** Unsaved edits from an earlier session that are newer than the server copy. */
   const [recoveredDraft, setRecoveredDraft] = useState<LocalDraft | null>(null)
   const [helpOpen, setHelpOpen] = useState<boolean>(false)
@@ -300,29 +296,24 @@ export default function Document(): JSX.Element {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [formatPrompt, setFormatPrompt] = useState<FormatSuggestion | null>(null)
+  /** The review card open in the side panel ('active' = a suggestion with no list card). */
+  const [expandedSuggestionKey, setExpandedSuggestionKey] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<'before' | 'after'>('after')
   // Learned-format match awaiting a click: highlight only, popup opens on click.
   const [pendingLearnedFormat, setPendingLearnedFormat] = useState<FormatSuggestion | null>(null)
   const [grammarIssues, setGrammarIssues] = useState<GrammarIssue[]>([])
   const [activeGrammarIssue, setActiveGrammarIssue] = useState<GrammarIssue | null>(null)
-  /** Document range of the text the open grammar popover belongs to (it follows that text). */
-  const [activeGrammarAnchor, setActiveGrammarAnchor] = useState<{ from: number; to: number } | null>(null)
   const [suggestionRange, setSuggestionRangeState] = useState<{ from: number; to: number } | null>(null)
-  const [suggestionAnchor, setSuggestionAnchorState] = useState<{ x: number; y: number } | null>(null)
   // Callers pass fresh objects on every scanner sync and editor transaction; keeping the previous
   // object when nothing moved lets React bail out instead of re-rendering into the anchor effect
   // again (that cycle hit "Maximum update depth exceeded" during fast typing).
   const setSuggestionRange = useCallback((next: { from: number; to: number } | null): void => {
     setSuggestionRangeState((prev) => (prev === next || (prev && next && prev.from === next.from && prev.to === next.to) ? prev : next))
   }, [])
-  const setSuggestionAnchor = useCallback((next: { x: number; y: number } | null): void => {
-    setSuggestionAnchorState((prev) => (prev === next || (prev && next && prev.x === next.x && prev.y === next.y) ? prev : next))
-  }, [])
   /** Spotlight rect (canvas-relative px) shown briefly after an outline jump. */
   const [flashCoords, setFlashCoords] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [flashKey, setFlashKey] = useState<number>(0)
   const flashTimerRef = useRef<number | null>(null)
-  const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number } | null>(null)
   const editorCanvasRef = useRef<HTMLDivElement>(null)
   const [isIsolated, setIsIsolated] = useState<boolean>(false)
   const [formattingPreset, setFormattingPreset] = useState<string | null>(null)
@@ -658,26 +649,43 @@ export default function Document(): JSX.Element {
     if (!editor || editor.isDestroyed) return
     const pos = findHeadingPosition(editor, entry.text, entry.level, occurrence)
     if (pos == null) return
-
-    const container = editorCanvasRef.current
-    const node = editor.view.nodeDOM(pos)
-    const target = node instanceof HTMLElement ? node : node?.parentElement ?? null
-    if (target && container) {
-      const rect = target.getBoundingClientRect()
-      const containerRect = container.getBoundingClientRect()
-      setFlashCoords({
-        top: (rect.top - containerRect.top) / zoomLevel + container.scrollTop,
-        left: (rect.left - containerRect.left) / zoomLevel,
-        width: rect.width / zoomLevel,
-        height: rect.height / zoomLevel,
-      })
-      setFlashKey(Date.now())
-      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current)
-      flashTimerRef.current = window.setTimeout(() => setFlashCoords(null), 1700)
-    }
-
+    flashBlockAt(pos)
     editor.chain().focus().setTextSelection(pos + 1).run()
     scrollCanvasToPos(pos + 1)
+  }
+
+  /**
+   * Spotlight the block containing a document position: a brief React-managed
+   * flash over it (the text stays readable; nothing pops up). Used by outline
+   * jumps and by opening a suggestion card in the side panel.
+   */
+  function flashBlockAt(pos: number): void {
+    if (!editor || editor.isDestroyed) return
+    const container = editorCanvasRef.current
+    const size = editor.state.doc.content.size
+    const $pos = editor.state.doc.resolve(Math.max(0, Math.min(pos, size)))
+    const blockPos = $pos.depth >= 1 ? $pos.before(1) : pos
+    const node = editor.view.nodeDOM(blockPos)
+    const target = node instanceof HTMLElement ? node : node?.parentElement ?? null
+    if (!target || !container) return
+    const rect = target.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    setFlashCoords({
+      top: (rect.top - containerRect.top) / zoomLevel + container.scrollTop,
+      left: (rect.left - containerRect.left) / zoomLevel,
+      width: rect.width / zoomLevel,
+      height: rect.height / zoomLevel,
+    })
+    setFlashKey(Date.now())
+    if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = window.setTimeout(() => setFlashCoords(null), 1700)
+  }
+
+  /** Show a suggestion's review card: right panel open on Suggestions, that card expanded. */
+  function openReviewCard(key: string): void {
+    setRightPanelOpen(true)
+    setSidePanelTab('suggestions')
+    setExpandedSuggestionKey(key)
   }
 
   // Drop any pending flash timer when the page unmounts.
@@ -1262,56 +1270,6 @@ export default function Document(): JSX.Element {
     const next = list[(idx + direction + list.length) % list.length]
     setFormatPrompt({ format: next, confidence: formatPrompt.confidence })
   }
-
-  const updateSuggestionAnchor = useCallback((): void => {
-    if (!editor || editor.isDestroyed || !suggestionRange) return
-    const { from, to } = suggestionRange
-    const view = editor.view
-
-    // The range may outlive the content it was computed on (content replaced,
-    // undo shrank the doc, another doc loaded). ProseMirror throws a
-    // RangeError for positions outside the document, so bail out before
-    // querying coordinates for a stale range.
-    const docSize = editor.state.doc.content.size
-    if (from < 0 || to > docSize || to < from || from >= docSize) return
-
-    // Chip anchor (viewport space) — top-left of the range. Even with the
-    // bounds check above, a coordinate query can race the editor's own state
-    // during a transaction, so treat any leftover range error as "no anchor".
-    let start: { left: number; top: number } | null
-    let endpoint: { left: number; top: number } | null
-    try {
-      start = view.coordsAtPos(from + 1)
-      endpoint = view.coordsAtPos(to <= from + 1 ? from + 1 : to - 1)
-    } catch {
-      setSuggestionAnchor(null)
-      return
-    }
-    if (!start || !endpoint) return
-    if (start.left === 0 && start.top === 0) return
-    setSuggestionAnchor({ x: Math.min(start.left, endpoint.left), y: start.top })
-  }, [editor, suggestionRange])
-
-  // Recompute the chip anchor when the range, editor, window, or editor
-  // transactions change (covers typing, scrolling, page layout shifts, and
-  // mark changes from the chip's "change to" cycling). The block outline
-  // itself needs no measuring — the decoration wraps the target block.
-  useEffect(() => {
-    if (!suggestionRange || !editor || editor.isDestroyed) {
-      setSuggestionAnchor(null)
-      return
-    }
-    const refresh = (): void => updateSuggestionAnchor()
-    refresh()
-    document.addEventListener('scroll', refresh, { passive: true })
-    window.addEventListener('resize', refresh)
-    editor.on('transaction', refresh)
-    return () => {
-      document.removeEventListener('scroll', refresh)
-      window.removeEventListener('resize', refresh)
-      editor.off('transaction', refresh)
-    }
-  }, [suggestionRange, editor, updateSuggestionAnchor])
 
   // Drive the pulsing suggestion outline. It is emitted as a ProseMirror node
   // decoration so the wrapper sits in the document DOM around the target
@@ -2224,11 +2182,12 @@ export default function Document(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, grammarIssues, content])
 
-  /** Panel click on a formatting suggestion: jump to it and open its popup in the document. */
+  /** Panel card opened on a formatting suggestion: jump to it, spotlight it, and load it for review. */
   function openScannerInDocument(suggestion: ScannerSuggestion): void {
     if (!editor || editor.isDestroyed || readOnly) return
     selectScannerSuggestion(suggestion.key)
     jumpToScannerTarget(suggestion)
+    flashBlockAt(suggestion.from + 1)
     setFormatPrompt({
       format: suggestion.format,
       confidence: suggestion.confidence,
@@ -2248,6 +2207,7 @@ export default function Document(): JSX.Element {
     if (range) setSuggestionRange(range)
     setFormatPrompt({ ...suggestion })
     scrollToDocPos(range?.from ?? editor.state.selection.from)
+    flashBlockAt((range?.from ?? editor.state.selection.from) + 1)
   }
 
   /**
@@ -2274,21 +2234,13 @@ export default function Document(): JSX.Element {
     editor.view.dispatch(tr)
   }
 
-  /** Panel click on a grammar/spelling issue: jump to the word and open its fix popover there. */
+  /** Panel card opened on a grammar/spelling issue: select the words, scroll to them and spotlight the line. */
   function openGrammarInDocument(issue: GrammarIssue): void {
     const range = locateIssue(issue)
     if (!range || !editor || editor.isDestroyed) return
-    editor.chain().focus().setTextSelection(range).run()
-    scrollToDocPos(range.from, 'auto')
-    window.setTimeout(() => {
-      if (!editor || editor.isDestroyed) return
-      const start = editor.view.coordsAtPos(range.from)
-      const end = editor.view.coordsAtPos(range.to)
-      handleGrammarClick(
-        issue,
-        new DOMRect(start.left, start.top, Math.max(end.right - start.left, 12), Math.max(start.bottom - start.top, 14))
-      )
-    }, 150)
+    editor.chain().setTextSelection(range).run()
+    scrollToDocPos(range.from)
+    flashBlockAt(range.from)
   }
 
   function handleGrammarApply(issue: GrammarIssue, suggestion?: string): void {
@@ -2419,6 +2371,7 @@ export default function Document(): JSX.Element {
         formatGroup: `blueprint-${guideGroup}`,
         groupMembers: groupMembers.slice(1),
       })
+      setExpandedSuggestionKey('active')
       return
     }
 
@@ -2448,6 +2401,7 @@ export default function Document(): JSX.Element {
       formatGroup: `cluster-${role}`,
       groupMembers: members.slice(1),
     })
+    setExpandedSuggestionKey('active')
   }
 
   /** Resolve the active preset (if the doc uses one of the academic presets). */
@@ -2669,6 +2623,40 @@ export default function Document(): JSX.Element {
     setForkError('')
   }
 
+  /** Hide the preset toast after a while; hovering it keeps it open (see onMouseEnter/Leave). */
+  function schedulePresetToastHide(): void {
+    if (presetToastTimer.current !== null) window.clearTimeout(presetToastTimer.current)
+    presetToastTimer.current = window.setTimeout(() => setPresetToast(null), 12000)
+  }
+
+  function holdPresetToast(): void {
+    if (presetToastTimer.current !== null) window.clearTimeout(presetToastTimer.current)
+    presetToastTimer.current = null
+  }
+
+  /** "Apply to existing paragraphs": reformat the body into the preset's font, size, spacing and indent (one undo step). */
+  function applyPresetToExistingText(presetKey: string): void {
+    const preset = ACADEMIC_PRESETS.find((p) => p.key === basePresetKey(presetKey))
+    if (!preset || !editor || editor.isDestroyed || !editor.isEditable) return
+    const changed = applyPresetToBody(editor, {
+      fontFamily: presetFontFamily(preset),
+      fontSize: preset.baseFontSize,
+      lineHeight: preset.lineHeight,
+      firstLineIndent: preset.firstLineIndent,
+    })
+    setPresetToast((toast) =>
+      toast
+        ? {
+            ...toast,
+            result: changed > 0
+              ? `Reformatted ${changed} paragraph${changed === 1 ? '' : 's'}. Press Ctrl+Z to undo.`
+              : 'There are no body paragraphs to reformat yet.',
+          }
+        : toast
+    )
+    schedulePresetToastHide()
+  }
+
   /** One-click academic preset: page geometry + scoped typography + persisted preset key. */
   async function handleApplyAcademicPreset(key: string): Promise<void> {
     const preset = ACADEMIC_PRESETS.find((p) => p.key === key)
@@ -2681,6 +2669,9 @@ export default function Document(): JSX.Element {
     setMargins({ ...preset.margins })
     setOrientation(preset.orientation)
     setFormattingPreset(key)
+    // Say what changed, and offer to reformat text that keeps its own (e.g. imported) styling.
+    setPresetToast({ presetKey: key, summary: describePresetChanges(preset), result: null })
+    schedulePresetToastHide()
     // Switching preset restyles the captions and, for IEEE, the citation style.
     if (editor && !editor.isDestroyed) editor.commands.setCaptionLabelStyle(basePresetKey(key) === 'ieee' ? 'ieee' : 'default')
     if (basePresetKey(key) === 'ieee') setCitationStyle('ieee')
@@ -2701,33 +2692,16 @@ export default function Document(): JSX.Element {
    * so it follows the text through scrolling, zoom and reflow.
    */
   const handleGrammarClick = useCallback(
-    (issue: GrammarIssue, rect: DOMRect): void => {
-      setActiveGrammarIssue(issue)
-      setActiveGrammarAnchor(editor && !editor.isDestroyed ? anchorAtClick(editor, issue, rect) : null)
+    (issue: GrammarIssue): void => {
+      // Review happens in the side panel: open this issue's card there.
+      const index = grammarIssues.indexOf(issue)
+      if (index === -1) return
+      setRightPanelOpen(true)
+      setSidePanelTab('suggestions')
+      setExpandedSuggestionKey(grammarCardKey(grammarIssues, issue))
     },
-    [editor]
+    [grammarIssues]
   )
-
-  /** The open grammar popover's anchor box, rebuilt from the document position on every call. */
-  const getActiveGrammarRect = useMemo(() => {
-    if (!editor || editor.isDestroyed || !activeGrammarAnchor) return null
-    const { from, to } = activeGrammarAnchor
-    return (): DOMRect | null => {
-      if (editor.isDestroyed) return null
-      const size = editor.state.doc.content.size
-      if (from > size) return null
-      try {
-        const start = editor.view.coordsAtPos(from)
-        const end = editor.view.coordsAtPos(Math.min(to, size), -1)
-        // Text that wraps onto the next line: anchor to the part on the first line.
-        const sameLine = Math.abs(end.top - start.top) < (start.bottom - start.top) / 2
-        const width = sameLine ? Math.max(end.right - start.left, 12) : 48
-        return new DOMRect(start.left, start.top, width, Math.max(start.bottom - start.top, 14))
-      } catch {
-        return null
-      }
-    }
-  }, [editor, activeGrammarAnchor])
 
 
   /**
@@ -2755,18 +2729,8 @@ export default function Document(): JSX.Element {
   }
 
 
-  /** Grammar/spelling issues whose text falls inside the highlighted suggestion block. */
-  const issuesOnRange = useCallback((): GrammarIssue[] => {
-    if (!editor || editor.isDestroyed || !suggestionRange) return []
-    const blockText = editor.state.doc
-      .textBetween(suggestionRange.from, suggestionRange.to, ' ')
-      .toLowerCase()
-    return grammarIssues.filter((issue) => issue.original && blockText.includes(issue.original.toLowerCase()))
-  }, [editor, suggestionRange, grammarIssues])
-
-  /** Open the formatting suggestion popup (chip) for the active suggestion. */
+  /** Load the highlighted block's formatting suggestion for review in the side panel. */
   function openFormattingPopup(): void {
-    setActionsMenu(null)
     if (pendingLearnedFormat) {
       setFormatPrompt(pendingLearnedFormat)
       setPendingLearnedFormat(null)
@@ -2785,32 +2749,16 @@ export default function Document(): JSX.Element {
     }
   }
 
-  /** Open the grammar fix popover for the first issue on the highlighted line. */
-  function openGrammarFromMenu(): void {
-    const issues = issuesOnRange()
-    const first = issues[0]
-    setActionsMenu(null)
-    const anchor = first ? locateIssue(first) : null
-    if (first && anchor) {
-      setActiveGrammarIssue(first)
-      setActiveGrammarAnchor(anchor)
-    }
-  }
-
-  /**
-   * Clicking the outlined text opens a chooser when BOTH formats + grammar are
-   * present. `rect` comes from the decoration wrapper itself, so the anchor is
-   * already in viewport space and matches what the menu expects.
-   */
-  function handleOverlayOpen(rect: DOMRect): void {
-    if (issuesOnRange().length > 0) {
-      setActionsMenu({ x: rect.left, y: rect.top })
-    } else if (pendingLearnedFormat) {
-      // Learned cross-document match clicked: promote the highlight to the chip.
+  /** Clicking the outlined text opens its suggestion card in the side panel. */
+  function handleOverlayOpen(): void {
+    // Review happens in the side panel: load the block's suggestion and open its card.
+    if (pendingLearnedFormat) {
       setFormatPrompt(pendingLearnedFormat)
       setPendingLearnedFormat(null)
-    } else {
+      openReviewCard('active')
+    } else if (scannerActive) {
       openFormattingPopup()
+      openReviewCard(scannerActive.key)
     }
   }
 
@@ -2822,7 +2770,7 @@ export default function Document(): JSX.Element {
 
   useEffect(() => {
     if (!editor) return
-    const onOverlayClick = (payload: { rect: DOMRect }): void => overlayOpenRef.current(payload.rect)
+    const onOverlayClick = (): void => overlayOpenRef.current()
     editor.on('suggestion-overlay-click', onOverlayClick)
     return () => {
       editor.off('suggestion-overlay-click', onOverlayClick)
@@ -2842,10 +2790,7 @@ export default function Document(): JSX.Element {
   // Close the popover when its issue is removed from the active set.
   useEffect(() => {
     if (!activeGrammarIssue) return
-    if (!grammarIssues.includes(activeGrammarIssue)) {
-      setActiveGrammarIssue(null)
-      setActiveGrammarAnchor(null)
-    }
+    if (!grammarIssues.includes(activeGrammarIssue)) setActiveGrammarIssue(null)
   }, [grammarIssues, activeGrammarIssue])
 
   useEffect(() => {
@@ -2866,25 +2811,44 @@ export default function Document(): JSX.Element {
     editor?.chain().focus().run()
   }
 
-  // Chip metadata: the chip's counter tracks the highlighted suggestion's queue
-  // position, while the up/down arrows cycle the "change to" alternatives.
-  const queuePosition = scannerActive
-    ? scannerSuggestions.findIndex((s) => s.key === scannerActive.key) + 1
-    : 0
-  const queueTotal = scannerActive ? scannerSuggestions.length : 0
-  const chipAlternatives = formatPrompt
-    ? SUGGESTION_ALTERNATIVES[formatPrompt.format] ?? [formatPrompt.format]
-    : []
-  const altPosition = formatPrompt ? chipAlternatives.indexOf(formatPrompt.format) : 0
-  const cycleNextLabel = altPosition >= 0 && altPosition < chipAlternatives.length - 1
-    ? formatSuggestionLabel(chipAlternatives[altPosition + 1])
-    : undefined
-  const cyclePrevLabel = altPosition > 0 ? formatSuggestionLabel(chipAlternatives[altPosition - 1]) : undefined
-
-  /** Jump to the currently highlighted suggestion (chip → locate button). */
-  const handleChipJump = useCallback((): void => {
-    if (scannerActive) jumpToScannerTarget(scannerActive)
-  }, [scannerActive, jumpToScannerTarget])
+  /**
+   * The side panel's review cards: the open formatting suggestion (formatPrompt)
+   * and Accept / Dismiss for it and for grammar issues. A card closes once acted on.
+   */
+  const suggestionReview: SuggestionReview = {
+    expandedKey: expandedSuggestionKey,
+    onExpand: setExpandedSuggestionKey,
+    activeFormatting:
+      formatPrompt && !readOnly
+        ? {
+            key: expandedSuggestionKey && !expandedSuggestionKey.startsWith('g-') ? expandedSuggestionKey : 'active',
+            label: formatPrompt.label ?? formatSuggestionLabel(formatPrompt.format),
+            reason: describeSuggestionReason(formatPrompt) || null,
+            confidence: typeof formatPrompt.confidence === 'number' ? formatPrompt.confidence : null,
+            similarCount: formatPrompt.groupMembers?.length ?? 0,
+          }
+        : null,
+    onAcceptFormatting: () => {
+      if (formatPrompt) handlePromptAccept(formatPrompt)
+      setExpandedSuggestionKey(null)
+    },
+    onAcceptAllFormatting: () => {
+      handlePromptAcceptAll()
+      setExpandedSuggestionKey(null)
+    },
+    onDismissFormatting: () => {
+      handlePromptReject()
+      setExpandedSuggestionKey(null)
+    },
+    onAcceptGrammar: (issue, suggestion) => {
+      handleGrammarApply(issue, suggestion)
+      setExpandedSuggestionKey(null)
+    },
+    onDismissGrammar: (issue) => {
+      handleGrammarDismiss(issue)
+      setExpandedSuggestionKey(null)
+    },
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'hidden', backgroundColor: 'var(--background)' }}>
@@ -3407,6 +3371,56 @@ export default function Document(): JSX.Element {
             </div>
           )}
 
+          {/* What a preset just set up, with the option to reformat the existing text */}
+          {presetToast && (
+            <div
+              role="status"
+              onMouseEnter={holdPresetToast}
+              onMouseLeave={schedulePresetToastHide}
+              style={{
+                position: 'fixed',
+                bottom: '7.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: 'min(36rem, calc(100vw - 2rem))',
+                zIndex: 42,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                padding: '0.75rem 0.875rem',
+                borderRadius: '0.625rem',
+                border: '1px solid var(--border)',
+                borderLeft: '3px solid var(--primary)',
+                backgroundColor: 'var(--card)',
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.12)',
+              }}
+            >
+              <p style={{ margin: 0, fontSize: '0.8125rem', lineHeight: 1.45, color: 'var(--foreground)' }}>{presetToast.summary}</p>
+              {presetToast.result && (
+                <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)' }}>{presetToast.result}</p>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                {!presetToast.result && !readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => applyPresetToExistingText(presetToast.presetKey)}
+                    style={{ height: '1.875rem', padding: '0 0.75rem', borderRadius: '0.4375rem', border: 'none', background: 'var(--primary)', color: 'var(--primary-foreground)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    Apply to existing paragraphs
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { holdPresetToast(); setPresetToast(null) }}
+                  aria-label="Dismiss"
+                  style={{ height: '1.875rem', padding: '0 0.625rem', borderRadius: '0.4375rem', border: '1px solid var(--border)', background: 'transparent', color: 'var(--foreground)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  {presetToast.result ? 'Done' : 'Dismiss'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* The document names fonts this computer does not have */}
           {missingDocFonts.length > 0 && (
             <div
@@ -3541,6 +3555,7 @@ export default function Document(): JSX.Element {
           onOpenScanner={openScannerInDocument}
           onOpenMl={openMlInDocument}
           onOpenGrammar={openGrammarInDocument}
+          review={suggestionReview}
           formattingEnabled={prefs.formattingSuggestions}
           grammarEnabled={prefs.grammarSuggestions}
           onFormattingEnabledChange={(value) => setEditorPreferences({ formattingSuggestions: value })}
@@ -3621,60 +3636,6 @@ export default function Document(): JSX.Element {
           }
         />
       </div>
-
-      {/* Grammar & spell check — floating popover anchored to a clicked wavy underline */}
-      <GrammarOverlay
-        issue={activeGrammarIssue}
-        getAnchorRect={getActiveGrammarRect}
-        contextElement={editor && !editor.isDestroyed ? editor.view.dom : null}
-        onApply={handleGrammarApply}
-        onDismiss={handleGrammarDismiss}
-        onClose={() => {
-          setActiveGrammarIssue(null)
-          setActiveGrammarAnchor(null)
-        }}
-      />
-
-      {/* Chooser when the highlighted line has both formatting + grammar/spelling */}
-      {actionsMenu && (
-        <SuggestionActionsMenu
-          anchor={actionsMenu}
-          formattingLabel={formatSuggestionLabel(pendingLearnedFormat?.format ?? scannerActive?.format ?? '')}
-          grammarCount={issuesOnRange().length}
-          onFormatting={openFormattingPopup}
-          onGrammar={openGrammarFromMenu}
-          onClose={() => setActionsMenu(null)}
-        />
-      )}
-
-      {/* Inline suggestion chip — anchored above the highlighted block */}
-      {!readOnly && showFormatOverlays && formatPrompt && suggestionRange && suggestionAnchor && (
-        <InlineSuggestionChip
-          anchor={suggestionAnchor}
-          label={formatPrompt.label ?? formatSuggestionLabel(formatPrompt.format)}
-          confidence={formatPrompt.confidence}
-          source={describeSuggestionSource(formatPrompt)}
-          previewMode={previewMode}
-          previewAvailable={previewStyle !== null}
-          onPreviewModeChange={setPreviewMode}
-          reason={describeSuggestionReason(formatPrompt)}
-          queuePosition={queuePosition}
-          queueTotal={queueTotal}
-          nextLabel={cycleNextLabel}
-          prevLabel={cyclePrevLabel}
-          similarCount={formatPrompt.groupMembers?.length ?? 0}
-          groupMembers={formatPrompt.groupMembers}
-          onAcceptAll={
-            formatPrompt.groupMembers && formatPrompt.groupMembers.length > 0
-              ? handlePromptAcceptAll
-              : undefined
-          }
-          onChangeTo={cycleSuggestionFormat}
-          onJump={handleChipJump}
-          onAccept={() => handlePromptAccept(formatPrompt)}
-          onReject={handlePromptReject}
-        />
-      )}
 
       <HelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
       <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
