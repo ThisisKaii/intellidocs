@@ -618,8 +618,18 @@ export function DriveTable({
                       </span>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs text-muted-foreground/80">
-                      <span>Personal workspace</span>
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40 text-xs text-muted-foreground/80">
+                      {f.source_class_name ? (
+                        <span
+                          className="flex items-center gap-1.5 min-w-0"
+                          title={`Class document from ${f.source_class_name}. The class was deleted; your work stays with you.`}
+                        >
+                          <GraduationCap className="size-3.5 shrink-0 opacity-70" />
+                          <span className="truncate">Class document · from {f.source_class_name}</span>
+                        </span>
+                      ) : (
+                        <span>Personal workspace</span>
+                      )}
                       {f.updated_at && <span>{formatDate(f.updated_at)}</span>}
                     </div>
                   )}

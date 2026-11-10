@@ -476,6 +476,12 @@ export async function deleteFolder(
     )
   }
 
+  // Deleting a class leaves the students' folders inside it with the students (they move to their
+  // top level). Record the class on them first, so they read "Class document · from <class>".
+  if (folder.folder_type === 'class' && ownsFolder) {
+    await labelFoldersFromClass(folder)
+  }
+
   const { error } = await supabase
     .from('folders')
     .delete()
@@ -483,6 +489,26 @@ export async function deleteFolder(
 
   if (error) {
     throw new Error(`Failed to delete folder: ${error.message}`)
+  }
+}
+
+/** What a student's folder records about the class it came from: "Capstone Writing (CS-201)". */
+export function sourceClassLabel(classFolder: Pick<Folder, 'name' | 'class_code'>): string {
+  const code = classFolder.class_code?.trim()
+  return code ? `${classFolder.name} (${code})` : classFolder.name
+}
+
+/**
+ * Tag every folder inside a class with the class's name before the class is deleted. Best effort:
+ * without migration 043 (no source_class_name column) the class is still deleted, just untagged.
+ */
+async function labelFoldersFromClass(classFolder: Folder): Promise<void> {
+  const { error } = await supabase
+    .from('folders')
+    .update({ source_class_name: sourceClassLabel(classFolder) })
+    .eq('parent_id', classFolder.folder_id)
+  if (error && !['42703', 'PGRST204'].includes(error.code ?? '')) {
+    throw new Error(`Failed to keep the students' class folders: ${error.message}`)
   }
 }
 

@@ -119,6 +119,8 @@ export interface Folder {
   class_code?: string | null
   /** Term the class folder was created for (e.g. '2026-T1'). */
   academic_term?: string | null
+  /** A student's folder from a class that was deleted: that class ("Capstone Writing (CS-201)"; migration 043). */
+  source_class_name?: string | null
   /** Private code students type to join a class folder; only returned to the folder owner. */
   join_code?: string | null
   /** Number of documents enrolled students have submitted into a class folder. */

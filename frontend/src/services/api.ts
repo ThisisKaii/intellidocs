@@ -155,6 +155,8 @@ export interface FolderRecord {
   folder_type?: FolderType
   class_code?: string | null
   academic_term?: string | null
+  /** A student's folder from a deleted class: the class it came from ("Capstone Writing (CS-201)"). */
+  source_class_name?: string | null
   /** Private code students type to join the class; only sent to the class owner. */
   join_code?: string | null
   submission_count?: number

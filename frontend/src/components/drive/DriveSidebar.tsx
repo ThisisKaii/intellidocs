@@ -231,7 +231,13 @@ function DriveSidebar({
                     onSelectView({ type: 'folder', folderId: folder.folder_id, folderName: folder.name })
                     onClose()
                   }}
-                  title={isClass && folder.class_code ? `${folder.name} · ${folder.class_code}` : folder.name}
+                  title={
+                    isClass && folder.class_code
+                      ? `${folder.name} · ${folder.class_code}`
+                      : folder.source_class_name
+                        ? `${folder.name} · Class document from ${folder.source_class_name}`
+                        : folder.name
+                  }
                   className={`flex items-center gap-3 w-full px-4 h-9 rounded-full text-[0.8125rem] border-none cursor-pointer text-left transition-colors ${
                     active
                       ? isClass
