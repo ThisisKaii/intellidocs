@@ -161,7 +161,7 @@ html_template = f'''<!DOCTYPE html>
       display: flex;
       justify-content: center;
       margin-top: -14px;
-      margin-bottom: 6px;
+      margin-bottom: 4px; /* TIGHT MARGIN UNDER PILL SO TEXT SITS SNUG */
     }}
 
     .section-pill {{
@@ -178,17 +178,18 @@ html_template = f'''<!DOCTYPE html>
     }}
 
     /* -------------------------------------------------------------
-       CARD CONTAINERS - STRICT UNIFORM 8PX GAP, ZERO DEAD SPACE
+       CARD CONTAINERS - STRICT VERTICAL PROPORTIONS
        ------------------------------------------------------------- */
     .card-box {{
       background: #ffffff;
       border: 2px solid var(--card-border);
       border-radius: 14px;
-      padding: 10px 14px 10px 14px;
+      padding: 6px 14px 8px 14px;
       position: relative;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
       display: flex;
       flex-direction: column;
+      justify-content: flex-start; /* NO SPREADING DOWN AWAY FROM TOP */
     }}
 
     /* BODY WRAPPER: EXACT VERTICAL FLEX SIZING */
@@ -212,7 +213,7 @@ html_template = f'''<!DOCTYPE html>
       min-height: 0;
     }}
 
-    /* LEFT COLUMN STACK: NO SPACE-BETWEEN GAPS! UNIFORM 8PX GAP */
+    /* LEFT COLUMN STACK */
     .left-col {{
       display: flex;
       flex-direction: column;
@@ -234,7 +235,6 @@ html_template = f'''<!DOCTYPE html>
     /* 1. ABSTRACT IN LEFT COLUMN */
     .abstract-card {{
       flex: 1;
-      justify-content: space-between;
     }}
 
     .abstract-meta {{
@@ -250,13 +250,11 @@ html_template = f'''<!DOCTYPE html>
     /* 2. INTRODUCTION */
     .intro-card {{
       flex: 1;
-      justify-content: space-between;
     }}
 
     /* 3. CONCEPTUAL FRAMEWORK */
     .framework-card {{
       flex: 1.25;
-      justify-content: space-between;
     }}
 
     .framework-content {{
@@ -287,22 +285,22 @@ html_template = f'''<!DOCTYPE html>
       display: block;
     }}
 
-    /* 4. OBJECTIVES */
+    /* 4. OBJECTIVES (TEXT SITS SNUGLY UNDER PILL BADGE) */
     .obj-card {{
       flex: 1.05;
-      justify-content: space-between;
+      padding-top: 4px;
     }}
 
     .obj-list {{
       display: flex;
       flex-direction: column;
-      gap: 3px;
-      margin-top: 3px;
+      gap: 4px;
+      margin-top: 4px;
     }}
 
     .obj-item {{
       font-size: 10.2px;
-      line-height: 1.38;
+      line-height: 1.40;
       color: var(--text-dark);
       text-align: justify;
     }}
@@ -314,7 +312,7 @@ html_template = f'''<!DOCTYPE html>
     /* 5. METHODOLOGY */
     .meth-card {{
       flex: 1.05;
-      justify-content: space-between;
+      padding-top: 4px;
     }}
 
     .meth-content {{
@@ -341,10 +339,10 @@ html_template = f'''<!DOCTYPE html>
     }}
 
     /* -------------------------------------------------------------
-       RIGHT COLUMN: RESULTS (8-ROW STACKED GRAPHS)
+       RIGHT COLUMN: RESULTS (ROW 1 STARTS SNUGLY AT TOP UNDER PILL)
        ------------------------------------------------------------- */
     .results-card {{
-      padding: 8px 12px 8px 12px;
+      padding: 4px 12px 6px 12px;
       display: flex;
       flex-direction: column;
       height: 100%;
@@ -353,17 +351,23 @@ html_template = f'''<!DOCTYPE html>
     .results-list {{
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
       height: 100%;
       flex: 1;
     }}
 
-    /* EACH GRAPH ROW HAS A LEFT CHART AND RIGHT NARRATIVE BLURB */
+    /* EACH GRAPH ROW EXPANDS EQUALLY (FLEX: 1) WITHOUT GAPING VOIDS */
     .res-row {{
       display: flex;
       flex-direction: column;
-      padding: 3px 0 3px 0;
+      flex: 1;
+      justify-content: center;
+      padding: 2px 0 2px 0;
       border-bottom: 1px solid #e2e8f0;
+    }}
+
+    .res-row:first-child {{
+      padding-top: 0;
+      margin-top: -2px; /* BRINGS ROW 1 SNUG AGAINST THE RESULTS PILL */
     }}
 
     .res-row:last-child {{
@@ -376,7 +380,7 @@ html_template = f'''<!DOCTYPE html>
       font-weight: 800;
       color: #091e36;
       text-align: center;
-      margin-bottom: 2px;
+      margin-bottom: 1px;
       letter-spacing: -0.01em;
     }}
 
@@ -393,12 +397,12 @@ html_template = f'''<!DOCTYPE html>
       align-items: center;
       justify-content: center;
       background: #ffffff;
-      padding: 2px 0;
+      padding: 1px 0;
     }}
 
     .res-text-area {{
       font-size: 9px;
-      line-height: 1.32;
+      line-height: 1.30;
       color: #1e293b;
       text-align: justify;
     }}
@@ -408,8 +412,8 @@ html_template = f'''<!DOCTYPE html>
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      gap: 3px 6px;
-      margin-top: 3px;
+      gap: 2px 6px;
+      margin-top: 2px;
       width: 100%;
     }}
 
@@ -436,8 +440,8 @@ html_template = f'''<!DOCTYPE html>
       align-items: flex-end;
       justify-content: space-around;
       width: 100%;
-      height: 44px;
-      padding-top: 6px;
+      height: 42px;
+      padding-top: 4px;
       border-bottom: 1.5px solid #94a3b8;
     }}
 
@@ -473,7 +477,7 @@ html_template = f'''<!DOCTYPE html>
       width: 100%;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 1.5px;
     }}
 
     .hbar-item {{
@@ -651,7 +655,7 @@ html_template = f'''<!DOCTYPE html>
             </div>
           </div>
 
-          <!-- 4. OBJECTIVES (FULL WIDTH OF LEFT COLUMN) -->
+          <!-- 4. OBJECTIVES (TEXT SITS SNUGLY UNDER PILL BADGE) -->
           <div class="card-box obj-card">
             <div class="section-pill-wrapper">
               <div class="section-pill">Objectives</div>
@@ -668,7 +672,7 @@ html_template = f'''<!DOCTYPE html>
             </div>
           </div>
 
-          <!-- 5. METHODOLOGY (FULL WIDTH OF LEFT COLUMN - 2 COLUMNS INSIDE) -->
+          <!-- 5. METHODOLOGY -->
           <div class="card-box meth-card">
             <div class="section-pill-wrapper">
               <div class="section-pill">Methodology</div>
@@ -685,7 +689,7 @@ html_template = f'''<!DOCTYPE html>
 
         </div>
 
-        <!-- RIGHT COLUMN: RESULTS (AGRISENSE 8-ROW STACKED GRAPHS WITH LEGENDS) -->
+        <!-- RIGHT COLUMN: RESULTS (ROW 1 SITS SNUG AT TOP UNDER PILL) -->
         <div class="card-box results-card">
           <div class="section-pill-wrapper">
             <div class="section-pill">Results</div>
@@ -999,4 +1003,4 @@ html_template = f'''<!DOCTYPE html>
 with open('docs/poster_2x3ft.html', 'w', encoding='utf-8') as f:
     f.write(html_template)
 
-print('Updated docs/poster_2x3ft.html: circled logos, generous header padding, and tight 8px card gaps!')
+print('Updated docs/poster_2x3ft.html: Row 1 snug under Results pill, Objectives snug under Objectives pill!')
