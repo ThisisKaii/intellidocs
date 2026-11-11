@@ -4,6 +4,7 @@ import { Previewer } from 'pagedjs'
 import { Printer, X } from 'lucide-react'
 import katex from 'katex'
 import { groupBySpan } from './ieeeSpan'
+import { frontMatterEndIndex } from './ieeeFrontMatter'
 
 interface IeeePrintPreviewProps {
   /** The document's HTML as stored by the editor. */
@@ -16,7 +17,11 @@ interface IeeePrintPreviewProps {
 const PRINT_CSS = `
 @media print {
   body > *:not(#ieee-print-preview) { display: none !important; }
-  #ieee-print-preview { position: static !important; background: none !important; overflow: visible !important; }
+  #ieee-print-preview { position: static !important; display: block !important; background: none !important; overflow: visible !important; padding: 0 !important; }
+  #ieee-print-preview .ieee-preview-panel, #ieee-print-preview .ieee-preview-scroll {
+    position: static !important; display: block !important; width: auto !important; height: auto !important;
+    max-height: none !important; overflow: visible !important; box-shadow: none !important; border-radius: 0 !important; background: none !important; border: none !important;
+  }
   #ieee-print-preview .ieee-preview-bar { display: none !important; }
   #ieee-print-preview .pagedjs_pages { margin: 0 !important; padding: 0 !important; }
   #ieee-print-preview .pagedjs_page { margin: 0 !important; box-shadow: none !important; }
@@ -85,15 +90,13 @@ export function buildIeeeLayoutHtml(html: string): string {
   container.innerHTML = html
   renderEquations(container)
   const blocks = Array.from(container.children)
-  let frontEnd = blocks.findIndex((el) => /^\s*(?:<[^>]+>\s*)*index terms/i.test(el.innerHTML))
-  if (frontEnd >= 0) {
-    frontEnd += 1
-  } else {
-    frontEnd = blocks.findIndex(
-      (el, i) => i > 0 && /^H[1-6]$/.test(el.tagName) && el.getAttribute('data-doc-role') !== 'title'
-    )
-    if (frontEnd < 0) frontEnd = 0
-  }
+  const frontEnd = frontMatterEndIndex(
+    blocks.map((el) => ({
+      isHeading: /^H[1-6]$/.test(el.tagName),
+      isTitle: el.getAttribute('data-doc-role') === 'title',
+      text: el.textContent ?? '',
+    }))
+  )
   const front = blocks.slice(0, frontEnd).map((el) => el.outerHTML).join('')
   // Blocks marked full width (with their captions) run across both columns; the rest flow in two.
   const body = groupBySpan(blocks.slice(frontEnd))
@@ -136,30 +139,57 @@ export function IeeePrintPreview({ html, onClose }: IeeePrintPreviewProps): JSX.
     }
   }, [html])
 
+  // Escape closes the preview, as a dialog does.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return createPortal(
     <div
       id="ieee-print-preview"
-      style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--canvas-bg, #e5e7eb)', overflow: 'auto' }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="IEEE print preview"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(0, 0, 0, 0.45)', padding: '16px',
+      }}
     >
       <style>{SCREEN_CSS + PRINT_CSS}</style>
       <div
-        className="ieee-preview-bar"
+        className="ieee-preview-panel"
         style={{
-          position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 12,
-          padding: '8px 16px', background: 'var(--card, #fff)', borderBottom: '1px solid var(--border, #ddd)',
+          display: 'flex', flexDirection: 'column', width: 'min(96vw, 1100px)', height: '92vh',
+          borderRadius: '16px', overflow: 'hidden', background: 'var(--canvas-bg, #e5e7eb)',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.35)', border: '1px solid var(--border, #ddd)',
         }}
       >
-        <strong>IEEE print preview</strong>
-        <span data-testid="ieee-preview-status">{status}</span>
-        <span style={{ flex: 1 }} />
-        <button type="button" onClick={() => window.print()} title="Print or save as PDF" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <Printer size={14} /> Print / PDF
-        </button>
-        <button type="button" onClick={onClose} title="Close preview" style={{ display: 'flex', alignItems: 'center' }}>
-          <X size={14} />
-        </button>
+        <div
+          className="ieee-preview-bar"
+          style={{
+            position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
+            padding: '8px 16px', background: 'var(--card, #fff)', borderBottom: '1px solid var(--border, #ddd)',
+          }}
+        >
+          <strong>IEEE print preview</strong>
+          <span data-testid="ieee-preview-status">{status}</span>
+          <span style={{ flex: 1 }} />
+          <button type="button" onClick={() => window.print()} title="Print or save as PDF" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <Printer size={14} /> Print / PDF
+          </button>
+          <button type="button" onClick={onClose} title="Close preview" aria-label="Close preview" style={{ display: 'flex', alignItems: 'center' }}>
+            <X size={14} />
+          </button>
+        </div>
+        <div ref={hostRef} className="ieee-preview-scroll" style={{ flex: 1, minHeight: 0, overflow: 'auto' }} />
       </div>
-      <div ref={hostRef} />
     </div>,
     document.body
   )

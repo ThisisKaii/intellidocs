@@ -1,6 +1,20 @@
 import type { Editor } from '@tiptap/react'
 import { ACADEMIC_PRESETS, basePresetKey, type HeadingStyle } from './academicPresets'
 
+/**
+ * The formatting preset each editor is bound to, so menus that only hold the
+ * editor (bubble and floating menus) can apply preset-aware styles.
+ */
+const editorPresets = new WeakMap<Editor, string | null>()
+
+export function setEditorPresetKey(editor: Editor, presetKey: string | null): void {
+  editorPresets.set(editor, presetKey)
+}
+
+export function getEditorPresetKey(editor: Editor): string | null {
+  return editorPresets.get(editor) ?? null
+}
+
 /** A style tile shown in the styles ribbon. */
 export interface StyleItem {
   format: string
@@ -100,14 +114,28 @@ export function applyStyleCommand(
     chain.setTextSelection({ from, to })
   }
 
+  // A style covers the whole block: widen a caret or partial selection to the
+  // block's text so the old inline look (size, bold, italic) is cleared everywhere.
+  const docSizeBefore = editor.state.doc.content.size
+  const $anchor = editor.state.doc.resolve(Math.min(targetFrom, docSizeBefore))
+  const $head = editor.state.doc.resolve(Math.min(targetTo, docSizeBefore))
+  if ($anchor.depth > 0 && $head.depth > 0) {
+    chain.setTextSelection({ from: $anchor.start(), to: $head.end() })
+  }
+
+  // The look of the previous style never survives: inline size/weight/slant
+  // marks and the block's alignment are cleared before the new style is set.
+  const clearLook = (): typeof chain =>
+    chain.unsetFontSize().removeEmptyTextStyle().unsetBold().unsetItalic().unsetTextAlign()
+
   // updateAttributes needs the node type the block has after the conversion
   // ('heading' / 'paragraph'); an empty type name matches nothing and set nothing.
   switch (format) {
     case 'normal':
-      // Plain body text: no heading look carried over from the block it was.
-      chain
+      // Plain body text: no heading look, caption role or alignment carried over.
+      clearLook()
         .setParagraph()
-        .updateAttributes('paragraph', { styleSource: 'applied_style', style: null })
+        .updateAttributes('paragraph', { styleSource: 'applied_style', style: null, captionKind: null })
         .run()
       break
     case 'h1':
@@ -116,7 +144,7 @@ export function applyStyleCommand(
     case 'title': {
       const level = format === 'h2' ? 2 : format === 'h3' ? 3 : 1
       const { style, align } = splitLook(combinedLook(format, presetKey))
-      let next = chain
+      let next = clearLook()
         .setHeading({ level })
         // The title's look is its own combined format; the role is a hidden tag.
         .updateAttributes('heading', { styleSource: 'applied_style', style, docRole: format === 'title' ? 'title' : null })
@@ -127,16 +155,16 @@ export function applyStyleCommand(
     case 'blockquote':
       chain
         .toggleBlockquote()
-        .updateAttributes('paragraph', { styleSource: 'applied_style' })
+        .updateAttributes('paragraph', { styleSource: 'applied_style', style: null })
         .run()
       break
     case 'caption':
-      chain
+      clearLook()
         .setParagraph()
         .setTextAlign('center')
         .setFontSize('11pt')
-        .toggleItalic()
-        .updateAttributes('paragraph', { styleSource: 'applied_style' })
+        .setItalic()
+        .updateAttributes('paragraph', { styleSource: 'applied_style', style: null })
         .run()
       break
     default:

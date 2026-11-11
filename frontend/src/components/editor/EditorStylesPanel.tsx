@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
 import { Check, Eye, EyeOff, GraduationCap, Lock, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { STYLE_ITEMS, type StyleItem } from './styleCommands'
+import { STYLE_GALLERY, StyleTile } from './StyleTile'
 import { ACADEMIC_PRESETS, type AcademicPreset } from './academicPresets'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { setEditorPreferences } from '@/lib/editorPreferences'
@@ -79,6 +80,8 @@ function loadCustomPresets(): CustomPreset[] {
 
 interface EditorStylesPanelProps {
   editor: Editor | null
+  /** Which gallery style the caret's block has (see getCurrentStyleKey); marks the active tile. */
+  currentStyleKey?: string
   onApplyStyle: (format: string) => void
   onApplyPreset: (key: string) => void
   activePreset: string | null
@@ -104,6 +107,7 @@ const inputStyle: CSSProperties = {
  */
 export default function EditorStylesPanel({
   editor,
+  currentStyleKey = 'p',
   onApplyStyle,
   onApplyPreset,
   activePreset = null,
@@ -167,16 +171,21 @@ export default function EditorStylesPanel({
         }}
       >
         <StripLabel>Styles</StripLabel>
-        {allStyles.map((style) => (
-          <StripButton
-            key={isCustomStyle(style) ? style.id : style.format}
-            label={style.label}
-            title={style.hint}
-            disabled={!editor}
-            drag={editor ? { type: 'application/x-intellidocs-style', value: style.format } : undefined}
-            onApply={() => onApplyStyle(style.format)}
-          />
-        ))}
+        {/* Built-in styles as Word-style preview tiles; custom aliases reuse their base style's tile. */}
+        {allStyles.map((style) => {
+          const tile = STYLE_GALLERY.find((item) => item.format === style.format)
+          if (!tile) return null
+          return (
+            <StyleTile
+              key={isCustomStyle(style) ? style.id : style.format}
+              item={isCustomStyle(style) ? { ...tile, hint: style.hint || tile.hint } : tile}
+              label={isCustomStyle(style) ? style.label : undefined}
+              active={currentStyleKey === tile.styleKey}
+              disabled={!editor}
+              onApply={() => onApplyStyle(style.format)}
+            />
+          )
+        })}
 
         <StripDivider />
 

@@ -848,7 +848,11 @@ export function PagedEditor({
             box-sizing: border-box;
             text-align: justify;
           }
-          .ProseMirror.ieee-columns-draft .ieee-front,
+          .ProseMirror.ieee-columns-draft .ieee-front {
+            display: block;
+            column-span: all;
+            break-inside: avoid;
+          }
           .ProseMirror.ieee-columns-draft .ieee-span {
             column-span: all;
           }

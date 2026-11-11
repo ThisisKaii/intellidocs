@@ -6,6 +6,7 @@ import { getRedisClient } from '../utils/redisClient'
 import { isDestructiveBlankOverwrite } from '../utils/documentGuards'
 import { assertWithinStorageQuota } from './userModel'
 import { isShareLinkExpired } from './shareModel'
+import { professorCanReview } from './professorModel'
 import { nextUniqueTitle } from '../utils/uniqueTitle'
 import { extractPreviewSnippet } from '../utils/previewSnippet'
 import { genreForPreset } from '../utils/documentGenre'
@@ -212,8 +213,8 @@ export async function getDocumentById(id: string, userId: string): Promise<Docum
 }
 
 /**
- * Fetch a document by id with access checks: owners, active collaborators, or
- * pending-email collaborators can all retrieve it. A valid (unexpired) share
+ * Fetch a document by id with access checks: owners, active collaborators,
+ * pending-email collaborators, or the professor of a class it was submitted to can retrieve it. A valid (unexpired) share
  * link token grants access; edit links are honored on the write path too.
  * Throws 404 when the document does not exist or is not readable by this user.
  */
@@ -247,10 +248,12 @@ export async function getDocumentForUser(
     Boolean(shareToken) &&
     doc.share_token === shareToken &&
     !isShareLinkExpired(doc.share_expires_at)
+  // A professor may read a document submitted to one of their classes.
   const canRead =
     doc.user_id === userId ||
     (await hasShareAccess(id, userId, userEmail, 'view')) ||
-    viaShareLink
+    viaShareLink ||
+    (await professorCanReview(userId, id))
 
   if (!canRead) {
     const forbidden = new Error('You do not have access to this document') as Error & { status: number }

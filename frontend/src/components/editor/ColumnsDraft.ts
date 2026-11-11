@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { frontMatterEndIndex, type FrontMatterBlock } from './ieeeFrontMatter'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -18,23 +19,18 @@ const draftKey = new PluginKey<boolean>('columnsDraft')
  * terms) so the draft view can span them across both columns.
  */
 function frontMatterDecorations(doc: import('@tiptap/pm/model').Node): DecorationSet {
-  const decorations: Decoration[] = []
-  let end = -1
-  doc.forEach((node, _offset, index) => {
-    if (end < 0 && /^\s*index terms/i.test(node.textContent)) {
-      end = index
-    }
-  })
-  if (end < 0) {
-    // No index terms: the front matter ends before the first non-title heading.
-    doc.forEach((node, _offset, index) => {
-      if (end < 0 && index > 0 && node.type.name === 'heading' && node.attrs.docRole !== 'title') {
-        end = index - 1
-      }
+  const blocks: FrontMatterBlock[] = []
+  doc.forEach((node) => {
+    blocks.push({
+      isHeading: node.type.name === 'heading',
+      isTitle: node.type.name === 'heading' && node.attrs.docRole === 'title',
+      text: node.textContent,
     })
-  }
+  })
+  const end = frontMatterEndIndex(blocks)
+  const decorations: Decoration[] = []
   doc.forEach((node, offset, index) => {
-    if (index <= end) {
+    if (index < end) {
       decorations.push(Decoration.node(offset, offset + node.nodeSize, { class: 'ieee-front' }))
     }
   })

@@ -24,7 +24,6 @@ import { IeeePrintPreview } from './IeeePrintPreview'
 import { GrammarUnderlineExtension } from './GrammarUnderlineExtension'
 import { SuggestionDecorationsExtension } from './SuggestionDecorationsExtension'
 import { TableInset } from './TableInset'
-import { MathExtension } from './MathNodes'
 import { FullSpan, spanTarget } from './FullSpan'
 import { BlueprintGuideExtension } from './BlueprintGuideExtension'
 import { HarperLinterExtension } from './HarperLinterExtension'
@@ -55,8 +54,16 @@ import { GeneratedBlockExtension } from './DocumentParts'
 import { applyIeeeNumbering } from './ieeeNumberingCommand'
 import { convertToIeee } from './ieeeConvertCommand'
 import EditorStylesPanel from './EditorStylesPanel'
+import { IeeeRestructureDialog } from './IeeeRestructureDialog'
+import { IeeeLayoutMenu } from './IeeeLayoutMenu'
+import { ToolbarOverflowMenu } from './ToolbarOverflowMenu'
+import { InsertTablePicker } from './InsertTablePicker'
+import { ToolButton, Divider, RibbonGroup, FOCUS_RING } from './RibbonControls'
+import { STYLE_GALLERY, StyleTile, getCurrentStyleKey } from './StyleTile'
+import { applyStyleCommand, getEditorPresetKey, setEditorPresetKey } from './styleCommands'
+import { MathExtension, insertMath } from './MathNodes'
+import { BlockStyleParser } from './BlockStyleParser'
 import {
-  BookOpen,
   Undo2,
   Redo2,
   Heading1,
@@ -81,27 +88,20 @@ import {
   AlignJustify,
   List,
   ListOrdered,
-  Hash,
-  LayoutTemplate,
   Indent,
   Outdent,
   Table as TableIcon,
   Image as ImageIcon,
   FileUp,
   Minus as HRLine,
+  SeparatorHorizontal,
+  Sigma,
   RotateCcw,
   SlidersHorizontal,
   Check,
-  Download,
-  FileText,
-  Printer,
-  FileCode,
-  GraduationCap,
-  UserCog,
   BadgeInfo,
   Maximize2,
   Columns,
-  MoveHorizontal,
   Minimize2,
   Merge,
   Scissors as SplitSquare,
@@ -252,8 +252,6 @@ const POPOVER_STYLE: CSSProperties = {
   ...SHADOW_CARD,
   animation: 'popoverIn 140ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
 }
-
-const FOCUS_RING: CSSProperties = { outline: '2px solid var(--ring)', outlineOffset: '1px' }
 
 // ─── Whitelist of CSS properties allowed through inline style pass-through ──
 
@@ -1066,8 +1064,7 @@ const CustomHeading = Heading.extend({
  * A callout is a labelled blockquote, so it reuses the existing blockquote node
  * instead of introducing a new node type.
  */
-const CALLOUT_VARIANTS = ['note', 'warning', 'key', 'example'] as const
-type CalloutVariant = (typeof CALLOUT_VARIANTS)[number]
+type CalloutVariant = 'note' | 'warning' | 'key' | 'example'
 
 /** Display label for each callout variant, shown in the callout's top-left. */
 const CALLOUT_LABELS: Record<CalloutVariant, string> = {
@@ -1076,6 +1073,14 @@ const CALLOUT_LABELS: Record<CalloutVariant, string> = {
   key: 'Key Point',
   example: 'Example',
 }
+
+/** Insert-tab callout entries: Word-style names; "Tip" is the key-point variant. */
+const CALLOUT_MENU: ReadonlyArray<{ variant: CalloutVariant; label: string }> = [
+  { variant: 'note', label: 'Note' },
+  { variant: 'warning', label: 'Warning' },
+  { variant: 'key', label: 'Tip' },
+  { variant: 'example', label: 'Example' },
+]
 
 const CustomBlockquote = Blockquote.extend({
   addAttributes() {
@@ -1233,6 +1238,7 @@ export const editorExtensions = [
   CustomHeading,
   CustomBlockquote,
   PageBreak,
+  BlockStyleParser,
   SectionMark,
   SectionLayout,
   ColumnSection,
@@ -1332,86 +1338,6 @@ function floatingMenuShouldShow(props: { editor: Editor; state: EditorState }): 
 // ─── Shared UI primitives (Vercel styling) ──────────────────────────────────
 
 /** Compact 28px toolbar button with active/hover/focus states. */
-function ToolButton({
-  icon: Icon,
-  title,
-  active = false,
-  disabled = false,
-  onClick,
-  indicatorColor,
-}: {
-  icon: typeof Bold
-  title: string
-  active?: boolean
-  disabled?: boolean
-  onClick: () => void
-  indicatorColor?: string
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onMouseDown={(e) => {
-        e.preventDefault()
-        if (!disabled) onClick()
-      }}
-      onFocus={(e) => Object.assign(e.currentTarget.style, FOCUS_RING)}
-      onBlur={(e) => e.currentTarget.style.outline = 'none'}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '32px',
-        height: '32px',
-        borderRadius: '8px',
-        border: active ? '1px solid color-mix(in srgb, var(--primary) 30%, transparent)' : '1px solid transparent',
-        backgroundColor: active ? 'color-mix(in srgb, var(--primary) 15%, transparent)' : 'transparent',
-        color: active ? 'var(--primary)' : 'var(--muted-foreground)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.35 : 1,
-        transition: 'background-color 150ms, color 150ms',
-        flexShrink: 0,
-      }}
-      onMouseEnter={(e) => {
-        if (!active && !disabled) e.currentTarget.style.backgroundColor = 'var(--secondary)'
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.backgroundColor = 'transparent'
-      }}
-    >
-      <Icon style={{ width: '14px', height: '14px' }} strokeWidth={active ? 2.25 : 1.75} />
-      {indicatorColor && indicatorColor !== 'transparent' && (
-        <span
-          style={{
-            position: 'absolute',
-            bottom: '3px',
-            width: '12px',
-            height: '2px',
-            borderRadius: '9999px',
-            backgroundColor: indicatorColor,
-          }}
-        />
-      )}
-    </button>
-  )
-}
-
-/** Thin vertical divider between toolbar groups. */
-function Divider(): JSX.Element {
-  return (
-    <div
-      style={{
-        width: '1px',
-        height: '18px',
-        backgroundColor: 'var(--border)',
-        margin: '0 4px',
-        flexShrink: 0,
-      }}
-    />
-  )
-}
-
 /** Vercel-style popover wrapper with fade-in entrance. */
 function Popover({
   children,
@@ -1506,96 +1432,6 @@ const FONT_FAMILIES = [
 ]
 
 const FONT_SIZES = [9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48]
-
-/** Preview typography rendered on a style tile. */
-interface StyleTilePreview {
-  fontSize?: string
-  fontWeight?: number
-  fontStyle?: 'normal' | 'italic'
-}
-
-interface StyleGalleryItem {
-  format: string
-  /** Which current block makes this tile active (see `currentStyleKey`). */
-  styleKey: string
-  label: string
-  /** Tooltip: what the style is for in an academic document. */
-  hint: string
-  preview: StyleTilePreview
-}
-
-/**
- * Word-style gallery, in Word's order. The sample sizes are visual cues only;
- * what a style applies comes from applyStyleCommand (and the active preset).
- */
-const STYLE_GALLERY: StyleGalleryItem[] = [
-  { format: 'normal',     styleKey: 'p',          label: 'Normal',    hint: 'Normal — body text',                       preview: { fontSize: '12px', fontWeight: 400 } },
-  { format: 'title',      styleKey: 'title',      label: 'Title',     hint: 'Title — the centered document title',      preview: { fontSize: '15px', fontWeight: 700 } },
-  { format: 'h1',         styleKey: 'h1',         label: 'Heading 1', hint: 'Heading 1 — chapter heading',              preview: { fontSize: '14px', fontWeight: 700 } },
-  { format: 'h2',         styleKey: 'h2',         label: 'Heading 2', hint: 'Heading 2 — section heading',              preview: { fontSize: '13px', fontWeight: 700 } },
-  { format: 'h3',         styleKey: 'h3',         label: 'Heading 3', hint: 'Heading 3 — subsection heading',           preview: { fontSize: '12px', fontWeight: 600, fontStyle: 'italic' } },
-  { format: 'blockquote', styleKey: 'blockquote', label: 'Quote',     hint: 'Quote — indented quotation',               preview: { fontSize: '11px', fontStyle: 'italic' } },
-  { format: 'caption',    styleKey: 'caption',    label: 'Caption',   hint: 'Caption — centered italic figure caption', preview: { fontSize: '11px', fontStyle: 'italic' } },
-]
-
-/** One gallery tile: an "AaBbCc" sample in the style's look above its name, as in Word. */
-function StyleTile({
-  item,
-  active,
-  disabled,
-  wide = false,
-  onApply,
-}: {
-  item: StyleGalleryItem
-  active: boolean
-  disabled: boolean
-  /** Full-width row inside the "More styles" popover. */
-  wide?: boolean
-  onApply: () => void
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      title={item.hint}
-      aria-pressed={active}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onApply}
-      style={{
-        display: 'flex',
-        flexDirection: wide ? 'row' : 'column',
-        alignItems: wide ? 'center' : 'flex-start',
-        justifyContent: wide ? 'space-between' : 'center',
-        gap: wide ? '12px' : '1px',
-        width: wide ? '100%' : 'var(--style-tile-w, 72px)',
-        height: wide ? '34px' : '36px',
-        padding: wide ? '0 10px' : '2px 7px',
-        borderRadius: '6px',
-        border: active ? '1px solid var(--accent-strong)' : '1px solid var(--border)',
-        backgroundColor: active ? 'var(--accent-subtle)' : 'var(--card)',
-        color: 'var(--foreground)',
-        cursor: disabled ? 'default' : 'pointer',
-        fontFamily: 'inherit',
-        flexShrink: 0,
-        opacity: disabled ? 0.4 : 1,
-        overflow: 'hidden',
-      }}
-    >
-      <span
-        style={{
-          fontSize: item.preview.fontSize ?? '12px',
-          fontWeight: item.preview.fontWeight ?? 400,
-          fontStyle: item.preview.fontStyle ?? 'normal',
-          lineHeight: 1.1,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        AaBbCc
-      </span>
-      <span style={{ fontSize: '9.5px', lineHeight: 1.1, color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>{item.label}</span>
-    </button>
-  )
-}
 
 const PRESET_COLORS = [
   '#000000', '#374151', '#6b7280', '#9ca3af', '#ffffff',
@@ -1757,9 +1593,43 @@ export function TiptapToolbar({
   const [openPageSetup, setOpenPageSetup] = useState(false)
   const [spaceBefore, setSpaceBefore] = useState(0)
   const [spaceAfter, setSpaceAfter] = useState(0)
-  const [openExport, setOpenExport] = useState(false)
   const [ieeePreviewHtml, setIeeePreviewHtml] = useState<string | null>(null)
   const [columnsDraft, setColumnsDraft] = useState(false)
+  const [restructureOpen, setRestructureOpen] = useState(false)
+  const isIeee = basePresetKey(activePreset) === 'ieee'
+
+  // Pages on the canvas, read from the pagination DOM (debounced): the spread
+  // view re-lays every page out in a grid, which lags on long documents.
+  const [pageCount, setPageCount] = useState(1)
+  useEffect(() => {
+    if (!editor) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const sync = (): void => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        if (editor.isDestroyed) return
+        setPageCount(editor.view.dom.querySelectorAll('.rm-page-break').length || 1)
+      }, 150)
+    }
+    sync()
+    editor.on('update', sync)
+    editor.on('create', sync)
+    return () => {
+      if (timer) clearTimeout(timer)
+      editor.off('update', sync)
+      editor.off('create', sync)
+    }
+  }, [editor])
+  const SPREAD_MAX_PAGES = 4
+  const spreadAllowed = isIeee && pageCount <= SPREAD_MAX_PAGES
+  useEffect(() => {
+    if (spreadPreview && !spreadAllowed) onSpreadPreviewChange?.(false)
+  }, [spreadPreview, spreadAllowed, onSpreadPreviewChange])
+
+  // Menus that only hold the editor (bubble, floating) apply preset-aware styles through this.
+  useEffect(() => {
+    if (editor) setEditorPresetKey(editor, activePreset)
+  }, [editor, activePreset])
 
   /** Flips the IEEE two-column draft view: pagination off + columns on, or back. */
   const toggleColumnsDraft = (): void => {
@@ -1827,7 +1697,6 @@ export function TiptapToolbar({
     setOpenTableMenu(false)
     setOpenImageMenu(false)
     setOpenPageSetup(false)
-    setOpenExport(false)
   }
 
   // Canvas double-click requests (Bug 3): open Page Setup and focus the
@@ -1986,23 +1855,7 @@ export function TiptapToolbar({
   const isActive = (mark: string | Record<string, unknown>): boolean =>
     editor ? editor.isActive(mark) : false
 
-  const currentBlockTag = (() => {
-    if (!editor) return 'p'
-    if (editor.isActive('heading', { level: 1 })) return 'h1'
-    if (editor.isActive('heading', { level: 2 })) return 'h2'
-    if (editor.isActive('heading', { level: 3 })) return 'h3'
-    if (editor.isActive('blockquote')) return 'blockquote'
-    if (editor.isActive('codeBlock')) return 'pre'
-    return 'p'
-  })()
-
-  /** Which gallery style the caret's block has: the title and captions are told apart from Heading 1 and Normal. */
-  const currentStyleKey = (() => {
-    if (!editor) return 'p'
-    if (editor.isActive('heading') && editor.getAttributes('heading').docRole === 'title') return 'title'
-    if (editor.isActive('paragraph') && editor.getAttributes('paragraph').captionKind) return 'caption'
-    return currentBlockTag
-  })()
+  const currentStyleKey = getCurrentStyleKey(editor)
 
   const currentFontFamily = (() => {
     if (!editor) return 'Times New Roman'
@@ -2082,9 +1935,9 @@ export function TiptapToolbar({
       style={{
         position: 'relative',
         display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '4px',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        gap: '0px',
         padding: '6px 12px',
         minHeight: '44px',
         backgroundColor: 'color-mix(in srgb, var(--card) 85%, transparent)',
@@ -2142,6 +1995,12 @@ export function TiptapToolbar({
         </button>
       </div>
 
+      {/* One tool row: the active tab's controls on the left, document actions on the right. */}
+      <div
+        className="ribbon-row"
+        data-testid="ribbon-row"
+        style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: '4px', minWidth: 0, width: '100%' }}
+      >
       {/* Home tab — text editing and formatting */}
       <div
         style={{
@@ -2576,86 +2435,38 @@ export function TiptapToolbar({
           active={isActive('orderedList')}
           onClick={() => run('ordered_list', () => editor?.chain().focus().toggleOrderedList().run())}
         />
-        {basePresetKey(activePreset) === 'ieee' && (
-          <ToolButton
-            icon={Hash}
-            title="Renumber IEEE headings (I. II. A. 1))"
-            disabled={!editor || editor.isEmpty}
-            onClick={() =>
+        {isIeee && (
+          <IeeeLayoutMenu
+            disabled={!editor}
+            hasContent={Boolean(editor && !editor.isEmpty)}
+            onRenumber={() =>
               run('ieee_numbering', () => {
-                if (editor) {
-                  applyIeeeNumbering(editor)
-                }
+                if (editor) applyIeeeNumbering(editor)
               })
             }
+            onRestructure={() => setRestructureOpen(true)}
+            onPreview={() => setIeeePreviewHtml(editor?.getHTML() ?? '')}
+            columnsDraft={columnsDraft}
+            onToggleColumnsDraft={() => toggleColumnsDraft()}
+            fullSpanAvailable={Boolean(fullSpanTarget)}
+            fullSpanActive={fullSpanTarget?.node.attrs.span === 'full'}
+            onToggleFullSpan={() => editor?.chain().focus().toggleFullSpan().run()}
+            spread={
+              onSpreadPreviewChange
+                ? { active: spreadPreview, allowed: spreadAllowed, onChange: onSpreadPreviewChange }
+                : undefined
+            }
           />
         )}
-        {basePresetKey(activePreset) === 'ieee' && (
-          <ToolButton
-            icon={LayoutTemplate}
-            title="Restructure into IEEE format"
-            disabled={!editor || editor.isEmpty}
-            onClick={() => {
-              if (!editor) {
-                return
-              }
-              const confirmed = window.confirm(
-                'Restructure this document into IEEE format?\n\n' +
-                  'Sections whose headings match an IEEE section keep their content. ' +
-                  'IEEE sections with no match are added blank for you to fill in.\n\n' +
-                  'Nothing is deleted: anything that matches no IEEE section is moved ' +
-                  'to the end under an "Unmapped Content" heading.'
-              )
-              if (confirmed) {
-                run('ieee_convert', () => convertToIeee(editor))
-              }
-            }}
-          />
-        )}
-        {basePresetKey(activePreset) === 'ieee' && (
-          <>
-            <ToolButton
-              icon={Printer}
-              title="Exact IEEE print preview (two columns, PDF)"
-              onClick={() => setIeeePreviewHtml(editor?.getHTML() ?? '')}
-            />
-            <ToolButton
-              icon={Columns}
-              title={
-                columnsDraft
-                  ? 'Back to paged view'
-                  : 'Two-column draft (one long sheet, pagination off)'
-              }
-              active={columnsDraft}
-              onClick={() => toggleColumnsDraft()}
-            />
-            <ToolButton
-              icon={MoveHorizontal}
-              title={
-                fullSpanTarget
-                  ? 'Run the selected table, figure or equation across both columns (click again to undo)'
-                  : 'Select a table, figure or equation to run it across both columns'
-              }
-              active={fullSpanTarget?.node.attrs.span === 'full'}
-              disabled={!fullSpanTarget}
-              onClick={() => editor?.chain().focus().toggleFullSpan().run()}
-            />
-          </>
-        )}
+        <IeeeRestructureDialog
+          open={restructureOpen}
+          onOpenChange={setRestructureOpen}
+          onConfirm={() => {
+            if (editor) run('ieee_convert', () => convertToIeee(editor))
+          }}
+        />
         {ieeePreviewHtml !== null && (
           <IeeePrintPreview html={ieeePreviewHtml} onClose={() => setIeeePreviewHtml(null)} />
-        )}
-        {basePresetKey(activePreset) === 'ieee' && onSpreadPreviewChange && (
-          <ToolButton
-            icon={BookOpen}
-            title={
-              spreadPreview
-                ? 'Single page view'
-                : 'Two page spread view (pages 1|2, 3|4)'
-            }
-            active={spreadPreview}
-            onClick={() => onSpreadPreviewChange(!spreadPreview)}
-          />
         )}
         <ToolButton
           icon={Outdent}
@@ -2693,8 +2504,8 @@ export function TiptapToolbar({
           display: activeTab === 'insert' ? 'contents' : 'none',
         }}
       >
-      {/* Inserts */}
-      <div style={GROUP_STYLE}>
+      {/* Inserts, grouped as in Word: Tables | Illustrations | Blocks | Equations | File */}
+      <RibbonGroup label="Tables">
         <div style={{ position: 'relative' }}>
           <ToolButton
             icon={TableIcon}
@@ -2708,26 +2519,16 @@ export function TiptapToolbar({
           />
           {openTableMenu && (
             <Popover width={240} maxHeight={420}>
-              <MenuItem
-                onClick={() => {
+              <InsertTablePicker
+                onPick={(rows, cols) => {
                   closeAllMenus()
                   run(
                     'insert_table',
-                    () =>
-                      editor
-                        ?.chain()
-                        .focus()
-                        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                        .run(),
-                    { contextNode: 'table', tableRows: 3, tableCols: 3, tableHasHeader: true }
+                    () => editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run(),
+                    { contextNode: 'table', tableRows: rows, tableCols: cols, tableHasHeader: true }
                   )
                 }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Plus style={{ width: '14px', height: '14px' }} />
-                  Insert 3×3 Table
-                </span>
-              </MenuItem>
+              />
               {editor?.isActive('table') && (
                 <>
                   <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
@@ -2972,48 +2773,9 @@ export function TiptapToolbar({
           )}
         </div>
 
-        {/* Callouts: a labelled blockquote variant, reported as callout_insert. */}
-        <div style={{ position: 'relative' }}>
-          <ToolButton
-            icon={BadgeInfo}
-            title="Callout"
-            active={editor?.isActive('blockquote') && Boolean(currentCallout)}
-            onClick={() => setOpenCalloutMenu((v) => !v)}
-          />
-          {openCalloutMenu && (
-            <Popover width={180}>
-              {CALLOUT_VARIANTS.map((variant) => (
-                <MenuItem
-                  key={variant}
-                  onClick={() => {
-                    closeAllMenus()
-                    run(
-                      'callout_insert',
-                      () => editor?.chain().focus().setCallout(variant).run(),
-                      { contextNode: 'callout', blockType: variant }
-                    )
-                  }}
-                >
-                  {CALLOUT_LABELS[variant]}
-                </MenuItem>
-              ))}
-              {currentCallout && (
-                <MenuItem
-                  onClick={() => {
-                    closeAllMenus()
-                    run('callout_insert', () => editor?.chain().focus().clearCallout().run(), {
-                      contextNode: 'blockquote',
-                    })
-                  }}
-                  style={{ color: 'var(--muted-foreground)' }}
-                >
-                  Remove Callout
-                </MenuItem>
-              )}
-            </Popover>
-          )}
-        </div>
-
+      </RibbonGroup>
+      <Divider />
+      <RibbonGroup label="Illustrations">
         <ToolButton
           icon={ImageIcon}
           title="Insert Image"
@@ -3111,6 +2873,76 @@ export function TiptapToolbar({
           </div>
         )}
 
+      </RibbonGroup>
+      <Divider />
+      <RibbonGroup label="Blocks">
+        {/* Callouts: a labelled blockquote variant, reported as callout_insert. */}
+        <div style={{ position: 'relative' }}>
+          <ToolButton
+            icon={BadgeInfo}
+            title="Callout"
+            active={editor?.isActive('blockquote') && Boolean(currentCallout)}
+            onClick={() => setOpenCalloutMenu((v) => !v)}
+          />
+          {openCalloutMenu && (
+            <Popover width={180}>
+              {CALLOUT_MENU.map(({ variant, label }) => (
+                <MenuItem
+                  key={variant}
+                  onClick={() => {
+                    closeAllMenus()
+                    run(
+                      'callout_insert',
+                      () => editor?.chain().focus().setCallout(variant).run(),
+                      { contextNode: 'callout', blockType: variant }
+                    )
+                  }}
+                >
+                  {label}
+                </MenuItem>
+              ))}
+              {currentCallout && (
+                <MenuItem
+                  onClick={() => {
+                    closeAllMenus()
+                    run('callout_insert', () => editor?.chain().focus().clearCallout().run(), {
+                      contextNode: 'blockquote',
+                    })
+                  }}
+                  style={{ color: 'var(--muted-foreground)' }}
+                >
+                  Remove Callout
+                </MenuItem>
+              )}
+            </Popover>
+          )}
+        </div>
+
+        <ToolButton
+          icon={HRLine}
+          title="Horizontal Line"
+          onClick={() => run('horizontal_rule', () => editor?.chain().focus().setHorizontalRule().run())}
+        />
+        <ToolButton
+          icon={SeparatorHorizontal}
+          title="Page Break"
+          onClick={() => run('page_break', () => editor?.chain().focus().insertContent({ type: 'pageBreak' }).run())}
+        />
+      </RibbonGroup>
+      <Divider />
+      <RibbonGroup label="Equations">
+        <ToolButton
+          icon={Sigma}
+          title="Math Equation (LaTeX block)"
+          onClick={() =>
+            run('math_block', () => {
+              if (editor) insertMath(editor, 'block')
+            })
+          }
+        />
+      </RibbonGroup>
+      <Divider />
+      <RibbonGroup label="File">
         <button
           type="button"
           disabled={isImporting}
@@ -3140,12 +2972,7 @@ export function TiptapToolbar({
           {isImporting ? 'Importing…' : 'Import File'}
         </button>
 
-        <ToolButton
-          icon={HRLine}
-          title="Horizontal Line"
-          onClick={() => run('horizontal_rule', () => editor?.chain().focus().setHorizontalRule().run())}
-        />
-      </div>
+      </RibbonGroup>
       </div>
 
       {/* Styles tab — document styles and academic presets in one nav strip */}
@@ -3153,6 +2980,7 @@ export function TiptapToolbar({
         <div style={{ display: 'inline-flex', alignItems: 'center' }}>
           <EditorStylesPanel
             editor={editor}
+            currentStyleKey={currentStyleKey}
             onApplyStyle={onApplyStyle}
             onApplyPreset={onApplyPreset}
             activePreset={activePreset}
@@ -3713,154 +3541,19 @@ export function TiptapToolbar({
         )}
       </div>
 
-      {/* Personalization profile export/import */}
-      {onOpenPersonalization && (
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              e.preventDefault()
-              closeAllMenus()
-              onOpenPersonalization()
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              height: '28px',
-              padding: '0 10px',
-              borderRadius: '6px',
-              border: 'none',
-              ...SHADOW_BORDER,
-              backgroundColor: 'transparent',
-              color: 'var(--foreground)',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-            title="Export or import your personalization profile (.idocprofile)"
-          >
-            <UserCog style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-            <span className="toolbar-label">Personalization</span>
-          </button>
-        </div>
-      )}
-
-      {/* Export document */}
-      <div style={{ position: 'relative' }}>
-        <button
-          type="button"
-          onMouseDown={(e) => {
-            e.preventDefault()
-            const next = !openExport
-            closeAllMenus()
-            setOpenExport(next)
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            height: '28px',
-            padding: '0 10px',
-            borderRadius: '6px',
-            border: 'none',
-            ...SHADOW_BORDER,
-            backgroundColor: 'transparent',
-            color: 'var(--foreground)',
-            fontSize: '12px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-          title="Export or Print Document"
-        >
-          <Download style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-          <span className="toolbar-label">Export</span>
-          <ChevronDown style={{ width: '12px', height: '12px', opacity: 0.5 }} />
-        </button>
-
-        {openExport && (
-          <Popover width={190} rightAligned>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <MenuItem
-                onClick={() => {
-                  setOpenExport(false)
-                  if (editor) downloadDOCX(editor.getHTML(), documentTitle)
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-                  <span>Word (.doc / .docx)</span>
-                </span>
-              </MenuItem>
-
-              {basePresetKey(activePreset) === 'ieee' ? (
-                <MenuItem
-                  onClick={() => {
-                    setOpenExport(false)
-                    if (editor) void exportIeeeDocx(editor.getHTML(), documentTitle)
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <FileText style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-                    <span>IEEE paper (Word)</span>
-                  </span>
-                </MenuItem>
-              ) : (
-                <MenuItem
-                  onClick={() => {
-                    setOpenExport(false)
-                    if (editor) exportThesisWord(editor.getHTML(), documentTitle)
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <GraduationCap style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-                    <span>Thesis Word (1.5&Prime; binding)</span>
-                  </span>
-                </MenuItem>
-              )}
-
-              <MenuItem
-                onClick={() => {
-                  setOpenExport(false)
-                  if (editor) exportThesisPdf(editor.getHTML(), documentTitle)
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileText style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-                  <span>Defense-Ready PDF</span>
-                </span>
-              </MenuItem>
-
-              <MenuItem
-                onClick={() => {
-                  setOpenExport(false)
-                  if (editor) downloadHTML(editor.getHTML(), documentTitle)
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileCode style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-                  <span>HTML Document</span>
-                </span>
-              </MenuItem>
-
-              <div style={{ height: '1px', backgroundColor: 'var(--border)', margin: '4px 0' }} />
-
-              <MenuItem
-                onClick={() => {
-                  setOpenExport(false)
-                  printDocument()
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Printer style={{ width: '14px', height: '14px', opacity: 0.7 }} />
-                  <span>Print / PDF</span>
-                </span>
-              </MenuItem>
-            </div>
-          </Popover>
-        )}
+      <ToolbarOverflowMenu
+        disabled={!editor}
+        onOpenPersonalization={onOpenPersonalization}
+        exportActions={{
+          ieee: isIeee,
+          onWord: () => { if (editor) downloadDOCX(editor.getHTML(), documentTitle) },
+          onIeeeWord: () => { if (editor) void exportIeeeDocx(editor.getHTML(), documentTitle) },
+          onThesisWord: () => { if (editor) exportThesisWord(editor.getHTML(), documentTitle) },
+          onPdf: () => { if (editor) exportThesisPdf(editor.getHTML(), documentTitle) },
+          onHtml: () => { if (editor) downloadHTML(editor.getHTML(), documentTitle) },
+          onPrint: () => printDocument(),
+        }}
+      />
       </div>
     </div>
   )
@@ -3952,6 +3645,16 @@ function PlacementSelect({ value, onChange, disabled = false }: PlacementSelectP
 
 // ─── Bubble + Floating menus ────────────────────────────────────────────────
 
+/**
+ * Heading buttons in the selection and quick-insert menus go through the same
+ * style command as the ribbon, so the preset's look applies and a second press
+ * returns the block to Normal (never a bare toggleHeading that keeps old marks).
+ */
+function applyHeadingStyle(editor: Editor, level: 1 | 2): void {
+  const format = editor.isActive('heading', { level }) ? 'normal' : `h${level}`
+  applyStyleCommand(editor, format, undefined, undefined, getEditorPresetKey(editor))
+}
+
 /** Selection toolbar shown above highlighted text (TipTap BubbleMenu). */
 function TiptapBubbleMenu({ editor }: { editor: Editor | null }): JSX.Element | null {
   useEditorState({
@@ -4006,13 +3709,13 @@ function TiptapBubbleMenu({ editor }: { editor: Editor | null }): JSX.Element | 
           icon={Heading1}
           title="Heading 1"
           active={editor.isActive('heading', { level: 1 })}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          onClick={() => applyHeadingStyle(editor, 1)}
         />
         <ToolButton
           icon={Heading2}
           title="Heading 2"
           active={editor.isActive('heading', { level: 2 })}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          onClick={() => applyHeadingStyle(editor, 2)}
         />
         <ToolButton
           icon={Quote}
@@ -4086,12 +3789,18 @@ function TiptapFloatingMenu({
         <ToolButton
           icon={Heading1}
           title="Heading 1"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          onClick={() => {
+            applyHeadingStyle(editor, 1)
+            onFormatApplied?.('style_h1')
+          }}
         />
         <ToolButton
           icon={Heading2}
           title="Heading 2"
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          onClick={() => {
+            applyHeadingStyle(editor, 2)
+            onFormatApplied?.('style_h2')
+          }}
         />
         <ToolButton
           icon={List}

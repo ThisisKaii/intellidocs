@@ -24,6 +24,12 @@ def _open(page, api: Api, content: str, preset: str | None = "ieee") -> str:
     return doc_id
 
 
+def _open_layout_menu(page) -> None:
+    """The IEEE tools live in one 'IEEE layout' dropdown; its items only exist while it is open."""
+    page.locator('[title="IEEE layout"]').first.click()
+    page.wait_for_timeout(300)
+
+
 def _headings(page) -> list[str]:
     return page.evaluate("[...document.querySelectorAll('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3')].map(e => e.textContent)")
 
@@ -64,12 +70,15 @@ def test_new_ieee_document_has_template_page_setup_and_numbered_sections(page, a
 @e2e("ieee", requires=(), layer="browser")
 def test_renumber_is_correct_keeps_bold_and_is_idempotent(page, api: Api):
     _open(page, api, "<h1>Intro</h1><p>a</p><h1><strong>Method</strong>s</h1><p>b</p><h2>Scope</h2><h1>Results</h1><h1>References</h1>")
-    button = page.locator('[title^="Renumber IEEE headings"]').first
-    button.click()
+    def renumber() -> None:
+        _open_layout_menu(page)
+        page.locator('[title^="Renumber IEEE headings"]').first.click()
+
+    renumber()
     page.wait_for_timeout(800)
     assert _headings(page) == ["I. Intro", "II. Methods", "A. Scope", "III. Results", "References"]
     assert page.evaluate("document.querySelector('.ProseMirror h1:nth-of-type(2) strong') !== null")
-    button.click()
+    renumber()
     page.wait_for_timeout(500)
     assert _headings(page) == ["I. Intro", "II. Methods", "A. Scope", "III. Results", "References"]
 
@@ -83,8 +92,10 @@ def test_convert_keeps_all_content_and_undo_restores_the_document(page, api: Api
     )
     _open(page, api, original)
     before = _text(page)
-    page.on("dialog", lambda d: d.accept())
+    _open_layout_menu(page)
     page.locator('[title="Restructure into IEEE format"]').first.click()
+    # The confirm is an in-app dialog now, not the browser's confirm() box.
+    page.get_by_role("dialog", name="Restructure into IEEE format?").get_by_role("button", name="Restructure").click()
     page.wait_for_timeout(2000)
     after = _text(page)
     for kept in ("Alice Smith", "Intro text.", "Prior Approaches", "Sub text.", "Method text.", "Weird Extra", "Extra text."):
@@ -142,17 +153,21 @@ def test_deleting_a_reference_renumbers_the_markers_in_the_text(page, api: Api):
 @e2e("ieee", requires=(), layer="browser")
 def test_forked_ieee_preset_keeps_the_ieee_tools(page, api: Api):
     _open(page, api, "<h1>Introduction</h1><p>Text.</p>", preset="ieee__v2")
+    _open_layout_menu(page)
     assert page.locator('[title^="Renumber IEEE headings"]').count() > 0
+    page.keyboard.press("Escape")
 
 
 @e2e("ieee", requires=(), layer="browser")
 def test_two_column_draft_toggles_columns_and_back(page, api: Api):
     _open(page, api, "<h1>Introduction</h1>" + "".join(f"<p>Paragraph {i} of body text for the columns check.</p>" for i in range(20)))
+    _open_layout_menu(page)
     toggle = page.locator('[title^="Two-column draft"], [title^="Back to"]').first
     toggle.click()
     page.wait_for_timeout(1500)
     columns = page.evaluate("[...document.querySelectorAll('.ProseMirror, .tiptap, .intellidocs-page-editor *')].map(e => getComputedStyle(e).columnCount).filter(c => c === '2').length")
     assert columns > 0
+    _open_layout_menu(page)
     page.locator('[title^="Two-column draft"], [title^="Back to"], [title*="paged"]').first.click()
     page.wait_for_timeout(1500)
 
@@ -160,7 +175,10 @@ def test_two_column_draft_toggles_columns_and_back(page, api: Api):
 @e2e("ieee", requires=(), layer="browser")
 def test_ieee_export_and_print_preview_are_offered(page, api: Api):
     _open(page, api, "<h1>Paper Title</h1><p>Author</p><h1>Introduction</h1><p>Body.</p>")
+    _open_layout_menu(page)
     assert page.locator('[title="Exact IEEE print preview (two columns, PDF)"]').count() > 0
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(200)
     page.get_by_role("button", name="Export").first.click()
     page.wait_for_timeout(400)
     assert page.get_by_text("IEEE paper (Word)").count() > 0
