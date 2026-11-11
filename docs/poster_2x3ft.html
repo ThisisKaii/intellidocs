@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IntelliDocs — 2x3 ft Capstone Exhibit Tarpaulin Poster</title>
+  <style>
+    /* -------------------------------------------------------------
+       PRINT & TARPAULIN SPECIFICATIONS:
+       Physical dimensions: 2 x 3 FEET (24 inches x 36 inches).
+       Aspect ratio: 2:3 vertical format.
+       Rendered Canvas: 960px by 1440px (scales crisply to any DPI).
+       ------------------------------------------------------------- */
+    @page {
+      size: 24in 36in;
+      margin: 0;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 100%;
+      min-height: 100vh;
+      background: #0f172a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #111827;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* THE 2x3 FT CANVAS CONTAINER */
+    .poster-canvas {
+      width: 960px;
+      height: 1440px;
+      background: #edf5ee; /* Soft pale mint/sage like AgriSense */
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+    }
+
+    /* PALETTE VARIABLES (EXACT AGRISENSE FOREST GREEN & MINT THEME) */
+    :root {
+      --dark-green: #0b3816;
+      --forest-green: #155724;
+      --card-border: #1a5c28;
+      --accent-green: #2e7d32;
+      --light-mint: #edf5ee;
+      --card-bg: #ffffff;
+      --text-dark: #1b2e1e;
+      --text-muted: #3d5241;
+      --sub-border: #d2e4d4;
+    }
+
+    /* -------------------------------------------------------------
+       1. HEADER BANNER (AGRISENSE STYLE)
+       ------------------------------------------------------------- */
+    header {
+      background: #0b3816;
+      color: #ffffff;
+      padding: 16px 26px 14px 26px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 3.5px solid #1a5c28;
+      flex-shrink: 0;
+    }
+
+    .header-main {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+    .brand-title span {
+      color: #74d88e; /* Bright leaf green highlight */
+    }
+
+    .brand-tagline {
+      font-size: 15px;
+      font-weight: 500;
+      color: #e2f2e5;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-subtext {
+      font-size: 11px;
+      font-weight: 400;
+      color: #a4cca9;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 2px;
+    }
+
+    /* UNIVERSITY SEALS */
+    .header-seals {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .seal-badge {
+      width: 66px;
+      height: 66px;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-weight: 800;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+
+    .seal-ccs {
+      background: linear-gradient(135deg, #781d1d, #991b1b);
+      border: 2.5px solid #f59e0b;
+      color: #fef08a;
+    }
+
+    .seal-uc {
+      background: linear-gradient(135deg, #1e3a8a, #2563eb);
+      border: 2.5px solid #60a5fa;
+      color: #ffffff;
+    }
+
+    /* -------------------------------------------------------------
+       SECTION BADGE PILL (AGRISENSE SIGNATURE FEATURE)
+       ------------------------------------------------------------- */
+    .section-pill-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-top: -12px;
+      margin-bottom: 6px;
+    }
+
+    .section-pill {
+      background: #155724;
+      color: #ffffff;
+      font-size: 11.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 4px 22px;
+      border-radius: 9999px;
+      box-shadow: 0 2px 5px rgba(11, 56, 22, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* -------------------------------------------------------------
+       CARD CONTAINERS
+       ------------------------------------------------------------- */
+    .card-box {
+      background: #ffffff;
+      border: 2px solid var(--card-border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      position: relative;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+
+    /* BODY WRAPPER */
+    .poster-body {
+      padding: 12px 18px 8px 18px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      overflow: hidden;
+    }
+
+    /* 2. ABSTRACT BOX */
+    .abstract-card {
+      padding-top: 6px;
+    }
+
+    .abstract-p {
+      font-size: 11.2px;
+      line-height: 1.44;
+      color: var(--text-dark);
+      text-align: justify;
+    }
+
+    .abstract-p strong {
+      color: #0b3816;
+    }
+
+    .abstract-meta {
+      margin-top: 4px;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .abstract-meta strong {
+      color: #155724;
+    }
+
+    /* -------------------------------------------------------------
+       3. TWO-COLUMN MAIN GRID (58% Left, 42% Right)
+       ------------------------------------------------------------- */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 57.5% 42.5%;
+      gap: 10px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* LEFT COLUMN STACK */
+    .left-col {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    /* INTRODUCTION */
+    .intro-card {
+      padding-top: 6px;
+    }
+
+    .body-p {
+      font-size: 10.8px;
+      line-height: 1.42;
+      color: var(--text-dark);
+      text-align: justify;
+    }
+
+    .body-p + .body-p {
+      margin-top: 5px;
+    }
+
+    /* CONCEPTUAL FRAMEWORK */
+    .framework-card {
+      padding-top: 6px;
+    }
+
+    .framework-content {
+      display: grid;
+      grid-template-columns: 53% 47%;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .diagram-panel {
+      background: #f4f9f4;
+      border: 1.5px solid #c2dec4;
+      border-radius: 8px;
+      padding: 6px;
+    }
+
+    /* OBJECTIVES & METHODOLOGY SUB-GRID */
+    .sub-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .obj-card, .meth-card {
+      padding-top: 6px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .icon-box-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-top: 6px;
+    }
+
+    .icon-box {
+      width: 48px;
+      height: 48px;
+      background: #f0f8f1;
+      border: 1.5px solid #1a5c28;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #155724;
+      font-weight: 800;
+      font-size: 18px;
+      font-family: monospace;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .agile-wheel-wrapper {
+      display: flex;
+      justify-content: center;
+      margin: 4px 0 6px 0;
+    }
+
+    /* -------------------------------------------------------------
+       4. RIGHT COLUMN: RESULTS (AGRISENSE 8-ROW STACKED GRAPH LAYOUT)
+       ------------------------------------------------------------- */
+    .results-card {
+      padding-top: 6px;
+      padding-bottom: 8px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .results-list {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+      gap: 4px;
+    }
+
+    /* EACH GRAPH ROW HAS A LEFT CHART AND RIGHT NARRATIVE BLURB */
+    .res-row {
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #e0ede1;
+    }
+
+    .res-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .res-row-title {
+      font-size: 9.6px;
+      font-weight: 800;
+      color: #0b3816;
+      text-align: center;
+      margin-bottom: 2px;
+      letter-spacing: -0.01em;
+    }
+
+    .res-row-body {
+      display: grid;
+      grid-template-columns: 46% 54%;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .res-graph-area {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+    }
+
+    .res-text-area {
+      font-size: 8.8px;
+      line-height: 1.28;
+      color: #26382a;
+      text-align: justify;
+    }
+
+    /* VERTICAL BAR CHART STYLES (AGRISENSE FORMAT) */
+    .vbar-group {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-around;
+      width: 100%;
+      height: 48px;
+      padding-top: 10px;
+      border-bottom: 1.5px solid #7ea883;
+    }
+
+    .vbar-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+    }
+
+    .vbar-val {
+      font-size: 8px;
+      font-weight: 800;
+      color: #0b3816;
+    }
+
+    .vbar-pillar {
+      width: 15px;
+      background: #2e7d32;
+      border-radius: 2px 2px 0 0;
+    }
+
+    .vbar-lbl {
+      font-size: 7.2px;
+      color: #4b664f;
+      font-weight: 600;
+      margin-top: 1px;
+      white-space: nowrap;
+    }
+
+    /* HORIZONTAL BAR STYLES */
+    .hbar-stack {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 2.5px;
+    }
+
+    .hbar-item {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .hbar-lbl-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 7.6px;
+      font-weight: 700;
+      color: #1b2e1e;
+    }
+
+    .hbar-bg {
+      width: 100%;
+      height: 5px;
+      background: #e2ede3;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .hbar-fill {
+      height: 100%;
+      background: #2e7d32;
+      border-radius: 3px;
+    }
+
+    /* -------------------------------------------------------------
+       5. CONCLUSION CARD (FULL WIDTH DARK GREEN)
+       ------------------------------------------------------------- */
+    .conclusion-card {
+      background: #0e3d1c;
+      color: #ffffff;
+      border: 2px solid #1a5c28;
+      border-radius: 12px;
+      padding: 8px 16px 8px 16px;
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .conclusion-card .section-pill {
+      background: #2e7d32;
+      color: #ffffff;
+      border: 1px solid #74d88e;
+      padding: 3px 20px;
+    }
+
+    .conclusion-text {
+      font-size: 10.6px;
+      line-height: 1.4;
+      color: #f1f8f2;
+      text-align: justify;
+    }
+
+    /* -------------------------------------------------------------
+       6. FOOTER (5 TEAM ROLES)
+       ------------------------------------------------------------- */
+    footer {
+      background: #0b3816;
+      color: #ffffff;
+      padding: 8px 24px 9px 24px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      border-top: 2.5px solid #1a5c28;
+      flex-shrink: 0;
+    }
+
+    .member-col {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .member-col.adviser {
+      border-left: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .member-name {
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+
+    .member-role {
+      font-size: 8.5px;
+      color: #8edaa2;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- THE OFFICIAL 2x3 FT POSTER TARPAULIN -->
+  <div class="poster-canvas">
+
+    <!-- 1. HEADER (AGRISENSE MATCH: DEEP GREEN + SEALS) -->
+    <header>
+      <div class="header-main">
+        <div class="brand-row">
+          <div class="brand-title">Intelli<span>Docs</span></div>
+        </div>
+        <div class="brand-tagline">An Intelligent Document Editing System with Behavioral Learning and Automated Formatting</div>
+        <div class="brand-subtext">College of Computer Studies • University of Cebu – Lapu-Lapu and Mandaue (UCLM)</div>
+      </div>
+
+      <div class="header-seals">
+        <!-- Official College of Computer Studies Emblem -->
+        <div class="seal-badge seal-ccs">
+          <span style="font-size:12px; font-weight:900;">CCS</span>
+          <span style="font-size:7.5px;">EST. 1995</span>
+          <span style="font-size:7px;">UCLM</span>
+        </div>
+        <!-- Official University of Cebu Emblem -->
+        <div class="seal-badge seal-uc">
+          <span style="font-size:13px; font-weight:900; letter-spacing:1px;">UC</span>
+          <span style="font-size:6.5px;">LAPU-LAPU &amp;</span>
+          <span style="font-size:6.5px;">MANDAUE</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="poster-body">
+
+      <!-- 2. ABSTRACT (FULL WIDTH) -->
+      <div class="card-box abstract-card">
+        <div class="section-pill-wrapper">
+          <div class="section-pill">Abstract</div>
+        </div>
+        <p class="abstract-p">
+          This study, titled <strong>"IntelliDocs: An Intelligent Document Editing System with Behavioral Learning and Automated Formatting,"</strong> was developed to address the mechanical burdens of manuscript preparation faced by students across all academic programs (Nursing, Maritime, Criminology, Education, Hospitality, Engineering, and Information Technology). While conventional word processors require repetitive, manual adjustment of headings, line spacing, margins, and citations, IntelliDocs provides a custom-built web editor that unobtrusively observes user formatting behaviors, predicts preferred styling with transparent confidence scoring, accepts natural-language formatting instructions, and verifies compliance against university thesis guidelines in real time.
+        </p>
+        <p class="abstract-p" style="margin-top: 4px;">
+          The researchers employed a descriptive survey methodology with purposive sampling alongside the Agile software development cycle. The survey analyzed <strong>104 valid student and faculty responses</strong> from across UCLM departments. Results reveal that <strong>91.4% of respondents</strong> experience formatting inconsistencies in multi-author documents, and over <strong>94% suffer high stress</strong> formatting papers before deadlines. Respondents overwhelmingly validated the system with an overall acceptability rating of <strong>4.51 out of 5.00 (Highly Acceptable)</strong> under ISO/IEC 25010 standards.
+        </p>
+        <div class="abstract-meta">
+          <strong>Keywords:</strong> Intelligent Word Processor, Automated Formatting, Behavioral AI, Student Productivity, UCLM Guidelines, TipTap Editor.
+        </div>
+      </div>
+
+      <!-- 3. MAIN TWO-COLUMN SPLIT (57.5% Left, 42.5% Right) -->
+      <div class="main-grid">
+
+        <!-- LEFT COLUMN: INTRODUCTION, CONCEPTUAL FRAMEWORK, OBJECTIVES, METHODOLOGY -->
+        <div class="left-col">
+
+          <!-- INTRODUCTION -->
+          <div class="card-box intro-card">
+            <div class="section-pill-wrapper">
+              <div class="section-pill">Introduction</div>
+            </div>
+            <p class="body-p">
+              Academic writing across all college disciplines demands strict adherence to institutional guidelines (such as the UCLM Thesis Manual and IEEE standards). However, students and faculty continually struggle with the mechanical, tedious overhead of manually styling fonts, paragraph indents, and margins across multi-page manuscripts. Global research confirms that reformatting scientific manuscripts consumes an estimated <strong>23.8 million hours annually worldwide</strong>, resulting in over <strong>$1.1 Billion USD</strong> in lost academic productivity (Zon &amp; Boisvert, 2021).
+            </p>
+            <p class="body-p">
+              Existing word processors like Microsoft Word and Google Docs rely on rigid, static templates that do not learn or adapt to personal writing habits. When collaborators combine sections right before critical defense deadlines, formatting fractures—forcing researchers to spend valuable hours fixing cosmetic errors rather than refining original thought. IntelliDocs bridges this critical divide by creating an intelligent document workspace that observes user styling choices, automates tedious adjustments with 1-click recommendations, and guarantees clean, consistent submissions.
+            </p>
+          </div>
+
+          <!-- CONCEPTUAL FRAMEWORK (FLOWCHART + TEXT) -->
+          <div class="card-box framework-card">
+            <div class="section-pill-wrapper">
+              <div class="section-pill">Conceptual Framework</div>
+            </div>
+            <div class="framework-content">
+              <!-- Flowchart Diagram -->
+              <div class="diagram-panel">
+                <svg width="100%" height="152" viewBox="0 0 240 152">
+                  <!-- Step 1: User Input -->
+                  <rect x="10" y="8" width="100" height="34" rx="6" fill="#e8f5e9" stroke="#1a5c28" stroke-width="1.5"/>
+                  <text x="60" y="23" font-size="8.5" font-weight="800" fill="#0b3816" text-anchor="middle">Student Author</text>
+                  <text x="60" y="34" font-size="7" fill="#388e3c" text-anchor="middle">Types &amp; Edits Text</text>
+
+                  <!-- Arrow 1 to 2 -->
+                  <path d="M110 25 L126 25" stroke="#1a5c28" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+                  <!-- Step 2: TipTap Editor -->
+                  <rect x="130" y="8" width="100" height="34" rx="6" fill="#e8f5e9" stroke="#1a5c28" stroke-width="1.5"/>
+                  <text x="180" y="23" font-size="8.5" font-weight="800" fill="#0b3816" text-anchor="middle">Custom TipTap</text>
+                  <text x="180" y="34" font-size="7" fill="#388e3c" text-anchor="middle">Event Capture</text>
+
+                  <!-- Down Arrow -->
+                  <path d="M180 42 L180 58" stroke="#1a5c28" stroke-width="1.5"/>
+
+                  <!-- Step 3: Behavior Engine -->
+                  <rect x="130" y="58" width="100" height="36" rx="6" fill="#155724" stroke="#0b3816" stroke-width="1.5"/>
+                  <text x="180" y="73" font-size="8.5" font-weight="800" fill="#ffffff" text-anchor="middle">Behavior Engine</text>
+                  <text x="180" y="84" font-size="7" fill="#a4cca9" text-anchor="middle">Habit Modeling</text>
+
+                  <!-- Left Arrow -->
+                  <path d="M130 76 L114 76" stroke="#1a5c28" stroke-width="1.5"/>
+
+                  <!-- Step 4: Hybrid ML & NLP -->
+                  <rect x="10" y="58" width="100" height="36" rx="6" fill="#155724" stroke="#0b3816" stroke-width="1.5"/>
+                  <text x="60" y="73" font-size="8.5" font-weight="800" fill="#ffffff" text-anchor="middle">Hybrid ML &amp; NLP</text>
+                  <text x="60" y="84" font-size="7" fill="#a4cca9" text-anchor="middle">Confidence Predictor</text>
+
+                  <!-- Down Arrow to Final Output -->
+                  <path d="M60 94 L60 110" stroke="#1a5c28" stroke-width="1.5"/>
+                  <path d="M180 94 L180 110" stroke="#1a5c28" stroke-width="1.5"/>
+
+                  <!-- Step 5: Intelligent Output Bar -->
+                  <rect x="10" y="110" width="220" height="34" rx="6" fill="#e8f5e9" stroke="#1a5c28" stroke-width="1.5"/>
+                  <text x="120" y="125" font-size="8.5" font-weight="800" fill="#0b3816" text-anchor="middle">Smart Suggestions • 1-Click Formatter • UCLM Compliance</text>
+                  <text x="120" y="136" font-size="7" fill="#2e7d32" text-anchor="middle">Effortless Thesis Formatting, Grammar Verification &amp; Instant Restructure</text>
+
+                  <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1a5c28" />
+                    </marker>
+                  </defs>
+                </svg>
+              </div>
+
+              <!-- Framework Narrative -->
+              <p class="body-p" style="font-size:10px; line-height: 1.35;">
+                The figure illustrates the IntelliDocs end-to-end framework. As students type within the custom web editor, an embedded behavioral engine captures formatting patterns (heading styles, font choices, line spacing). The ML microservice evaluates these habits alongside institutional standards, generating instant confidence-scored suggestions and plain-English natural command execution without storing confidential draft content.
+              </p>
+            </div>
+          </div>
+
+          <!-- SPLIT SUBGRID: OBJECTIVES & METHODOLOGY -->
+          <div class="sub-grid">
+
+            <!-- OBJECTIVES -->
+            <div class="card-box obj-card">
+              <div class="section-pill-wrapper">
+                <div class="section-pill" style="font-size:10.5px; padding:3px 16px;">Objectives</div>
+              </div>
+              <p class="body-p" style="font-size:9.8px; line-height: 1.34;">
+                This study aims to design, develop, and evaluate IntelliDocs. Specifically, it seeks to:
+                <br>• Analyze current formatting practices and pain points across UCLM departments.
+                <br>• Design an adaptive word processor with behavioral habit tracking.
+                <br>• Develop a hybrid ML model to predict formatting intentions with confidence scores.
+                <br>• Implement natural-language commands and university compliance checks.
+                <br>• Evaluate system acceptability based on ISO/IEC 25010 standards.
+              </p>
+              <div class="icon-box-wrapper">
+                <div class="icon-box">&lt; / &gt;</div>
+              </div>
+            </div>
+
+            <!-- METHODOLOGY -->
+            <div class="card-box meth-card">
+              <div class="section-pill-wrapper">
+                <div class="section-pill" style="font-size:10.5px; padding:3px 16px;">Methodology</div>
+              </div>
+
+              <!-- Agile 6-Cycle Wheel -->
+              <div class="agile-wheel-wrapper">
+                <svg width="86" height="86" viewBox="0 0 100 100">
+                  <!-- Outer segments -->
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#2e7d32" stroke-width="12" stroke-dasharray="42 2" stroke-dashoffset="0"/>
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#388e3c" stroke-width="12" stroke-dasharray="42 2" stroke-dashoffset="44"/>
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#4caf50" stroke-width="12" stroke-dasharray="42 2" stroke-dashoffset="88"/>
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#155724" stroke-width="12" stroke-dasharray="42 2" stroke-dashoffset="132"/>
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#0b3816" stroke-width="12" stroke-dasharray="42 2" stroke-dashoffset="176"/>
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#81c784" stroke-width="12" stroke-dasharray="42 2" stroke-dashoffset="220"/>
+                  <!-- Center Hub -->
+                  <circle cx="50" cy="50" r="28" fill="#ffffff" stroke="#1a5c28" stroke-width="1.5"/>
+                  <text x="50" y="47" font-size="7" font-weight="900" fill="#0b3816" text-anchor="middle">Agile</text>
+                  <text x="50" y="55" font-size="6" font-weight="700" fill="#2e7d32" text-anchor="middle">6-Phase Cycle</text>
+                </svg>
+              </div>
+
+              <p class="body-p" style="font-size:9.4px; line-height: 1.3;">
+                A descriptive survey with purposive sampling was conducted among 104 students and faculty at UCLM. Development followed the Agile methodology through iterative cycles: Meet, Plan, Design, Develop, Test, and Evaluate, ensuring continuous feedback.
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: RESULTS (AGRISENSE 8-ROW STACKED GRAPHS) -->
+        <div class="card-box results-card">
+          <div class="section-pill-wrapper">
+            <div class="section-pill">Results</div>
+          </div>
+
+          <div class="results-list">
+
+            <!-- ROW 1: PRIMARY EDITING PLATFORM (DONUT CHART) -->
+            <div class="res-row">
+              <div class="res-row-title">Primary Document Editing Platform</div>
+              <div class="res-row-body">
+                <div class="res-graph-area">
+                  <svg width="68" height="52" viewBox="0 0 42 42" style="transform: rotate(-90deg);">
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#e2ede3" stroke-width="7"/>
+                    <!-- Word 58% (Green) -->
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#155724" stroke-width="7" stroke-dasharray="58 42" stroke-dashoffset="0"/>
+                    <!-- Docs 32% (Mid Green) -->
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#2e7d32" stroke-width="7" stroke-dasharray="32 68" stroke-dashoffset="-58"/>
+                    <!-- WPS 10% (Light Green) -->
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#81c784" stroke-width="7" stroke-dasharray="10 90" stroke-dashoffset="-90"/>
+                  </svg>
+                </div>
+                <div class="res-text-area">
+                  The chart shows the primary editing platforms used by respondents. Most respondents, <strong>58% (60)</strong>, rely on Microsoft Word, followed by Google Docs with <strong>32% (33)</strong>, and WPS Office with <strong>10% (11)</strong>.
+                </div>
+              </div>
+            </div>
+
+            <!-- ROW 2: YEAR LEVEL DISTRIBUTION (VERTICAL BARS) -->
+            <div class="res-row">
+              <div class="res-row-title">Year Level Distribution</div>
+              <div class="res-row-body">
+                <div class="res-graph-area">
+                  <div class="vbar-group">
+                    <div class="vbar-col">
+                      <span class="vbar-val">24</span>
+                      <div class="vbar-pillar" style="height: 20px;"></div>
+                      <span class="vbar-lbl">1st Yr</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">38</span>
+                      <div class="vbar-pillar" style="height: 32px;"></div>
+                      <span class="vbar-lbl">2nd Yr</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">31</span>
+                      <div class="vbar-pillar" style="height: 26px;"></div>
+                      <span class="vbar-lbl">3rd Yr</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">11</span>
+                      <div class="vbar-pillar" style="height: 10px;"></div>
+                      <span class="vbar-lbl">4th Yr</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="res-text-area">
+                  The graph shows the academic year levels of student respondents. 2nd Year students form the largest group (38), followed by 3rd Year (31), 1st Year (24), and graduating 4th Year seniors (11).
+                </div>
+              </div>
+            </div>
+
+            <!-- ROW 3: PROGRAM / COLLEGE DISTRIBUTION (VERTICAL BARS) -->
+            <div class="res-row">
+              <div class="res-row-title">Respondents Across Academic Programs</div>
+              <div class="res-row-body">
+                <div class="res-graph-area">
+                  <div class="vbar-group">
+                    <div class="vbar-col">
+                      <span class="vbar-val">32</span>
+                      <div class="vbar-pillar" style="height: 28px;"></div>
+                      <span class="vbar-lbl">Nursing</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">28</span>
+                      <div class="vbar-pillar" style="height: 24px;"></div>
+                      <span class="vbar-lbl">Marit.</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">18</span>
+                      <div class="vbar-pillar" style="height: 16px;"></div>
+                      <span class="vbar-lbl">Crim</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">14</span>
+                      <div class="vbar-pillar" style="height: 12px;"></div>
+                      <span class="vbar-lbl">Educ</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">12</span>
+                      <div class="vbar-pillar" style="height: 10px;"></div>
+                      <span class="vbar-lbl">Eng/IT</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="res-text-area">
+                  The graph shows cross-department participation. Nursing (32) and Maritime (28) lead document creation demands, affirming that formatting pain points exist across all university colleges.
+                </div>
+              </div>
+            </div>
+
+            <!-- ROW 4: DOCUMENT WRITING FREQUENCY (VERTICAL BARS) -->
+            <div class="res-row">
+              <div class="res-row-title">Frequency of Document Creation</div>
+              <div class="res-row-body">
+                <div class="res-graph-area">
+                  <div class="vbar-group">
+                    <div class="vbar-col">
+                      <span class="vbar-val">25</span>
+                      <div class="vbar-pillar" style="height: 20px;"></div>
+                      <span class="vbar-lbl">Daily</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">61</span>
+                      <div class="vbar-pillar" style="height: 36px;"></div>
+                      <span class="vbar-lbl">Weekly</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">16</span>
+                      <div class="vbar-pillar" style="height: 14px;"></div>
+                      <span class="vbar-lbl">Monthly</span>
+                    </div>
+                    <div class="vbar-col">
+                      <span class="vbar-val">2</span>
+                      <div class="vbar-pillar" style="height: 4px;"></div>
+                      <span class="vbar-lbl">Rarely</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="res-text-area">
+                  The graph shows how frequently students write research documents. <strong>61</strong> write weekly and <strong>25</strong> write daily, demonstrating that mechanical formatting consumes hours every week.
+                </div>
+              </div>
+            </div>
+
+            <!-- ROW 5: PRIOR AI TOOL USAGE (DONUT CHART) -->
+            <div class="res-row">
+              <div class="res-row-title">Prior Use of AI Writing / Grammar Tools</div>
+              <div class="res-row-body">
+                <div class="res-graph-area">
+                  <svg width="68" height="52" viewBox="0 0 42 42" style="transform: rotate(-90deg);">
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#e2ede3" stroke-width="7"/>
+                    <!-- Yes: 88.5% -->
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#155724" stroke-width="7" stroke-dasharray="88.5 11.5" stroke-dashoffset="0"/>
+                    <!-- No: 11.5% -->
+                    <circle cx="21" cy="21" r="15.915" fill="transparent" stroke="#a4cca9" stroke-width="7" stroke-dasharray="11.5 88.5" stroke-dashoffset="-88.5"/>
+                  </svg>
+                </div>
+                <div class="res-text-area">
+                  The pie chart shows whether respondents previously used AI writing tools. <strong>88.5% (92)</strong> have used AI assistants, yet note that none could automatically format manuscripts to university standards.
+                </div>
+              </div>
+            </div>
+
+            <!-- ROW 6: FORMATTING INCONSISTENCIES (HORIZONTAL BARS) -->
+            <div class="res-row">
+              <div class="res-row-title">Formatting Inconsistencies Encountered</div>
+              <div class="res-row-body">
+                <div class="res-graph-area">
+                  <div class="hbar-stack">
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>Heading / Font Drift</span><span>92%</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 92%;"></div></div>
+                    </div>
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>Line &amp; Para Spacing</span><span>88%</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 88%;"></div></div>
+                    </div>
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>Margins &amp; Indents</span><span>85%</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 85%;"></div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="res-text-area">
+                  The chart shows that <strong>92%</strong> of respondents face heading style discrepancies, <strong>88%</strong> encounter uneven spacing, and <strong>85%</strong> struggle with margin alignment during group writing.
+                </div>
+              </div>
+            </div>
+
+            <!-- ROW 7: PROBLEMS ENCOUNTERED (% AGREE) -->
+            <div class="res-row">
+              <div class="res-row-title">Problems Encountered in Existing Process</div>
+              <div class="res-row-body">
+                <div class="res-graph-area">
+                  <div class="hbar-stack">
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>Manual Style Waste</span><span>91%</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 91%;"></div></div>
+                    </div>
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>Lacks Habit Learning</span><span>89%</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 89%;"></div></div>
+                    </div>
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>App-Switching Friction</span><span>86%</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 86%;"></div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="res-text-area">
+                  The chart shows <strong>91%</strong> agree manual reformatting wastes writing focus, <strong>89%</strong> note existing tools lack habit personalization, and <strong>86%</strong> report switching AI apps disrupts flow.
+                </div>
+              </div>
+            </div>
+
+            <!-- ROW 8: BEST FEATURES (LIKERT 1-5 WEIGHTED MEAN) -->
+            <div class="res-row">
+              <div class="res-row-title">Best Features: Weighted Mean (1–5)</div>
+              <div class="res-row-body">
+                <div class="res-graph-area">
+                  <div class="hbar-stack">
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>Smart Suggestions</span><span>4.62</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 92.4%;"></div></div>
+                    </div>
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>Natural Commands</span><span>4.56</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 91.2%;"></div></div>
+                    </div>
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>Habit Learning AI</span><span>4.48</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 89.6%;"></div></div>
+                    </div>
+                    <div class="hbar-item">
+                      <div class="hbar-lbl-row"><span>UCLM Guidelines Check</span><span>4.44</span></div>
+                      <div class="hbar-bg"><div class="hbar-fill" style="width: 88.8%;"></div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="res-text-area">
+                  The graph shows weighted mean evaluations. Intelligent formatting suggestions scored highest <strong>(4.62)</strong>, followed by natural-language commands <strong>(4.56)</strong>. All features rated <em>Strongly Agree</em>.
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 4. CONCLUSION (FULL WIDTH SOLID FOREST GREEN) -->
+      <div class="conclusion-card">
+        <div class="section-pill-wrapper">
+          <div class="section-pill">Conclusion</div>
+        </div>
+        <p class="conclusion-text">
+          In conclusion, the findings confirm that researchers across all UCLM departments still rely on tedious manual formatting: <strong>91.4% experience multi-section formatting inconsistencies</strong>, and <strong>89% report that existing word processors fail to learn individual writing habits</strong>. With over <strong>94% agreement</strong> that automated styling relieves deadline pressure, and an overall acceptability rating of <strong>4.51 out of 5.00</strong> led by confidence-scored suggestions (4.62), IntelliDocs meets the critical needs of students and faculty as a single, accessible, and intelligent document preparation platform.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- 5. FOOTER (PROJECT TEAM & ADVISER - EXACT 5 COLUMNS) -->
+    <footer>
+      <div class="member-col">
+        <div class="member-name">Marjun A. Amamence</div>
+        <div class="member-role">Project Manager</div>
+      </div>
+      <div class="member-col">
+        <div class="member-name">Joshua L. Asingua</div>
+        <div class="member-role">Lead Developer / ML</div>
+      </div>
+      <div class="member-col">
+        <div class="member-name">Rj Alenton</div>
+        <div class="member-role">System Analyst</div>
+      </div>
+      <div class="member-col">
+        <div class="member-name">Christian Paulo A. Dagupan</div>
+        <div class="member-role">UI/UX &amp; Documentation</div>
+      </div>
+      <div class="member-col adviser">
+        <div class="member-name">Ms. Gian S. Mahusay</div>
+        <div class="member-role">Research Adviser</div>
+      </div>
+    </footer>
+
+  </div>
+
+</body>
+</html>
