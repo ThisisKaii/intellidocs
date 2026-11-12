@@ -59,6 +59,8 @@ interface DriveItem {
   pageSetup: PreviewPageSetup
   /** The owner pinned it to the top of the list. */
   pinned: boolean
+  /** Student's display name — present for class folder documents (professor view). */
+  ownerName?: string | null
 }
 
 interface DriveTableProps {
@@ -309,6 +311,7 @@ export function DriveTable({
           formattingPreset: d.formatting_preset ?? null,
         },
         pinned: Boolean(pinnedIds?.has(d.id)),
+        ownerName: d.owner_display_name,
       })),
     [documents, pinnedIds],
   )
@@ -699,7 +702,7 @@ export function DriveTable({
 
           <PreviewStyles />
           {viewMode === 'grid' ? (
-            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4" style={{ maxWidth: 1380 }}>
               {shownItems.map((item, index) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
@@ -829,8 +832,15 @@ export function DriveTable({
                       </div>
 
                       <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                        <span>Opened {formatDate(item.updatedAt)}</span>
-                        <span className="inline-flex items-center gap-1">
+                        {item.ownerName ? (
+                          <span className="flex items-center gap-1.5 truncate" title={item.ownerName}>
+                            <GraduationCap className="size-3 shrink-0 opacity-70" />
+                            <span className="truncate">{item.ownerName}</span>
+                          </span>
+                        ) : (
+                          <span>Opened {formatDate(item.updatedAt)}</span>
+                        )}
+                        <span className="inline-flex items-center gap-1 shrink-0">
                           {item.pinned && <Pin className="size-3 text-primary" aria-label="Pinned" />}
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-primary/80 bg-primary/10 px-1.5 py-0.5 rounded">Doc</span>
                         </span>
@@ -855,7 +865,8 @@ export function DriveTable({
               {shownItems.map((item) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
-                const displayName = user?.email?.split('@')[0] || 'Unknown'
+                const ownerLabel = item.ownerName ?? user?.email?.split('@')[0] ?? 'Unknown'
+                const ownerInitials = ownerLabel.substring(0, 2).toUpperCase()
 
                 return (
                   <Fragment key={item.id}>
@@ -920,9 +931,9 @@ export function DriveTable({
                     {/* Owner */}
                     <div className="w-32 items-center gap-2 text-left text-xs text-muted-foreground shrink-0 hidden md:flex">
                       <div className="size-5 rounded-full bg-primary/20 text-primary flex items-center justify-center overflow-hidden shrink-0 font-bold text-[10px]">
-                        {displayName.substring(0, 2).toUpperCase()}
+                        {ownerInitials}
                       </div>
-                      <span className="truncate">{displayName}</span>
+                      <span className="truncate">{ownerLabel}</span>
                     </div>
 
                     {/* Actions */}

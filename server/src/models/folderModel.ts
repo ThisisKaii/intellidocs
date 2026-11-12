@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
-import { ClassEnrollment, Document, Folder, FolderType } from '../types/index'
+import { ClassEnrollment, ClassRubric, Document, Folder, FolderType, StudentClassGrade } from '../types/index'
 import { listDocuments } from './documentModel'
 import { readAccountNames } from '../utils/accountNames'
 
@@ -513,35 +513,6 @@ async function labelFoldersFromClass(classFolder: Folder): Promise<void> {
   }
 }
 
-/** Locate the user's "My Drive" folder if it exists. */
-export async function getDefaultFolder(userId: string): Promise<Folder | null> {
-  const { data, error } = await supabase
-    .from('folders')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('name', 'My Drive')
-    .is('parent_id', null)
-    .limit(1)
-
-  if (error) {
-    throw new Error(`Failed to fetch default folder: ${error.message}`)
-  }
-
-  return data?.[0] ?? null
-}
-
-/** Return the "My Drive" folder, creating it if necessary. */
-export async function getOrCreateDefaultFolder(
-  userId: string
-): Promise<Folder> {
-  const existing = await getDefaultFolder(userId)
-  if (existing) {
-    return existing
-  }
-
-  return createFolder(userId, 'My Drive')
-}
-
 /** Move a document into the requested folder, replacing any prior folder link. */
 export async function assignDocumentToFolder(
   userId: string,
@@ -598,6 +569,105 @@ async function folderDocumentIds(folderId: string): Promise<string[]> {
  * linked to the class folder itself or to a folder directly inside it (a student's submission or
  * workspace folder).
  */
+/** A folder's type and owner, or null when it does not exist (callers check access first). */
+export async function getFolderKind(folderId: string): Promise<{ folder_type: FolderType; user_id: string } | null> {
+  const { data, error } = await supabase.from('folders').select('folder_type,user_id').eq('folder_id', folderId).maybeSingle()
+  if (error) throw new Error(`Failed to read the folder: ${error.message}`)
+  if (!data) return null
+  return { folder_type: (data.folder_type as FolderType) ?? 'personal', user_id: data.user_id as string }
+}
+
+/** A missing `folders.rubric` column (migration 046 not run yet). */
+function isMissingRubricColumn(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false
+  return error.code === '42703' || error.code === 'PGRST204' || /rubric/i.test(error.message ?? '')
+}
+
+/** The rubric stored on a class folder, or null when it has none (or migration 046 is not run). */
+export async function getClassRubric(classFolderId: string): Promise<ClassRubric | null> {
+  const { data, error } = await supabase.from('folders').select('rubric').eq('folder_id', classFolderId).maybeSingle()
+  if (error) {
+    if (isMissingRubricColumn(error)) return null
+    throw new Error(`Failed to read the class rubric: ${error.message}`)
+  }
+  const stored = (data as { rubric?: unknown } | null)?.rubric
+  if (!stored || typeof stored !== 'object' || !Array.isArray((stored as ClassRubric).criteria)) return null
+  return stored as ClassRubric
+}
+
+/** Save a class folder's rubric (null: back to the default); the caller has checked the professor owns the class. */
+export async function setClassRubric(classFolderId: string, rubric: ClassRubric | null): Promise<void> {
+  const { error } = await supabase.from('folders').update({ rubric }).eq('folder_id', classFolderId)
+  if (error) {
+    if (isMissingRubricColumn(error)) {
+      throw new Error('Class rubrics need database migration 046 (db/supabase/046_class_rubrics.sql)')
+    }
+    throw new Error(`Failed to save the class rubric: ${error.message}`)
+  }
+}
+
+/** The class folder a document was handed in to (directly, or in a student's folder inside the class), or null. */
+export async function getClassFolderOfDocument(documentId: string): Promise<string | null> {
+  const { data: links, error } = await supabase.from('folder_documents').select('folder_id').eq('document_id', documentId)
+  if (error) throw new Error(`Failed to read the document's folders: ${error.message}`)
+  const folderIds = (links ?? []).map((row) => row.folder_id as string)
+  if (folderIds.length === 0) return null
+  const { data: folders, error: folderError } = await supabase
+    .from('folders')
+    .select('folder_id,parent_id,folder_type')
+    .in('folder_id', folderIds)
+  if (folderError) throw new Error(`Failed to read the document's folders: ${folderError.message}`)
+  for (const folder of folders ?? []) {
+    if (folder.folder_type === 'class') return folder.folder_id as string
+  }
+  const parentIds = (folders ?? []).map((folder) => folder.parent_id as string | null).filter((id): id is string => Boolean(id))
+  if (parentIds.length === 0) return null
+  const { data: parents, error: parentError } = await supabase
+    .from('folders')
+    .select('folder_id')
+    .in('folder_id', parentIds)
+    .eq('folder_type', 'class')
+    .limit(1)
+  if (parentError) throw new Error(`Failed to read the document's class: ${parentError.message}`)
+  return (parents?.[0]?.folder_id as string | undefined) ?? null
+}
+
+/** The student's own submissions in a class with their latest grade (not graded yet: nulls). */
+export async function getStudentClassGrades(studentId: string, classFolderId: string): Promise<StudentClassGrade[]> {
+  const links = await getClassSubmissionLinks([classFolderId])
+  const documentIds = Array.from(new Set(links.map((link) => link.document_id)))
+  if (documentIds.length === 0) return []
+  const { data: documents, error } = await supabase
+    .from('documents')
+    .select('id,title')
+    .in('id', documentIds)
+    .eq('user_id', studentId)
+  if (error) throw new Error(`Failed to read your submissions: ${error.message}`)
+  const owned = (documents ?? []) as Array<{ id: string; title: string }>
+  if (owned.length === 0) return []
+  const { data: reviews, error: reviewError } = await supabase
+    .from('document_reviews')
+    .select('document_id,grade,status,reviewed_at')
+    .in('document_id', owned.map((doc) => doc.id))
+    .order('reviewed_at', { ascending: false })
+  if (reviewError) throw new Error(`Failed to read your grades: ${reviewError.message}`)
+  // Each grade is its own row; the newest one per document is the current grade.
+  const latest = new Map<string, Omit<StudentClassGrade, 'document_id' | 'title'>>()
+  for (const review of reviews ?? []) {
+    const id = review.document_id as string
+    if (!latest.has(id)) {
+      latest.set(id, {
+        grade: (review.grade as number | null) ?? null,
+        status: (review.status as StudentClassGrade['status']) ?? null,
+        reviewed_at: (review.reviewed_at as string | null) ?? null,
+      })
+    }
+  }
+  return owned
+    .map((doc) => ({ document_id: doc.id, title: doc.title, ...(latest.get(doc.id) ?? { grade: null, status: null, reviewed_at: null }) }))
+    .sort((a, b) => a.title.localeCompare(b.title))
+}
+
 export async function getClassSubmissionLinks(
   classFolderIds: string[]
 ): Promise<Array<{ document_id: string; folder_id: string }>> {
@@ -717,6 +787,9 @@ export async function submitDocumentToClass(
  * Fetch all documents currently inside a folder.
  * The owner sees everything; a student enrolled in a class folder sees the
  * folder's shared contents, which is what makes a class folder shareable.
+ *
+ * For class folders (professor view), each document is enriched with the
+ * submitting student's display name and school ID so the UI can attribute them.
  */
 export async function getDocumentsForFolder(
   userId: string,
@@ -729,7 +802,8 @@ export async function getDocumentsForFolder(
   // The professor sees a class's submissions, which sit in the students' submission folders inside
   // it; an enrolled student sees only what is in the class folder itself.
   const owned = await getOwnedFolder(userId, folderId)
-  const documentIds = owned?.folder_type === 'class'
+  const isClassView = owned?.folder_type === 'class'
+  const documentIds = isClassView
     ? Array.from(new Set((await getClassSubmissionLinks([folderId])).map((row) => row.document_id)))
     : await folderDocumentIds(folderId)
 
@@ -751,7 +825,19 @@ export async function getDocumentsForFolder(
     throw new Error(`Failed to fetch folder documents: ${error.message}`)
   }
 
-  return (data || []).map((row) => ({ ...row, content: '' }))
+  const docs = (data || []).map((row) => ({ ...row, content: '' }))
+
+  // For class folders (professor view), add the submitting student's name so
+  // the Drive cards can show who each file belongs to.
+  if (isClassView && docs.length > 0) {
+    const directory = await getAuthDirectory()
+    return docs.map((doc) => ({
+      ...doc,
+      owner_display_name: directory.get(doc.user_id)?.displayName ?? null,
+    }))
+  }
+
+  return docs
 }
 
 /** Characters used in join codes; no 0/O/1/I so a code is easy to read aloud. */

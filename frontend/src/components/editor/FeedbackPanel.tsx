@@ -1,15 +1,17 @@
 import type { DocumentFeedback } from '@/services/api'
 import { CommentThread } from '@/components/professor/CommentThread'
-import { formatFeedbackTime, RUBRIC_CRITERIA, RUBRIC_MAX } from '@/lib/rubric'
+import { formatFeedbackTime, readStoredRubric } from '@/lib/rubric'
 
 /** True when there is anything for the Feedback tab to show. */
 export function hasFeedback(feedback: DocumentFeedback | null | undefined): feedback is DocumentFeedback {
   return Boolean(feedback && (feedback.review || feedback.comments.length > 0))
 }
 
-/** The professor's grade, rubric, notes and comments on this submission, as the student sees them. */
+/** The professor's grade, rubric scores, notes and comments on this submission, as the student sees them. */
 export function FeedbackPanel({ feedback }: { feedback: DocumentFeedback }): JSX.Element {
   const { review, comments } = feedback
+  // The criteria the grade was given with (a later change to the class rubric does not alter it).
+  const rubric = readStoredRubric(review?.rubric)
   return (
     <div className="flex flex-col gap-4 p-3" data-testid="feedback-panel">
       {review && (
@@ -28,14 +30,14 @@ export function FeedbackPanel({ feedback }: { feedback: DocumentFeedback }): JSX
             <time dateTime={review.reviewed_at}>{formatFeedbackTime(review.reviewed_at)}</time>
           </p>
 
-          {review.rubric && (
+          {rubric && (
             <dl className="m-0 mt-3 grid grid-cols-2 gap-2" aria-label="Rubric">
-              {RUBRIC_CRITERIA.map(({ key, label, hint }) => (
-                <div key={key} className="rounded-lg bg-secondary px-2.5 py-2" title={hint}>
-                  <dt className="text-xs text-muted-foreground">{label}</dt>
+              {rubric.criteria.map((criterion) => (
+                <div key={criterion.id} className="rounded-lg bg-secondary px-2.5 py-2" title={criterion.description || undefined}>
+                  <dt className="text-xs text-muted-foreground">{criterion.name}</dt>
                   <dd className="m-0 text-sm font-semibold tabular-nums">
-                    {review.rubric?.[key]}
-                    <span className="font-normal text-muted-foreground">/{RUBRIC_MAX}</span>
+                    {rubric.scores[criterion.id] ?? '–'}
+                    <span className="font-normal text-muted-foreground">/{criterion.maxPoints}</span>
                   </dd>
                 </div>
               ))}

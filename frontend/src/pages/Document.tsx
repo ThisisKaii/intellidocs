@@ -747,6 +747,11 @@ export default function Document(): JSX.Element {
         if (shareToken && doc.user_id !== user?.id && (doc.share_permission !== 'edit' || linkExpired)) {
           setViewOnly(true)
         }
+        // A non-owner the server will not let save (a professor reviewing a class submission)
+        // gets a read-only session too, instead of an editor whose saves would be refused.
+        if (doc.can_edit === false && doc.user_id !== user?.id) {
+          setViewOnly(true)
+        }
         void cacheDocumentRead(doc)
       } catch (error) {
         console.error(error)
@@ -3038,7 +3043,11 @@ export default function Document(): JSX.Element {
         >
           <Shield style={{ width: '14px', height: '14px' }} />
           {viewOnly ? (
-            <span>View only — you are seeing this document through a share link.</span>
+            <span>
+              {shareToken
+                ? 'View only — you are seeing this document through a share link.'
+                : 'View only — you can read this document, but only its owner can edit it.'}
+            </span>
           ) : (
             <>
               <span>View only — this document is in trash. Restore it to edit again.</span>

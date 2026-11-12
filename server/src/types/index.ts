@@ -467,11 +467,45 @@ export interface DocumentComment {
 }
 
 /** A rubric breakdown: four criteria, 0-25 each, summing to the grade (migration 044). */
-export interface ReviewRubric {
-  content: number
-  methodology: number
-  formatting: number
-  mechanics: number
+/** One criterion of a class rubric: its points add to the 100-point grade. */
+export interface RubricCriterion {
+  id: string
+  name: string
+  description: string
+  maxPoints: number
+}
+
+/** The rubric a professor grades a class with (folders.rubric, migration 046). */
+export interface ClassRubric {
+  criteria: RubricCriterion[]
+}
+
+/** The rubric of a class whose professor has not set one: the four criteria grades used before. */
+export const DEFAULT_CLASS_RUBRIC: ClassRubric = {
+  criteria: [
+    { id: 'content', name: 'Content', description: 'Ideas, depth and accuracy', maxPoints: 25 },
+    { id: 'methodology', name: 'Methodology', description: 'Approach, evidence and analysis', maxPoints: 25 },
+    { id: 'formatting', name: 'Formatting', description: 'Layout, headings and citation style', maxPoints: 25 },
+    { id: 'mechanics', name: 'Mechanics', description: 'Grammar, spelling and clarity', maxPoints: 25 },
+  ],
+}
+
+/**
+ * A grade's rubric as stored on the review: the criteria it was graded with and a score per
+ * criterion. Grades given before class rubrics stored the four default scores directly
+ * ({content, methodology, formatting, mechanics}); readers treat that as the default rubric.
+ */
+export type ReviewRubric =
+  | { criteria: RubricCriterion[]; scores: Record<string, number> }
+  | { content: number; methodology: number; formatting: number; mechanics: number }
+
+/** A student's grade on one of their class submissions (null fields: not graded yet). */
+export interface StudentClassGrade {
+  document_id: string
+  title: string
+  grade: number | null
+  status: 'pending' | 'under_review' | 'graded' | 'returned' | null
+  reviewed_at: string | null
 }
 
 export interface DocumentReview {

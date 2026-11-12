@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink, Loader2, X } from 'lucide-react'
 import { api, type DocumentComment, type DocumentReview } from '@/services/api'
-import { EMPTY_RUBRIC, parseRubric, RUBRIC_CRITERIA, RUBRIC_MAX, rubricToDraft, rubricTotal, type RubricDraft } from '@/lib/rubric'
+import { DEFAULT_RUBRIC, emptyDraft, parseScores, scoresToDraft, scoresTotal, type ClassRubric, type RubricDraft } from '@/lib/rubric'
 import { CommentThread } from './CommentThread'
 
 export interface GradeTarget {
@@ -20,11 +20,13 @@ interface GradeDrawerProps {
   onGraded: (documentId: string, review: DocumentReview) => void
 }
 
-/** Side panel for grading one submission and leaving comments for the student. */
+/** Side panel for grading one submission against its class's rubric and leaving comments for the student. */
 export function GradeDrawer({ target, onClose, onGraded }: GradeDrawerProps): JSX.Element {
   const [grade, setGrade] = useState('')
   const [notes, setNotes] = useState('')
-  const [rubric, setRubric] = useState<RubricDraft>({ ...EMPTY_RUBRIC })
+  const [rubric, setRubric] = useState<ClassRubric>(DEFAULT_RUBRIC)
+  const [customRubric, setCustomRubric] = useState(false)
+  const [scores, setScores] = useState<RubricDraft>(emptyDraft(DEFAULT_RUBRIC))
   const [comments, setComments] = useState<DocumentComment[]>([])
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
@@ -37,33 +39,37 @@ export function GradeDrawer({ target, onClose, onGraded }: GradeDrawerProps): JS
     Promise.all([
       api.professor.getReview(target.documentId).catch(() => null),
       api.professor.getComments(target.documentId).catch(() => []),
-    ]).then(([review, existing]) => {
+      api.documents.getRubric(target.documentId).catch(() => null),
+    ]).then(([review, existing, info]) => {
       if (cancelled) return
+      const classRubric = info?.rubric ?? DEFAULT_RUBRIC
+      setRubric(classRubric)
+      setCustomRubric(Boolean(info?.custom))
       setGrade(review?.grade != null ? String(review.grade) : '')
       setNotes(review?.notes ?? '')
-      setRubric(rubricToDraft(review?.rubric))
+      setScores(scoresToDraft(classRubric, review?.rubric))
       setComments(existing)
       setLoading(false)
     })
     return () => { cancelled = true }
   }, [target.documentId])
 
-  /** A rubric score changed: once all four are filled, they fill in the overall grade. */
-  function setCriterion(key: keyof RubricDraft, value: string): void {
-    const next = { ...rubric, [key]: value }
-    setRubric(next)
-    const parsed = parseRubric(next)
-    if (parsed.rubric) setGrade(String(rubricTotal(parsed.rubric)))
+  /** A rubric score changed: once every criterion is scored, the scores fill in the overall grade. */
+  function setScore(id: string, value: string): void {
+    const next = { ...scores, [id]: value }
+    setScores(next)
+    const parsed = parseScores(rubric, next)
+    if (parsed.scores) setGrade(String(scoresTotal(parsed.scores)))
   }
 
-  /** Save the grade, rubric and notes; the grade must be a number from 0 to 100. */
+  /** Save the grade, rubric scores and notes; the grade must be a number from 0 to 100. */
   async function saveGrade(): Promise<void> {
     const value = Number(grade)
     if (grade.trim() === '' || !Number.isFinite(value) || value < 0 || value > 100) {
       setError('Enter a grade between 0 and 100')
       return
     }
-    const parsed = parseRubric(rubric)
+    const parsed = parseScores(rubric, scores)
     if (parsed.error) {
       setError(parsed.error)
       return
@@ -71,7 +77,7 @@ export function GradeDrawer({ target, onClose, onGraded }: GradeDrawerProps): JS
     setSaving(true)
     setError('')
     try {
-      const review = await api.professor.submitGrade(target.documentId, target.studentId, value, notes.trim() || undefined, parsed.rubric ?? undefined)
+      const review = await api.professor.submitGrade(target.documentId, target.studentId, value, notes.trim() || undefined, parsed.scores ?? undefined)
       onGraded(target.documentId, review)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the grade')
@@ -114,19 +120,26 @@ export function GradeDrawer({ target, onClose, onGraded }: GradeDrawerProps): JS
         ) : (
           <>
             <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-              <legend className="mb-1 text-sm font-medium">Rubric <span className="font-normal text-muted-foreground">(0-{RUBRIC_MAX} each, optional)</span></legend>
+              <legend className="mb-1 text-sm font-medium">
+                Rubric{' '}
+                <span className="font-normal text-muted-foreground">
+                  ({customRubric ? "this class's rubric" : 'default rubric'}, optional)
+                </span>
+              </legend>
               <div className="grid grid-cols-2 gap-2">
-                {RUBRIC_CRITERIA.map(({ key, label, hint }) => (
-                  <label key={key} className="flex flex-col gap-1 text-xs" title={hint}>
-                    <span className="font-medium text-foreground">{label}</span>
+                {rubric.criteria.map((criterion) => (
+                  <label key={criterion.id} className="flex flex-col gap-1 text-xs" title={criterion.description || undefined}>
+                    <span className="font-medium text-foreground">
+                      {criterion.name} <span className="font-normal text-muted-foreground">/ {criterion.maxPoints}</span>
+                    </span>
                     <input
                       type="number"
                       min={0}
-                      max={RUBRIC_MAX}
+                      max={criterion.maxPoints}
                       step="0.5"
-                      aria-label={`${label} score`}
-                      value={rubric[key]}
-                      onChange={(e) => setCriterion(key, e.target.value)}
+                      aria-label={`${criterion.name} score`}
+                      value={scores[criterion.id] ?? ''}
+                      onChange={(e) => setScore(criterion.id, e.target.value)}
                       className="settings-input h-9 w-full"
                     />
                   </label>

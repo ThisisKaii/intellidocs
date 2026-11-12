@@ -6,11 +6,14 @@ import {
   enrollStudent,
   getClassRoster,
   getFolderChildren,
+  getClassRubric,
   getFolderDocuments,
   getFolders,
+  getMyClassGrades,
   joinClass,
   regenerateJoinCode,
   renameFolder,
+  saveClassRubric,
   unenrollStudent,
 } from '../controllers/folderController'
 import { validateBody } from '../middleware/validate'
@@ -22,6 +25,7 @@ import {
   joinClassSchema,
   updateFolderSchema,
 } from '../../schemas/folderSchemas'
+import { classRubricSchema } from '../../schemas/professorSchemas'
 
 const router = Router()
 
@@ -37,5 +41,10 @@ router.post('/:id/documents', validateBody(folderDocumentSchema), addDocumentToF
 router.get('/:id/enrollments', getClassRoster)
 router.post('/:id/enrollments', validateBody(enrollStudentSchema), enrollStudent)
 router.delete('/:id/enrollments/:studentId', unenrollStudent)
+/** A class's grading rubric: read by its professor and enrolled students, changed by its professor. */
+router.get('/:id/rubric', getClassRubric)
+router.put('/:id/rubric', validateBody(classRubricSchema), saveClassRubric)
+/** The signed-in student's grades on their submissions in this class. */
+router.get('/:id/my-grades', getMyClassGrades)
 
 export default router

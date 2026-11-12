@@ -5,7 +5,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { useImports } from '@/context/ImportContext'
 import { DriveTable, type DriveTableEditState, type BreadcrumbEntry } from '@/components/drive/DriveTable'
 import DriveSidebar, { type FolderSelection } from '@/components/drive/DriveSidebar'
-import { FileText, FolderIcon, GraduationCap, HardDrive, KeyRound, LayoutDashboard, Menu, Plus, Search, Upload } from 'lucide-react'
+import { ClipboardList, FileText, FolderIcon, GraduationCap, HardDrive, KeyRound, LayoutDashboard, Menu, Plus, Search, Upload } from 'lucide-react'
+import { ClassRubricDialog } from '@/components/drive/ClassRubricDialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -114,6 +115,7 @@ export default function HomePage(): JSX.Element {
   const [folders, setFolders] = useState<FolderRecord[]>([])
   const [joinClassOpen, setJoinClassOpen] = useState(false)
   const [joinCodeOpen, setJoinCodeOpen] = useState(false)
+  const [rubricOpen, setRubricOpen] = useState(false)
   const [currentFolderChildren, setCurrentFolderChildren] = useState<FolderRecord[]>([])
   const [storageSummary, setStorageSummary] = useState<StorageSummary | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
@@ -753,6 +755,12 @@ export default function HomePage(): JSX.Element {
   }
 
   /* ── Page title ────────────────────────────────────── */
+  /** The class folder being viewed (its rubric is one click away), or undefined elsewhere. */
+  const openClassFolder = useMemo(
+    () => (selection.type === 'folder' ? folders.find((f) => f.folder_id === selection.folderId && f.folder_type === 'class') : undefined),
+    [folders, selection.type, selection.folderId],
+  )
+
   const pageTitle = useMemo((): string => {
     switch (selection.type) {
       case 'folder':
@@ -902,6 +910,17 @@ export default function HomePage(): JSX.Element {
               <span className="text-xs font-medium text-muted-foreground bg-secondary rounded-full px-2.5 py-1 leading-none">
                 {visibleDocuments.length} {visibleDocuments.length === 1 ? 'document' : 'documents'}
               </span>
+              {openClassFolder && (
+                <button
+                  type="button"
+                  onClick={() => setRubricOpen(true)}
+                  data-testid="class-rubric-button"
+                  className="ml-auto inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground cursor-pointer transition-colors hover:bg-secondary"
+                  style={{ fontFamily: 'inherit' }}
+                >
+                  <ClipboardList className="size-4" /> {openClassFolder.user_id === user?.id ? 'Rubric' : 'Rubric & grades'}
+                </button>
+              )}
               {selection.type === 'shared' && (
                 <button
                   type="button"
@@ -1052,6 +1071,9 @@ export default function HomePage(): JSX.Element {
         />
       )}
 
+      {rubricOpen && openClassFolder && (
+        <ClassRubricDialog folder={openClassFolder} onClose={() => setRubricOpen(false)} />
+      )}
       {joinCodeOpen && (
         <JoinCodeModal
           onClose={() => setJoinCodeOpen(false)}

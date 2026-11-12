@@ -8,6 +8,7 @@ import * as plagiarismModel from '../models/plagiarismModel'
 import { auditCompliance } from '../skills/auditCompliance'
 import { similarityQuerySchema } from '../../schemas/plagiarismSchemas'
 import type { AddCommentInput, SubmitGradeInput } from '../../schemas/professorSchemas'
+import { DEFAULT_CLASS_RUBRIC, type ClassRubric, type ReviewRubric } from '../types/index'
 
 /**
  * Send 403 unless the document was handed in to one of this professor's
@@ -60,6 +61,18 @@ export async function getDocumentComments(req: AuthenticatedRequest, res: Respon
   }
 }
 
+/** Why rubric scores do not fit the class rubric (a criterion missing, unknown or over its points), else null. */
+function rubricScoreProblem(rubric: ClassRubric, scores: Record<string, number>): string | null {
+  for (const criterion of rubric.criteria) {
+    const score = scores[criterion.id]
+    if (score === undefined) return `Score ${criterion.name} too`
+    if (score < 0 || score > criterion.maxPoints) return `${criterion.name} is worth 0 to ${criterion.maxPoints} points`
+  }
+  const known = new Set(rubric.criteria.map((criterion) => criterion.id))
+  const unknown = Object.keys(scores).find((id) => !known.has(id))
+  return unknown ? 'The class rubric has changed: reopen the grade and score it again' : null
+}
+
 export async function submitGrade(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const reviewerId = req.user?.id
@@ -76,6 +89,20 @@ export async function submitGrade(req: AuthenticatedRequest, res: Response): Pro
       return
     }
 
+    // Rubric scores are checked against the class's rubric and stored with a copy of its
+    // criteria, so a later change to the rubric never alters a grade already given.
+    let storedRubric: ReviewRubric | undefined
+    if (rubric) {
+      const classFolderId = await folderModel.getClassFolderOfDocument(documentId)
+      const classRubric = (classFolderId ? await folderModel.getClassRubric(classFolderId) : null) ?? DEFAULT_CLASS_RUBRIC
+      const problem = rubricScoreProblem(classRubric, rubric)
+      if (problem) {
+        res.status(400).json({ error: problem })
+        return
+      }
+      storedRubric = { criteria: classRubric.criteria, scores: rubric }
+    }
+
     // Submit grade review
     const review = await professorModel.submitGrade(
       documentId,
@@ -83,7 +110,7 @@ export async function submitGrade(req: AuthenticatedRequest, res: Response): Pro
       studentId,
       grade,
       notes,
-      rubric
+      storedRubric
     )
 
     // Trigger notification to student

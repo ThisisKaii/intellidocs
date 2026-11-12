@@ -89,6 +89,8 @@ router.get('/:id', documentController.getDocument)
 
 /** The professor's grade, rubric and comments on a submission (its owner or the reviewing professor). */
 router.get('/:id/feedback', validateParams(documentIdParamSchema), documentFeedbackController.getFeedback)
+/** The rubric this submission is graded with (its class's rubric, else the default). */
+router.get('/:id/rubric', validateParams(documentIdParamSchema), documentFeedbackController.getRubric)
 
 /** Genre partition for personalization: structural auto-detection and manual override. */
 router.post('/:id/genre/detect', validateParams(documentIdParamSchema), validateBody(detectGenreSchema), documentGenreController.detectGenre)

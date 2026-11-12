@@ -426,6 +426,21 @@ function withoutPreviewSnippet(payload: Record<string, unknown>): Record<string,
   return clone
 }
 
+/**
+ * Whether the given user may write to this document: they own it, have an
+ * active edit share link, or are listed in document_shares with edit permission.
+ */
+export async function canEditDocument(doc: Document, userId: string, shareToken?: string): Promise<boolean> {
+  return (
+    doc.user_id === userId ||
+    (Boolean(shareToken) &&
+      doc.share_token === shareToken &&
+      doc.share_permission === 'edit' &&
+      !isShareLinkExpired(doc.share_expires_at)) ||
+    (await hasShareAccess(doc.id, userId, undefined, 'edit'))
+  )
+}
+
 export async function updateDocument(
   id: string,
   userId: string,

@@ -20,7 +20,7 @@ import {
   VerifyApplicantBody,
   ReportTimeseries,
 } from '../types/admin'
-import type { Rubric } from '@/lib/rubric'
+import type { ClassRubric, ClassRubricInfo, RubricScores, StoredRubric } from '@/lib/rubric'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -129,6 +129,10 @@ export interface DocumentRecord {
   last_opened_at?: string
   created_at: string
   updated_at: string
+  /** Student's display name; present when listed in a class folder (professor view). */
+  owner_display_name?: string | null
+  /** Whether the current user can edit this document (server-computed). */
+  can_edit?: boolean
 }
 
 export interface DocumentVersion {
@@ -667,10 +671,19 @@ export interface DocumentReview {
   status: 'pending' | 'under_review' | 'graded' | 'returned'
   notes: string | null
   reviewed_at: string
-  /** Four criteria, 0-25 each; null for a grade given without a rubric. */
-  rubric?: Rubric | null
+  /** The criteria it was graded with and a score each; null for a grade given without a rubric. */
+  rubric?: StoredRubric | null
   /** The grader's name (read from their account). */
   reviewer_name?: string | null
+}
+
+/** A student's grade on one of their submissions in a class (nulls: not graded yet). */
+export interface StudentClassGrade {
+  document_id: string
+  title: string
+  grade: number | null
+  status: DocumentReview['status'] | null
+  reviewed_at: string | null
 }
 
 /** A submission's professor feedback, as its student sees it. */
@@ -1130,6 +1143,10 @@ export const api = {
     /** The professor's grade, rubric and comments on a submission (its owner or reviewing professor only). */
     getFeedback: async (documentId: string): Promise<DocumentFeedback> => {
       return fetchAPI<DocumentFeedback>(`documents/${documentId}/feedback`)
+    },
+    /** The rubric a submission is graded with: its class's own, else the default (its owner or reviewing professor). */
+    getRubric: async (documentId: string): Promise<ClassRubricInfo> => {
+      return fetchAPI<ClassRubricInfo>(`documents/${documentId}/rubric`)
     },
     list: async (): Promise<DocumentRecord[]> => {
       return fetchAPI<DocumentRecord[]>('documents')
@@ -1626,6 +1643,22 @@ export const api = {
     regenerateJoinCode: async (folderId: string): Promise<FolderRecord> => {
       return fetchAPI<FolderRecord>(`folders/${folderId}/join-code`, { method: 'POST' })
     },
+    /** A class's grading rubric (its professor and enrolled students). */
+    rubric: async (folderId: string): Promise<ClassRubricInfo> => {
+      return fetchAPI<ClassRubricInfo>(`folders/${folderId}/rubric`)
+    },
+    /** Replace a class's grading rubric (the class's professor only); its points must add up to 100. */
+    saveRubric: async (folderId: string, rubric: ClassRubric): Promise<ClassRubricInfo> => {
+      return fetchAPI<ClassRubricInfo>(`folders/${folderId}/rubric`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rubric),
+      })
+    },
+    /** The signed-in student's grades on their submissions in a class. */
+    myGrades: async (folderId: string): Promise<StudentClassGrade[]> => {
+      return fetchAPI<StudentClassGrade[]>(`folders/${folderId}/my-grades`)
+    },
     roster: async (folderId: string): Promise<ClassEnrollmentRecord[]> => {
       return fetchAPI<ClassEnrollmentRecord[]>(`folders/${folderId}/enrollments`)
     },
@@ -1709,7 +1742,7 @@ export const api = {
     getComments: async (documentId: string): Promise<DocumentComment[]> => {
       return fetchAPI<DocumentComment[]>(`professor/documents/${documentId}/comments`)
     },
-    submitGrade: async (documentId: string, studentId: string, grade: number, notes?: string, rubric?: Rubric): Promise<DocumentReview> => {
+    submitGrade: async (documentId: string, studentId: string, grade: number, notes?: string, rubric?: RubricScores): Promise<DocumentReview> => {
       return fetchAPI<DocumentReview>('professor/grade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

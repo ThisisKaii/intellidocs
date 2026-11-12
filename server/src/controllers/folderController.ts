@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import * as folderModel from '../models/folderModel'
-import type { FolderType } from '../types/index'
+import { DEFAULT_CLASS_RUBRIC, type ClassRubric, type FolderType } from '../types/index'
 
 interface FolderBody {
   name?: string
@@ -82,12 +82,6 @@ export async function renameFolder(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const current = await folderModel.getFolderById(userId, id)
-    if (current.name === 'My Drive') {
-      res.status(400).json({ error: 'My Drive cannot be renamed' })
-      return
-    }
-
     const { name } = req.body as FolderBody
     if (!name) {
       res.status(400).json({ error: 'Folder name is required' })
@@ -102,7 +96,7 @@ export async function renameFolder(req: Request, res: Response): Promise<void> {
   }
 }
 
-/** Delete a folder (except My Drive). */
+/** Delete a folder. */
 export async function deleteFolder(req: Request, res: Response): Promise<void> {
   try {
     const userId = getUserId(req, res)
@@ -111,12 +105,6 @@ export async function deleteFolder(req: Request, res: Response): Promise<void> {
     const { id } = req.params
     if (!id) {
       res.status(400).json({ error: 'Folder ID is required' })
-      return
-    }
-
-    const owned = await folderModel.getOwnedFolder(userId, id)
-    if (owned?.name === 'My Drive') {
-      res.status(400).json({ error: 'My Drive cannot be deleted' })
       return
     }
 
@@ -301,5 +289,71 @@ export async function regenerateJoinCode(req: Request, res: Response): Promise<v
     const status = (error as Error & { status?: number }).status
     const message = error instanceof Error ? error.message : 'Failed to regenerate join code'
     res.status(status ?? 500).json({ error: message })
+  }
+}
+
+
+/** A class folder the user may read (its professor or an enrolled student), else null with the error sent. */
+async function readableClass(req: Request, res: Response, userId: string): Promise<{ id: string; ownerId: string } | null> {
+  const { id } = req.params
+  if (!id) {
+    res.status(400).json({ error: 'Folder ID is required' })
+    return null
+  }
+  if (!(await folderModel.canReadFolder(userId, id))) {
+    res.status(404).json({ error: 'Folder not found' })
+    return null
+  }
+  const kind = await folderModel.getFolderKind(id)
+  if (!kind || kind.folder_type !== 'class') {
+    res.status(400).json({ error: 'Rubrics belong to class folders' })
+    return null
+  }
+  return { id, ownerId: kind.user_id }
+}
+
+/** The class's grading rubric: the professor's own, else the default four criteria. */
+export async function getClassRubric(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+    const cls = await readableClass(req, res, userId)
+    if (!cls) return
+    const rubric = await folderModel.getClassRubric(cls.id)
+    res.status(200).json({ rubric: rubric ?? DEFAULT_CLASS_RUBRIC, custom: rubric !== null, canEdit: cls.ownerId === userId })
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load the rubric' })
+  }
+}
+
+/** Save the class's grading rubric (the class's own professor only; validated by classRubricSchema). */
+export async function saveClassRubric(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+    const { id } = req.params
+    const owned = id ? await folderModel.getOwnedFolder(userId, id) : null
+    if (!owned || owned.folder_type !== 'class') {
+      res.status(403).json({ error: 'Only the professor of this class can change its rubric' })
+      return
+    }
+    const rubric = req.body as ClassRubric
+    await folderModel.setClassRubric(owned.folder_id, rubric)
+    res.status(200).json({ rubric, custom: true, canEdit: true })
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to save the rubric' })
+  }
+}
+
+/** The signed-in student's grades on their own submissions in this class. */
+export async function getMyClassGrades(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+    const cls = await readableClass(req, res, userId)
+    if (!cls) return
+    res.status(200).json(await folderModel.getStudentClassGrades(userId, cls.id))
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load your grades' })
   }
 }

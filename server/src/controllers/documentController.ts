@@ -180,13 +180,12 @@ export async function getDocument(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const document = await documentModel.getDocumentForUser(
-      id,
-      userId,
-      req.user?.email,
-      typeof req.query.shareToken === 'string' ? req.query.shareToken : undefined,
-    )
-    res.status(200).json(document)
+    const shareToken = typeof req.query.shareToken === 'string' ? req.query.shareToken : undefined
+    const document = await documentModel.getDocumentForUser(id, userId, req.user?.email, shareToken)
+    // Whether this caller may save: a reviewing professor can read a submission but not edit it,
+    // so the client opens it read-only instead of showing an editor whose saves would be refused.
+    const canEdit = await documentModel.canEditDocument(document, userId, shareToken)
+    res.status(200).json({ ...document, can_edit: canEdit })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     const status = (error as Error & { status?: number }).status ?? 500
