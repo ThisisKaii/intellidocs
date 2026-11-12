@@ -139,17 +139,30 @@ class TestFonts:
 
 
 class TestTabs:
-    def test_a_left_stop_at_the_right_margin_becomes_a_right_stop(self):
-        document = docx.Document()
-        paragraph = document.add_paragraph("Chapter 1\t24")
-        width = int((document.sections[0].page_width - document.sections[0].left_margin - document.sections[0].right_margin) / 635)
+    @staticmethod
+    def _toc_line(document, text, position):
+        paragraph = document.add_paragraph(text)
         tabs = etree.SubElement(paragraph._p.get_or_add_pPr(), qn("w:tabs"))
         tab = etree.SubElement(tabs, qn("w:tab"))
         tab.set(qn("w:val"), "left")
-        tab.set(qn("w:pos"), str(width - 200))
+        tab.set(qn("w:pos"), str(position))
+        return tab
+
+    def test_a_left_stop_at_the_right_margin_becomes_a_right_stop_on_a_contents_page(self):
+        document = docx.Document()
+        width = int((document.sections[0].page_width - document.sections[0].left_margin - document.sections[0].right_margin) / 635)
+        tabs = [self._toc_line(document, f"Chapter {n}\t{n * 12}", width - 200) for n in (1, 2, 3)]
         _snap_right_tabs(document)
-        assert tab.get(qn("w:val")) == "right"
-        assert int(tab.get(qn("w:pos"))) == width
+        assert all(tab.get(qn("w:val")) == "right" for tab in tabs)
+        assert all(int(tab.get(qn("w:pos"))) == width for tab in tabs)
+
+    def test_a_lone_line_ending_in_a_number_is_not_a_contents_entry(self):
+        # A memo's "No. ____, s. 2026" ends in a number too; a right stop there drew a dot leader the PDF never had.
+        document = docx.Document()
+        width = int((document.sections[0].page_width - document.sections[0].left_margin - document.sections[0].right_margin) / 635)
+        tab = self._toc_line(document, "No. ______, s.\t2026", width - 200)
+        _snap_right_tabs(document)
+        assert tab.get(qn("w:val")) == "left"
 
     def test_a_stop_in_the_middle_of_the_line_is_left_alone(self):
         document = docx.Document()

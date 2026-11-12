@@ -1,4 +1,6 @@
 import base64
+import collections
+import copy
 import hashlib
 import io
 import json
@@ -3428,7 +3430,21 @@ def _cell_padding_px(tc: Any, default: Dict[str, float]) -> Dict[str, float]:
                 margins[name] = float(width) * TWIPS_PER_PX
     if default.get("pdf") and margins["left"] == 0 and margins["right"] == 0:
         margins["left"] = margins["right"] = 9.6
+    if default.get("pdf"):
+        # A PDF's narrow columns ("Talk-To-Your-Slides" in a 53px column) have no room for full padding:
+        # 9.6px a side left a third of the width and the header wrapped onto extra lines.
+        width_el = tc.find(qn("w:tcPr") + "/" + qn("w:tcW"))
+        raw = width_el.get(qn("w:w")) if width_el is not None else None
+        if raw and raw.isdigit() and width_el.get(qn("w:type")) in (None, "dxa"):
+            cap = max(_PDF_MIN_CELL_PADDING_PX, _PDF_CELL_PADDING_SHARE * float(raw) * TWIPS_PER_PX)
+            margins["left"] = min(margins["left"], cap)
+            margins["right"] = min(margins["right"], cap)
     return margins
+
+
+# PDF table cells keep at most this share of their width as padding on each side (and at least 2px).
+_PDF_CELL_PADDING_SHARE = 0.06
+_PDF_MIN_CELL_PADDING_PX = 2.0
 
 
 def _cell_padding_css(tc: Any, default: Dict[str, float]) -> str:
@@ -4962,6 +4978,7 @@ def _strip_running_furniture(doc: docx.Document, page_break_after: Set[Any], rep
                     "text": "".join(node.text or "" for node in element.iter(qn("w:t"))).strip(),
                     "jc": jc.get(qn("w:val")) if jc is not None else None,
                     "has_image": element.find(".//" + qn("a:blip")) is not None,
+                    "images_html": _furniture_images_html(element, doc),
                 })
             if element in page_break_after:
                 for child in list(element):
@@ -4971,6 +4988,22 @@ def _strip_running_furniture(doc: docx.Document, page_break_after: Set[Any], rep
                 element.getparent().remove(element)
             removed += 1
     return removed
+
+
+def _furniture_images_html(element: Any, doc: docx.Document) -> str:
+    """The pictures of a running header/footer line as <img> tags, so a letterhead seal returns with it."""
+    parts: Dict[str, bytes] = {}
+    for blip in element.iter(qn("a:blip")):
+        rel_id = blip.get(qn("r:embed"))
+        part = doc.part.related_parts.get(rel_id) if rel_id else None
+        if part is not None and rel_id not in parts:
+            parts[rel_id] = _compress_image_bytes(part.blob)
+    if not parts:
+        return ""
+    try:
+        return "".join(_image_html(blip, parts) for blip in element.iter(qn("a:blip")))
+    except Exception:
+        return ""
 
 
 def _heading_shape(words: List[str], text: str) -> bool:
@@ -5132,17 +5165,23 @@ def _furniture_to_layout(result: Dict[str, Any], report: Dict[str, Any], page_co
         (re.search(r'data-section="(\d+)"', tag) or [None, ""])[1]
         for tag in re.findall(r'<hr class="page-break"[^>]*/>', result["html"])
     ]
-    if not items or not breaks or any(value == "" for value in breaks) or len(breaks) + 1 != page_count:
+    if not items or not all_sections:
         return
+    # Which section opens each page. When the emitter's page breaks and the PDF's pages cannot be
+    # matched one to one, the furniture still returns, on every page (better than losing it).
     by_index = {section["index"]: section for section in all_sections}
-    sections = [by_index.get(index) for index in [0] + [int(value) for value in breaks]]
-    if any(section is None for section in sections):
-        return
+    sections: List[Optional[Dict[str, Any]]] = []
+    page_matched = bool(breaks) and all(value != "" for value in breaks) and len(breaks) + 1 == page_count
+    if page_matched:
+        sections = [by_index.get(index) for index in [0] + [int(value) for value in breaks]]
+        page_matched = all(section is not None for section in sections)
+    if not page_matched:
+        sections = list(all_sections)
     parts: Dict[str, Dict[str, str]] = result["hf"]["parts"]
     lines: Dict[str, List[Dict[str, Any]]] = {"header": [], "footer": []}
     seen: Set[Tuple[str, str]] = set()
     for item in items:
-        if item["has_image"] or not item["text"]:
+        if not item["text"] and not item.get("images_html"):
             continue
         signature = (item["side"], item["key"])
         if signature not in seen:
@@ -5156,11 +5195,16 @@ def _furniture_to_layout(result: Dict[str, Any], report: Dict[str, Any], page_co
         for item in lines[side]:
             is_number = item["key"].startswith("<page-number>")
             body = "{page}" if is_number else _html_escape(item["text"])
+            body = (item.get("images_html") or "") + (" " if item.get("images_html") and body else "") + body
             html += f'<p style="margin:0;text-align:{_furniture_alignment(item)};font-size:11pt">{body}</p>'
         parts[f"pdf_{side}"] = {"flow": html, "art": ""}
         pages_with = {item["page"] for item in items if item["side"] == side}
         for page_index, section in enumerate(sections):
-            section[side] = f"pdf_{side}" if page_index in pages_with else None
+            if section is None:
+                continue
+            section[side] = f"pdf_{side}" if (not page_matched or page_index in pages_with) else None
+    if not page_matched:
+        return
 
     # Printed numbers per page: start values and number styles where the sequence changes.
     printed: Dict[int, Tuple[int, str]] = {}
@@ -5180,12 +5224,19 @@ def _furniture_to_layout(result: Dict[str, Any], report: Dict[str, Any], page_co
         previous = number
 
 
-def _snap_right_tabs(doc: docx.Document) -> None:
-    """Make a left tab stop that sits at the right margin a right-aligned one.
+# A page needs this many "title <tab> number" lines to be a table of contents.
+_TOC_PAGE_MIN_LINES = 3
+_TOC_NUMBER = re.compile(r"^\s*(\d{1,4}|[ivxlcdm]{1,7})\s*$", re.IGNORECASE)
+
+
+def _snap_right_tabs(doc: docx.Document, page_break_after: Optional[Set[Any]] = None) -> None:
+    """Make a left tab stop that sits at the right margin a right-aligned one, on table-of-contents pages.
 
     pdf2docx records where a page number STARTS (a left stop just inside the right
     margin), so the number overflows the line and wraps in a table of contents.
-    The PDF drew it flush right.
+    The PDF drew it flush right. Only pages with several "title <tab> number" lines
+    are treated this way: a memo's "No. ____, s. 2026" or a form's "INDICATOR 11"
+    also ends in a number, and a right stop there drew a dot leader the PDF never had.
     """
     try:
         section = doc.sections[0]
@@ -5194,15 +5245,29 @@ def _snap_right_tabs(doc: docx.Document) -> None:
         return
     if width_twips <= 0:
         return
-    for tab in doc.element.body.iter(qn("w:tab")):
-        if tab.getparent() is None or tab.getparent().tag != qn("w:tabs"):
+
+    def is_toc_line(paragraph: Any) -> bool:
+        text = "".join((node.text or "") if node.tag == qn("w:t") else "\t" for node in paragraph.iter(qn("w:t"), qn("w:tab")) if node.getparent() is not None and node.getparent().tag == qn("w:r"))
+        if "\t" not in text:
+            return False
+        before, _, after = text.rpartition("\t")
+        return bool(before.strip()) and bool(_TOC_NUMBER.match(after))
+
+    pages = _split_pages(doc, page_break_after) if page_break_after is not None else [list(doc.element.body)]
+    for page in pages:
+        toc_lines = [el for el in page if el.tag == qn("w:p") and is_toc_line(el)]
+        if len(toc_lines) < _TOC_PAGE_MIN_LINES:
             continue
-        position = tab.get(qn("w:pos"))
-        if tab.get(qn("w:val")) != "left" or not position:
-            continue
-        if 0.88 * width_twips <= float(position) <= 1.05 * width_twips:
-            tab.set(qn("w:val"), "right")
-            tab.set(qn("w:pos"), str(int(width_twips)))
+        for paragraph in toc_lines:
+            for tab in paragraph.iter(qn("w:tab")):
+                if tab.getparent() is None or tab.getparent().tag != qn("w:tabs"):
+                    continue
+                position = tab.get(qn("w:pos"))
+                if tab.get(qn("w:val")) != "left" or not position:
+                    continue
+                if 0.88 * width_twips <= float(position) <= 1.05 * width_twips:
+                    tab.set(qn("w:val"), "right")
+                    tab.set(qn("w:pos"), str(int(width_twips)))
 
 
 _WORD_LIST: Any = None
@@ -5328,15 +5393,1427 @@ def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     page_break_after = _page_break_paragraphs(doc)
     furniture: Dict[str, Any] = {}
     page_count = len(_split_pages(doc, page_break_after))
+    _unnest_hyperlinks(doc)
+    _unwrap_layout_tables(doc)
     _strip_running_furniture(doc, page_break_after, furniture)
     _infer_heading_styles(doc, page_break_after)
-    _snap_right_tabs(doc)
+    _snap_right_tabs(doc, page_break_after)
+    _rebuild_definition_pages(doc, file_bytes, page_break_after)
+    _repair_tabbed_entries(doc, file_bytes, page_break_after)
     _reflow_pdf_table_cells(doc)
+    _grid_from_cell_widths(doc)
+    _merge_split_table_rows(doc)
+    _space_word_runs(doc)
+    _absorb_inline_picture_gaps(doc)
+    _drop_trailing_page_spacers(doc, page_break_after)
+    _flatten_section_marks(doc, page_break_after)
+    _exact_line_pitch_from_pdf(doc, file_bytes, page_break_after)
+    _loosen_page_bottoms(doc, page_break_after)
+    _keep_blank_pages(doc, page_break_after)
+    _fill_blanks_from_pdf(doc, file_bytes, page_break_after)
     _realign_from_pdf(doc, file_bytes, page_break_after)
+    _rejoin_side_lines_from_pdf(doc, file_bytes, page_break_after)
+    _float_pictures_beside_text(doc, file_bytes, page_break_after)
+    _mark_superscripts_from_pdf(doc, file_bytes, page_break_after)
     _merge_picture_rows_from_pdf(doc, file_bytes, page_break_after)
     doc.part._is_pdf_import = True  # pdf2docx leaves cell padding at zero; see _table_cell_margins
     result = _docx_document_to_result(doc, page_break_after, compress_images=True)
     _furniture_to_layout(result, furniture, page_count)
+    if _pdf_two_column_body(file_bytes):
+        result["two_column_body"] = True
     # A PDF is laid out page by page: Word's widow/orphan rules would spill lines onto extra pages.
     result["flow_rules"] = False
     return result
+
+
+# "a." "b)" "iv." "12." — an enumeration label pdf2docx leaves glued to the item text.
+_LIST_LABEL_RUN = re.compile(r"^\(?(?:[a-z]|[ivx]{1,4}|\d{1,3})[.)]$", re.IGNORECASE)
+
+
+def _run_text(run: Any) -> str:
+    return "".join(node.text or "" for node in run.iter(qn("w:t")))
+
+
+def _prepend_space(run: Any) -> bool:
+    """Put a space at the start of a run's first text node."""
+    first = run.find(qn("w:t"))
+    if first is None or first.text is None:
+        return False
+    first.text = " " + first.text
+    first.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    return True
+
+
+def _space_word_runs(doc: docx.Document) -> int:
+    """Restore the spaces between runs that a justified PDF line drew word by word.
+
+    Justified text is often drawn one word at a time with no space glyphs between
+    them; pdf2docx gives each word its own run and the line read
+    "provideteacherswithmeaningful". Two adjacent runs that each end/start a word are
+    joined by a space when they are separate dictionary words but not one word
+    together ("Extract" + "ion" stays one word). An enumeration label run ("a.", "3)")
+    is always followed by a space. Returns how many spaces were added.
+    """
+    added = 0
+    for paragraph in doc.element.body.iter(qn("w:p")):
+        runs = [run for run in paragraph.findall(qn("w:r")) if _run_text(run)]
+        for index, (left_run, right_run) in enumerate(zip(runs, runs[1:])):
+            left, right = _run_text(left_run), _run_text(right_run)
+            before = _run_text(runs[index - 1]) if index > 0 else ""
+            if not left or not right or left[-1].isspace() or right[0].isspace():
+                continue
+            if right_run.find(qn("w:rPr") + "/" + qn("w:vertAlign")) is not None or left_run.find(qn("w:rPr") + "/" + qn("w:vertAlign")) is not None:
+                continue
+            # A label opens the paragraph or follows the end of the previous item ("…communities; b.").
+            label_position = index == 0 or not before or before.rstrip()[-1:] in ";:." or before[-1:].isspace()
+            if _LIST_LABEL_RUN.match(left.strip()) and label_position and right[0].isalpha():
+                added += _prepend_space(right_run)
+                continue
+            left_word = re.search(r"([A-Za-z]+)$", left)
+            right_word = re.match(r"([A-Za-z]+)", right)
+            if not left_word or not right_word:
+                continue
+            a, b = left_word.group(1), right_word.group(1)
+            if len(a) < 2 or len(b) < 2:
+                continue
+            known = _known_words([a.lower(), b.lower(), (a + b).lower()])
+            if a.lower() in known and b.lower() in known and (a + b).lower() not in known:
+                added += _prepend_space(right_run)
+    return added
+
+
+def _fill_blanks_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Put text the PDF printed on a fill-in blank back inside the blank.
+
+    A form line "No. ________, s. 2026" with "0440" typed onto the underline came out as
+    "No. ________, s. 2026 0440": pdf2docx keeps the overlaid text as a separate run at the
+    line's end. When the PDF draws a short text span horizontally inside an underscore
+    span on the same line, the run holding that text replaces the middle of the blank.
+    Returns how many blanks were filled.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+    try:
+        overlays_per_page: List[Set[str]] = []
+        for page in pdf:
+            found: Set[str] = set()
+            # The overlaid text is usually its own block, so the page's spans are compared together.
+            spans = [span for block in page.get_text("dict").get("blocks", []) for line in block.get("lines", []) for span in line.get("spans", [])]
+            blanks = [span for span in spans if re.search(r"_{4,}", span.get("text", "") or "")]
+            if blanks:
+                for span in spans:
+                    text = (span.get("text") or "").strip()
+                    if not text or "_" in text or len(text) > 20:
+                        continue
+                    x0, y0, x1, y1 = span["bbox"]
+                    for blank in blanks:
+                        bx0, by0, bx1, by1 = blank["bbox"]
+                        if bx0 - 2 <= x0 and x1 <= bx1 + 2 and min(y1, by1) - max(y0, by0) > 0.3 * (y1 - y0):
+                            found.add(text)
+            overlays_per_page.append(found)
+    finally:
+        pdf.close()
+
+    filled, page_index = 0, 0
+    for element in doc.element.body:
+        if element.tag == qn("w:p") and page_index < len(overlays_per_page) and overlays_per_page[page_index]:
+            runs = element.findall(qn("w:r"))
+            for index, run in enumerate(runs):
+                text = _run_text(run).strip()
+                if text not in overlays_per_page[page_index]:
+                    continue
+                blank_run = next((r for r in runs[:index] if re.search(r"_{4,}", _run_text(r))), None)
+                if blank_run is None:
+                    continue
+                nodes = [node for node in blank_run.iter(qn("w:t")) if node.text and re.search(r"_{4,}", node.text)]
+                if not nodes:
+                    continue
+                match = re.search(r"_{4,}", nodes[0].text)
+                underscores = match.group(0)
+                keep = (len(underscores) - len(text)) // 2
+                if keep >= 2:
+                    # A long blank: the number sits in its middle, the rest of the line stays visible.
+                    nodes[0].text = nodes[0].text[: match.start()] + "_" * keep + text + "_" * keep + nodes[0].text[match.end():]
+                    nodes[0].set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                    run.getparent().remove(run)
+                else:
+                    # The number fills the blank: printed on the line, it reads as underlined text.
+                    head, tail = nodes[0].text[: match.start()], nodes[0].text[match.end():]
+                    nodes[0].text = head
+                    nodes[0].set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                    r_pr = run.find(qn("w:rPr"))
+                    if r_pr is None:
+                        r_pr = run.makeelement(qn("w:rPr"), {})
+                        run.insert(0, r_pr)
+                    if r_pr.find(qn("w:u")) is None:
+                        r_pr.append(r_pr.makeelement(qn("w:u"), {qn("w:val"): "single"}))
+                    run.getparent().remove(run)
+                    blank_run.addnext(run)
+                    if tail:
+                        tail_run = copy.deepcopy(blank_run)
+                        for node in list(tail_run):
+                            if node.tag != qn("w:rPr"):
+                                tail_run.remove(node)
+                        tail_node = tail_run.makeelement(qn("w:t"), {})
+                        tail_node.text = tail
+                        tail_node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                        tail_run.append(tail_node)
+                        run.addnext(tail_run)
+                filled += 1
+                break
+        if element in page_break_after:
+            page_index += 1
+    return filled
+
+
+# A two-column term list needs this many rows with a term beside its definition.
+_DEFLIST_MIN_ROWS = 3
+# A column is a band of line starts this wide (pt); the definition column sits at least this far right.
+_DEFLIST_COLUMN_BAND = 8.0
+_DEFLIST_MIN_COLUMN_GAP = 60.0
+# Most term spans are bold, and the definitions take at least this many lines per term line.
+_DEFLIST_MIN_BOLD_SHARE = 0.6
+_DEFLIST_MIN_LINE_RATIO = 1.5
+
+
+def _page_section_left_margin_pt(doc: docx.Document, page: List[Any]) -> float:
+    """Left margin (pt) of the section a page belongs to: the sectPr that closes it, else the body's last one."""
+    for element in page:
+        sect = element.find(qn("w:pPr") + "/" + qn("w:sectPr")) if element.tag == qn("w:p") else None
+        if sect is not None:
+            margin = sect.find(qn("w:pgMar"))
+            if margin is not None and (margin.get(qn("w:left")) or "").lstrip("-").isdigit():
+                return int(margin.get(qn("w:left"))) / 20.0
+    try:
+        return doc.sections[-1].left_margin / EMU_PER_POINT
+    except Exception:
+        return 72.0
+
+
+def _rebuild_definition_pages(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Rebuild a two-column Definition of Terms from the PDF's own lines.
+
+    A thesis's Definition of Terms sets each term in a left column and its definition in
+    a right column. pdf2docx reads some such pages as a mix of a table, centred stray
+    terms and definitions detached from their terms, which also spilled onto the next
+    page. Where a page has several rows with a term beside its definition, the run of
+    rows is rebuilt: one paragraph per entry, the term (bold as printed), a tab, then the
+    definition, with a hanging indent at the definition column and the PDF's line pitch.
+    The pdf2docx paragraphs holding that text are replaced. Returns how many entries
+    were written.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+    try:
+        pdf_pages = []
+        for page in pdf:
+            lines = []
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    spans = [span for span in line.get("spans", []) if (span.get("text") or "").strip()]
+                    if spans:
+                        lines.append({"x0": line["bbox"][0], "x1": line["bbox"][2], "y0": line["bbox"][1], "y1": line["bbox"][3], "spans": spans,
+                                      "text": re.sub(r"\s+", " ", "".join(span["text"] for span in line["spans"])).strip()})
+            lines.sort(key=lambda item: (round(item["y0"]), item["x0"]))
+            pdf_pages.append(lines)
+    finally:
+        pdf.close()
+
+    def overlaps(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+        return min(a["y1"], b["y1"]) - max(a["y0"], b["y0"]) > 0.5 * min(a["y1"] - a["y0"], b["y1"] - b["y0"])
+
+    written = 0
+    for page_index, page in enumerate(_split_pages(doc, page_break_after)):
+        if page_index >= len(pdf_pages):
+            break
+        lines = pdf_pages[page_index]
+        # Rows where a line starts left of another line at the same height: candidate term/definition pairs.
+        pairs = []
+        for a in lines:
+            for b in lines:
+                if b["x0"] - a["x0"] >= _DEFLIST_MIN_COLUMN_GAP and b["x0"] - a["x1"] >= _DEFLIST_COLUMN_BAND and overlaps(a, b):
+                    pairs.append((a, b))
+        if len(pairs) < _DEFLIST_MIN_ROWS:
+            continue
+        # The columns meet at a gutter: term lines end left of it, definition lines start right of it.
+        # Reading the gutter (not each column's left edge) also takes centred terms and definitions.
+        term_ends = sorted(a["x1"] for a, _ in pairs)
+        definition_starts = sorted(b["x0"] for _, b in pairs)
+        term_end = term_ends[min(len(term_ends) - 1, int(len(term_ends) * 0.9))]
+        definition_start = definition_starts[int(len(definition_starts) * 0.1)]
+        if term_end >= definition_start:
+            continue
+        split = (term_end + definition_start) / 2
+        left_x = min(a["x0"] for a, _ in pairs)
+        right_x = definition_start
+        in_left = lambda item: item["x1"] <= split + 2 and item["x0"] >= left_x - _DEFLIST_COLUMN_BAND
+        in_right = lambda item: item["x0"] >= split - 2
+        rows = [(a, b) for a, b in pairs if in_left(a) and in_right(b)]
+        if len(rows) < _DEFLIST_MIN_ROWS:
+            continue
+        # The region runs from the first paired row down through the column lines that follow it.
+        top = min(a["y0"] for a, _ in rows)
+        region = []
+        for item in lines:
+            if item["y1"] < top:
+                continue
+            if in_left(item) or in_right(item):
+                region.append(item)
+            elif region:
+                break
+        # Entries: a new one starts at a left-column line that is not just below the previous term line.
+        right_lines = [item for item in region if in_right(item)]
+        gaps = sorted(b["y0"] - a["y1"] for a, b in zip(right_lines, right_lines[1:]) if b["y0"] > a["y1"] - 1)
+        line_gap = gaps[len(gaps) // 4] if gaps else 4.0
+        # Read the region row by row: lines at the same height form one row, left column first,
+        # so a term and the first line of its definition always land in the same entry.
+        ordered: List[Dict[str, Any]] = []
+        row: List[Dict[str, Any]] = []
+        for item in sorted(region, key=lambda line: line["y0"]):
+            if row and not overlaps(row[0], item):
+                ordered.extend(sorted(row, key=lambda line: line["x0"]))
+                row = []
+            row.append(item)
+        ordered.extend(sorted(row, key=lambda line: line["x0"]))
+        entries: List[Dict[str, Any]] = []
+        for item in ordered:
+            if in_left(item):
+                previous_term = entries[-1]["term"][-1] if entries and entries[-1]["term"] else None
+                # A wrapped term ("Artificial Intelligence" / "(AI)") sits one line below the previous term line.
+                continues = previous_term is not None and item["y0"] - previous_term["y1"] <= line_gap + 2
+                if continues:
+                    entries[-1]["term"].append(item)
+                else:
+                    entries.append({"term": [item], "definition": []})
+            elif entries:
+                entries[-1]["definition"].append(item)
+        entries = [entry for entry in entries if entry["definition"]]
+        if len(entries) < _DEFLIST_MIN_ROWS:
+            continue
+        # A term list: terms printed bold, definitions running longer than their terms. An author
+        # sidebar beside an abstract (plain e-mail lines beside prose) is not one.
+        term_spans = [span for entry in entries for item in entry["term"] for span in item["spans"]]
+        bold_share = sum(1 for span in term_spans if (span.get("flags", 0) & 16) or "bold" in span.get("font", "").lower()) / max(1, len(term_spans))
+        term_lines = sum(len(entry["term"]) for entry in entries)
+        definition_lines = sum(len(entry["definition"]) for entry in entries)
+        if bold_share < _DEFLIST_MIN_BOLD_SHARE or definition_lines < _DEFLIST_MIN_LINE_RATIO * term_lines:
+            continue
+
+        def norm_words(text: str) -> List[str]:
+            return re.findall(r"[a-z0-9]+", text.lower())
+
+        region_words = set(word for item in region for word in norm_words(item["text"]))
+        doomed = []
+        for element in page:
+            if element.tag not in (qn("w:p"), qn("w:tbl")):
+                continue
+            if element.find(".//" + qn("a:blip")) is not None or (element.tag == qn("w:p") and element.find(qn("w:pPr") + "/" + qn("w:sectPr")) is not None):
+                continue
+            words = norm_words("".join(node.text or "" for node in element.iter(qn("w:t"))))
+            if words and sum(1 for word in words if word in region_words) >= 0.9 * len(words):
+                doomed.append(element)
+        if not doomed:
+            continue
+        # Never lose text: the rebuilt entries must hold the words of everything they replace.
+        entry_words = collections.Counter(norm_words(" ".join(item["text"] for entry in entries for item in entry["term"] + entry["definition"])))
+        replaced_words = collections.Counter(word for element in doomed for word in norm_words("".join(node.text or "" for node in element.iter(qn("w:t")))))
+        if sum((replaced_words - entry_words).values()) > 2:
+            continue
+        # pdf2docx's empty spacer paragraphs between the replaced ones go with them.
+        children = list(doc.element.body)
+        first, last = children.index(doomed[0]), children.index(doomed[-1])
+        for element in children[first:last + 1]:
+            if element in doomed or element.tag != qn("w:p") or element in page_break_after:
+                continue
+            if element.find(qn("w:pPr") + "/" + qn("w:sectPr")) is not None or element.find(".//" + qn("a:blip")) is not None:
+                continue
+            if not "".join(node.text or "" for node in element.iter(qn("w:t"))).strip():
+                doomed.append(element)
+
+        margin_pt = _page_section_left_margin_pt(doc, page)
+        pitch = (sorted(b["y0"] - a["y0"] for a, b in zip(right_lines, right_lines[1:]) if b["y0"] - a["y0"] > 2) or [14.0])
+        pitch_pt = pitch[len(pitch) // 4]
+        stop_twips = int(round((right_x - margin_pt) * 20))
+        left_twips = int(round((left_x - margin_pt) * 20))
+
+        def run_for(text: str, span: Dict[str, Any]) -> Any:
+            run = OxmlElement("w:r")
+            r_pr = OxmlElement("w:rPr")
+            font = re.sub(r"^[A-Z]{6}\+", "", span.get("font", "")).split(",")[0].split("-")[0]
+            font = re.sub(r"(PSMT|PS|MT)$", "", font).strip() or "Times New Roman"
+            fonts = OxmlElement("w:rFonts")
+            for attr in ("w:ascii", "w:hAnsi", "w:cs"):
+                fonts.set(qn(attr), font)
+            r_pr.append(fonts)
+            bold = bool(span.get("flags", 0) & 16) or "bold" in span.get("font", "").lower()
+            italic = bool(span.get("flags", 0) & 2) or "italic" in span.get("font", "").lower()
+            if bold:
+                r_pr.append(OxmlElement("w:b"))
+            if italic:
+                r_pr.append(OxmlElement("w:i"))
+            size = OxmlElement("w:sz")
+            size.set(qn("w:val"), str(int(round(span.get("size", 11) * 2))))
+            r_pr.append(size)
+            run.append(r_pr)
+            text_node = OxmlElement("w:t")
+            text_node.text = text
+            text_node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            run.append(text_node)
+            return run
+
+        anchor_element = doomed[0]
+        previous_bottom = None
+        for entry in entries:
+            paragraph = OxmlElement("w:p")
+            p_pr = OxmlElement("w:pPr")
+            tabs = OxmlElement("w:tabs")
+            tab = OxmlElement("w:tab")
+            tab.set(qn("w:val"), "left")
+            tab.set(qn("w:pos"), str(stop_twips))
+            tabs.append(tab)
+            p_pr.append(tabs)
+            spacing = OxmlElement("w:spacing")
+            first_top = min(item["y0"] for item in entry["term"] + entry["definition"])
+            before = 0 if previous_bottom is None else max(0.0, first_top - previous_bottom - (pitch_pt - (entry["definition"][0]["y1"] - entry["definition"][0]["y0"])))
+            spacing.set(qn("w:before"), str(int(round(before * 20))))
+            spacing.set(qn("w:after"), "0")
+            spacing.set(qn("w:line"), str(int(round(pitch_pt * 20))))
+            spacing.set(qn("w:lineRule"), "exact")
+            p_pr.append(spacing)
+            ind = OxmlElement("w:ind")
+            ind.set(qn("w:left"), str(stop_twips))
+            ind.set(qn("w:hanging"), str(stop_twips - left_twips))
+            p_pr.append(ind)
+            paragraph.append(p_pr)
+            term_spans = [span for item in entry["term"] for span in item["spans"]]
+            term_text = " ".join(item["text"] for item in entry["term"])
+            paragraph.append(run_for(term_text, term_spans[0]))
+            tab_run = OxmlElement("w:r")
+            tab_run.append(OxmlElement("w:tab"))
+            paragraph.append(tab_run)
+            definition_text = " ".join(item["text"] for item in entry["definition"])
+            paragraph.append(run_for(definition_text, entry["definition"][0]["spans"][0]))
+            anchor_element.addprevious(paragraph)
+            previous_bottom = max(item["y1"] for item in entry["term"] + entry["definition"])
+            written += 1
+        for element in doomed:
+            if element in page_break_after:
+                # Keep the page-ending paragraph (its break) but empty it.
+                for child in list(element):
+                    if child.tag != qn("w:pPr"):
+                        element.remove(child)
+            elif element.getparent() is not None:
+                element.getparent().remove(element)
+    return written
+
+
+# A definition-list page has at least this many "term <tab> definition" entries.
+_DEFINITION_PAGE_MIN_ENTRIES = 3
+_DEFINITION_TERM_MAX_WORDS = 6
+
+
+def _tabbed_entry(paragraph: Any) -> Optional[Tuple[Any, int, int, str, str]]:
+    """(pPr, left indent, tab stop, term, text after the tab) for a "short term <tab> text" paragraph with one left stop."""
+    p_pr = paragraph.find(qn("w:pPr"))
+    if p_pr is None:
+        return None
+    stops = [tab for tab in p_pr.iter(qn("w:tab")) if tab.get(qn("w:val")) == "left" and (tab.get(qn("w:pos")) or "").isdigit()]
+    if len(stops) != 1:
+        return None
+    ind = p_pr.find(qn("w:ind"))
+    raw_left = ind.get(qn("w:left")) if ind is not None else None
+    left = int(raw_left) if raw_left and raw_left.lstrip("-").isdigit() else 0
+    stop = int(stops[0].get(qn("w:pos")))
+    if stop <= left + 360:
+        return None
+    pieces: List[str] = [""]
+    for node in paragraph.iter(qn("w:t"), qn("w:tab")):
+        if node.getparent() is None or node.getparent().tag != qn("w:r"):
+            continue
+        if node.tag == qn("w:tab"):
+            pieces.append("")
+        else:
+            pieces[-1] += node.text or ""
+    if len(pieces) < 2:
+        return None
+    term, rest = pieces[0].strip(), " ".join(piece.strip() for piece in pieces[1:]).strip()
+    if not term or not rest or len(term.split()) > _DEFINITION_TERM_MAX_WORDS:
+        return None
+    return p_pr, left, stop, term, rest
+
+
+def _split_at_first_tab(paragraph: Any) -> Optional[Any]:
+    """Move everything before the paragraph's first tab into a new paragraph inserted before it; return that paragraph."""
+    first_tab = next((node for node in paragraph.iter(qn("w:tab")) if node.getparent() is not None and node.getparent().tag == qn("w:r")), None)
+    if first_tab is None:
+        return None
+    tab_run = first_tab.getparent()
+    if tab_run.getparent() is not paragraph:
+        return None
+    head = copy.deepcopy(paragraph)
+    for child in list(head):
+        if child.tag != qn("w:pPr"):
+            head.remove(child)
+    for child in list(paragraph):
+        if child.tag == qn("w:pPr"):
+            continue
+        if child is tab_run:
+            # Text in the tab's own run before the tab belongs to the heading.
+            before_run = copy.deepcopy(child)
+            cut = False
+            for node in list(before_run):
+                if node.tag == qn("w:rPr"):
+                    continue
+                if node.tag == qn("w:tab") and not cut:
+                    cut = True
+                if cut:
+                    before_run.remove(node)
+            if any(node.tag != qn("w:rPr") for node in before_run):
+                head.append(before_run)
+            seen_tab = False
+            for node in list(child):
+                if node.tag == qn("w:rPr") or seen_tab:
+                    continue
+                child.remove(node)
+                if node.tag == qn("w:tab"):
+                    seen_tab = True
+            if not any(node.tag != qn("w:rPr") for node in child):
+                paragraph.remove(child)
+            break
+        paragraph.remove(child)
+        head.append(child)
+    paragraph.addprevious(head)
+    # The PDF line break between the heading and the body is now the paragraph break.
+    _trim_edge_breaks(head, at_end=True)
+    _trim_edge_breaks(paragraph, at_end=False)
+    return head
+
+
+def _trim_edge_breaks(paragraph: Any, at_end: bool) -> None:
+    """Drop line breaks (and whitespace-only text) at the end or start of a paragraph."""
+    runs = [child for child in paragraph if child.tag == qn("w:r")]
+    for run in (reversed(runs) if at_end else runs):
+        content = [node for node in run if node.tag != qn("w:rPr")]
+        for node in (reversed(content) if at_end else content):
+            if node.tag == qn("w:br") and node.get(qn("w:type")) in (None, "textWrapping"):
+                run.remove(node)
+            elif node.tag == qn("w:t") and not (node.text or "").strip():
+                run.remove(node)
+            else:
+                return
+        if not any(node.tag != qn("w:rPr") for node in run):
+            paragraph.remove(run)
+
+
+def _repair_tabbed_entries(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Rebuild "term <tab> text" paragraphs the way the PDF set them.
+
+    pdf2docx joins two shapes into one paragraph with a tab, and both overflowed the page:
+
+    * A Definition of Terms entry, term and definition side by side, the definition wrapped
+      in its own column: written as the term, a tab, then every wrapped line after a further
+      tab. The editor wraps the text itself, so the inner tabs landed mid-line and the
+      wrapped lines fell back under the term. On a page with several of these, each gets a
+      hanging indent at the tab stop and its inner tabs become spaces.
+    * A run-in heading on its own line followed by a paragraph whose first line is indented
+      ("Machine Learning Prediction Engine" / "The literature strongly ..."): written as the
+      heading, a tab, the body. It is split back into the heading paragraph and a body
+      paragraph with that first-line indent.
+
+    The PDF tells them apart: a definition's first line holds the term and the start of its
+    definition, a run-in heading's line holds only the heading. Returns how many changed.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+
+    def normal(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip().lower()
+
+    try:
+        page_lines: List[List[Tuple[str, float, float]]] = []
+        for page in pdf:
+            found: List[Tuple[str, float, float]] = []
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    text = normal("".join(span.get("text", "") for span in line.get("spans", [])))
+                    if text:
+                        found.append((text, line["bbox"][1], line["bbox"][3]))
+            page_lines.append(found)
+    finally:
+        pdf.close()
+
+    def shape(term: str, rest: str, lines: List[Tuple[str, float, float]]) -> Optional[str]:
+        """'definition' when the text after the tab starts beside the term, 'heading' when it starts below it."""
+        for text, y0, y1 in lines:
+            if text.startswith(term + " ") and len(text) > len(term) + 3:
+                return "definition"  # term and definition read as one PDF line
+        term_line = next(((y0, y1) for text, y0, y1 in lines if text == term), None)
+        if term_line is None:
+            return None
+        lead = rest[:20]
+        rest_line = next(((y0, y1) for text, y0, y1 in lines if len(lead) >= 6 and (text.startswith(lead) or lead.startswith(text[:20]))), None)
+        if rest_line is None:
+            return None
+        overlap = min(term_line[1], rest_line[1]) - max(term_line[0], rest_line[0])
+        if overlap > 0.5 * (term_line[1] - term_line[0]):
+            return "definition"
+        return "heading" if rest_line[0] >= term_line[1] - 1 else None
+
+    changed = 0
+    for page_index, page in enumerate(_split_pages(doc, page_break_after)):
+        if page_index >= len(page_lines):
+            break
+        lines = page_lines[page_index]
+        definitions: List[Tuple[Any, Tuple[Any, int, int, str, str]]] = []
+        for element in page:
+            if element.tag != qn("w:p"):
+                continue
+            found = _tabbed_entry(element)
+            if not found:
+                continue
+            term = normal(found[3])
+            kind = shape(term, normal(found[4]), lines)
+            if kind == "heading":
+                # The heading stood alone on its PDF line: split it from the body.
+                p_pr, left, stop = found[0], found[1], found[2]
+                if _split_at_first_tab(element) is None:
+                    continue
+                spacing = p_pr.find(qn("w:spacing"))
+                if spacing is not None and spacing.get(qn("w:before")) is not None:
+                    spacing.set(qn("w:before"), "0")
+                for tabs in list(p_pr.iter(qn("w:tabs"))):
+                    tabs.getparent().remove(tabs)
+                ind = p_pr.find(qn("w:ind"))
+                if ind is None:
+                    ind = p_pr.makeelement(qn("w:ind"), {})
+                    p_pr.append(ind)
+                ind.set(qn("w:firstLine"), str(stop - left))
+                if ind.get(qn("w:hanging")) is not None:
+                    del ind.attrib[qn("w:hanging")]
+                changed += 1
+            elif kind == "definition":
+                definitions.append((element, found))
+        if len(definitions) < _DEFINITION_PAGE_MIN_ENTRIES:
+            continue
+        for paragraph, (p_pr, left, stop, _term, _rest) in definitions:
+            ind = p_pr.find(qn("w:ind"))
+            if ind is None:
+                ind = p_pr.makeelement(qn("w:ind"), {})
+                p_pr.append(ind)
+            ind.set(qn("w:left"), str(stop))
+            ind.set(qn("w:hanging"), str(stop - left))
+            for attr in ("w:firstLine", "w:start"):
+                if ind.get(qn(attr)) is not None:
+                    del ind.attrib[qn(attr)]
+            # Every tab after the first one only marked where a wrapped PDF line began.
+            tabs = [node for node in paragraph.iter(qn("w:tab")) if node.getparent() is not None and node.getparent().tag == qn("w:r")]
+            for tab in tabs[1:]:
+                run = tab.getparent()
+                space = run.makeelement(qn("w:t"), {})
+                space.text = " "
+                space.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                run.replace(tab, space)
+            changed += 1
+    return changed
+
+
+def _drop_trailing_page_spacers(doc: docx.Document, page_break_after: Set[Any]) -> int:
+    """Remove the empty paragraphs pdf2docx leaves at the foot of a page.
+
+    pdf2docx pads a page with empty paragraphs down to where its text ended. Every PDF
+    page already ends with a hard page break, so the padding can only push the page's
+    last lines onto an extra page when the editor sets the text a little taller. Empty
+    paragraphs (no text, picture, field or section break) directly before a page's end
+    are removed; the page-ending paragraph itself stays. Returns how many were removed.
+    """
+    removed = 0
+    for page in _split_pages(doc, page_break_after):
+        if not page or page[-1] not in page_break_after:
+            continue
+        for element in reversed(page[:-1]):
+            if element.tag != qn("w:p"):
+                break
+            if "".join(node.text or "" for node in element.iter(qn("w:t"))).strip():
+                break
+            if element.find(".//" + qn("a:blip")) is not None or element.find(".//" + qn("w:fldChar")) is not None:
+                break
+            if element.find(qn("w:pPr") + "/" + qn("w:sectPr")) is not None or element.find(".//" + qn("w:br")) is not None and any(br.get(qn("w:type")) == "page" for br in element.iter(qn("w:br"))):
+                break
+            element.getparent().remove(element)
+            removed += 1
+    return removed
+
+
+def _flatten_section_marks(doc: docx.Document, page_break_after: Set[Any]) -> int:
+    """Give the empty paragraphs that only carry a continuous section break no height.
+
+    pdf2docx closes a section wherever a PDF page's column layout changes, each with an
+    empty paragraph holding the break. Such a paragraph has no spacing of its own, so it
+    took the document defaults (a line and 10pt after, about 33px) in the editor, which
+    pdf2docx never counted: a page with five of them ran 165px long and spilled onto the
+    next. The section stays (its columns and numbering still apply); its paragraph gets
+    zero spacing and a 1pt exact line. Page-ending paragraphs are left alone. Returns how
+    many were flattened.
+    """
+    flattened = 0
+    for paragraph in doc.element.body.iterchildren(qn("w:p")):
+        if paragraph in page_break_after:
+            continue
+        p_pr = paragraph.find(qn("w:pPr"))
+        if p_pr is None or p_pr.find(qn("w:sectPr")) is None:
+            continue
+        if any(child.tag != qn("w:pPr") for child in paragraph):
+            continue
+        spacing = p_pr.find(qn("w:spacing"))
+        if spacing is None:
+            spacing = p_pr.makeelement(qn("w:spacing"), {})
+            # Schema order: w:spacing comes before w:ind/w:jc/w:sectPr; inserting before sectPr is enough here.
+            p_pr.insert(list(p_pr).index(p_pr.find(qn("w:sectPr"))), spacing)
+        spacing.set(qn("w:before"), "0")
+        spacing.set(qn("w:after"), "0")
+        spacing.set(qn("w:line"), "20")
+        spacing.set(qn("w:lineRule"), "exact")
+        flattened += 1
+    return flattened
+
+
+def _exact_line_pitch_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Set each multi-line paragraph's line spacing to the pitch the PDF printed it at.
+
+    pdf2docx writes most line spacing as Word "auto" multiples, but its multiples are not
+    Word's: the converter (rightly, for real Word files) scales an auto multiple by the
+    font's natural line height, and a memo's 13.1pt pitch came out at 14.4pt. Across a
+    page those extra points pushed the last lines onto the next page. For a PDF the pitch
+    is known exactly: where a paragraph's text spans two or more PDF lines, the median
+    distance between their tops becomes exact line spacing. Paragraphs holding pictures,
+    equations or page breaks keep their own spacing (exact spacing would clip a picture).
+    Returns how many paragraphs changed.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+
+    def normal(text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", text.lower())
+
+    try:
+        page_lines: List[List[Tuple[str, float]]] = []
+        for page in pdf:
+            # Fragments on one baseline (a justified line drawn word by word) form one visual line, left to right.
+            pieces = []
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    raw = "".join(span.get("text", "") for span in line.get("spans", []))
+                    if raw.strip():
+                        pieces.append((line["bbox"][1], line["bbox"][0], raw))
+            pieces.sort()
+            visual: List[List[Any]] = []
+            for top, x0, raw in pieces:
+                if visual and abs(visual[-1][0] - top) <= 2.0:
+                    visual[-1][1].append((x0, raw))
+                else:
+                    visual.append([top, [(x0, raw)]])
+            lines = []
+            for top, parts in visual:
+                text = normal("".join(raw for _x, raw in sorted(parts)))
+                if len(text) >= 3:
+                    lines.append((text, top))
+            page_lines.append(lines)
+    finally:
+        pdf.close()
+
+    changed = 0
+    for page_index, page in enumerate(_split_pages(doc, page_break_after)):
+        if page_index >= len(page_lines):
+            break
+        lines = page_lines[page_index]
+        for element in page:
+            if element.tag != qn("w:p"):
+                continue
+            if element.find(".//" + qn("a:blip")) is not None or any(br.get(qn("w:type")) == "page" for br in element.iter(qn("w:br"))):
+                continue
+            if element.find(".//{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath") is not None:
+                continue
+            text = normal("".join(node.text or "" for node in element.iter(qn("w:t"))))
+            if len(text) < 40:
+                continue
+            p_pr = element.find(qn("w:pPr"))
+            spacing = p_pr.find(qn("w:spacing")) if p_pr is not None else None
+            if spacing is not None and spacing.get(qn("w:lineRule")) in ("exact", "atLeast"):
+                continue
+            # Walk the PDF lines that spell the paragraph from its start.
+            start = next((i for i, (line, _y) in enumerate(lines) if len(line) >= 8 and text.startswith(line)), None)
+            if start is None:
+                continue
+            tops = [lines[start][1]]
+            consumed = len(lines[start][0])
+            for line, top in lines[start + 1:]:
+                if consumed >= len(text):
+                    break
+                if text.startswith(line, consumed):
+                    tops.append(top)
+                    consumed += len(line)
+                elif line in text[consumed:consumed + len(line) + 3]:
+                    tops.append(top)
+                    consumed = text.index(line, consumed) + len(line)
+                else:
+                    break
+            gaps = sorted(b - a for a, b in zip(tops, tops[1:]) if b > a + 2)
+            if not gaps or consumed < 0.8 * len(text):
+                continue
+            pitch_pt = gaps[len(gaps) // 2]
+            if p_pr is None:
+                p_pr = element.makeelement(qn("w:pPr"), {})
+                element.insert(0, p_pr)
+            if spacing is None:
+                spacing = p_pr.makeelement(qn("w:spacing"), {})
+                p_pr.append(spacing)
+            spacing.set(qn("w:line"), str(int(round(pitch_pt * 20))))
+            spacing.set(qn("w:lineRule"), "exact")
+            changed += 1
+    return changed
+
+
+def _grid_from_cell_widths(doc: docx.Document) -> int:
+    """Give each table the column widths its cells carry.
+
+    pdf2docx writes a table's grid as equal columns and puts the real widths on the
+    cells (a bullet column of 680 twips beside a 5260-twip indicator column). The editor
+    sizes columns from the grid, so the narrow bullet column got a quarter of the width,
+    the long labels wrapped onto extra lines and a results table grew a third taller. Each
+    column takes the median width of its unmerged cells that differ from the placeholder;
+    a column covered only by merged cells is solved from the merged cell's total. Returns
+    how many tables changed.
+    """
+    changed = 0
+    for tbl in doc.element.body.iter(qn("w:tbl")):
+        grid_cols = list(tbl.iterchildren(qn("w:tblGrid")))
+        cols = list(grid_cols[0].iterchildren(qn("w:gridCol"))) if grid_cols else []
+        if len(cols) < 2:
+            continue
+        placeholder = {col.get(qn("w:w")) for col in cols}
+        if len(placeholder) != 1:
+            continue  # the grid already has distinct widths
+        default = next(iter(placeholder))
+        rows: List[List[Tuple[int, int, Optional[int]]]] = []
+        for tr in tbl.iterchildren(qn("w:tr")):
+            position, cells = 0, []
+            for tc in tr.iterchildren(qn("w:tc")):
+                tc_pr = tc.find(qn("w:tcPr"))
+                span_el = tc_pr.find(qn("w:gridSpan")) if tc_pr is not None else None
+                span = int(span_el.get(qn("w:val"))) if span_el is not None and (span_el.get(qn("w:val")) or "").isdigit() else 1
+                width_el = tc_pr.find(qn("w:tcW")) if tc_pr is not None else None
+                raw = width_el.get(qn("w:w")) if width_el is not None else None
+                width = int(raw) if raw and raw.isdigit() and width_el.get(qn("w:type")) in (None, "dxa") else None
+                cells.append((position, span, width))
+                position += span
+            rows.append(cells)
+        widths: List[Optional[int]] = [None] * len(cols)
+        samples: Dict[int, List[int]] = {}
+        for cells in rows:
+            for position, span, width in cells:
+                if span == 1 and width and str(width) != default and position < len(cols):
+                    samples.setdefault(position, []).append(width)
+        for position, values in samples.items():
+            values.sort()
+            widths[position] = values[len(values) // 2]
+        for _ in range(len(cols)):
+            progress = False
+            for cells in rows:
+                for position, span, width in cells:
+                    covered = list(range(position, min(position + span, len(cols))))
+                    missing = [c for c in covered if widths[c] is None]
+                    if span > 1 and width and len(missing) == 1:
+                        rest = width - sum(widths[c] for c in covered if widths[c] is not None)
+                        if rest > 0:
+                            widths[missing[0]] = rest
+                            progress = True
+            if not progress:
+                break
+        if all(width is None for width in widths):
+            continue
+        for col, width in zip(cols, widths):
+            if width is not None:
+                col.set(qn("w:w"), str(width))
+        changed += 1
+    return changed
+
+
+# The gap above a page's trailing block (its footer, signature, last paragraph) gives up this share, when large.
+_PAGE_BOTTOM_GAP_MIN_TWIPS = 600
+_PAGE_BOTTOM_GAP_SHARE = 0.3
+_PAGE_BOTTOM_LOOKBACK = 4
+
+
+def _loosen_page_bottoms(doc: docx.Document, page_break_after: Set[Any]) -> int:
+    """Shrink the large gap above the block at the foot of each PDF page.
+
+    pdf2docx places a page's footer or closing block with a space-before that reaches
+    exactly to where the PDF printed it. Lines set a pixel taller anywhere above add up,
+    and the footer of a DepEd manual's page 6 then fell onto a page of its own, shifting
+    every later page. Each PDF page ends with a hard break, so the block need not touch
+    the bottom: among the last few blocks of a page, the largest gap above 30pt gives up
+    30% of itself. Returns how many gaps changed.
+    """
+    changed = 0
+    for page in _split_pages(doc, page_break_after):
+        content = [
+            el for el in page
+            if el.tag == qn("w:tbl")
+            or "".join(node.text or "" for node in el.iter(qn("w:t"))).strip()
+            or el.find(".//" + qn("a:blip")) is not None
+        ]
+        best, best_before = None, 0
+        for element in content[-_PAGE_BOTTOM_LOOKBACK:]:
+            if element.tag != qn("w:p"):
+                continue
+            spacing = element.find(qn("w:pPr") + "/" + qn("w:spacing"))
+            raw = spacing.get(qn("w:before")) if spacing is not None else None
+            if raw and raw.isdigit() and int(raw) > best_before:
+                best, best_before = spacing, int(raw)
+        if best is not None and best_before > _PAGE_BOTTOM_GAP_MIN_TWIPS:
+            best.set(qn("w:before"), str(int(best_before * (1 - _PAGE_BOTTOM_GAP_SHARE))))
+            changed += 1
+    return changed
+
+
+# A picture floats when at least this many PDF text lines sit beside it.
+_FLOAT_MIN_SIDE_LINES = 2
+_FLOAT_SIZE_TOLERANCE_PT = 3.0
+
+
+def _float_pictures_beside_text(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Float a picture beside the text the PDF set next to it.
+
+    A journal's logo sits to the right of its masthead lines; a screenshot sits left of
+    the paragraph that wraps around it. pdf2docx gives such a picture a paragraph of its
+    own, so the editor stacked picture and text and the page ran long. Where the PDF draws
+    two or more text lines beside a picture-only paragraph's picture, the picture becomes
+    a square-wrapped anchor on the paragraph holding the first of those lines, on the side
+    and at the height the PDF shows; its own paragraph goes. Returns how many moved.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+
+    def normal(text: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", text.lower())
+
+    try:
+        pages = []
+        for page in pdf:
+            images = [info["bbox"] for info in page.get_image_info() if info.get("bbox")]
+            lines = []
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    text = "".join(span.get("text", "") for span in line.get("spans", []))
+                    if text.strip():
+                        lines.append((tuple(line["bbox"]), normal(text)))
+            pages.append((page.rect.width, images, lines))
+    finally:
+        pdf.close()
+
+    moved = 0
+    for page_index, page in enumerate(_split_pages(doc, page_break_after)):
+        if page_index >= len(pages):
+            break
+        page_width, images, lines = pages[page_index]
+        candidates = []
+        for element in page:
+            if element.tag != qn("w:p") or element in page_break_after:
+                continue
+            for inline in element.iter(f"{{{_NS_WP}}}inline"):
+                extent = inline.find(f"{{{_NS_WP}}}extent")
+                cx, cy = _int_attr(extent, "cx"), _int_attr(extent, "cy")
+                if cx and cy and inline.find(f".//{{{_NS_A}}}blip") is not None:
+                    candidates.append((element, inline, cx / EMU_PER_POINT, cy / EMU_PER_POINT))
+        for element, inline, width_pt, height_pt in candidates:
+            box = next((b for b in images if abs((b[2] - b[0]) - width_pt) <= _FLOAT_SIZE_TOLERANCE_PT and abs((b[3] - b[1]) - height_pt) <= _FLOAT_SIZE_TOLERANCE_PT), None)
+            if box is None:
+                continue
+            beside = sorted(
+                (line_box, text) for line_box, text in lines
+                if min(line_box[3], box[3]) - max(line_box[1], box[1]) > 0.5 * (line_box[3] - line_box[1])
+                # Wrapped text can start right at the picture's edge.
+                and (line_box[2] <= box[0] + 1 or line_box[0] >= box[2] - 1) and len(text) >= 3
+            )
+            if len(beside) < _FLOAT_MIN_SIDE_LINES:
+                continue
+            first_box, first_text = beside[0]
+            target = None
+            for candidate in page:
+                if candidate.tag != qn("w:p") or candidate.getparent() is None:
+                    continue
+                candidate_text = normal("".join(node.text or "" for node in candidate.iter(qn("w:t"))))
+                if candidate_text and (candidate_text.startswith(first_text[:20]) or first_text.startswith(candidate_text[:20])):
+                    target = candidate
+                    break
+            if target is None:
+                continue
+            side = "right" if (box[0] + box[2]) / 2 > page_width / 2 else "left"
+            offset_emu = int(max(0.0, box[1] - first_box[1]) * EMU_PER_POINT)
+            anchor_el = OxmlElement("wp:anchor")
+            for name, value in (("distT", "0"), ("distB", "0"), ("distL", "114300"), ("distR", "114300"), ("simplePos", "0"),
+                                ("relativeHeight", "1"), ("behindDoc", "0"), ("locked", "0"), ("layoutInCell", "1"), ("allowOverlap", "1")):
+                anchor_el.set(name, value)
+            simple = OxmlElement("wp:simplePos")
+            simple.set("x", "0")
+            simple.set("y", "0")
+            anchor_el.append(simple)
+            horizontal = OxmlElement("wp:positionH")
+            horizontal.set("relativeFrom", "margin")
+            align = OxmlElement("wp:align")
+            align.text = side
+            horizontal.append(align)
+            anchor_el.append(horizontal)
+            vertical = OxmlElement("wp:positionV")
+            vertical.set("relativeFrom", "paragraph")
+            offset = OxmlElement("wp:posOffset")
+            offset.text = str(offset_emu)
+            vertical.append(offset)
+            anchor_el.append(vertical)
+            children = {child.tag: child for child in inline}
+            for tag in ("extent", "effectExtent"):
+                child = children.get(f"{{{_NS_WP}}}{tag}")
+                if child is not None:
+                    anchor_el.append(child)
+            wrap = OxmlElement("wp:wrapSquare")
+            wrap.set("wrapText", "bothSides")
+            anchor_el.append(wrap)
+            for tag in ("docPr", "cNvGraphicFramePr"):
+                child = children.get(f"{{{_NS_WP}}}{tag}")
+                if child is not None:
+                    anchor_el.append(child)
+            graphic = inline.find(f"{{{_NS_A}}}graphic")
+            if graphic is None:
+                continue
+            anchor_el.append(graphic)
+            run = OxmlElement("w:r")
+            drawing = OxmlElement("w:drawing")
+            drawing.append(anchor_el)
+            run.append(drawing)
+            # Take the picture out of its run (and the run, and the paragraph, when nothing else is left).
+            old_run = next(inline.iterancestors(qn("w:r")), None)
+            old_drawing = next(inline.iterancestors(qn("w:drawing")), None)
+            if old_run is None or old_drawing is None:
+                continue
+            old_drawing.getparent().remove(old_drawing)
+            if not any(child.tag != qn("w:rPr") for child in old_run):
+                old_run.getparent().remove(old_run)
+            p_pr = target.find(qn("w:pPr"))
+            target.insert(1 if p_pr is not None else 0, run)
+            leftover = "".join(node.text or "" for node in element.iter(qn("w:t"))).strip()
+            if element is not target and not leftover and element.find(".//" + qn("w:drawing")) is None and element.getparent() is not None:
+                element.getparent().remove(element)
+            moved += 1
+    return moved
+
+
+def _keep_blank_pages(doc: docx.Document, page_break_after: Set[Any]) -> int:
+    """Keep a PDF page that is blank once its page number has moved to the footer.
+
+    A thesis leaves a page blank but numbered; the number becomes the running footer,
+    the page holds nothing, and the emitter (which never writes two page breaks in a row)
+    dropped it, so every later page sat one page early. Such a page's closing paragraph
+    gets a non-breaking space, which keeps the page. Returns how many pages were kept.
+    """
+    kept = 0
+    for page in _split_pages(doc, page_break_after):
+        if not page or page[-1] not in page_break_after or page[-1].tag != qn("w:p"):
+            continue
+        if any("".join(node.text or "" for node in el.iter(qn("w:t"))).strip() for el in page):
+            continue
+        if any(el.tag == qn("w:tbl") or el.find(".//" + qn("w:drawing")) is not None for el in page):
+            continue
+        run = OxmlElement("w:r")
+        text = OxmlElement("w:t")
+        text.text = " "
+        text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        run.append(text)
+        page[-1].append(run)
+        kept += 1
+    return kept
+
+
+def _merge_split_table_rows(doc: docx.Document) -> int:
+    """Join table rows that pdf2docx split one printed row into.
+
+    In a List of Tables the page numbers sat a point lower than the names, and pdf2docx
+    gave each its own row: "22" alone, then "1 / COMPARATIVE MATRIX" alone. Each half-row
+    was only a few points tall in the PDF but takes a full line in the editor, so the list
+    grew by a third and spilled onto the next page. Two neighbouring rows whose filled
+    columns do not overlap, with the same cell layout, are one printed row: the second's
+    cell contents move into the first, which takes their combined height. Returns how many
+    rows were merged away.
+    """
+    def cells_of(row: Any) -> List[Any]:
+        return list(row.iterchildren(qn("w:tc")))
+
+    def filled(cell: Any) -> bool:
+        return bool("".join(node.text or "" for node in cell.iter(qn("w:t"))).strip()) or cell.find(".//" + qn("w:drawing")) is not None
+
+    def span(cell: Any) -> int:
+        found = cell.find(qn("w:tcPr") + "/" + qn("w:gridSpan"))
+        return int(found.get(qn("w:val"))) if found is not None and (found.get(qn("w:val")) or "").isdigit() else 1
+
+    def height(row: Any) -> int:
+        found = row.find(qn("w:trPr") + "/" + qn("w:trHeight"))
+        return int(found.get(qn("w:val"))) if found is not None and (found.get(qn("w:val")) or "").isdigit() else 0
+
+    merged = 0
+    for tbl in doc.element.body.iter(qn("w:tbl")):
+        rows = list(tbl.iterchildren(qn("w:tr")))
+        index = 0
+        while index < len(rows) - 1:
+            first, second = rows[index], rows[index + 1]
+            a, b = cells_of(first), cells_of(second)
+            same_layout = len(a) == len(b) and [span(c) for c in a] == [span(c) for c in b]
+            fill_a = [filled(c) for c in a]
+            fill_b = [filled(c) for c in b]
+            disjoint = same_layout and not any(x and y for x, y in zip(fill_a, fill_b))
+            partial = same_layout and any(fill_a) and any(fill_b) and not all(fill_a) and not all(fill_b)
+            if not (disjoint and partial):
+                index += 1
+                continue
+            for cell_a, cell_b, has_b in zip(a, b, fill_b):
+                if not has_b:
+                    continue
+                for child in list(cell_a):
+                    if child.tag != qn("w:tcPr"):
+                        cell_a.remove(child)
+                for child in list(cell_b):
+                    if child.tag != qn("w:tcPr"):
+                        cell_a.append(child)
+            total = height(first) + height(second)
+            if total:
+                tr_pr = first.find(qn("w:trPr"))
+                if tr_pr is None:
+                    tr_pr = first.makeelement(qn("w:trPr"), {})
+                    first.insert(0, tr_pr)
+                found = tr_pr.find(qn("w:trHeight"))
+                if found is None:
+                    found = tr_pr.makeelement(qn("w:trHeight"), {})
+                    tr_pr.append(found)
+                found.set(qn("w:val"), str(total))
+            tbl.remove(second)
+            rows.pop(index + 1)
+            merged += 1
+    return merged
+
+
+# A paragraph's space-before counts its picture's height when it is at least this share of it.
+_PICTURE_GAP_SHARE = 0.6
+
+
+def _absorb_inline_picture_gaps(doc: docx.Document) -> int:
+    """Stop counting a picture's height twice in the space above its paragraph.
+
+    pdf2docx measures a paragraph's space-before to the top of its text line. When a
+    picture sits on that line with the text at its foot (a figure with its caption beside
+    it), the space-before it writes already spans the picture, and the editor then draws
+    the picture as its own block on top of that space: a 165pt figure took 315pt and
+    pushed the page's last lines onto the next page. When the space-before is at least
+    most of the picture's height, the picture's height is taken off it. Returns how many
+    paragraphs changed.
+    """
+    changed = 0
+    for paragraph in doc.element.body.iter(qn("w:p")):
+        heights = []
+        for inline in paragraph.iter(f"{{{_NS_WP}}}inline"):
+            extent = inline.find(f"{{{_NS_WP}}}extent")
+            cy = _int_attr(extent, "cy")
+            if cy:
+                heights.append(cy / EMU_PER_POINT * 20)  # twips
+        if not heights:
+            continue
+        spacing = paragraph.find(qn("w:pPr") + "/" + qn("w:spacing"))
+        before = spacing.get(qn("w:before")) if spacing is not None else None
+        if not before or not before.lstrip("-").isdigit():
+            continue
+        picture = max(heights)
+        if int(before) >= _PICTURE_GAP_SHARE * picture:
+            spacing.set(qn("w:before"), str(max(0, int(int(before) - picture))))
+            changed += 1
+    return changed
+
+
+# A side line (a memo's date beside the office name) is at most this long, and looks back this many paragraphs.
+_SIDE_LINE_MAX_CHARS = 40
+_SIDE_LINE_LOOKBACK = 6
+
+
+def _rejoin_side_lines_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Put a short right-hand line back on the line it shares in the PDF.
+
+    A memo prints its date flush right on the same line as the office name; pdf2docx
+    writes the date as its own right-aligned paragraph a few lines further down, with a
+    large gap under it, which pushed the whole page down. A short right-aligned
+    paragraph whose PDF line sits beside (same height, wholly to the right of) the
+    first line of one of the few paragraphs before it moves into that paragraph after a
+    right tab stop at the right margin, as Word would write it. Returns how many moved.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+
+    def normal(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip().lower()
+
+    try:
+        pages: List[List[Tuple[str, Tuple[float, float, float, float]]]] = []
+        for page in pdf:
+            lines = []
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    text = normal("".join(span.get("text", "") for span in line.get("spans", [])))
+                    if text:
+                        lines.append((text, tuple(line["bbox"])))
+            pages.append(lines)
+    finally:
+        pdf.close()
+    try:
+        section = doc.sections[0]
+        text_width_twips = int((section.page_width - section.left_margin - section.right_margin) / 635.0)
+    except Exception:
+        return 0
+    if text_width_twips <= 0:
+        return 0
+
+    def first_line_box(text: str, lines: List[Tuple[str, Tuple[float, float, float, float]]]) -> Optional[Tuple[float, float, float, float]]:
+        for line_text, box in lines:
+            if len(line_text) >= 4 and (text == line_text or text.startswith(line_text + " ")):
+                return box
+        return None
+
+    moved, page_index = 0, 0
+    page_paragraphs: List[Any] = []
+    for element in list(doc.element.body):
+        if element.tag == qn("w:p") and page_index < len(pages):
+            text = normal("".join(node.text or "" for node in element.iter(qn("w:t"))))
+            jc = element.find(qn("w:pPr") + "/" + qn("w:jc"))
+            is_right = jc is not None and jc.get(qn("w:val")) == "right"
+            if is_right and 2 <= len(text) <= _SIDE_LINE_MAX_CHARS and element not in page_break_after:
+                box = next((b for t, b in pages[page_index] if t == text), None)
+                target = None
+                if box is not None:
+                    for candidate in reversed(page_paragraphs[-_SIDE_LINE_LOOKBACK:]):
+                        candidate_text = normal("".join(node.text or "" for node in candidate.iter(qn("w:t"))))
+                        cbox = first_line_box(candidate_text, pages[page_index]) if candidate_text else None
+                        if cbox is None:
+                            continue
+                        overlap = min(box[3], cbox[3]) - max(box[1], cbox[1])
+                        if overlap > 0.5 * (box[3] - box[1]) and cbox[2] < box[0]:
+                            target = candidate
+                            break
+                if target is not None and not any(True for _ in target.iter(qn("w:tab"))):
+                    p_pr = target.find(qn("w:pPr"))
+                    if p_pr is None:
+                        p_pr = target.makeelement(qn("w:pPr"), {})
+                        target.insert(0, p_pr)
+                    tabs = p_pr.find(qn("w:tabs"))
+                    if tabs is None:
+                        tabs = p_pr.makeelement(qn("w:tabs"), {})
+                        p_pr.insert(0, tabs)
+                    tabs.append(tabs.makeelement(qn("w:tab"), {qn("w:val"): "right", qn("w:pos"): str(text_width_twips)}))
+                    # pdf2docx narrows the line to where its own text ended; the side text needs the full width.
+                    ind = p_pr.find(qn("w:ind"))
+                    if ind is not None:
+                        for attr in ("w:right", "w:end"):
+                            if ind.get(qn(attr)) is not None:
+                                ind.set(qn(attr), "0")
+                    runs = element.findall(qn("w:r"))
+                    if runs:
+                        tab_run = target.makeelement(qn("w:r"), {})
+                        tab_run.append(tab_run.makeelement(qn("w:tab"), {}))
+                        # The side text joins the target's first line: before the target's first line break if any.
+                        first_break = next((r for r in target.findall(qn("w:r")) if r.find(qn("w:br")) is not None), None)
+                        anchor_index = list(target).index(first_break) if first_break is not None else len(target)
+                        for offset, node in enumerate([tab_run] + runs):
+                            target.insert(anchor_index + offset, node)
+                        element.getparent().remove(element)
+                        moved += 1
+                        continue
+            page_paragraphs.append(element)
+        if element in page_break_after:
+            page_index += 1
+            page_paragraphs = []
+    return moved
+
+
+
+
+def _table_has_borders(tbl: Any) -> bool:
+    """Whether the table or any of its cells draws a border."""
+    def drawn(borders: Any) -> bool:
+        return borders is not None and any(edge.get(qn("w:val")) not in (None, "nil", "none") for edge in borders)
+
+    if drawn(tbl.find(qn("w:tblPr") + "/" + qn("w:tblBorders"))):
+        return True
+    return any(drawn(cell.find(qn("w:tcPr") + "/" + qn("w:tcBorders"))) for cell in tbl.iter(qn("w:tc")))
+
+
+def _unwrap_layout_tables(doc: docx.Document) -> int:
+    """Turn pdf2docx's single-cell layout frames back into paragraphs.
+
+    pdf2docx reads a framed line or a lone centred heading as a borderless one-cell table.
+    That cell's paragraphs take its place in reading order. Tables with two or more cells
+    are kept, whatever they hold: side-by-side cells are how the PDF set them, and stacking
+    them made pages longer than the original. Returns how many tables were unwrapped.
+    """
+    unwrapped = 0
+    for tbl in list(doc.element.body.iter(qn("w:tbl"))):
+        if tbl.getparent() is None or tbl.getparent().tag != qn("w:body"):
+            continue  # nested tables stay with their parent
+        if tbl.find(".//" + qn("w:tbl")) is not None or _table_has_borders(tbl):
+            continue
+        rows = tbl.findall(qn("w:tr"))
+        cells = [cell for row in rows for cell in row.findall(qn("w:tc"))]
+        if not rows or not cells:
+            continue
+        columns = max(len(row.findall(qn("w:tc"))) for row in rows)
+        # Only a single-cell frame is unwrapped. Cells side by side (an abstract beside its author
+        # sidebar, a term beside its definition) stay a table: stacked, they made the page longer
+        # than the PDF and spilled it onto the next.
+        if len(cells) > 1:
+            continue
+        parent = tbl.getparent()
+        position = parent.index(tbl)
+        for cell in cells:
+            for child in list(cell):
+                if child.tag in (qn("w:p"), qn("w:tbl")):
+                    parent.insert(position, child)
+                    position += 1
+        parent.remove(tbl)
+        unwrapped += 1
+    return unwrapped
+
+
+def _unnest_hyperlinks(doc: docx.Document) -> int:
+    """Lift <w:hyperlink> elements pdf2docx nests inside a run up to the paragraph.
+
+    WordprocessingML puts a hyperlink beside runs, never inside one; pdf2docx writes
+    ``<w:r><w:hyperlink>…</w:hyperlink></w:r>``, which the emitter reads as an empty run,
+    so the link and its text (a DOI, a URL) disappeared. Returns how many were moved.
+    """
+    moved = 0
+    for hyperlink in list(doc.element.body.iter(qn("w:hyperlink"))):
+        run = hyperlink.getparent()
+        if run is None or run.tag != qn("w:r"):
+            continue
+        paragraph = run.getparent()
+        if paragraph is None:
+            continue
+        run.remove(hyperlink)
+        paragraph.insert(paragraph.index(run) + 1, hyperlink)
+        if not any(child.tag != qn("w:rPr") for child in run):
+            paragraph.remove(run)
+        moved += 1
+    return moved
+
+
+def _open_pdf(pdf_bytes: bytes) -> Any:
+    """Open the PDF with PyMuPDF (None when it cannot be read)."""
+    try:
+        import pymupdf
+    except ImportError:  # pragma: no cover - PyMuPDF ships with pdf2docx
+        import fitz as pymupdf
+    try:
+        return pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        return None
+
+
+def _mark_superscripts_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Raise the runs the PDF drew as superscripts (affiliation and footnote markers).
+
+    pdf2docx keeps a raised "3" as a small plain run, so "Micabalo3" read as one word.
+    PyMuPDF flags superscript spans; a run on the same page whose text is one of
+    them, and smaller than its paragraph's text, gets Word's superscript. Returns
+    how many runs were raised.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+    try:
+        raised_per_page: List[Set[str]] = []
+        for page in pdf:
+            raised: Set[str] = set()
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = span.get("text", "").strip()
+                        if text and len(text) <= 4 and (span.get("flags", 0) & 1):
+                            raised.add(text)
+            raised_per_page.append(raised)
+    finally:
+        pdf.close()
+
+    changed, page_index = 0, 0
+    for element in doc.element.body:
+        if element.tag == qn("w:p") and page_index < len(raised_per_page) and raised_per_page[page_index]:
+            runs = element.findall(qn("w:r"))
+            sizes = []
+            for run in runs:
+                sz = run.find(qn("w:rPr") + "/" + qn("w:sz"))
+                if sz is not None and sz.get(qn("w:val")):
+                    sizes.append(int(sz.get(qn("w:val"))))
+            body_size = max(sizes) if sizes else 0
+            for run in runs:
+                text = "".join(node.text or "" for node in run.iter(qn("w:t"))).strip()
+                if not text or text not in raised_per_page[page_index]:
+                    continue
+                sz = run.find(qn("w:rPr") + "/" + qn("w:sz"))
+                size = int(sz.get(qn("w:val"))) if sz is not None and sz.get(qn("w:val")) else 0
+                if body_size and size and size >= body_size:
+                    continue
+                r_pr = run.find(qn("w:rPr"))
+                if r_pr is None:
+                    r_pr = run.makeelement(qn("w:rPr"), {})
+                    run.insert(0, r_pr)
+                if r_pr.find(qn("w:vertAlign")) is None:
+                    vert = r_pr.makeelement(qn("w:vertAlign"), {qn("w:val"): "superscript"})
+                    r_pr.append(vert)
+                    changed += 1
+        if element in page_break_after:
+            page_index += 1
+    return changed
+
+
+# A body counts as two columns when this share of its pages set their text in two side-by-side bands.
+_PDF_TWO_COLUMN_PAGE_SHARE = 0.6
+
+
+def _pdf_two_column_body(pdf_bytes: bytes) -> bool:
+    """True when most pages of the PDF set their text in two columns (IEEE and journal papers).
+
+    pdf2docx marks every multi-column page as columns (a memo's date line too), so the
+    DOCX signal is ignored for PDFs; the page geometry is read instead. A page is two
+    columns when several text blocks sit wholly left of the page's middle and several
+    wholly right of it, each narrower than two thirds of the text width.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return False
+    try:
+        pages = len(pdf)
+        if pages == 0:
+            return False
+        two_column_pages = 0
+        for page in pdf:
+            width = page.rect.width
+            middle = width / 2
+            blocks = [b for b in page.get_text("blocks") if b[6] == 0 and (b[3] - b[1]) >= 20 and str(b[4]).strip()]
+            narrow = [b for b in blocks if (b[2] - b[0]) < width * 0.6]
+            left = sum(1 for b in narrow if b[2] <= middle + 6)
+            right = sum(1 for b in narrow if b[0] >= middle - 6)
+            # The last page of a paper often holds one short block in its right column.
+            if left >= 1 and right >= 1 and left + right >= max(3, len(blocks) // 2):
+                two_column_pages += 1
+        return two_column_pages >= max(1, int(pages * _PDF_TWO_COLUMN_PAGE_SHARE + 0.999))
+    except Exception:
+        return False
+    finally:
+        pdf.close()
