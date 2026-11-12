@@ -423,6 +423,19 @@ html {
   overflow: hidden;
 }
 
+/* Table column-resize handles (tiptap-table-plus): hidden until the table is hovered, never on a
+   read-only page. Their size and colour come from resizeHandleStyle in TiptapEditor.tsx. */
+.table-plus-wrap .handle {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.table-plus-wrap:hover .handle {
+  opacity: 0.85;
+}
+.ProseMirror[contenteditable="false"] .table-plus-wrap .handle {
+  display: none;
+}
+
 /* Ribbon folded to its tab strip (chevron or Ctrl+F1): only the Home / Insert / Styles row stays.
    !important: the tab panels set their own inline `display: contents`, which a plain rule cannot override. */
 .intellidocs-toolbar.is-collapsed > :not(.ribbon-tabs) {

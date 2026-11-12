@@ -872,7 +872,52 @@ const AlignedImageResize = CenteredImageResize.extend({
  * The stock TipTap table extension has no alignment command, so the attribute
  * is declared here and a `setTableAlignment` command is added below.
  */
+/**
+ * Fit table-plus's column-handle strip to the table it belongs to.
+ *
+ * The library lays its resize handles along a strip as wide as the whole text
+ * column, at the cumulative column percentages, so on any table narrower than the
+ * page (every centred or imported table) the handles sat outside the column
+ * borders, one of them floating in the margin. The strip is moved and sized to the
+ * table's own box whenever the table's size changes.
+ */
+function fitHandleStrip(view: ProseMirrorNodeView): ProseMirrorNodeView {
+  const dom = view.dom
+  const slider = (view as { slider?: unknown }).slider
+  const table = view.contentDOM
+  if (!(dom instanceof HTMLElement) || !(slider instanceof HTMLElement) || !(table instanceof HTMLElement)) return view
+  dom.classList.add('table-plus-wrap')
+  // The <table> itself is display: contents (no box); the drawn grid is its first <tbody>.
+  let observed: HTMLElement | null = null
+  const sync = (): void => {
+    const grid = table.querySelector<HTMLElement>('tbody') ?? table
+    if (grid !== observed && observer) {
+      observer.observe(grid)
+      observed = grid
+    }
+    if (grid.offsetWidth === 0) return
+    const left = `${grid.offsetLeft}px`
+    const width = `${grid.offsetWidth}px`
+    if (slider.style.left !== left) slider.style.left = left
+    if (slider.style.width !== width) slider.style.width = width
+  }
+  const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null
+  observer?.observe(dom)
+  requestAnimationFrame(sync)
+  const destroy = view.destroy?.bind(view)
+  view.destroy = () => {
+    observer?.disconnect()
+    destroy?.()
+  }
+  return view
+}
+
 const AlignedTable = TablePlus.extend({
+  addNodeView() {
+    const parent = this.parent?.()
+    if (!parent) return null
+    return (props) => fitHandleStrip(parent(props) as ProseMirrorNodeView)
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -1260,7 +1305,11 @@ export const editorExtensions = [
   AlignedImageResize.configure({ inline: false, allowBase64: true }),
   // table-plus draws its own column handles; prosemirror-tables' resizing
   // plugin would fight them, so stock resizing stays off.
-  TableAlignmentExtension.configure({ resizable: false }),
+  // Handles show only while the table is hovered (see .table-plus-wrap in index.css).
+  TableAlignmentExtension.configure({
+    resizable: false,
+    resizeHandleStyle: { background: 'var(--primary)', width: '10px', height: '10px' },
+  }),
   TableInset,
   MathExtension,
   FullSpan,
