@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 import { needsMfaChallenge } from '../lib/mfa'
+import { clearGoogleLinking, isGoogleLinking, readCallbackError } from '../lib/googleLink'
 import { MfaChallenge } from '../components/MfaChallenge'
 import { AuthShell } from '../components/AuthShell'
 
@@ -17,15 +18,17 @@ import { AuthShell } from '../components/AuthShell'
  * connection already stored; a missing token just means Drive is connected from the
  * import dialog instead.
  */
-async function linkGoogleDrive(session: Session): Promise<void> {
+async function linkGoogleDrive(session: Session): Promise<boolean> {
   try {
-    if (!session.provider_token) return
+    if (!session.provider_token) return false
     // No expiry is sent: this Supabase version exposes no provider expiry, and inventing
     // one would be a guess. The server stores "unknown" and the OAuth client refreshes
     // on demand.
     await api.drive.linkProvider(session.provider_token, session.provider_refresh_token ?? undefined)
+    return true
   } catch {
     // Intentionally ignored: sign-in must succeed regardless of Drive state.
+    return false
   }
 }
 
@@ -40,14 +43,19 @@ export default function AuthCallback(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   // Set when the Google account has 2FA on and the code has not been entered yet.
   const [awaitingCode, setAwaitingCode] = useState(false)
+  // Whether this callback finishes a Settings link rather than a sign-in (kept across the 2FA step).
+  const linkingRef = useRef(false)
 
-  /** Sync the profile and open the dashboard with the given session. */
-  async function finishSignIn(session: Session): Promise<void> {
+  /**
+   * Sync the profile and open the app with the given session: the dashboard after a sign-in,
+   * or Settings after linking Google to an existing account.
+   */
+  async function finishSignIn(session: Session, linking = false): Promise<void> {
     try {
       // Sync with Express backend to create/fetch user profile and get role
       const result = await api.auth.googleSync(session.access_token)
 
-      await linkGoogleDrive(session)
+      const driveLinked = await linkGoogleDrive(session)
 
       login(
         {
@@ -66,7 +74,8 @@ export default function AuthCallback(): JSX.Element {
         session.refresh_token
       )
 
-      navigate('/dashboard', { replace: true })
+      clearGoogleLinking()
+      navigate(linking ? `/settings?section=security&linked=${driveLinked ? 'drive' : '1'}` : '/dashboard', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed')
     }
@@ -74,6 +83,21 @@ export default function AuthCallback(): JSX.Element {
 
   useEffect(() => {
     async function handleCallback(): Promise<void> {
+      const linking = isGoogleLinking()
+      // Google or Supabase refused (e.g. that Google account already belongs to another
+      // user). The existing session is still valid, so getSession below would succeed and
+      // hide the failure; report it instead.
+      const oauthError = readCallbackError(window.location)
+      if (oauthError) {
+        clearGoogleLinking()
+        if (linking) {
+          const query = new URLSearchParams({ section: 'security', link_error: oauthError.code, link_error_description: oauthError.description })
+          navigate(`/settings?${query.toString()}`, { replace: true })
+        } else {
+          setError(oauthError.description)
+        }
+        return
+      }
       try {
         // Supabase auto-parses the URL hash and sets the session
         const { data, error: sessionError } = await supabase.auth.getSession()
@@ -83,10 +107,11 @@ export default function AuthCallback(): JSX.Element {
         if (!session) throw new Error('No session returned from OAuth provider.')
 
         if (await needsMfaChallenge()) {
+          linkingRef.current = linking
           setAwaitingCode(true)
           return
         }
-        await finishSignIn(session)
+        await finishSignIn(session, linking)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Authentication failed')
       }
@@ -100,7 +125,7 @@ export default function AuthCallback(): JSX.Element {
     return (
       <AuthShell>
         <MfaChallenge
-          onVerified={(session) => { setAwaitingCode(false); void finishSignIn(session) }}
+          onVerified={(session) => { setAwaitingCode(false); void finishSignIn(session, linkingRef.current) }}
           onCancel={() => { void supabase.auth.signOut().finally(() => navigate('/login', { replace: true })) }}
         />
       </AuthShell>

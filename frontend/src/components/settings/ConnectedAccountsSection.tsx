@@ -1,23 +1,31 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Check, Link2, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-
-/** Turn a Supabase identity-linking error into text a user can act on. */
-function linkErrorMessage(code: string | undefined, fallback: string): string {
-  if (code === 'manual_linking_disabled' || /manual linking is disabled/i.test(fallback)) {
-    return 'Google linking is turned off for this project. Ask an administrator to allow manual account linking.'
-  }
-  if (code === 'identity_already_exists' || /already linked|already exists/i.test(fallback)) {
-    return 'That Google account already belongs to another IntelliDocs account. Use a different Google account, or delete the other account first.'
-  }
-  return `Failed to link Google account: ${fallback}`
-}
+import { clearGoogleLinking, GOOGLE_LINK_SCOPES, linkErrorMessage, markGoogleLinking } from '@/lib/googleLink'
 
 /** Manage Google and OAuth provider accounts. */
 export function ConnectedAccountsSection(): JSX.Element {
+  const [params, setParams] = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [googleConnected, setGoogleConnected] = useState(false)
   const [message, setMessage] = useState('')
+  // 'drive' when the link also connected Google Drive, '1' when only the account was linked.
+  const [linked, setLinked] = useState<string | null>(null)
+
+  // Outcome of a link round trip, handed back by AuthCallback on the URL; shown once.
+  useEffect(() => {
+    const code = params.get('link_error')
+    const done = params.get('linked')
+    if (!code && !done) return
+    if (code) setMessage(linkErrorMessage(code, params.get('link_error_description') ?? code))
+    if (done) setLinked(done)
+    const next = new URLSearchParams(params)
+    next.delete('link_error')
+    next.delete('link_error_description')
+    next.delete('linked')
+    setParams(next, { replace: true })
+  }, [params, setParams])
 
   useEffect(() => {
     async function checkIdentities(): Promise<void> {
@@ -47,13 +55,21 @@ export function ConnectedAccountsSection(): JSX.Element {
         setMessage('Google account is already linked.')
         return
       }
+      markGoogleLinking()
       const { error } = await supabase.auth.linkIdentity({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
+          // Ask for Drive in the same consent, with a refresh token, so linking also connects
+          // Google Drive and the import dialog does not need its own sign-in.
+          scopes: GOOGLE_LINK_SCOPES,
+          queryParams: { access_type: 'offline', prompt: 'consent' },
         },
       })
-      if (error) setMessage(linkErrorMessage(error.code, error.message))
+      if (error) {
+        clearGoogleLinking()
+        setMessage(linkErrorMessage(error.code, error.message))
+      }
     } catch (err) {
       console.error('Link Google error', err)
       setMessage('Failed to link Google account. Please try again.')
@@ -113,6 +129,11 @@ export function ConnectedAccountsSection(): JSX.Element {
           </button>
         )}
       </div>
+      {linked && !message && (
+        <p role="status" className="mt-3 text-xs text-green-600">
+          {linked === 'drive' ? 'Google account linked. Google Drive is connected too.' : 'Google account linked.'}
+        </p>
+      )}
       {message && <p role="alert" className="mt-3 text-xs text-destructive">{message}</p>}
     </section>
   )
