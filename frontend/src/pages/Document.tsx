@@ -2459,6 +2459,12 @@ export default function Document(): JSX.Element {
 
   const isDocOwner = !!docOwnerId && user?.id === docOwnerId
   const genreSignalKeyRef = useRef<string | null>(null)
+  // The document a genre reply belongs to; a reply for a document the user has left is dropped.
+  const genreDocIdRef = useRef(id)
+  useEffect(() => {
+    genreDocIdRef.current = id
+    genreSignalKeyRef.current = null
+  }, [id])
 
   // Genre auto-detection: on load and after preset or page-setup changes, the owner's editor sends
   // the document's structure to the classifier. A manual override is never auto-replaced.
@@ -2479,6 +2485,7 @@ export default function Document(): JSX.Element {
       api.documents
         .detectGenre(id, signals)
         .then((result) => {
+          if (genreDocIdRef.current !== id) return
           setGenre(result.genre)
           setGenreSource(result.genreSource)
         })
@@ -2501,11 +2508,13 @@ export default function Document(): JSX.Element {
     api.documents
       .setGenre(id, next)
       .then((result) => {
+        if (genreDocIdRef.current !== id) return
         setGenre(result.genre)
         setGenreSource(result.genreSource)
       })
       .catch((err) => {
         console.error('Genre update failed', err)
+        if (genreDocIdRef.current !== id) return
         setGenre(previous.genre)
         setGenreSource(previous.genreSource)
       })
@@ -2894,7 +2903,8 @@ export default function Document(): JSX.Element {
             {id && !readOnly && (
               <Link
                 to={`/document/${id}/originality`}
-                title="Check originality against your other documents"
+                title="Check originality against online and scholarly sources"
+                aria-label="Check originality against online and scholarly sources"
                 className="inline-flex items-center justify-center size-8 rounded-lg border border-transparent bg-transparent text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
               >
                 <ShieldCheck className="size-4" strokeWidth={1.75} />

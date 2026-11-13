@@ -1088,20 +1088,21 @@ html {
 .agentic-highlight-overlay {
   position: relative;
   border-radius: 6px;
-  outline: 2px dashed rgba(99, 102, 241, 0.85);
+  /* --agentic-pulse-color is the highlight colour chosen in Editor & AI settings. */
+  outline: 2px dashed color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 85%, transparent);
   outline-offset: 3px;
-  background-color: rgba(99, 102, 241, 0.08);
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);
+  background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 8%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 25%, transparent);
   /* Purely visual: the text inside keeps the normal text cursor and takes clicks as usual. */
   animation: agenticOverlayPulse 2s ease-in-out infinite;
 }
 @keyframes agenticOverlayPulse {
   0%,
   100% {
-    outline-color: rgba(99, 102, 241, 0.85);
+    outline-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 85%, transparent);
   }
   50% {
-    outline-color: rgba(99, 102, 241, 0.3);
+    outline-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 30%, transparent);
   }
 }
 

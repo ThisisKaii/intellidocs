@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Sparkles, Download, Upload } from 'lucide-react'
 import {
   getEditorPreferences,
   setEditorPreferences,
+  subscribeEditorPreferences,
   type EditorPreferences,
 } from '@/lib/editorPreferences'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
@@ -13,6 +14,9 @@ import FormattingPanel from '@/components/editor/FormattingPanel'
 export function EditorPersonalizationSection(): JSX.Element {
   const [prefs, setPrefs] = useState(() => getEditorPreferences())
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+
+  // The account copy can arrive after this opens (sign-in sync); show it when it does.
+  useEffect(() => subscribeEditorPreferences(setPrefs), [])
 
   function update(next: Partial<EditorPreferences>): void {
     setPrefs(setEditorPreferences(next))
@@ -59,9 +63,9 @@ export function EditorPersonalizationSection(): JSX.Element {
           <div className="flex gap-2">
             {(
               [
-                { value: 'low', label: 'Fewer tips', threshold: '≥55%' },
+                { value: 'low', label: 'Fewer tips', threshold: '≥80%' },
                 { value: 'medium', label: 'Balanced', threshold: '≥68%' },
-                { value: 'high', label: 'More tips', threshold: '≥80%' },
+                { value: 'high', label: 'More tips', threshold: '≥55%' },
               ] as const
             ).map((option) => (
               <button

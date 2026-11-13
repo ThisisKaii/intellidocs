@@ -33,7 +33,7 @@ import { ClassRosterModal } from '@/components/drive/ClassRosterModal'
 import { DocumentPreview, PreviewStyles, sanitizePreviewHtml } from '@/components/drive/DocumentPreview'
 import type { PreviewPageSetup } from '@/components/drive/DocumentPreview'
 import type { DocumentRecord, FolderRecord } from '@/services/api'
-import { columnsForWidth, hiddenCount, ROWS_PER_PAGE, visibleLimit } from '@/lib/paging'
+import { columnsForWidth, hiddenCount, MAX_GRID_WIDTH, ROWS_PER_PAGE, visibleLimit } from '@/lib/paging'
 
 /* ─── Shared types ────────────────────────────────────────────── */
 
@@ -702,7 +702,7 @@ export function DriveTable({
 
           <PreviewStyles />
           {viewMode === 'grid' ? (
-            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4" style={{ maxWidth: 1380 }}>
+            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4" style={{ maxWidth: MAX_GRID_WIDTH }}>
               {shownItems.map((item, index) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
@@ -721,8 +721,8 @@ export function DriveTable({
                         : 'bg-card/70 hover:bg-card border-border/70 hover:border-primary/40 shadow-xs hover:shadow-md hover:-translate-y-1'
                     }`}
                   >
-                    {/* Google Docs-style Storefront Window Preview: page 1 scaled to the card width */}
-                    <div className="relative aspect-[8.5/11] bg-slate-100/90 border-b border-border/40 overflow-hidden p-2.5 flex items-center justify-center">
+                    {/* Google Docs-style preview: page 1 scaled to the card width, cropped to its top part */}
+                    <div className="relative aspect-[4/3] bg-slate-100/90 border-b border-border/40 overflow-hidden p-2.5 flex items-center justify-center">
                       <DocumentPreview html={item.previewHtml} setup={item.pageSetup} priority={index < columns} />
                     </div>
 

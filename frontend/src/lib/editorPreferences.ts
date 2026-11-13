@@ -40,13 +40,16 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   grammarSuggestions: true,
 }
 
-/** Map a chosen sensitivity to a minimum confidence the scanner must reach. */
+/**
+ * Map a chosen sensitivity to a minimum confidence the scanner must reach. Higher sensitivity
+ * means a lower bar, so more suggestions are shown.
+ */
 export function confidenceThreshold(prefs: EditorPreferences): number {
   switch (prefs.sensitivity) {
     case 'low':
-      return 0.55
-    case 'high':
       return 0.8
+    case 'high':
+      return 0.55
     default:
       return 0.68
   }

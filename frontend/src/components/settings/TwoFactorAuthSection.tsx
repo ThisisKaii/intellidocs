@@ -55,7 +55,13 @@ export function TwoFactorAuthSection(): JSX.Element {
         }
       }
 
-      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' })
+      // A fixed issuer keeps the otpauth label to "IntelliDocs:<email>". The default issuer is
+      // the site host (e.g. "localhost:5173"), whose extra colon Authy cannot parse.
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        issuer: 'IntelliDocs',
+        friendlyName: 'Authenticator app',
+      })
       if (error) {
         setFeedback({ ok: false, text: error.message })
         return
@@ -183,7 +189,8 @@ export function TwoFactorAuthSection(): JSX.Element {
               <img
                 src={enrollData.qrCode}
                 alt="2FA QR Code"
-                className="w-32 h-32"
+                className="w-48 h-48"
+                style={{ imageRendering: 'pixelated' }}
               />
             </div>
             <div className="flex flex-col gap-1.5 text-xs">
@@ -198,7 +205,7 @@ export function TwoFactorAuthSection(): JSX.Element {
                 Manual secret key:
               </span>
               <code className="bg-background px-2 py-1 rounded border border-border select-all font-mono text-[11px]">
-                {enrollData.secret}
+                {enrollData.secret.match(/.{1,4}/g)?.join(' ') ?? enrollData.secret}
               </code>
             </div>
           </div>

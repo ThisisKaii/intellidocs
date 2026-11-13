@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, CreditCard, Gauge, HardDrive, Infinity as InfinityIcon, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { Check, Gauge, HardDrive, Infinity as InfinityIcon, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { api, type SubscriptionStatus } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -98,16 +98,6 @@ export function UpgradeModal({ open, onOpenChange }: { open: boolean; onOpenChan
           <>
             <DialogTitle>Checkout</DialogTitle>
             <DialogDescription className="mt-1">IntelliDocs Pro · {PRICE_LABEL} · cancel anytime</DialogDescription>
-            <div role="note" className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-              Demo mode: no payment is processed and no card details are collected.
-            </div>
-            <div className="mt-4 flex items-center gap-3 rounded-xl border border-border p-4">
-              <CreditCard className="size-5 text-muted-foreground" strokeWidth={1.75} />
-              <div className="flex-1">
-                <p className="text-sm font-medium">Demo test card</p>
-                <p className="text-xs tabular-nums text-muted-foreground">•••• •••• •••• 4242 · 12/30</p>
-              </div>
-            </div>
             <dl className="mt-4 flex flex-col gap-1.5 text-sm">
               <div className="flex justify-between"><dt className="text-muted-foreground">Pro (monthly)</dt><dd className="tabular-nums">{PRICE_LABEL.split(' ')[0]}</dd></div>
               <div className="flex justify-between border-t border-border pt-1.5 font-medium"><dt>Due today</dt><dd className="tabular-nums">{PRICE_LABEL.split(' ')[0]}</dd></div>

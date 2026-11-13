@@ -13,6 +13,7 @@ vi.mock('../services/api', () => ({
 }))
 
 import {
+  confidenceThreshold,
   DEFAULT_PREFERENCES,
   getEditorPreferences,
   loadAccountPreferences,
@@ -72,6 +73,15 @@ describe('editor preferences account sync', () => {
     getAccountPreferences.mockRejectedValue(new Error('offline'))
     await expect(loadAccountPreferences()).resolves.toBeUndefined()
     expect(getEditorPreferences()).toEqual(DEFAULT_PREFERENCES)
+  })
+})
+
+describe('confidenceThreshold', () => {
+  it('lowers the bar as sensitivity rises, so "More tips" shows more suggestions', () => {
+    const at = (sensitivity: 'low' | 'medium' | 'high'): number => confidenceThreshold({ ...DEFAULT_PREFERENCES, sensitivity })
+    expect(at('low')).toBe(0.8)
+    expect(at('medium')).toBe(0.68)
+    expect(at('high')).toBe(0.55)
   })
 })
 

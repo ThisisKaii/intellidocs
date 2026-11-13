@@ -58,7 +58,6 @@ export function BillingSection(): JSX.Element {
                 <span className="font-medium tabular-nums">{formatBillingDate(status.renewsAt)}</span>
                 {cancelled && <span className="text-muted-foreground"> · you won't be charged again</span>}
               </p>
-              <p className="text-xs text-muted-foreground">Demo billing: no payment method is stored and nothing is charged.</p>
               <div>
                 {cancelled ? (
                   <button type="button" disabled={busy} onClick={() => { void run(api.billing.resume) }} className="btn-primary min-h-[44px] px-5">

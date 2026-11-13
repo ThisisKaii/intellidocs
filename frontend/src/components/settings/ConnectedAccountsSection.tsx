@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react'
 import { Check, Link2, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
+/** Turn a Supabase identity-linking error into text a user can act on. */
+function linkErrorMessage(code: string | undefined, fallback: string): string {
+  if (code === 'manual_linking_disabled' || /manual linking is disabled/i.test(fallback)) {
+    return 'Google linking is turned off for this project. Ask an administrator to allow manual account linking.'
+  }
+  if (code === 'identity_already_exists' || /already linked|already exists/i.test(fallback)) {
+    return 'That Google account already belongs to another IntelliDocs account. Use a different Google account, or delete the other account first.'
+  }
+  return `Failed to link Google account: ${fallback}`
+}
+
 /** Manage Google and OAuth provider accounts. */
 export function ConnectedAccountsSection(): JSX.Element {
   const [loading, setLoading] = useState(false)
@@ -27,18 +38,25 @@ export function ConnectedAccountsSection(): JSX.Element {
 
   async function handleLinkGoogle(): Promise<void> {
     setLoading(true)
+    setMessage('')
     try {
+      // Re-check on click: the identity may have been linked in another tab since this loaded.
+      const { data } = await supabase.auth.getUser()
+      if (data?.user?.identities?.some((id) => id.provider?.toLowerCase() === 'google')) {
+        setGoogleConnected(true)
+        setMessage('Google account is already linked.')
+        return
+      }
       const { error } = await supabase.auth.linkIdentity({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
         },
       })
-      if (error) {
-        setMessage(`Failed to link Google account: ${error.message}`)
-      }
+      if (error) setMessage(linkErrorMessage(error.code, error.message))
     } catch (err) {
       console.error('Link Google error', err)
+      setMessage('Failed to link Google account. Please try again.')
     } finally {
       setLoading(false)
     }

@@ -2,11 +2,17 @@
 export const ROWS_PER_PAGE = 3
 
 /** Maximum columns the document grid will show per row. */
-export const MAX_COLUMNS = 5
+export const MAX_COLUMNS = 7
 
-/** Narrowest a grid card may get (matches `minmax(220px, 1fr)` in the document grid) and the gap between cards. */
-export const MIN_CARD_WIDTH = 220
+/** Narrowest a grid card may get (matches `minmax(200px, 1fr)` in the document grid) and the gap between cards. */
+export const MIN_CARD_WIDTH = 200
 export const CARD_GAP = 16
+
+/**
+ * Widest the document grid may be while CSS `auto-fill` still makes at most {@link MAX_COLUMNS}
+ * tracks: one pixel short of room for one more card. Keeps the paging count and the grid in step.
+ */
+export const MAX_GRID_WIDTH = (MAX_COLUMNS + 1) * (MIN_CARD_WIDTH + CARD_GAP) - CARD_GAP - 1
 
 /**
  * How many cards fit in one row of the auto-fill grid at this container width.
