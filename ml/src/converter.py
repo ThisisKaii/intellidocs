@@ -4716,6 +4716,25 @@ def _split_pages(doc: docx.Document, page_break_after: Set[Any]) -> List[List[An
     return [page for page in pages if page]
 
 
+def _paragraph_side_indents(element: Any) -> Tuple[float, float]:
+    """A paragraph's left and right indents in points (its text area inside the margins)."""
+    ind = element.find(qn("w:pPr") + "/" + qn("w:ind"))
+    if ind is None:
+        return 0.0, 0.0
+
+    def twips(*names: str) -> float:
+        for name in names:
+            value = ind.get(qn(name))
+            if value is not None:
+                try:
+                    return int(value) / 20.0
+                except ValueError:
+                    return 0.0
+        return 0.0
+
+    return twips("w:left", "w:start"), twips("w:right", "w:end")
+
+
 def _realign_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
     """Re-read the alignment of short single-line paragraphs from the PDF itself.
 
@@ -4739,17 +4758,54 @@ def _realign_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Se
     def normal(text: str) -> str:
         return re.sub(r"\s+", " ", text).strip().lower()
 
-    # Lines of every PDF page: normalized text -> (x0, x1), with the page width.
+    # Lines of every PDF page: normalized text -> (x0, x1), with the page width; and the same
+    # lines in reading order, for paragraphs that run over several lines.
     pages: List[Tuple[float, Dict[str, Tuple[float, float]]]] = []
+    ordered_pages: List[List[Tuple[str, float, float]]] = []
     for page in pdf:
         lines: Dict[str, Tuple[float, float]] = {}
+        ordered: List[Tuple[str, float, float]] = []
         for block in page.get_text("dict").get("blocks", []):
             for line in block.get("lines", []):
                 text = normal("".join(span.get("text", "") for span in line.get("spans", [])))
                 if text:
                     lines.setdefault(text, (line["bbox"][0], line["bbox"][2]))
+                    ordered.append((text, line["bbox"][0], line["bbox"][2]))
         pages.append((page.rect.width, lines))
+        ordered_pages.append(ordered)
     pdf.close()
+
+    def squash(text: str) -> str:
+        return re.sub(r"[\s\-]+", "", text)
+
+    def centred_over_lines(text: str, page_index: int, width: float, element: Any) -> bool:
+        """Whether the paragraph's text is a run of consecutive PDF lines, each centred."""
+        target = squash(text)
+        ordered = ordered_pages[page_index]
+        for start in range(len(ordered)):
+            first = squash(ordered[start][0])
+            if not first or not target.startswith(first):
+                continue
+            joined, end = first, start
+            while len(joined) < len(target) and end + 1 < len(ordered):
+                end += 1
+                joined += squash(ordered[end][0])
+                if not target.startswith(joined):
+                    break
+            if joined != target or end == start:
+                continue
+            boxes = ordered[start:end + 1]
+            # Measured from the paragraph's own text edges: a thesis body indented from a
+            # binding margin would otherwise look evenly placed on every line.
+            ind_left, ind_right = _paragraph_side_indents(element)
+            gaps = [(x0 - left_margin - ind_left, (width - right_margin - ind_right) - x1) for _, x0, x1 in boxes]
+            # Every line evenly placed, and at least one short (a full line fits any alignment).
+            return _centred_line_run(gaps) is not None
+        return False
+
+    def has_left_indent(element: Any) -> bool:
+        ind = element.find(qn("w:pPr") + "/" + qn("w:ind"))
+        return ind is not None and int(ind.get(qn("w:left")) or ind.get(qn("w:start")) or 0) > 0
 
     changed, page_index = 0, 0
     for element in doc.element.body:
@@ -4779,9 +4835,313 @@ def _realign_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Se
                                     paragraph_properties.append(jc)
                                 jc.set(qn("w:val"), wanted)
                                 changed += 1
+            elif len(text) > 80 and not any(True for _ in element.iter(qn("w:tab"))) and not has_left_indent(element):
+                # A centred paragraph of several lines (pdf2docx calls them left or justified).
+                width, _ = pages[page_index]
+                if centred_over_lines(text, page_index, width, element):
+                    paragraph_properties = element.get_or_add_pPr() if hasattr(element, "get_or_add_pPr") else element.pPr
+                    if paragraph_properties is not None:
+                        jc = paragraph_properties.find(qn("w:jc"))
+                        if jc is None or jc.get(qn("w:val")) != "center":
+                            if jc is None:
+                                jc = paragraph_properties.makeelement(qn("w:jc"), {})
+                                paragraph_properties.append(jc)
+                            jc.set(qn("w:val"), "center")
+                            changed += 1
         if element in page_break_after:
             page_index += 1
     return changed
+
+
+def _absorb_table_continuation_lines(doc: docx.Document, page_break_after: Set[Any]) -> int:
+    """Put a cell's wrapped second line back into its table.
+
+    A list of figures wraps a long name onto a second line inside its cell. pdf2docx ends the
+    table at that line, writes the line as a paragraph of its own (indented to the cell's column)
+    and starts a new table after it, so the name breaks out of its row. A short paragraph right
+    after a table whose indent falls inside one of the table's columns is moved into that column
+    of the last row that has text there, after a line break. Returns how many lines moved.
+    """
+    moved = 0
+    body = list(doc.element.body)
+    for index, element in enumerate(body):
+        if element.tag != qn("w:p") or index == 0 or body[index - 1].tag != qn("w:tbl") or element in page_break_after:
+            continue
+        runs = [r for r in element if r.tag == qn("w:r")]
+        text = "".join(node.text or "" for node in element.iter(qn("w:t"))).strip()
+        if not text or len(text) > 60 or not runs or len(runs) != len(element.findall(qn("w:r"))):
+            continue
+        if any(r.find(qn("w:tab")) is not None or r.find(qn("w:drawing")) is not None for r in runs):
+            continue
+        ind = element.find(qn("w:pPr") + "/" + qn("w:ind"))
+        try:
+            left = int(ind.get(qn("w:left")) or ind.get(qn("w:start")) or 0) if ind is not None else 0
+        except ValueError:
+            continue
+        table = body[index - 1]
+        grid = [int(g.get(qn("w:w")) or 0) for g in table.iter(qn("w:gridCol"))]
+        tbl_ind = table.find(qn("w:tblPr") + "/" + qn("w:tblInd"))
+        try:
+            start = float(tbl_ind.get(qn("w:w")) or 0) if tbl_ind is not None else 0.0
+        except ValueError:
+            start = 0.0
+        column = None
+        for col, width in enumerate(grid):
+            if start - 60 <= left <= start + width - 60 and col > 0:
+                column = col
+                break
+            start += width
+        if column is None:
+            continue
+        target_cell = None
+        for row in reversed(table.findall(qn("w:tr"))):
+            cells = row.findall(qn("w:tc"))
+            if column < len(cells) and "".join(node.text or "" for node in cells[column].iter(qn("w:t"))).strip():
+                target_cell = cells[column]
+                break
+        if target_cell is None:
+            continue
+        paragraphs = target_cell.findall(qn("w:p"))
+        if not paragraphs:
+            continue
+        last = paragraphs[-1]
+        br_run = last.makeelement(qn("w:r"), {})
+        br_run.append(br_run.makeelement(qn("w:br"), {}))
+        last.append(br_run)
+        for run in runs:
+            last.append(run)
+        parent = element.getparent()
+        parent.remove(element)
+        moved += 1
+        # The table pdf2docx started after the line continues this one: join them, so the rows
+        # share the first table's columns instead of each piece having its own.
+        following = table.getnext()
+        if following is not None and following.tag == qn("w:tbl"):
+            _append_table_rows(table, following)
+    return moved
+
+
+def _append_table_rows(table: Any, following: Any) -> bool:
+    """Move `following`'s rows into `table` when both have the same plain columns (no spans)."""
+    grid = [int(g.get(qn("w:w")) or 0) for g in table.iter(qn("w:gridCol"))]
+    rows = following.findall(qn("w:tr"))
+    if not grid or not rows:
+        return False
+    for row in rows:
+        cells = row.findall(qn("w:tc"))
+        if len(cells) != len(grid) or any(c.find(qn("w:tcPr") + "/" + qn("w:gridSpan")) is not None for c in cells):
+            return False
+    for row in rows:
+        for cell, width in zip(row.findall(qn("w:tc")), grid):
+            tc_pr = cell.find(qn("w:tcPr"))
+            tc_w = tc_pr.find(qn("w:tcW")) if tc_pr is not None else None
+            if tc_w is not None:
+                tc_w.set(qn("w:w"), str(width))
+                tc_w.set(qn("w:type"), "dxa")
+        table.append(row)
+    following.getparent().remove(following)
+    return True
+
+
+def _drop_false_vertical_merges(doc: docx.Document) -> int:
+    """Unmerge table cells pdf2docx marked as continuing the cell above although they hold text.
+
+    A continuation cell (`<w:vMerge/>`) is drawn as part of the merged cell above it, so its own
+    content is never shown. pdf2docx sometimes marks the first row under a header that way: a list
+    of figures lost "1  CONCEPTUAL FRAMEWORK", leaving only its page number. In a PDF import a
+    continuation cell with text of its own is always such a mistake; it becomes a cell of its own.
+    Returns how many cells were unmerged.
+    """
+    fixed = 0
+    for cell in doc.element.body.iter(qn("w:tc")):
+        tc_pr = cell.find(qn("w:tcPr"))
+        v_merge = tc_pr.find(qn("w:vMerge")) if tc_pr is not None else None
+        if v_merge is None or v_merge.get(qn("w:val")) == "restart":
+            continue
+        if "".join(node.text or "" for node in cell.iter(qn("w:t"))).strip():
+            tc_pr.remove(v_merge)
+            fixed += 1
+    return fixed
+
+
+def _centred_line_run(gaps: List[Tuple[float, float]]) -> Optional[float]:
+    """For a paragraph's printed lines as (left gap, right gap) to the text area: when every line
+    is centred, the first-line indent its opening line carries (0 when none); else None.
+
+    A centred paragraph with a first-line indent is centred within the indented width, so its
+    first line (and the first line after a centred heading) sits further right by the indent.
+    """
+    indent = 0.0
+    for index, (lg, rg) in enumerate(gaps):
+        diff = lg - rg
+        if abs(diff) <= 12:
+            continue
+        if 18 <= diff <= 80 and (index == 0 or gaps[index - 1][0] >= 24):
+            others = [a - b for a, b in gaps if abs(a - b) <= 12]
+            indent = max(indent, diff - (sum(others) / len(others) if others else 0.0))
+            continue
+        return None
+    if not any(lg >= 24 for lg, _ in gaps):
+        return None
+    # A full justified line is evenly placed too, but it starts exactly at the left edge; the lines
+    # of a centred paragraph that nearly fill the width still start a few points in.
+    if sum(1 for lg, _ in gaps if lg < 1.5) > len(gaps) / 3:
+        return None
+    return indent
+
+
+def _reflow_centred_blocks_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Rebuild centred paragraphs pdf2docx imitated with tabs.
+
+    A centred block (a centred heading and the centred paragraph under it) comes out of pdf2docx
+    as one left-aligned paragraph: each printed line pushed right with a few tabs and ended with
+    a line break, and stray tabs mid-sentence where a line wrapped ("intelligent document ⇥⇥
+    editing systems"). When the paragraph's text is exactly a run of consecutive PDF lines and
+    every one of them is centred, the tabs go (a space where they joined two words), a wholly
+    bold short line becomes its own paragraph (the heading), and the rest becomes one paragraph;
+    all of them are centred with no indent. Returns how many paragraphs were rebuilt.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+    try:
+        section = doc.sections[0]
+        left_margin = section.left_margin / 12700.0
+        right_margin = section.right_margin / 12700.0
+    except Exception:
+        pdf.close()
+        return 0
+
+    def squash(text: str) -> str:
+        return re.sub(r"[\s\-]+", "", text).lower()
+
+    try:
+        pages: List[Tuple[float, List[Tuple[str, float, float]]]] = []
+        for page in pdf:
+            ordered: List[Tuple[str, float, float]] = []
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    text = "".join(span.get("text", "") for span in line.get("spans", []))
+                    if text.strip():
+                        ordered.append((squash(text), line["bbox"][0], line["bbox"][2]))
+            pages.append((page.rect.width, ordered))
+    finally:
+        pdf.close()
+
+    def all_lines_centred(text: str, page: Tuple[float, List[Tuple[str, float, float]]], element: Any) -> Optional[float]:
+        width, ordered = page
+        target = squash(text)
+        for start in range(len(ordered)):
+            if not ordered[start][0] or not target.startswith(ordered[start][0]):
+                continue
+            joined, end = ordered[start][0], start
+            while len(joined) < len(target) and end + 1 < len(ordered) and target.startswith(joined + ordered[end + 1][0]):
+                end += 1
+                joined += ordered[end][0]
+            if joined != target or end == start:
+                continue
+            ind_left, ind_right = _paragraph_side_indents(element)
+            gaps = [(x0 - left_margin - ind_left, (width - right_margin - ind_right) - x1) for _, x0, x1 in ordered[start:end + 1]]
+            return _centred_line_run(gaps)
+        return None
+
+    def run_text(run: Any) -> str:
+        return "".join(node.text or "" for node in run.iter(qn("w:t")))
+
+    def is_bold(run: Any) -> bool:
+        b = run.find(qn("w:rPr") + "/" + qn("w:b"))
+        return b is not None and b.get(qn("w:val")) not in ("0", "false")
+
+    def centre(p: Any) -> None:
+        p_pr = p.find(qn("w:pPr"))
+        if p_pr is None:
+            p_pr = p.makeelement(qn("w:pPr"), {})
+            p.insert(0, p_pr)
+        jc = p_pr.find(qn("w:jc"))
+        if jc is None:
+            jc = p_pr.makeelement(qn("w:jc"), {})
+            p_pr.append(jc)
+        jc.set(qn("w:val"), "center")
+        ind = p_pr.find(qn("w:ind"))
+        if ind is not None:
+            p_pr.remove(ind)
+        tabs = p_pr.find(qn("w:tabs"))
+        if tabs is not None:
+            p_pr.remove(tabs)
+
+    rebuilt, page_index = 0, 0
+    for element in list(doc.element.body):
+        if element.tag == qn("w:p") and page_index < len(pages):
+            runs = [r for r in element if r.tag == qn("w:r")]
+            has_tabs = any(r.find(qn("w:tab")) is not None for r in runs)
+            text = "".join(run_text(r) for r in runs)
+            first_indent = all_lines_centred(text, pages[page_index], element) if has_tabs and len(runs) == len(element.findall(qn("w:r"))) and len(text) > 20 else None
+            if first_indent is not None:
+                # Lines as printed: split at line breaks, padding tabs dropped.
+                segments: List[List[Any]] = [[]]
+                for run in runs:
+                    if run.find(qn("w:br")) is not None and not run_text(run).strip():
+                        segments.append([])
+                    elif run.find(qn("w:tab")) is not None and not run_text(run).strip():
+                        segment = segments[-1]
+                        # A tab between two words stood for the space a wrapped line had.
+                        if segment and not run_text(segment[-1]).endswith(" "):
+                            space = run.makeelement(qn("w:r"), {})
+                            rpr = run.find(qn("w:rPr"))
+                            if rpr is not None:
+                                space.append(copy.deepcopy(rpr))
+                            t = space.makeelement(qn("w:t"), {"{http://www.w3.org/XML/1998/namespace}space": "preserve"})
+                            t.text = " "
+                            space.append(t)
+                            segment.append(space)
+                    else:
+                        segments[-1].append(run)
+                segments = [s for s in segments if "".join(run_text(r) for r in s).strip()]
+                # Group into paragraphs: a wholly bold short line is a heading of its own.
+                groups: List[List[Any]] = []
+                for segment in segments:
+                    seg_text = "".join(run_text(r) for r in segment).strip()
+                    heading = len(seg_text) <= 80 and all(is_bold(r) for r in segment if run_text(r).strip())
+                    if heading or not groups or groups[-1] is None:
+                        groups.append(list(segment))
+                        if heading:
+                            groups.append(None)  # type: ignore[arg-type]
+                    else:
+                        if groups[-1] and not "".join(run_text(r) for r in groups[-1]).endswith(" "):
+                            space = copy.deepcopy(segment[0])
+                            for t in space.iter(qn("w:t")):
+                                t.text = " "
+                            groups[-1].append(space)
+                        groups[-1].extend(segment)
+                groups = [g for g in groups if g]
+                if groups:
+                    parent = element.getparent()
+                    index = parent.index(element)
+                    for run in runs:
+                        element.remove(run)
+                    first = True
+                    for group in groups:
+                        target = element if first else copy.deepcopy(element)
+                        if not first:
+                            for run in [r for r in target if r.tag == qn("w:r")]:
+                                target.remove(run)
+                        for run in group:
+                            target.append(run)
+                        centre(target)
+                        group_text = "".join(run_text(r) for r in group).strip()
+                        if first_indent >= 18 and len(group_text) > 80:
+                            p_pr = target.find(qn("w:pPr"))
+                            ind = p_pr.makeelement(qn("w:ind"), {qn("w:firstLine"): str(int(round(first_indent / 18.0)) * 360)})
+                            jc = p_pr.find(qn("w:jc"))
+                            jc.addprevious(ind)
+                        if not first:
+                            index += 1
+                            parent.insert(index, target)
+                        first = False
+                    rebuilt += 1
+        if element in page_break_after:
+            page_index += 1
+    return rebuilt
 
 
 def _picture_only(element: Any) -> Optional[Tuple[Any, float, float]]:
@@ -5412,10 +5772,14 @@ def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     _keep_blank_pages(doc, page_break_after)
     _fill_blanks_from_pdf(doc, file_bytes, page_break_after)
     _realign_from_pdf(doc, file_bytes, page_break_after)
+    _reflow_centred_blocks_from_pdf(doc, file_bytes, page_break_after)
     _rejoin_side_lines_from_pdf(doc, file_bytes, page_break_after)
+    _restore_column_rows_from_pdf(doc, file_bytes, page_break_after)
     _float_pictures_beside_text(doc, file_bytes, page_break_after)
     _mark_superscripts_from_pdf(doc, file_bytes, page_break_after)
     _merge_picture_rows_from_pdf(doc, file_bytes, page_break_after)
+    _absorb_table_continuation_lines(doc, page_break_after)
+    _drop_false_vertical_merges(doc)
     doc.part._is_pdf_import = True  # pdf2docx leaves cell padding at zero; see _table_cell_margins
     result = _docx_document_to_result(doc, page_break_after, compress_images=True)
     _furniture_to_layout(result, furniture, page_count)
@@ -6543,6 +6907,269 @@ def _absorb_inline_picture_gaps(doc: docx.Document) -> int:
 # A side line (a memo's date beside the office name) is at most this long, and looks back this many paragraphs.
 _SIDE_LINE_MAX_CHARS = 40
 _SIDE_LINE_LOOKBACK = 6
+
+# Rows of a paragraph laid out in columns: a gap this wide (pt) between two pieces of text on one
+# row, or a row that starts this far (pt) right of the text's left edge. Prose has neither.
+_COLUMN_GAP_PT = 72.0
+_COLUMN_START_PT = 144.0
+# Two pieces of text whose vertical centres are this close (pt) sit on the same PDF row.
+_SAME_ROW_PT = 3.0
+# An existing tab stop this close (twips) to a column's position already serves it.
+_TAB_STOP_NEAR_TWIPS = 216
+
+
+def _restore_column_rows_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Put back the rows and columns of side-by-side lines pdf2docx ran together.
+
+    An approval sheet signs two people side by side: a name on the left and one on the right,
+    each title on the line under its name. pdf2docx writes those two printed lines as one
+    paragraph, the names run together with no tab and the titles on the same line after them
+    ("MS. GIAN S. MAHUSAYALEXANDER Y. BUCOL … Adviser  IT Research Coordinator"). Each run is
+    matched to its text in the PDF to learn its row. Where rows are laid out in columns (a wide
+    gap between two pieces of one row, or a row starting far to the right), a line break goes
+    between rows, a tab goes across each wide gap, tabs left dangling at a row's end are dropped,
+    and the paragraph gets a left tab stop at each column. Wrapped prose has no such rows and is
+    left alone, and so is any paragraph whose text cannot all be found in the PDF.
+    Returns how many paragraphs were rebuilt.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+
+    def normal(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    try:
+        pages: List[List[Tuple[str, Tuple[float, float, float, float]]]] = []
+        for page in pdf:
+            spans = []
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = normal(span.get("text", ""))
+                        if text:
+                            spans.append((text, tuple(span["bbox"])))
+            pages.append(spans)
+    finally:
+        pdf.close()
+    try:
+        section = doc.sections[0]
+        margin_pt = section.left_margin / 12700.0
+        right_edge_pt = (section.page_width - section.right_margin) / 12700.0
+    except Exception:
+        return 0
+
+    def run_text(run: Any) -> str:
+        return "".join(node.text or "" for node in run.iter(qn("w:t")))
+
+    def is_tab_run(run: Any) -> bool:
+        return run.find(qn("w:tab")) is not None and not run_text(run).strip()
+
+    def has_break(run: Any) -> bool:
+        return any(br.get(qn("w:type")) in (None, "textWrapping") for br in run.iter(qn("w:br")))
+
+    def indent_pt(p: Any) -> float:
+        ind = p.find(qn("w:pPr") + "/" + qn("w:ind"))
+        if ind is None:
+            return 0.0
+        value = ind.get(qn("w:left")) or ind.get(qn("w:start")) or "0"
+        try:
+            return int(value) / 20.0
+        except ValueError:
+            return 0.0
+
+    def skip_past(p: Any, spans: List[Tuple[str, Tuple[float, float, float, float]]], start: int) -> int:
+        """Where the next paragraph's text starts: after this paragraph's own spans, when found."""
+        target = re.sub(r"\s+", "", "".join(run_text(r) for r in p.iter(qn("w:r"))))
+        if not target:
+            return start
+        for index in range(start, min(len(spans), start + 60)):
+            joined, end = re.sub(r"\s+", "", spans[index][0]), index
+            if not joined or not target.startswith(joined):
+                continue
+            while len(joined) < len(target) and end + 1 < len(spans):
+                following = re.sub(r"\s+", "", spans[end + 1][0])
+                if not target.startswith(joined + following):
+                    break
+                end += 1
+                joined += following
+            return end + 1
+        return start
+
+    def rebuild(p: Any, spans: List[Tuple[str, Tuple[float, float, float, float]]], start: int) -> Tuple[bool, int]:
+        runs = [r for r in p if r.tag == qn("w:r")]
+        if len(runs) < 2 or len(p.findall(qn("w:r"))) != len(runs):
+            return False, skip_past(p, spans, start)  # hyperlinks, fields or other wrappers: leave alone
+        jc = p.find(qn("w:pPr") + "/" + qn("w:jc"))
+        if jc is not None and jc.get(qn("w:val")) == "center":
+            return False, skip_past(p, spans, start)  # a centred block's short lines only look like columns
+        if any(t.get(qn("w:val")) == "right" for t in p.iter(qn("w:tab")) if t.getparent().tag == qn("w:tabs")):
+            return False, skip_past(p, spans, start)  # a side line already set against the right margin (memo date)
+        # Match every text run to its PDF span(s), in order, to learn its row and position. A run
+        # of wrapped prose covers several printed lines: it is placed by where it ends, and
+        # `starts` keeps where it begins.
+        placed: List[Tuple[Any, Optional[Tuple[float, float, float, float]]]] = []
+        starts: Dict[int, Tuple[float, float, float, float]] = {}
+        cursor = start
+        # The unmatched rest of the span the previous run matched: one printed span ("Date:____")
+        # can hold several runs ("Date:", "____").
+        rest, rest_index = "", -1
+        for run in runs:
+            text = normal(run_text(run))
+            if not text:
+                placed.append((run, None))
+                continue
+            if rest and text in rest:
+                rest = rest[rest.index(text) + len(text):]
+                placed.append((run, spans[rest_index][1]))
+                continue
+            hit: Optional[Tuple[int, int]] = None
+            for index in range(cursor, min(len(spans), cursor + 60)):
+                span_text = spans[index][0]
+                if span_text == text or span_text.startswith(text) or text in span_text:
+                    hit = (index, index)
+                    break
+                if text.startswith(span_text):
+                    joined, end = span_text, index
+                    while end + 1 < len(spans) and len(joined) < len(text):
+                        end += 1
+                        joined = normal(joined + " " + spans[end][0])
+                    if joined.replace(" ", "") == text.replace(" ", ""):
+                        hit = (index, end)
+                        break
+            if hit is None:
+                return False, skip_past(p, spans, start)
+            if hit[1] != hit[0]:
+                starts[len(placed)] = spans[hit[0]][1]
+            placed.append((run, spans[hit[1]][1]))
+            last_text = spans[hit[1]][0]
+            rest = last_text[last_text.index(text) + len(text):] if hit[0] == hit[1] and text in last_text else ""
+            rest_index = hit[1]
+            cursor = hit[1] + 1
+        # Rows, top to bottom, by vertical centre.
+        rows: List[float] = []
+        for _, box in placed:
+            if box is None:
+                continue
+            centre = (box[1] + box[3]) / 2
+            if not any(abs(centre - row) <= _SAME_ROW_PT for row in rows):
+                rows.append(centre)
+        if len(rows) < 2:
+            return False, cursor
+        rows.sort()
+
+        def row_of(box: Tuple[float, float, float, float]) -> int:
+            centre = (box[1] + box[3]) / 2
+            return min(range(len(rows)), key=lambda i: abs(rows[i] - centre))
+
+        text_left = margin_pt + indent_pt(p)
+        boxes_by_row: Dict[int, List[Tuple[float, float, float, float]]] = {}
+        for _, box in placed:
+            if box is not None:
+                boxes_by_row.setdefault(row_of(box), []).append(box)
+        column_rows = set()
+        for row, boxes in boxes_by_row.items():
+            boxes.sort(key=lambda b: b[0])
+            gaps = [b[0] - a[2] for a, b in zip(boxes, boxes[1:])]
+            if any(gap >= _COLUMN_GAP_PT for gap in gaps) or boxes[0][0] - text_left >= _COLUMN_START_PT:
+                column_rows.add(row)
+        if not column_rows:
+            return False, cursor
+
+        # Each text run's row; whitespace and tab runs belong with the text before them.
+        rows_of: List[int] = []
+        current = row_of(next(box for _, box in placed if box is not None))
+        for _, box in placed:
+            if box is not None:
+                current = row_of(box)
+            rows_of.append(current)
+
+        changed = False
+        new_children: List[Any] = []
+        stops_pt: List[float] = []
+        previous_box: Optional[Tuple[float, float, float, float]] = None
+        last_text_at = -1
+        for index, (run, box) in enumerate(placed):
+            row = rows_of[index]
+            if box is not None and previous_box is not None:
+                previous_row = row_of(previous_box)
+                # Already on a new line (a break between the rows): its tabs are that line's indent.
+                broken = any(has_break(child) for child in new_children[last_text_at + 1:]) if last_text_at >= 0 else False
+                # Wrapped text, not a new row: the line ran to the right edge and the next one
+                # starts where its last piece started (a glossary definition's second line).
+                wraps = right_edge_pt - previous_box[2] <= 40 and abs(box[0] - previous_box[0]) <= 8
+                if row != previous_row and (row in column_rows or previous_row in column_rows) and not broken and not wraps:
+                    # A new printed row: drop tabs dangling at the end of the old one, then break.
+                    while new_children and is_tab_run(new_children[-1]):
+                        new_children.pop()
+                        changed = True
+                    if not (new_children and has_break(new_children[-1])):
+                        br_run = run.makeelement(qn("w:r"), {})
+                        br_run.append(br_run.makeelement(qn("w:br"), {}))
+                        new_children.append(br_run)
+                        changed = True
+                    if box[0] - text_left >= _COLUMN_START_PT / 2:
+                        tab_run = run.makeelement(qn("w:r"), {})
+                        tab_run.append(tab_run.makeelement(qn("w:tab"), {}))
+                        new_children.append(tab_run)
+                        stops_pt.append(box[0])
+                        changed = True
+                elif row == previous_row and row in column_rows and box[0] - previous_box[2] >= _COLUMN_GAP_PT:
+                    if not (new_children and is_tab_run(new_children[-1])):
+                        tab_run = run.makeelement(qn("w:r"), {})
+                        tab_run.append(tab_run.makeelement(qn("w:tab"), {}))
+                        new_children.append(tab_run)
+                        changed = True
+                    stops_pt.append(box[0])
+            elif box is not None and previous_box is None and row in column_rows and box[0] - text_left >= _COLUMN_START_PT / 2:
+                stops_pt.append(box[0])
+            new_children.append(run)
+            if box is not None:
+                previous_box = box
+                last_text_at = len(new_children) - 1
+        if not changed:
+            return False, cursor
+        for run in runs:
+            p.remove(run)
+        for child in new_children:
+            p.append(child)
+
+        # A left tab stop at each column (positions are measured from the page margin).
+        p_pr = p.find(qn("w:pPr"))
+        if p_pr is None:
+            p_pr = p.makeelement(qn("w:pPr"), {})
+            p.insert(0, p_pr)
+        tabs = p_pr.find(qn("w:tabs"))
+        if tabs is None:
+            tabs = p_pr.makeelement(qn("w:tabs"), {})
+            p_pr.insert(0, tabs)
+        existing = [int(t.get(qn("w:pos")) or 0) for t in tabs.findall(qn("w:tab"))]
+        for x in sorted(set(round(x, 1) for x in stops_pt)):
+            pos = int(round((x - margin_pt) * 20))
+            if pos > 0 and not any(abs(pos - e) <= _TAB_STOP_NEAR_TWIPS for e in existing):
+                tabs.append(tabs.makeelement(qn("w:tab"), {qn("w:val"): "left", qn("w:pos"): str(pos)}))
+                existing.append(pos)
+        ordered = sorted(tabs.findall(qn("w:tab")), key=lambda t: int(t.get(qn("w:pos")) or 0))
+        for t in ordered:
+            tabs.remove(t)
+            tabs.append(t)
+        return True, cursor
+
+    # Paragraphs follow the page from top to bottom, so each one's text is looked for after the
+    # previous one's: a contents entry "TABLE OF CONTENTS  v" must not match the page's title.
+    rebuilt, page_index, page_cursor = 0, 0, 0
+    for element in list(doc.element.body):
+        if element.tag == qn("w:p") and page_index < len(pages):
+            try:
+                done, page_cursor = rebuild(element, pages[page_index], page_cursor)
+                if done:
+                    rebuilt += 1
+            except Exception:
+                pass  # a repair, never a reason for the import to fail
+        if element in page_break_after:
+            page_index += 1
+            page_cursor = 0
+    return rebuilt
 
 
 def _rejoin_side_lines_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
