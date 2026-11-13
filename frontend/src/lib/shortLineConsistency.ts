@@ -170,7 +170,10 @@ export function findShortLineDeviations(
     if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return true
     const text = node.textContent.replace(/\s+/g, ' ').trim()
     if (!text) return false
-    const isHeading = node.type.name === 'heading'
+    // The document's title is a heading in the editor but belongs to the title page: it neither
+    // ends the title page (its lines would stop being checked once the title is styled) nor opens
+    // a chapter.
+    const isHeading = node.type.name === 'heading' && node.attrs.docRole !== 'title'
     // A chapter opens at each level-1 heading; sub-headings are compared within their chapter.
     if (isHeading && Number(node.attrs.level) === 1) chapter += 1
     // The title page is the run of short lines a document opens with (see lib/frontMatter).

@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core'
+import { forEachSelectedNode } from './selectionRanges'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -55,9 +56,9 @@ export const IndentExtension = Extension.create({
           return this.editor.chain().focus().sinkListItem('listItem').run()
         }
 
-        const { from, to } = state.selection
         let updated = false
-        state.doc.nodesBetween(from, to, (node, pos) => {
+        // Every range of the selection: several selected table cells are one range each.
+        forEachSelectedNode(state, (node, pos) => {
           if (this.options.types.includes(node.type.name)) {
             const currentIndent = (node.attrs.indent as number) || 0
             if (currentIndent < this.options.maxIndent) {
@@ -81,9 +82,9 @@ export const IndentExtension = Extension.create({
           return this.editor.chain().focus().liftListItem('listItem').run()
         }
 
-        const { from, to } = state.selection
         let updated = false
-        state.doc.nodesBetween(from, to, (node, pos) => {
+        // Every range of the selection: several selected table cells are one range each.
+        forEachSelectedNode(state, (node, pos) => {
           if (this.options.types.includes(node.type.name)) {
             const currentIndent = (node.attrs.indent as number) || 0
             if (currentIndent > this.options.minIndent) {
@@ -106,8 +107,9 @@ export const IndentExtension = Extension.create({
 
   addKeyboardShortcuts() {
     return {
-      Tab: () => this.editor.commands.indent(),
-      'Shift-Tab': () => this.editor.commands.outdent(),
+      // In a table, Tab moves between cells (the table's own shortcut), as in Word.
+      Tab: () => (this.editor.isActive('table') && !this.editor.isActive('listItem') ? false : this.editor.commands.indent()),
+      'Shift-Tab': () => (this.editor.isActive('table') && !this.editor.isActive('listItem') ? false : this.editor.commands.outdent()),
     }
   },
 })

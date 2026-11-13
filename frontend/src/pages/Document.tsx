@@ -12,6 +12,7 @@ import {
   type HeaderFooterPlacement,
 } from '@/components/editor/TiptapEditor'
 import { PagedEditor, type EditorCollaboration } from '@/components/editor/PagedEditor'
+import { textRangeInside } from '@/components/editor/selectionRanges'
 import { LogoMark } from '@/components/Logo'
 import { UserMenu } from '@/components/UserMenu'
 import {
@@ -1217,7 +1218,9 @@ export default function Document(): JSX.Element {
       editor.chain().focus().setTextSelection(from + 1).toggleBulletList().run()
       return
     }
-    const chain = editor.chain().focus().setTextSelection({ from, to })
+    // Inside the block's text, not on its edges: from the edges a heading conversion dropped the
+    // block's own attributes (alignment) and chained block commands could silently do nothing.
+    const chain = editor.chain().focus().setTextSelection(textRangeInside(editor.state.doc, from, to))
     switch (format) {
       case 'bold':          chain.setBold().run(); break
       case 'italic':        chain.setItalic().run(); break
@@ -2193,6 +2196,11 @@ export default function Document(): JSX.Element {
     selectScannerSuggestion(suggestion.key)
     jumpToScannerTarget(suggestion)
     flashBlockAt(suggestion.from + 1)
+    // The card owns its block's range from now on. The effect that follows the scanner's active
+    // suggestion skips while a prompt is open, and it opens in this same update, so without this
+    // the range stayed on the previous card's block: Accept then formatted that block (or, when
+    // it no longer matched, the block under the caret) and never this card's own.
+    setSuggestionRange({ from: suggestion.from, to: suggestion.to })
     setFormatPrompt({
       format: suggestion.format,
       confidence: suggestion.confidence,

@@ -62,7 +62,8 @@ describe('mergeSameFixCandidates', () => {
   })
 })
 
-describe('sectionIndex', () => {
+// Loads a full real document into an editor: seconds on its own, longer in a parallel full run.
+describe('sectionIndex', { timeout: 20_000 }, () => {
   it('groups by chapter: sub-headings do not split it and captions never name it', async () => {
     const { Editor } = await import('@tiptap/core')
     const { editorExtensions } = await import('@/components/editor/TiptapEditor')

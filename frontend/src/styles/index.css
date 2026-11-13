@@ -436,6 +436,25 @@ html {
   display: none;
 }
 
+/* Cells selected by dragging across them (prosemirror-tables adds .selectedCell). A cell
+   selection hides the normal text highlight, so without this nothing showed what was selected.
+   An overlay, not a background, so cells with a fill colour still show as selected. */
+.ProseMirror td.selectedCell::after,
+.ProseMirror th.selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: color-mix(in srgb, var(--primary, #2563eb) 22%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+@media print {
+  .ProseMirror td.selectedCell::after,
+  .ProseMirror th.selectedCell::after {
+    display: none;
+  }
+}
+
 /* Ribbon folded to its tab strip (chevron or Ctrl+F1): only the Home / Insert / Styles row stays.
    !important: the tab panels set their own inline `display: contents`, which a plain rule cannot override. */
 .intellidocs-toolbar.is-collapsed > :not(.ribbon-tabs) {

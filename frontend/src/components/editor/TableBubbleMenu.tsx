@@ -24,7 +24,8 @@ function tableMenuShouldShow({ editor, state }: { editor: Editor; state: EditorS
 function selectedTableElement(editor: Editor): HTMLElement | null {
   const { $from } = editor.state.selection
   for (let depth = $from.depth; depth > 0; depth--) {
-    if ($from.node(depth).type.spec.tableRole === 'table') {
+    // By name: table-plus's row groups also claim the 'table' role, and the menu belongs above the whole table.
+    if ($from.node(depth).type.name === 'table') {
       const dom = editor.view.nodeDOM($from.before(depth))
       return dom instanceof HTMLElement ? dom : null
     }

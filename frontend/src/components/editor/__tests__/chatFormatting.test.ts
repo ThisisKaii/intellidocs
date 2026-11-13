@@ -207,7 +207,8 @@ describe('12-prompt accuracy benchmark (editor side)', () => {
   })
 })
 
-describe('section headings on the real V2 thesis import', () => {
+// Builds the whole 22-page V2 thesis in an editor: seconds on its own, longer in a parallel full run.
+describe('section headings on the real V2 thesis import', { timeout: 20_000 }, () => {
   it('finds the bold-paragraph and H2/H3 section headings and skips front matter, chapter titles, tables and captions', () => {
     const html = gunzipSync(
       readFileSync(resolve(__dirname, '../../../../../tests/fixtures/import_baselines/editor_json/V2 INTELLIDOCS (2).docx.html.gz'))

@@ -51,6 +51,27 @@ export function setCellTextAlign(editor: Editor, align: CellTextAlign): boolean 
   return true
 }
 
+/**
+ * Toggle a bullet or numbered list in every selected table cell. List commands work on one block
+ * range, so over several selected cells they changed only the first. Returns false when the
+ * selection is not a cell selection, so the caller runs the ordinary list command.
+ */
+export function toggleListInSelectedCells(editor: Editor, list: 'bulletList' | 'orderedList'): boolean {
+  const { selection } = editor.state
+  if (!(selection instanceof CellSelection)) return false
+  const cells: Array<{ from: number; to: number }> = []
+  selection.forEachCell((node, pos) => cells.push({ from: pos + 1, to: pos + node.nodeSize - 1 }))
+  // Last cell first: wrapping a cell's text in a list shifts every position after it.
+  cells.sort((a, b) => b.from - a.from)
+  let changed = false
+  for (const cell of cells) {
+    const chain = editor.chain().setTextSelection(cell)
+    changed = (list === 'bulletList' ? chain.toggleBulletList() : chain.toggleOrderedList()).run() || changed
+  }
+  editor.commands.focus()
+  return changed
+}
+
 /** Fill the selected cells with a color, or clear the fill with null. */
 export function setCellFill(editor: Editor, color: string | null): boolean {
   return editor.chain().focus().setCellAttribute('backgroundColor', color).run()

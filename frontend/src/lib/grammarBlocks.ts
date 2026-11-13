@@ -71,7 +71,8 @@ export function buildGrammarBlocks(doc: GrammarDocLike, maxChars: number = MAX_G
       const align = typeof node.attrs.textAlign === 'string' ? node.attrs.textAlign : 'left'
       const block: GrammarBlock = { text, kind: blockKind(node, parent), align, centered: align === 'center' }
       if (pos < cellEnd) block.inCell = true
-      const region = regionOf(text, node.type.name === 'heading')
+      // The document's title heading is part of the title page, not the heading that ends it.
+      const region = regionOf(text, node.type.name === 'heading' && node.attrs?.docRole !== 'title')
       if (region) block.region = region
       blocks.push(block)
       total += text.length

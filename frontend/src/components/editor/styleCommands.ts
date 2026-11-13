@@ -1,5 +1,7 @@
 import type { Editor } from '@tiptap/react'
 import { ACADEMIC_PRESETS, basePresetKey, type HeadingStyle } from './academicPresets'
+import { CellSelection } from '@tiptap/pm/tables'
+import { textRangeInside } from './selectionRanges'
 
 /**
  * The formatting preset each editor is bound to, so menus that only hold the
@@ -106,8 +108,19 @@ export function applyStyleCommand(
   // Remember where the user was before the command runs; block conversions
   // (e.g. paragraph → heading) must never move the caret off the block.
   const selection = editor.state.selection
+  // A range given as block edges (suggestions pass the block's outer positions) is moved inside
+  // its text first; see textRangeInside for why edge positions break the chain below.
+  const given = typeof from === 'number' && typeof to === 'number' ? textRangeInside(editor.state.doc, from, to) : null
+  if (given) {
+    from = given.from
+    to = given.to
+  }
   const targetFrom = typeof from === 'number' ? from : selection.from
   const targetTo = typeof to === 'number' ? to : selection.to
+  // Several table cells selected: every command below already runs over each selected cell
+  // (they loop over the selection's ranges), and a cell selection covers whole cells. Turning it
+  // into a text selection, as below, would style only the first cell.
+  const cellSelection = typeof from !== 'number' && selection instanceof CellSelection
 
   const chain = editor.chain().focus()
   if (typeof from === 'number' && typeof to === 'number') {
@@ -119,7 +132,7 @@ export function applyStyleCommand(
   const docSizeBefore = editor.state.doc.content.size
   const $anchor = editor.state.doc.resolve(Math.min(targetFrom, docSizeBefore))
   const $head = editor.state.doc.resolve(Math.min(targetTo, docSizeBefore))
-  if ($anchor.depth > 0 && $head.depth > 0) {
+  if (!cellSelection && $anchor.depth > 0 && $head.depth > 0) {
     chain.setTextSelection({ from: $anchor.start(), to: $head.end() })
   }
 
@@ -170,6 +183,9 @@ export function applyStyleCommand(
     default:
       return
   }
+
+  // The cells stay selected, so the next format applies to all of them too.
+  if (cellSelection) return
 
   // Restore the caret inside the block the user just styled.
   const docSize = editor.state.doc.content.size

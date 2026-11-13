@@ -127,7 +127,10 @@ import { ImageResizeBehaviorExtension } from './ImageResizeBehaviorExtension'
 import ImageOptionsToolbar, { type ImageWrapStyle } from './ImageOptionsToolbar'
 import TableBubbleMenu, { CellFillPicker } from './TableBubbleMenu'
 import { isRemoteYjsChange } from './collabTransactions'
-import { setCellFill, setCellTextAlign, type CellTextAlign } from './tableCellCommands'
+import { TableCellSelection } from './TableCellSelection'
+import { CellSelection } from '@tiptap/pm/tables'
+import { forEachSelectedNode } from './selectionRanges'
+import { setCellFill, setCellTextAlign, toggleListInSelectedCells, type CellTextAlign } from './tableCellCommands'
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import { mergeStyleDecls } from '@/lib/inlineStyle'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
@@ -510,7 +513,7 @@ const CustomParagraph = Paragraph.extend({
         (beforePt: number, afterPt: number) =>
         ({ state, tr, dispatch }) => {
           let changed = false
-          const { from, to, empty, $from } = state.selection
+          const { empty, $from } = state.selection
           if (empty) {
             if ($from.parent.type.name !== 'paragraph') return false
             const pos = $from.before($from.depth)
@@ -520,7 +523,8 @@ const CustomParagraph = Paragraph.extend({
             })
             changed = true
           } else {
-            state.doc.nodesBetween(from, to, (node, pos) => {
+            // Every selection range, so several selected table cells all get the spacing.
+            forEachSelectedNode(state, (node, pos) => {
               if (node.type.name !== 'paragraph') return
               tr.setNodeMarkup(pos, undefined, {
                 ...node.attrs,
@@ -1323,6 +1327,7 @@ const editorExtensionsAfterStarterKit = [
     resizeHandleStyle: { background: 'var(--primary)', width: '10px', height: '10px' },
   }),
   TableInset,
+  TableCellSelection,
   MathExtension,
   FullSpan,
   TableRowPlus,
@@ -1386,6 +1391,9 @@ function bubbleMenuShouldShow(props: {
 }): boolean {
   const { editor, state, from, to } = props
   if (from === to) return false
+  // Selected table cells get the table menu (fill, alignment, merge) in this spot instead; two
+  // floating menus drawn over each other were unusable. Bold and the rest stay on the ribbon.
+  if (state.selection instanceof CellSelection) return false
   return editor.isFocused && state.doc.textBetween(from, to, ' ').trim().length > 0
 }
 
@@ -2476,13 +2484,13 @@ export function TiptapToolbar({
           icon={List}
           title="Bullet List"
           active={isActive('bulletList')}
-          onClick={() => run('bullet_list', () => editor?.chain().focus().toggleBulletList().run())}
+          onClick={() => run('bullet_list', () => editor && (toggleListInSelectedCells(editor, 'bulletList') || editor.chain().focus().toggleBulletList().run()))}
         />
         <ToolButton
           icon={ListOrdered}
           title="Numbered List"
           active={isActive('orderedList')}
-          onClick={() => run('ordered_list', () => editor?.chain().focus().toggleOrderedList().run())}
+          onClick={() => run('ordered_list', () => editor && (toggleListInSelectedCells(editor, 'orderedList') || editor.chain().focus().toggleOrderedList().run()))}
         />
         {isIeee && (
           <IeeeLayoutMenu
@@ -3792,12 +3800,12 @@ function TiptapFloatingMenu({
         <ToolButton
           icon={List}
           title="Bullet List"
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          onClick={() => toggleListInSelectedCells(editor, 'bulletList') || editor.chain().focus().toggleBulletList().run()}
         />
         <ToolButton
           icon={ListOrdered}
           title="Numbered List"
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          onClick={() => toggleListInSelectedCells(editor, 'orderedList') || editor.chain().focus().toggleOrderedList().run()}
         />
         <ToolButton
           icon={Quote}

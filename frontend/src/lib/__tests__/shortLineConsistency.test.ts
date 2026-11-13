@@ -36,6 +36,22 @@ describe('findShortLineDeviations', () => {
     ])
   })
 
+  it('keeps checking the title page after its title is styled as the document title', () => {
+    // Accepting "Format as Title" turns the first line into a title heading; that heading belongs
+    // to the title page and must not end it (the lines below used to stop being checked).
+    const titlePage = [
+      '<h1 data-doc-role="title" style="text-align:center">AN INTELLIGENT EDITOR</h1>',
+      centered('A Proposal Project'),
+      left('presented to the Faculty'),
+      left('By:'),
+      centered('Ben Cruz'),
+    ].join('')
+    expect(sweep(titlePage + '<h1>CHAPTER I</h1>', UCLM)).toEqual([
+      'presented to the Faculty: left-aligned instead of center',
+      'By:: left-aligned instead of center',
+    ])
+  })
+
   it('leaves a title page alone without a preset that defines one (its layout is a design choice)', () => {
     const titlePage = [centered('A Proposal Project'), left('presented to the Faculty'), left('By:'), left('Ana Reyes')].join('')
     expect(sweep(titlePage + '<h1>CHAPTER I</h1>')).toEqual([])
