@@ -24,5 +24,9 @@
     }
   },
   "include": ["src"],
+  // This test checks the server's collaboration converter against the editor, so it imports
+  // from ../server. Hosts that build only the frontend (Vercel) don't install the server's
+  // packages; vitest still runs the test locally.
+  "exclude": ["src/components/editor/__tests__/collabSeed.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
