@@ -2,10 +2,10 @@
 export const ROWS_PER_PAGE = 3
 
 /** Maximum columns the document grid will show per row. */
-export const MAX_COLUMNS = 8
+export const MAX_COLUMNS = 6
 
-/** Narrowest a grid card may get (matches `minmax(176px, 1fr)` in the document grid) and the gap between cards. */
-export const MIN_CARD_WIDTH = 176
+/** Narrowest a grid card may get (matches `minmax(232px, 1fr)` in the document grid) and the gap between cards. */
+export const MIN_CARD_WIDTH = 232
 export const CARD_GAP = 16
 
 /**

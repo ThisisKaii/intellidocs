@@ -702,7 +702,7 @@ export function DriveTable({
 
           <PreviewStyles />
           {viewMode === 'grid' ? (
-            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(176px,1fr))] gap-4" style={{ maxWidth: MAX_GRID_WIDTH }}>
+            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-4" style={{ maxWidth: MAX_GRID_WIDTH }}>
               {shownItems.map((item, index) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
