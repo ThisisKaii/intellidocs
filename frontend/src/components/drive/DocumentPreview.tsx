@@ -144,7 +144,7 @@ export function PreviewStyles(): JSX.Element {
 }
 
 /** Print-size canvas for the page setup, falling back to US Letter. */
-function pageCanvas(setup: PreviewPageSetup): { width: number; height: number; padding: string } {
+function pageCanvas(setup: PreviewPageSetup): { width: number; height: number; padding: string; left: number; right: number; top: number } {
   const preset = PAGE_SIZES[setup.pageSize ?? 'short'] ?? PAGE_SIZES.short
   const landscape = setup.orientation === 'landscape'
   const m = setup.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 }
@@ -152,13 +152,24 @@ function pageCanvas(setup: PreviewPageSetup): { width: number; height: number; p
     width: landscape ? preset.height : preset.width,
     height: landscape ? preset.width : preset.height,
     padding: `${inToPx(m.top)}px ${inToPx(m.right)}px ${inToPx(m.bottom)}px ${inToPx(m.left)}px`,
+    left: inToPx(m.left),
+    right: inToPx(m.right),
+    top: inToPx(m.top),
   }
 }
 
 /**
- * Render the first page at true print size and scale it to the card's width.
- * The scale is measured (not hardcoded) so the page fills the card edge to edge
- * at any grid width; taller pages are cropped by the card like Google Docs.
+ * White space (print px) kept around the text block. The card shows the text area, not the
+ * full margins: on a narrow card that makes the text about a third larger and readable.
+ */
+const PREVIEW_INSET = 24
+
+/**
+ * Render the first page at true print size and shrink its text area to the card's width.
+ * The scale is measured (not hardcoded) so the text fills the card edge to edge at any grid
+ * width; taller pages are cropped by the card like Google Docs. CSS `zoom` (not a transform)
+ * does the shrinking, so the browser lays out and hints the text at its final size instead
+ * of scaling down a full-size rendering, which came out grey and blurry.
  */
 export function DocumentPreview({
   html,
@@ -175,6 +186,10 @@ export function DocumentPreview({
 }): JSX.Element {
   const frameRef = useRef<HTMLDivElement>(null)
   const canvas = useMemo(() => pageCanvas(setup), [setup])
+  // Margins are cropped to PREVIEW_INSET on each side; never crop more than the page has.
+  const cropLeft = Math.max(0, canvas.left - PREVIEW_INSET)
+  const cropTop = Math.max(0, canvas.top - PREVIEW_INSET)
+  const visibleWidth = canvas.width - cropLeft - Math.max(0, canvas.right - PREVIEW_INSET)
   const presetKey = ACADEMIC_PRESETS.find((preset) => preset.key === basePresetKey(setup.formattingPreset))?.key
   const [scale, setScale] = useState(0.25)
   const [near, setNear] = useState<boolean>(priority || typeof IntersectionObserver === 'undefined')
@@ -200,13 +215,13 @@ export function DocumentPreview({
     const frame = frameRef.current
     if (!frame) return
     const fit = (): void => {
-      if (frame.clientWidth) setScale(frame.clientWidth / canvas.width)
+      if (frame.clientWidth) setScale(frame.clientWidth / visibleWidth)
     }
     fit()
     const observer = new ResizeObserver(fit)
     observer.observe(frame)
     return () => observer.disconnect()
-  }, [canvas.width])
+  }, [visibleWidth])
 
   return (
     <div
@@ -216,14 +231,16 @@ export function DocumentPreview({
       {html && near ? (
         <>
           <div
-            className={`dd-preview ${presetKey ? `dd-preview--${presetKey}` : ''} absolute left-0 top-0 bg-white`}
+            className={`dd-preview ${presetKey ? `dd-preview--${presetKey}` : ''} absolute bg-white`}
             style={{
               width: `${canvas.width}px`,
               height: `${canvas.height}px`,
               padding: canvas.padding,
               boxSizing: 'border-box',
-              transform: `scale(${scale})`,
-              transformOrigin: 'top left',
+              // left/top are in the zoomed element's own (print px) units.
+              left: `${-cropLeft}px`,
+              top: `${-cropTop}px`,
+              zoom: scale,
             }}
             // Safe: sanitizePreviewHtml keeps only whitelisted tags, attributes and styles.
             dangerouslySetInnerHTML={{ __html: html }}

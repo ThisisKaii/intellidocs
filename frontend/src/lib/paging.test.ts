@@ -2,19 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { columnsForWidth, hiddenCount, MAX_GRID_WIDTH, ROWS_PER_PAGE, visibleLimit } from './paging'
 
 describe('columnsForWidth', () => {
-  it('fits as many 200px cards (16px gap) as the width allows', () => {
-    expect(columnsForWidth(200)).toBe(1)
-    expect(columnsForWidth(415)).toBe(1) // 2 cards need 200 + 16 + 200 = 416
-    expect(columnsForWidth(416)).toBe(2)
+  it('fits as many 176px cards (16px gap) as the width allows', () => {
+    expect(columnsForWidth(176)).toBe(1)
+    expect(columnsForWidth(367)).toBe(1) // 2 cards need 176 + 16 + 176 = 368
+    expect(columnsForWidth(368)).toBe(2)
     expect(columnsForWidth(686)).toBe(3) // tablet
-    expect(columnsForWidth(1574)).toBe(7) // 1080p content area
-    expect(columnsForWidth(3000)).toBe(7)
+    expect(columnsForWidth(1574)).toBe(8) // 1080p content area
+    expect(columnsForWidth(3000)).toBe(8)
   })
 
-  it('caps the grid one pixel short of an eighth track', () => {
-    expect(columnsForWidth(MAX_GRID_WIDTH)).toBe(7)
-    expect(Math.floor((MAX_GRID_WIDTH + 16) / 216)).toBe(7)
-    expect(Math.floor((MAX_GRID_WIDTH + 1 + 16) / 216)).toBe(8)
+  it('caps the grid one pixel short of a ninth track', () => {
+    expect(columnsForWidth(MAX_GRID_WIDTH)).toBe(8)
+    expect(Math.floor((MAX_GRID_WIDTH + 16) / 192)).toBe(8)
+    expect(Math.floor((MAX_GRID_WIDTH + 1 + 16) / 192)).toBe(9)
   })
 
   it('never returns less than one column, even before the width is measured', () => {

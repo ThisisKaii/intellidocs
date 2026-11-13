@@ -702,7 +702,7 @@ export function DriveTable({
 
           <PreviewStyles />
           {viewMode === 'grid' ? (
-            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4" style={{ maxWidth: MAX_GRID_WIDTH }}>
+            <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(176px,1fr))] gap-4" style={{ maxWidth: MAX_GRID_WIDTH }}>
               {shownItems.map((item, index) => {
                 const isEditing = editing?.id === item.id
                 const isSelected = selectedIds.has(item.id)
@@ -727,7 +727,7 @@ export function DriveTable({
                     </div>
 
                     {/* Card Footer */}
-                    <div className="p-3.5 flex flex-col gap-1">
+                    <div className="p-3 flex flex-col gap-1">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <div className="size-6 rounded-md bg-primary text-primary-foreground flex items-center justify-center shrink-0">
@@ -757,20 +757,8 @@ export function DriveTable({
                         </div>
 
                         {!isEditing && (
+                          // Share lives in this menu: a separate button left narrow cards no room for the title.
                           <div className="flex items-center gap-0.5 shrink-0">
-                            {onShare && item.kind === 'file' && !readOnlyView && (
-                              <button
-                                className="flex items-center justify-center w-7 h-7 rounded-full bg-transparent text-muted-foreground border-none cursor-pointer opacity-60 transition-all hover:opacity-100 hover:bg-foreground/5 group-hover:opacity-100 shrink-0"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  onShare(item.id)
-                                }}
-                                title="Share this document"
-                                aria-label="Share this document"
-                              >
-                                <Share2 className="size-3.5" />
-                              </button>
-                            )}
                             <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
