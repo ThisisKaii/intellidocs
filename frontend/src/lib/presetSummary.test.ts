@@ -11,7 +11,7 @@ const byKey = (key: string) => {
 describe('describePresetChanges', () => {
   it('describes the UCLM capstone setup side by side', () => {
     expect(describePresetChanges(byKey('uclm_capstone'))).toBe(
-      'Applied UCLM Capstone (Thesis): margins 1in top, 1in bottom, 1.5in left, 1in right · Times New Roman 12pt · double spacing · 0.5in first-line indent.'
+      'Applied UCLM Capstone (Thesis): margins 1in top, 1in bottom, 1.5in left, 1in right · Times New Roman 11pt · double spacing · 0.5in first-line indent.'
     )
   })
 

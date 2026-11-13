@@ -110,13 +110,31 @@ describe('ImportQueue', () => {
     expect(rows.current[0]).toMatchObject({ state: 'done', documentId: 'doc-1' })
   })
 
-  it('marks a job the server forgot as failed instead of polling forever', async () => {
+  it('marks a job the server keeps not finding as failed instead of polling forever', async () => {
     const getJob = vi.fn().mockRejectedValue(new Error('Import job not found'))
     const { queue, rows } = setup({ getJob })
     queue.trackJob('gone', 'a.docx')
     queue.dispose()
+    // One or two misses can be a hiccup on the server's job store: keep polling.
+    await queue.pollOnce()
+    await queue.pollOnce()
+    expect(rows.current[0].state).not.toBe('failed')
+    await queue.pollOnce()
     await queue.pollOnce()
     expect(rows.current[0].state).toBe('failed')
+  })
+
+  it('keeps an import that the server briefly could not find', async () => {
+    const getJob = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Import job not found'))
+      .mockResolvedValue({ id: 'job-1', state: 'done', progress: 100, title: 'a', documentId: 'doc-1', fileName: 'a.pdf', error: '' })
+    const { queue, rows } = setup({ getJob })
+    queue.trackJob('job-1', 'a.pdf')
+    queue.dispose()
+    await queue.pollOnce()
+    await queue.pollOnce()
+    expect(rows.current[0].state).toBe('done')
   })
 
   it('keeps retrying through a transient network error', async () => {

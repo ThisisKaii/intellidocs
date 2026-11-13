@@ -21,6 +21,14 @@ export interface FormatSuggestion {
   formatGroup?: string
   /** Other nodes in the same format group. */
   groupMembers?: Array<{ from: number; to: number; preview: string }>
+  /**
+   * The block a scanner card was found on. Accept formats exactly this block: the scanner's
+   * "active" suggestion is an index that a rescan (after any edit, or every few seconds) can move
+   * to another card, and then Accept used to fall back to the block under the caret.
+   */
+  range?: { from: number; to: number }
+  /** The scanner card this prompt was opened from: accepting or dismissing answers that card. */
+  scannerKey?: string
 }
 
 interface FormatPromptProps {

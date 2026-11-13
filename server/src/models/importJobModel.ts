@@ -80,6 +80,7 @@ export async function createImportJob(
     updatedAt: Date.now(),
   }
 
+  rememberJob(job)
   await client.set(jobKey(job.id), JSON.stringify(job), { EX: JOB_TTL_SECONDS })
   await client.rPush(userIndexKey(userId), job.id)
   await client.expire(userIndexKey(userId), JOB_TTL_SECONDS)
@@ -90,16 +91,45 @@ export async function createImportJob(
   return job
 }
 
+/**
+ * This process's own copy of every job it created or updated. Redis access fails over between
+ * Upstash and an in-memory store (utils/redisClient) when a backend errors or is slow, which a
+ * heavy PDF import makes more likely; a job written to one and then read from the other came back
+ * "not found", the client gave up on it ("This import is no longer available") although the
+ * import finished, and updates to it were dropped. The server runs as one instance, so the
+ * process's copy is always at hand.
+ */
+const localJobs = new Map<string, ImportJob>()
+const MAX_LOCAL_JOBS = 200
+
+function rememberJob(job: ImportJob): void {
+  localJobs.delete(job.id)
+  localJobs.set(job.id, job)
+  const cutoff = Date.now() - JOB_TTL_SECONDS * 1000
+  for (const [id, kept] of localJobs) {
+    if (localJobs.size <= MAX_LOCAL_JOBS && kept.updatedAt >= cutoff) break
+    localJobs.delete(id)
+  }
+}
+
 /** Fetch a job, or null when it expired or never existed. */
 export async function getImportJob(jobId: string): Promise<ImportJob | null> {
-  const client = await getRedisClient()
-  const raw = await client.get(jobKey(jobId))
-  if (!raw) return null
+  const local = localJobs.get(jobId) ?? null
+  let stored: ImportJob | null = null
   try {
-    return JSON.parse(raw) as ImportJob
+    const client = await getRedisClient()
+    const raw = await client.get(jobKey(jobId))
+    stored = raw ? (JSON.parse(raw) as ImportJob) : null
   } catch {
-    return null
+    stored = null
   }
+  if (local && Date.now() - local.updatedAt > JOB_TTL_SECONDS * 1000) {
+    localJobs.delete(jobId)
+    return stored
+  }
+  // The newer of the two copies (the other may sit in a backend that missed an update).
+  if (stored && local) return stored.updatedAt >= local.updatedAt ? stored : local
+  return stored ?? local
 }
 
 /**
@@ -122,6 +152,7 @@ export async function updateImportJob(
     updatedAt: Date.now(),
   }
 
+  rememberJob(merged)
   await client.set(jobKey(jobId), JSON.stringify(merged), { EX: JOB_TTL_SECONDS })
 }
 

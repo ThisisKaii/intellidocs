@@ -1137,6 +1137,23 @@ html {
    outline and background rather than opacity, so the text stays crisp. */
 .agentic-highlight-overlay {
   position: relative;
+}
+/* A suggested alignment previewed on the block (SuggestionDecorationsExtension). Applied through a
+   class and a custom property so removing the preview never strips the block's own alignment. */
+.ProseMirror .suggestion-preview-align {
+  text-align: var(--preview-text-align) !important;
+}
+/* Drawn as an overlay from the block's first line (--overlay-top, measured by
+   SuggestionDecorationsExtension) rather than on the block's own box: on the first line of a
+   page the box starts at the end of the previous page, because pagination pushes the text past
+   the page break with floats, and an outline on it covered that page's margin and the gap. */
+.agentic-highlight-overlay::before {
+  content: '';
+  position: absolute;
+  top: var(--overlay-top, 0px);
+  right: 0;
+  bottom: 0;
+  left: 0;
   border-radius: 6px;
   /* --agentic-pulse-color is the highlight colour chosen in Editor & AI settings. */
   outline: 2px dashed color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 85%, transparent);
@@ -1144,6 +1161,7 @@ html {
   background-color: color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 8%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--agentic-pulse-color, #6366f1) 25%, transparent);
   /* Purely visual: the text inside keeps the normal text cursor and takes clicks as usual. */
+  pointer-events: none;
   animation: agenticOverlayPulse 2s ease-in-out infinite;
 }
 @keyframes agenticOverlayPulse {
@@ -1215,7 +1233,7 @@ html {
   text-overflow: ellipsis;
 }
 @media (prefers-reduced-motion: reduce) {
-  .agentic-highlight-overlay {
+  .agentic-highlight-overlay::before {
     animation: none;
   }
 }

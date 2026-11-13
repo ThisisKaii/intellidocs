@@ -2,6 +2,12 @@ import type { ImportJob, ImportJobState } from '@/services/api'
 
 /** Poll cadence for in-flight imports. */
 const POLL_INTERVAL_MS = 1500
+/**
+ * "Not found" answers in a row before a job counts as gone. One can be a hiccup on the server's
+ * job store (it fails over between backends), and giving up on the first one reported an
+ * import as unavailable although it went on to finish.
+ */
+const NOT_FOUND_LIMIT = 4
 
 /** localStorage key holding the ids of imports the user has not dismissed. */
 export const IMPORT_STORAGE_KEY = 'intellidocs:import-jobs'
@@ -83,6 +89,8 @@ export class ImportQueue {
   private uploadCounter = 0
   private uploadChain: Promise<void> = Promise.resolve()
   private stopped = false
+  /** Consecutive "not found" polls per job id (see NOT_FOUND_LIMIT). */
+  private notFound = new Map<string, number>()
 
   constructor(
     private readonly api: ImportQueueApi,
@@ -192,13 +200,19 @@ export class ImportQueue {
       active.map(async (item) => {
         try {
           const job = await this.api.getJob(item.id)
+          this.notFound.delete(item.id)
           this.applyJob(item, fromJob(job))
         } catch (error) {
           const message = error instanceof Error ? error.message : ''
-          // A job the server no longer has can never finish; anything else is
+          // A job the server keeps not finding can never finish; anything else is
           // a transient network error that the next tick retries.
           if (/not found/i.test(message)) {
-            this.applyJob(item, { ...item, state: 'failed', error: 'This import is no longer available.' })
+            const misses = (this.notFound.get(item.id) ?? 0) + 1
+            this.notFound.set(item.id, misses)
+            if (misses >= NOT_FOUND_LIMIT) {
+              this.notFound.delete(item.id)
+              this.applyJob(item, { ...item, state: 'failed', error: 'This import is no longer available.' })
+            }
           }
         }
       })

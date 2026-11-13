@@ -39,6 +39,8 @@ import { sanitizeHeaderHtml } from '@/lib/sanitizeHeaderHtml'
 
 /** Vertical gap between stacked page sheets, in px. */
 const PAGE_GAP = 40
+/** Longest the host waits for the editor's content while the user types (see onUpdate). */
+const EMIT_INTERVAL_MS = 400
 
 /** Horizontal gap between the two page sheets of a spread, in px. */
 const SPREAD_GAP = 24
@@ -298,6 +300,14 @@ export function PagedEditor({
     headerFooterConfig.footer.placement
   )
 
+  // A scheduled delivery of the editor's content to the host (see onUpdate).
+  const emitTimerRef = useRef<number | null>(null)
+  const emitContent = (ed: Editor): void => {
+    if (ed.isDestroyed) return
+    const html = ed.getHTML()
+    lastEmittedRef.current = html
+    propsRef.current.onContentChange(html, ed.getJSON())
+  }
   // Read once: the extensions are fixed when the editor is created.
   const collabRef = useRef(collaboration)
   // In a shared session the document comes from the Yjs room, so the first `content` (the last
@@ -347,12 +357,29 @@ export function PagedEditor({
         spellcheck: 'false',
       },
     },
+    // Serialising the whole document (HTML and JSON) on every keystroke cost a long document most
+    // of each keystroke's time. While typing, the host gets the content at most every
+    // EMIT_INTERVAL_MS; the last change is always delivered (and flushed on unmount).
     onUpdate: ({ editor: ed }) => {
-      const html = ed.getHTML()
-      lastEmittedRef.current = html
-      propsRef.current.onContentChange(html, ed.getJSON())
+      if (emitTimerRef.current !== null) return
+      emitTimerRef.current = window.setTimeout(() => {
+        emitTimerRef.current = null
+        emitContent(ed)
+      }, EMIT_INTERVAL_MS)
     },
   })
+
+  // Deliver a pending change before the editor goes away.
+  useEffect(
+    () => () => {
+      if (emitTimerRef.current !== null && editor && !editor.isDestroyed) {
+        window.clearTimeout(emitTimerRef.current)
+        emitTimerRef.current = null
+        emitContent(editor)
+      }
+    },
+    [editor]
+  )
 
   // Report the editor so the toolbar and AI features can act on it.
   useEffect(() => {
@@ -409,6 +436,12 @@ export function PagedEditor({
     }
 
     lastEmittedRef.current = content
+    // New content from the host (import, restore) replaces the document: a pending delivery of
+    // the old content must not follow it and overwrite the host's copy.
+    if (emitTimerRef.current !== null) {
+      window.clearTimeout(emitTimerRef.current)
+      emitTimerRef.current = null
+    }
 
     // Strip import-only wrapper markup before ProseMirror builds its nodes. The saved JSON, when
     // there is one, is the editor's own and loads in preference (the HTML is its fallback).

@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
+import type { EditorView } from '@tiptap/pm/view'
 
 /** A half-open document range [from, to) that should be outlined in the editor. */
 export interface OutlineRange {
@@ -28,6 +29,13 @@ interface DecorationRanges {
 interface SuggestionPluginState {
   ranges: DecorationRanges
   decorations: DecorationSet
+  /**
+   * Per outlined block (by start position): how far below the block's own top its first line
+   * sits. Pagination pushes a page's first line down past the page break with floats, while the
+   * block's box still starts at the end of the previous page; the outline starts at the first line
+   * so it doesn't cover the previous page's bottom margin, the gap and the next header.
+   */
+  firstLineOffsets: Record<number, number>
 }
 
 declare module '@tiptap/core' {
@@ -43,8 +51,40 @@ declare module '@tiptap/core' {
 
 /** Wrapper class for the pulsing suggestion outline. */
 const SUGGESTION_CLASS = 'agentic-highlight-overlay'
+/** Class that shows a suggested alignment while it is previewed. */
+const PREVIEW_ALIGN_CLASS = 'suggestion-preview-align'
 
 const suggestionKey = new PluginKey<SuggestionPluginState>('suggestionDecorations')
+/** Transaction meta carrying freshly measured first-line offsets. */
+const offsetsMeta = 'suggestionOutlineOffsets'
+
+/** Below this the block's first line is where its box starts: nothing to correct. */
+const MIN_OFFSET_PX = 4
+
+/** Measure, for each outlined block, how far its first line of text sits below the block's top. */
+function measureFirstLineOffsets(view: EditorView): Record<number, number> {
+  const out: Record<number, number> = {}
+  view.dom.querySelectorAll<HTMLElement>(`.${SUGGESTION_CLASS}`).forEach((el) => {
+    let pos: number
+    try {
+      pos = view.posAtDOM(el, 0) - 1
+    } catch {
+      return
+    }
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    const first = Array.from(range.getClientRects()).find((rect) => rect.width > 0 && rect.height > 0)
+    if (!first) return
+    const offset = Math.round(first.top - el.getBoundingClientRect().top)
+    if (offset >= MIN_OFFSET_PX) out[pos] = offset
+  })
+  return out
+}
+
+function sameOffsets(a: Record<number, number>, b: Record<number, number>): boolean {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => a[Number(k)] === b[Number(k)])
+}
 
 /** Clamp a range to the document, returning null once it no longer covers any text. */
 function normalise(range: OutlineRange | null, doc: ProseMirrorNode): OutlineRange | null {
@@ -84,7 +124,7 @@ function blockSpans(doc: ProseMirrorNode, range: OutlineRange): Array<{ from: nu
 }
 
 /** Build one node decoration per covered block, so each wrapper sits around its own text. */
-function buildDecorations(state: EditorState, ranges: DecorationRanges): DecorationSet {
+function buildDecorations(state: EditorState, ranges: DecorationRanges, firstLineOffsets: Record<number, number> = {}): DecorationSet {
   const { doc } = state
   const decorations: Decoration[] = []
 
@@ -92,7 +132,10 @@ function buildDecorations(state: EditorState, ranges: DecorationRanges): Decorat
     const range = normalise(rawRange, doc)
     if (!range) return
     for (const span of blockSpans(doc, range)) {
-      decorations.push(Decoration.node(span.from, span.to, { class: className }))
+      const offset = firstLineOffsets[span.from]
+      const attrs: Record<string, string> = { class: className }
+      if (offset) attrs.style = `--overlay-top: ${offset}px`
+      decorations.push(Decoration.node(span.from, span.to, attrs))
     }
   }
 
@@ -104,9 +147,14 @@ function buildDecorations(state: EditorState, ranges: DecorationRanges): Decorat
     if (preview.inlineStyle) {
       decorations.push(Decoration.inline(previewRange.from, previewRange.to, { style: preview.inlineStyle }))
     }
-    if (preview.blockStyle) {
+    const align = /text-align\s*:\s*(left|center|right|justify)/i.exec(preview.blockStyle)?.[1]
+    if (align) {
+      // Not a real `text-align` on the block: ProseMirror removes a decoration's style properties
+      // from the element when the decoration goes, which also wiped the block's own alignment once
+      // the suggestion was accepted (attrs said center, the page showed left). A custom property
+      // and a class (see .suggestion-preview-align in index.css) can be removed without touching it.
       for (const span of blockSpans(doc, previewRange)) {
-        decorations.push(Decoration.node(span.from, span.to, { style: preview.blockStyle }))
+        decorations.push(Decoration.node(span.from, span.to, { class: PREVIEW_ALIGN_CLASS, style: `--preview-text-align: ${align}` }))
       }
     }
   }
@@ -168,16 +216,22 @@ export const SuggestionDecorationsExtension = Extension.create({
             return {
               ranges: { suggestion: null, preview: null },
               decorations: DecorationSet.empty,
+              firstLineOffsets: {},
             }
           },
           apply(tr, value, _oldState, newState) {
+            const offsets = tr.getMeta(offsetsMeta) as Record<number, number> | undefined
+            if (offsets) {
+              return { ...value, firstLineOffsets: offsets, decorations: buildDecorations(newState, value.ranges, offsets) }
+            }
             const meta = tr.getMeta(key) as Partial<DecorationRanges> | undefined
             if (meta) {
               const ranges: DecorationRanges = {
                 suggestion: 'suggestion' in meta ? (meta.suggestion ?? null) : value.ranges.suggestion,
                 preview: 'preview' in meta ? (meta.preview ?? null) : value.ranges.preview,
               }
-              return { ranges, decorations: buildDecorations(newState, ranges) }
+              // A new outline is measured afresh (see the plugin view).
+              return { ranges, firstLineOffsets: {}, decorations: buildDecorations(newState, ranges) }
             }
             if (tr.docChanged && (value.ranges.suggestion || value.ranges.preview)) {
               const mappedPreview = value.ranges.preview
@@ -187,11 +241,26 @@ export const SuggestionDecorationsExtension = Extension.create({
                 suggestion: mapRange(value.ranges.suggestion, tr),
                 preview: mappedPreview,
               }
-              return { ranges, decorations: buildDecorations(newState, ranges) }
+              return { ranges, firstLineOffsets: {}, decorations: buildDecorations(newState, ranges) }
             }
             return value
           },
         },
+        view: () => ({
+          update(view) {
+            const current = key.getState(view.state)
+            if (!current?.ranges.suggestion) return
+            const measured = measureFirstLineOffsets(view)
+            if (sameOffsets(measured, current.firstLineOffsets)) return
+            // After this update finishes: dispatching from inside update is not allowed.
+            queueMicrotask(() => {
+              if (view.isDestroyed) return
+              const latest = key.getState(view.state)
+              if (!latest?.ranges.suggestion || sameOffsets(measured, latest.firstLineOffsets)) return
+              view.dispatch(view.state.tr.setMeta(offsetsMeta, measured).setMeta('addToHistory', false))
+            })
+          },
+        }),
         props: {
           // Purely visual: suggestions are reviewed in the side panel, so a click on the
           // outlined text places the caret like anywhere else.

@@ -168,3 +168,22 @@ describe('import job store (requires Redis)', () => {
     expect(await client.lRange('drive:import:queue', 0, -1)).not.toContain(job.id)
   })
 })
+
+describe('a job the Redis backend lost', () => {
+  it('is still found and still takes updates (Redis failover read from another backend)', async () => {
+    const job = await createImportJob('user-failover', 'file-x', 'sabotage.pdf', 'local')
+    // Simulate the read landing on a backend that never got the write.
+    const client = await getRedisClient()
+    await client.del(`drive:import:job:${job.id}`)
+    expect(await client.get(`drive:import:job:${job.id}`)).toBeNull()
+
+    const found = await getImportJob(job.id)
+    expect(found?.id).toBe(job.id)
+
+    await updateImportJob(job.id, { state: 'done', progress: 100, documentId: 'doc-1' })
+    const after = await getImportJob(job.id)
+    expect(after?.state).toBe('done')
+    expect(after?.documentId).toBe('doc-1')
+    await removeFromQueue(job.id)
+  })
+})

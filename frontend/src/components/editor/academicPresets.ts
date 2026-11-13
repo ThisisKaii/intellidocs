@@ -182,12 +182,13 @@ const UCLM_CAPSTONE: PresetInput = {
   key: 'uclm_capstone',
   name: 'UCLM Capstone (Thesis)',
   description:
-    'UCLM spec — 1.5" left binding margin, double-spaced Times New Roman 12pt, uppercase centered chapter headings, roman preliminary page numbers.',
+    'UCLM spec — 1.5" left binding margin, double-spaced Times New Roman: 11pt body, 12pt headings; uppercase centered chapter headings, roman preliminary page numbers.',
   pageSize: 'letter',
   orientation: 'portrait',
   margins: { top: 1, bottom: 1, left: 1.5, right: 1 },
   fontFamily: "'Times New Roman', Times, serif",
-  baseFontSize: '12pt',
+  // Body paragraphs are 11pt; chapter and section headings 12pt (headings below).
+  baseFontSize: '11pt',
   lineHeight: 2,
   firstLineIndent: '0.5in',
   titlePageAlign: 'center',

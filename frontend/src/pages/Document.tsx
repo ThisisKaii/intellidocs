@@ -13,6 +13,7 @@ import {
 } from '@/components/editor/TiptapEditor'
 import { PagedEditor, type EditorCollaboration } from '@/components/editor/PagedEditor'
 import { textRangeInside } from '@/components/editor/selectionRanges'
+import type { Transaction } from '@tiptap/pm/state'
 import { LogoMark } from '@/components/Logo'
 import { UserMenu } from '@/components/UserMenu'
 import {
@@ -41,11 +42,13 @@ import DocumentZoomWidget, { clampZoom, ZOOM_STEP } from '@/components/editor/Do
 import { PAGE_SIZES } from '@/components/editor/HeaderFooterPlugin'
 import { useAuth } from '@/hooks/useAuth'
 import { useCollaboration } from '@/hooks/useCollaboration'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import ShareModal from '@/components/ShareModal'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
 import { ShieldCheck, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose, Cloud, CloudOff, RefreshCw, Loader2 } from 'lucide-react'
 import { useGrammarCheck } from '@/hooks/useGrammarCheck'
-import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
+import { useAutoFormatScanner, classifyStructuralRole, REMOVE_BLANK_LINES, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
+import { isBlankParagraph } from '@/lib/blankLines'
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import type { PageLayoutData } from '@/lib/pageLayout'
@@ -210,6 +213,9 @@ export default function Document(): JSX.Element {
   )
 
   const [editor, setEditor] = useState<Editor | null>(null)
+  // The current editor for handlers registered once (closing the tab reads its latest content).
+  const liveEditorRef = useRef<Editor | null>(null)
+  liveEditorRef.current = editor
 
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savingRef = useRef<boolean>(false)
@@ -447,7 +453,12 @@ export default function Document(): JSX.Element {
     ],
   }), [headerContent, footerContent, headerNumberFormat, footerNumberFormat, showHeader, showFooter, headerPlacement, footerPlacement, differentFirstPage, headerMarginIn, footerMarginIn])
 
-  const chatContent = buildAiDocumentContext(content)
+  // Whole-document derivations (the AI's context re-parses the HTML for an outline; the outline
+  // panel does the same) follow the content once typing pauses, not on every keystroke: on a
+  // 20-page thesis they took most of each keystroke's time.
+  const settledContent = useDebouncedValue(content, 700)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const chatContent = useMemo(() => buildAiDocumentContext(settledContent), [settledContent])
 
   // ── Progressive hydration state (large documents) ────────────────────
   /** True while PagedEditor is still streaming page chunks into the doc. */
@@ -715,6 +726,39 @@ export default function Document(): JSX.Element {
   // Sync the scanner's active suggestion into the document overlay highlight.
   // The overlay is always drawn for the active suggestion; the action popup
   // only opens when the user clicks the highlighted text.
+  // An open suggestion keeps pointing at its own blocks while the document changes (an earlier
+  // accept, typing, a collaborator's edit): its ranges move with each edit until it is answered.
+  useEffect(() => {
+    if (!editor) return
+    const onTransaction = ({ transaction }: { transaction: Transaction }): void => {
+      if (!transaction.docChanged) return
+      const map = (r: { from: number; to: number }): { from: number; to: number } => ({
+        from: transaction.mapping.map(r.from, 1),
+        to: transaction.mapping.map(r.to, -1),
+      })
+      const same = (a: { from: number; to: number }, b: { from: number; to: number }): boolean => a.from === b.from && a.to === b.to
+      // Unchanged objects when nothing moved, so React bails out (see setSuggestionRange).
+      setFormatPrompt((prompt) => {
+        if (!prompt || (!prompt.range && !prompt.groupMembers)) return prompt
+        const range = prompt.range ? map(prompt.range) : undefined
+        const members = prompt.groupMembers?.map((member) => ({ ...member, ...map(member) })).filter((m) => m.to > m.from)
+        const moved =
+          (prompt.range && range && !same(prompt.range, range)) ||
+          (prompt.groupMembers && members && (members.length !== prompt.groupMembers.length || members.some((m, i) => !same(m, prompt.groupMembers![i]))))
+        return moved ? { ...prompt, range, groupMembers: members } : prompt
+      })
+      setSuggestionRangeState((range) => {
+        if (!range) return range
+        const next = map(range)
+        return same(next, range) ? range : next
+      })
+    }
+    editor.on('transaction', onTransaction)
+    return () => {
+      editor.off('transaction', onTransaction)
+    }
+  }, [editor])
+
   // A chip (group / inconsistency prompt) owns the range while it is open —
   // a scanner rescan must not steal the range out from under its Accept All.
   useEffect(() => {
@@ -1200,6 +1244,23 @@ export default function Document(): JSX.Element {
   /** Apply one prompt format directly over an explicit document range. */
   function applyFormatToRange(format: string, from: number, to: number): void {
     if (!editor || !editor.isEditable) return
+    if (format === REMOVE_BLANK_LINES) {
+      // Only ever deletes empty lines: if the document changed since the scan and the range now
+      // holds any text or other content, nothing is removed.
+      const { doc } = editor.state
+      if (from < 0 || to > doc.content.size || from >= to) return
+      let onlyBlank = true
+      doc.nodesBetween(from, to, (node, pos) => {
+        if (pos < from || pos + node.nodeSize > to) {
+          onlyBlank = false
+          return false
+        }
+        if (!isBlankParagraph(node)) onlyBlank = false
+        return false
+      })
+      if (onlyBlank) editor.chain().deleteRange({ from, to }).run()
+      return
+    }
     if (format === 'title') {
       applyStyleCommand(editor, 'title', from, to, formattingPreset)
       return
@@ -1623,6 +1684,16 @@ export default function Document(): JSX.Element {
     }
 
     const nextTitle = latestTitleRef.current
+    // The editor hands its content over a few times a second while typing; a save takes the
+    // newest, straight from the editor when it has moved on since.
+    const live = liveEditorRef.current
+    if (live && !live.isDestroyed) {
+      const liveHtml = live.getHTML()
+      if (liveHtml !== latestContentRef.current) {
+        latestContentRef.current = liveHtml
+        latestJsonRef.current = live.getJSON()
+      }
+    }
     // Read the latest content from the cache kept fresh by every page edit
     const nextContent = latestContentRef.current
     const nextJson = latestJsonRef.current
@@ -1699,11 +1770,17 @@ export default function Document(): JSX.Element {
   useEffect(() => {
     if (!id) return
     const keepPendingEdits = (): void => {
-      if (documentLoadedRef.current && (pendingSaveRef.current || savingRef.current)) {
+      if (!documentLoadedRef.current) return
+      // The editor hands its content over a few times a second while typing (PagedEditor), so
+      // the last keystrokes may be only in the editor: read it directly when it is newer.
+      const live = liveEditorRef.current
+      const liveHtml = live && !live.isDestroyed && live.isEditable ? live.getHTML() : null
+      const unseen = liveHtml !== null && liveHtml !== latestContentRef.current
+      if (unseen || pendingSaveRef.current || savingRef.current) {
         writeLocalDraft(id, {
           title: latestTitleRef.current,
-          content: latestContentRef.current,
-          content_json: latestJsonRef.current,
+          content: unseen && liveHtml !== null ? liveHtml : latestContentRef.current,
+          content_json: unseen && live ? live.getJSON() : latestJsonRef.current,
         })
       }
     }
@@ -1984,9 +2061,10 @@ export default function Document(): JSX.Element {
   /** Shared accept tail: feedback logging, scanner dismissal, chip cleanup. */
   function finishPromptAccept(applied: string, confidence: number | undefined): void {
     setAnnouncement(`Applied ${formatSuggestionLabel(applied)}.`)
-    // Dismiss the active scanner suggestion
-    if (scannerActive) {
-      acceptScannerSuggestion(scannerActive.key)
+    // Mark the card that was accepted (not the scanner's active index, which a rescan can move).
+    const acceptedKey = formatPrompt?.scannerKey ?? scannerActive?.key
+    if (acceptedKey) {
+      acceptScannerSuggestion(acceptedKey)
     }
 
     if (id) {
@@ -2032,11 +2110,15 @@ export default function Document(): JSX.Element {
       // A scanner suggestion formats its own block. Without this the live selection
       // would be used, and any larger selection got the bold and the highlight too.
       const scannerRange =
-        suggestionRange && scannerActive && suggestionRange.from === scannerActive.from ? suggestionRange : undefined
+        format.range ??
+        (suggestionRange && scannerActive && suggestionRange.from === scannerActive.from ? suggestionRange : undefined)
       const appliedRange = applyLearnedFormat(format, scannerRange)
       if (appliedRange) {
         setSuggestionRange(appliedRange)
       }
+    } else if (typeof format === 'object' && format.range) {
+      // A panel card formats the block it was found on, wherever the caret is.
+      applyFormatToRangePreservingSelection(applied, format.range.from, format.range.to)
     } else if (typeof format === 'object' && format.formatGroup && suggestionRange) {
       // Group chips apply over their range instead of the caret — the user's
       // cursor stays exactly where they left it (focus-preservation rule).
@@ -2069,13 +2151,15 @@ export default function Document(): JSX.Element {
     const previous = editor.state.selection
     if (isLearned) {
       // The card's block and every member in ONE transaction: one Ctrl+Z undoes the card.
-      const primary = suggestionRange ?? members[0]
-      const rest = suggestionRange ? members : members.slice(1)
+      const own = prompt.range ?? suggestionRange
+      const primary = own ?? members[0]
+      const rest = own ? members : members.slice(1)
       applyLearnedFormat(prompt, primary, rest)
     } else {
       const ordered = [...members].sort((a, b) => b.from - a.from)
       for (const member of ordered) applyFormatToRange(format, member.from, member.to)
-      if (suggestionRange) applyFormatToRange(format, suggestionRange.from, suggestionRange.to)
+      const own = prompt.range ?? suggestionRange
+      if (own) applyFormatToRange(format, own.from, own.to)
     }
     // Focus-safe: restore the caret the user had before the bulk apply.
     editor.chain().setTextSelection({ from: previous.from, to: previous.to }).run()
@@ -2134,8 +2218,9 @@ export default function Document(): JSX.Element {
     }
 
     // Dismiss the active scanner suggestion
-    if (scannerActive) {
-      rejectScannerSuggestion(scannerActive.key)
+    const rejectedKey = formatPrompt?.scannerKey ?? scannerActive?.key
+    if (rejectedKey) {
+      rejectScannerSuggestion(rejectedKey)
     }
 
     setFormatPrompt(null)
@@ -2210,6 +2295,8 @@ export default function Document(): JSX.Element {
       detail: suggestion.detail,
       suggestionSource: suggestion.suggestionSource,
       ...(suggestion.captures ?? {}),
+      range: { from: suggestion.from, to: suggestion.to },
+      scannerKey: suggestion.key,
     })
   }
 
@@ -3140,7 +3227,7 @@ export default function Document(): JSX.Element {
           }}
         >
           <OutlineNavigator
-            content={content}
+            content={settledContent}
             editor={editor}
             activeHeadingId={activeHeadingId}
             onActiveHeadingChange={setActiveHeadingId}
