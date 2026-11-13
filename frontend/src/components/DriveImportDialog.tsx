@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { api, type DriveFile } from '@/services/api'
+import { useDriveConnection } from '@/hooks/useDriveConnection'
 import { openDrivePicker } from '@/lib/googlePicker'
 import { HardDrive, ExternalLink, FolderOpen, X, Loader2, Unplug, RefreshCw, Upload } from 'lucide-react'
 
@@ -19,66 +20,21 @@ export default function DriveImportDialog({
   onImport,
   onUploadInstead,
 }: DriveImportDialogProps): JSX.Element | null {
-  const [connected, setConnected] = useState<boolean>(false)
-  const [loading, setLoading] = useState<boolean>(true)
+  const drive = useDriveConnection(open)
+  const { connected, loading, error, setError, refresh: checkStatus } = drive
   const [choosing, setChoosing] = useState<boolean>(false)
-  const [error, setError] = useState<string | null>(null)
   // The saved Google connection is no longer valid (revoked, or it predates the file picker).
   const [needsReconnect, setNeedsReconnect] = useState<boolean>(false)
 
-  /** Check Google Drive connection status. */
-  const checkStatus = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await api.drive.status()
-      setConnected(res.connected)
-    } catch (error) {
-      console.error('Drive status check failed', error)
-      setError(error instanceof Error ? error.message : 'Failed to check Google Drive connection.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (open) void checkStatus()
-  }, [open, checkStatus])
-
-  /** Start the OAuth2 flow by opening the consent URL in a popup. */
+  /** Start the OAuth2 flow in a popup, on the Google account linked to this user. */
   async function handleConnect(): Promise<void> {
-    try {
-      const res = await api.drive.getAuthUrl()
-      window.open(res.url, '_blank', 'width=600,height=700')
-
-      function handleOAuthMessage(event: MessageEvent): void {
-        if (event.origin !== window.location.origin) return
-        const data = event.data as { type?: string; error?: string }
-        if (data.type === 'drive:connected') {
-          void checkStatus()
-          window.removeEventListener('message', handleOAuthMessage)
-        } else if (data.type === 'drive:error') {
-          console.error('Google Drive connection error:', data.error)
-          setError(data.error || 'Google Drive was not connected. Please try again.')
-          window.removeEventListener('message', handleOAuthMessage)
-        }
-      }
-      window.addEventListener('message', handleOAuthMessage)
-    } catch (error) {
-      console.error('Failed to get auth URL', error)
-      setError(error instanceof Error ? error.message : 'Failed to start Google Drive connection.')
-    }
+    await drive.connect()
   }
 
   /** Disconnect Google Drive. */
   async function handleDisconnect(): Promise<void> {
-    try {
-      await api.drive.disconnect()
-      setConnected(false)
-      setNeedsReconnect(false)
-    } catch (error) {
-      console.error('Failed to disconnect', error)
-    }
+    await drive.disconnect()
+    setNeedsReconnect(false)
   }
 
   /** Open Google's file picker and import what the person chooses. */

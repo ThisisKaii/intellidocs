@@ -6,9 +6,11 @@ services:
     dockerContext: ./server
     plan: free
     healthCheckPath: /health
+    # One instance: real-time collaboration rooms live in this process's memory, so two
+    # people editing the same document must reach the same instance.
     scaling:
       minInstances: 1
-      maxInstances: 2
+      maxInstances: 1
       targetMemoryPercent: 75
     envVars:
       - key: NODE_ENV

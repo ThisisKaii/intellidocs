@@ -2,8 +2,12 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useEditor, type Editor } from '@tiptap/react'
 import { PaginationPlus } from 'tiptap-pagination-plus'
 import { ColumnsDraft } from './ColumnsDraft'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
+import type * as Y from 'yjs'
+import type { WebsocketProvider } from 'y-websocket'
 import {
-  editorExtensions,
+  buildEditorExtensions,
   TiptapCanvas,
   PAGE_SIZES,
   type PageSizeKey,
@@ -186,6 +190,46 @@ interface PagedEditorProps {
   onHeaderFooterActivate?: (target: 'header' | 'footer') => void
   /** Forwarded to the floating menu so structural actions reach the behavior pipeline. */
   onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
+  /**
+   * Live collaboration: the editor edits this shared Yjs document and shows other people's carets.
+   * Fixed for the editor's lifetime (the host remounts the editor to change it).
+   */
+  collaboration?: EditorCollaboration | null
+}
+
+/** The shared document and how this person's caret appears to others. */
+export interface EditorCollaboration {
+  ydoc: Y.Doc
+  provider: WebsocketProvider
+  user: { name: string; color: string }
+}
+
+/** "Joshua Asingua" → "JA"; a single word gives one letter. */
+export function initialsOf(name: string): string {
+  const letters = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? '')
+    .join('')
+  return letters || '?'
+}
+
+/** A remote person's caret: a colored bar with their initials in a pill (full name on hover). */
+function renderCollabCaret(user: Record<string, unknown>): HTMLElement {
+  const name = typeof user.name === 'string' ? user.name : 'Someone'
+  const color = typeof user.color === 'string' ? user.color : '#6366f1'
+  const caret = document.createElement('span')
+  caret.classList.add('collab-caret')
+  caret.style.borderColor = color
+  const label = document.createElement('span')
+  label.classList.add('collab-caret__label')
+  label.style.backgroundColor = color
+  label.textContent = initialsOf(name)
+  label.title = name
+  caret.append(document.createTextNode('⁠'), label, document.createTextNode('⁠'))
+  return caret
 }
 
 /**
@@ -217,6 +261,7 @@ export function PagedEditor({
   onHydrationChange,
   onHeaderFooterActivate,
   onFormatApplied,
+  collaboration = null,
 }: PagedEditorProps): JSX.Element {
   const propsRef = useRef({ onContentChange, onGrammarClick })
   propsRef.current = { onContentChange, onGrammarClick }
@@ -253,9 +298,26 @@ export function PagedEditor({
     headerFooterConfig.footer.placement
   )
 
+  // Read once: the extensions are fixed when the editor is created.
+  const collabRef = useRef(collaboration)
+  // In a shared session the document comes from the Yjs room, so the first `content` (the last
+  // save) must not be pushed in: it would replace everyone's newer edits. Later pushes (import,
+  // version restore, recovered draft) are deliberate and do go to everyone.
+  const skipFirstLoadRef = useRef(Boolean(collaboration))
+
   const editor = useEditor({
     extensions: [
-      ...editorExtensions,
+      ...buildEditorExtensions(Boolean(collabRef.current)),
+      ...(collabRef.current
+        ? [
+            Collaboration.configure({ document: collabRef.current.ydoc }),
+            CollaborationCaret.configure({
+              provider: collabRef.current.provider,
+              user: collabRef.current.user,
+              render: renderCollabCaret,
+            }),
+          ]
+        : []),
       ColumnsDraft,
       PaginationPlus.configure({
         enabled: true,
@@ -335,6 +397,11 @@ export function PagedEditor({
   // at; pagination is paused around it so exactly one page relayout runs.
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
+    if (skipFirstLoadRef.current) {
+      skipFirstLoadRef.current = false
+      lastEmittedRef.current = content
+      return
+    }
     if (content === lastEmittedRef.current) return
     if (content === editor.getHTML()) {
       lastEmittedRef.current = content

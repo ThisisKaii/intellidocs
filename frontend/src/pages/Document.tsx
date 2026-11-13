@@ -11,7 +11,7 @@ import {
   type HeaderFooterConfig,
   type HeaderFooterPlacement,
 } from '@/components/editor/TiptapEditor'
-import { PagedEditor } from '@/components/editor/PagedEditor'
+import { PagedEditor, type EditorCollaboration } from '@/components/editor/PagedEditor'
 import { LogoMark } from '@/components/Logo'
 import { UserMenu } from '@/components/UserMenu'
 import {
@@ -39,9 +39,10 @@ import WordProgress from '@/components/editor/WordProgress'
 import DocumentZoomWidget, { clampZoom, ZOOM_STEP } from '@/components/editor/DocumentZoomWidget'
 import { PAGE_SIZES } from '@/components/editor/HeaderFooterPlugin'
 import { useAuth } from '@/hooks/useAuth'
+import { useCollaboration } from '@/hooks/useCollaboration'
 import ShareModal from '@/components/ShareModal'
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
-import { ShieldCheck, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose, Cloud, CloudOff, RefreshCw } from 'lucide-react'
+import { ShieldCheck, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, PanelLeft, PanelLeftClose, Cloud, CloudOff, RefreshCw, Loader2 } from 'lucide-react'
 import { useGrammarCheck } from '@/hooks/useGrammarCheck'
 import { useAutoFormatScanner, classifyStructuralRole, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
@@ -188,6 +189,24 @@ export default function Document(): JSX.Element {
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false)
   const docChannelRef = useRef<RealtimeChannel | null>(null)
   const [remotePresence, setRemotePresence] = useState<Map<string, RemotePresence>>(new Map())
+
+  // Live collaboration: a shared Yjs document per open document, or solo when that isn't possible.
+  const collab = useCollaboration(id, shareToken, Boolean(user?.id))
+  const collabModeRef = useRef(collab.mode)
+  collabModeRef.current = collab.mode
+  // The document id whose server copy has been applied (or failed to load).
+  const [loadedDocId, setLoadedDocId] = useState<string | null>(null)
+  // The shared editor mounts only after the server copy is in: that copy reaches the editor as a
+  // `content` change, and arriving after the shared document it would overwrite everyone's edits.
+  const editorReady = collab.mode === 'solo' || (collab.mode === 'collab' && loadedDocId === id)
+  const collabUserName = (user?.displayName || user?.email?.split('@')[0] || 'Anonymous').trim()
+  const editorCollaboration = useMemo<EditorCollaboration | null>(
+    () =>
+      collab.mode === 'collab' && collab.ydoc && collab.provider && user?.id
+        ? { ydoc: collab.ydoc, provider: collab.provider, user: { name: collabUserName, color: avatarColor(user.id) } }
+        : null,
+    [collab.mode, collab.ydoc, collab.provider, user?.id, collabUserName]
+  )
 
   const [editor, setEditor] = useState<Editor | null>(null)
 
@@ -730,6 +749,7 @@ export default function Document(): JSX.Element {
         if (cancelled) return
         applyLoadedDocument(doc)
         documentLoadedRef.current = true
+        setLoadedDocId(docId)
         // Opening a document puts it first in "Recent" and restarts its 7 days.
         void api.documents.markOpened(docId)
         // Edits that never reached the server are offered back, never applied silently.
@@ -757,7 +777,10 @@ export default function Document(): JSX.Element {
         console.error(error)
         // The document never loaded, so saving is disabled; say so instead of
         // letting edits to an empty editor look saved.
-        if (!cancelled) setSaveStatus('error')
+        if (!cancelled) {
+          setSaveStatus('error')
+          setLoadedDocId(docId)
+        }
       }
     }
     loadDocument()
@@ -792,7 +815,10 @@ export default function Document(): JSX.Element {
           // A slower fetch for an earlier notice must not replace a newer state already applied.
           if (!doc || !isNewer(doc.updated_at, lastApplied)) return
           lastApplied = doc.updated_at
-          if (latestContentRef.current !== doc.content) {
+          // In a live session the body already arrives through the shared document; replacing it
+          // with a save (which may be seconds old) would undo others' newest typing. Only the
+          // title and header/footer, which are not part of the shared body, are taken from here.
+          if (collabModeRef.current !== 'collab' && latestContentRef.current !== doc.content) {
             latestContentRef.current = doc.content
             latestJsonRef.current = doc.content_json ?? null
             setContentJson(doc.content_json ?? null)
@@ -3198,7 +3224,15 @@ export default function Document(): JSX.Element {
               </button>
             )}
             {activeAcademicPreset && <style>{activeAcademicPreset.css}</style>}
+            {!editorReady ? (
+              <div role="status" className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Opening document…
+              </div>
+            ) : (
             <PagedEditor
+              // A fresh editor per document and per mode: collaboration binds the editor to one shared document.
+              key={`${id}:${collab.mode}`}
+              collaboration={editorCollaboration}
               content={content}
               contentJson={contentJson}
               onContentChange={handleContentChange}
@@ -3218,6 +3252,7 @@ export default function Document(): JSX.Element {
               onHeaderFooterActivate={handleHeaderFooterActivate}
               onFormatApplied={handleFormat}
             />
+            )}
 
             {/* Word-style canvas zoom control, pinned bottom-right of the canvas */}
             <DocumentZoomWidget

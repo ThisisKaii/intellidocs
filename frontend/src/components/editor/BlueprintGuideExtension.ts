@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { hasLocalDocChange } from './collabTransactions'
 
 /** Wrapper class drawn around an unwritten blueprint placeholder. */
 const GUIDE_CLASS = 'doc-guide'
@@ -108,7 +109,7 @@ export const BlueprintGuideExtension = Extension.create({
           },
         },
         appendTransaction(transactions, _oldState, newState) {
-          if (!transactions.some((tr) => tr.docChanged)) return null
+          if (!hasLocalDocChange(transactions)) return null
 
           // Retire the guide on every placeholder the user has written over.
           const retire: number[] = []

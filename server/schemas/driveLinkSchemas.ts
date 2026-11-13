@@ -21,3 +21,12 @@ export const linkGoogleDriveSchema = z.object({
 })
 
 export type LinkGoogleDriveInput = z.infer<typeof linkGoogleDriveSchema>
+
+/**
+ * Query for the Drive consent URL. `loginHint` is the Google account already linked to this
+ * IntelliDocs account, so Google opens on that account instead of an account chooser. It is
+ * only a hint to Google: the tokens are still stored against the signed-in user.
+ */
+export const driveAuthUrlQuerySchema = z.object({
+  loginHint: z.string().trim().email('loginHint must be an email address').max(254).optional(),
+})

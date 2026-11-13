@@ -63,7 +63,7 @@ export function UserMenu(): JSX.Element {
         <div
           key={animKey}
           role="menu"
-          className="animate-popover absolute right-0 top-12 z-50 w-56 rounded-xl bg-card border border-border shadow-lg overflow-hidden"
+          className="animate-popover absolute right-0 top-12 z-[110] w-56 rounded-xl bg-card border border-border shadow-lg overflow-hidden"
         >
           <button
             role="menuitem"

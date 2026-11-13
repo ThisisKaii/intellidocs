@@ -64,7 +64,14 @@ function readImageOptions(editor: Editor): ImageOptionsState | null {
  * actions go through editor commands so the node attributes stay the single
  * source of truth.
  */
-export default function ImageOptionsToolbar({ editor }: { editor: Editor }): JSX.Element | null {
+export default function ImageOptionsToolbar({
+  editor,
+  onAction,
+}: {
+  editor: Editor
+  /** Called after an action that counts as a formatting behaviour (alignment, wrap, caption). */
+  onAction?: (action: 'image_alignment' | 'image_wrap_mode' | 'image_caption_add') => void
+}): JSX.Element | null {
   const info = useEditorState({
     editor,
     selector: ({ editor: current }) => readImageOptions(current),
@@ -112,7 +119,7 @@ export default function ImageOptionsToolbar({ editor }: { editor: Editor }): JSX
           key={mode}
           title={`Text wrap: ${tooltip}`}
           active={info.wrap === mode}
-          onClick={() => editor.chain().focus().setImageWrapStyle(mode).run()}
+          onClick={() => { editor.chain().focus().setImageWrapStyle(mode).run(); onAction?.('image_wrap_mode') }}
         >
           {label}
         </ToolbarButton>
@@ -123,21 +130,21 @@ export default function ImageOptionsToolbar({ editor }: { editor: Editor }): JSX
       <ToolbarButton
         title="Align left"
         active={info.alignment === 'left'}
-        onClick={() => editor.chain().focus().setImageAlignment('left').run()}
+        onClick={() => { editor.chain().focus().setImageAlignment('left').run(); onAction?.('image_alignment') }}
       >
         <AlignLeft style={{ width: '14px', height: '14px' }} />
       </ToolbarButton>
       <ToolbarButton
         title="Align center"
         active={info.alignment === 'center'}
-        onClick={() => editor.chain().focus().setImageAlignment('center').run()}
+        onClick={() => { editor.chain().focus().setImageAlignment('center').run(); onAction?.('image_alignment') }}
       >
         <AlignCenter style={{ width: '14px', height: '14px' }} />
       </ToolbarButton>
       <ToolbarButton
         title="Align right"
         active={info.alignment === 'right'}
-        onClick={() => editor.chain().focus().setImageAlignment('right').run()}
+        onClick={() => { editor.chain().focus().setImageAlignment('right').run(); onAction?.('image_alignment') }}
       >
         <AlignRight style={{ width: '14px', height: '14px' }} />
       </ToolbarButton>
@@ -168,7 +175,7 @@ export default function ImageOptionsToolbar({ editor }: { editor: Editor }): JSX
 
       <ToolbarButton
         title="Add a numbered figure caption below the image"
-        onClick={() => editor.chain().focus().insertCaption('figure').run()}
+        onClick={() => { editor.chain().focus().insertCaption('figure').run(); onAction?.('image_caption_add') }}
       >
         Caption
       </ToolbarButton>

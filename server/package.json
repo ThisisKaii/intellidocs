@@ -27,10 +27,14 @@
     "googleapis": "^173.0.0",
     "googleapis-common": "8.0.2",
     "jsonwebtoken": "^9.0.2",
+    "lib0": "^0.2.120",
     "mammoth": "^1.12.0",
     "multer": "^2.2.0",
     "pdf-parse": "^2.4.5",
     "redis": "^4.6.0",
+    "ws": "^8.23.0",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.33",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -41,6 +45,7 @@
     "@types/node": "^20.0.0",
     "@types/pdf-parse": "^1.1.5",
     "@types/supertest": "^2.0.0",
+    "@types/ws": "^8.18.2",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.0.0",
@@ -48,6 +53,7 @@
     "supertest": "^6.3.0",
     "ts-jest": "^29.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "y-websocket": "^3.1.0"
   }
 }

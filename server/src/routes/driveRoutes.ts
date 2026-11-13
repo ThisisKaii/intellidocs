@@ -1,13 +1,13 @@
 import { Router } from 'express'
 import * as driveController from '../controllers/driveController'
 import { authMiddleware } from '../middleware/authMiddleware'
-import { validateBody } from '../middleware/validate'
-import { linkGoogleDriveSchema } from '../../schemas/driveLinkSchemas'
+import { validateBody, validateQuery } from '../middleware/validate'
+import { driveAuthUrlQuerySchema, linkGoogleDriveSchema } from '../../schemas/driveLinkSchemas'
 
 const router = Router()
 
 /** Generate Google OAuth2 consent URL (authenticated). */
-router.get('/auth-url', authMiddleware, driveController.getAuthUrl)
+router.get('/auth-url', authMiddleware, validateQuery(driveAuthUrlQuerySchema), driveController.getAuthUrl)
 
 /** OAuth2 callback — public browser redirect endpoint from Google. */
 router.get('/callback', driveController.handleCallback)

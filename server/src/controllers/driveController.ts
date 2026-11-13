@@ -13,7 +13,7 @@ import { enqueueImportJob, LARGE_FILE_BYTES } from '../skills/processImportJob'
 import { sanitizeImportedHtml } from '../skills/sanitizeImportedHtml'
 import { streamToFileWithProgress, type DownloadStream } from '../skills/streamDownload'
 import { rtfToParagraphs, textToHtml } from '../skills/driveTextExtract'
-import type { LinkGoogleDriveInput } from '../../schemas/driveLinkSchemas'
+import { driveAuthUrlQuerySchema, type LinkGoogleDriveInput } from '../../schemas/driveLinkSchemas'
 
 /** Build a Google OAuth2 client from environment variables. */
 function buildOAuth2Client(): OAuth2Client {
@@ -102,6 +102,10 @@ export async function getAuthUrl(req: Request, res: Response): Promise<void> {
       return
     }
 
+    // validateQuery has already checked this is an email; prefer the linked Google account's
+    // address, which can differ from the IntelliDocs sign-in email.
+    const { loginHint } = driveAuthUrlQuerySchema.parse(req.query)
+    const hint = loginHint ?? req.user?.email
     const oauth2 = buildOAuth2Client()
     const url = oauth2.generateAuthUrl({
       access_type: 'offline',
@@ -111,7 +115,7 @@ export async function getAuthUrl(req: Request, res: Response): Promise<void> {
       // reaches files the person picks in Google's file picker, never their whole Drive.
       scope: ['https://www.googleapis.com/auth/drive.file'],
       // Open the consent screen on the account they signed in with, not an account chooser.
-      ...(req.user?.email ? { login_hint: req.user.email } : {}),
+      ...(hint ? { login_hint: hint } : {}),
     })
     res.status(200).json({ url })
   } catch (error) {

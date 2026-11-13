@@ -106,7 +106,6 @@ import {
   Merge,
   Scissors as SplitSquare,
   Palette as PaletteIcon,
-  Type,
 } from 'lucide-react'
 import { api } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
@@ -123,10 +122,12 @@ import {
   type ImageAlignment,
   type TableAlignment,
   type AcademicTableStyle,
-  type ImageWrapMode,
 } from './behaviorListener'
 import { ImageResizeBehaviorExtension } from './ImageResizeBehaviorExtension'
 import ImageOptionsToolbar, { type ImageWrapStyle } from './ImageOptionsToolbar'
+import TableBubbleMenu, { CellFillPicker } from './TableBubbleMenu'
+import { isRemoteYjsChange } from './collabTransactions'
+import { setCellFill, setCellTextAlign, type CellTextAlign } from './tableCellCommands'
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state'
 import { mergeStyleDecls } from '@/lib/inlineStyle'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
@@ -677,7 +678,7 @@ const CenteredImageResize = ImageResize.extend({
       new Plugin({
         key: imageWidthCapKey,
         appendTransaction(transactions, _oldState, newState) {
-          if (!transactions.some((tr) => tr.docChanged && !tr.getMeta('preventUpdate'))) return null
+          if (!transactions.some((tr) => tr.docChanged && !tr.getMeta('preventUpdate') && !isRemoteYjsChange(tr))) return null
           const column = textColumnWidthPx(editor.view.dom as HTMLElement)
           if (column === null) return null
           let capped = newState.tr
@@ -1269,14 +1270,25 @@ const CustomListItem = ListItem.extend({
   },
 })
 
-export const editorExtensions = [
-  StarterKit.configure({
-    paragraph: false,
-    heading: false,
-    blockquote: false,
-    listItem: false,
-    orderedList: false,
-  }),
+/**
+ * The editor's extensions. `collaborative` turns off StarterKit's undo/redo: the Collaboration
+ * extension brings a Yjs undo manager that only undoes this person's own edits.
+ */
+export function buildEditorExtensions(collaborative = false) {
+  return [
+    StarterKit.configure({
+      paragraph: false,
+      heading: false,
+      blockquote: false,
+      listItem: false,
+      orderedList: false,
+      ...(collaborative ? { undoRedo: false as const } : {}),
+    }),
+    ...editorExtensionsAfterStarterKit,
+  ]
+}
+
+const editorExtensionsAfterStarterKit = [
   CustomListItem,
   CustomOrderedList,
   CustomParagraph,
@@ -1327,6 +1339,8 @@ export const editorExtensions = [
   MarkdownTriggers,
   ImageResizeBehaviorExtension,
 ]
+
+export const editorExtensions = buildEditorExtensions(false)
 
 // ─── Editor factory hook ────────────────────────────────────────────────────
 
@@ -1637,7 +1651,6 @@ export function TiptapToolbar({
   const [openColor, setOpenColor] = useState(false)
   const [openHighlight, setOpenHighlight] = useState(false)
   const [openTableMenu, setOpenTableMenu] = useState(false)
-  const [openImageMenu, setOpenImageMenu] = useState(false)
   const [openCalloutMenu, setOpenCalloutMenu] = useState(false)
   const [openPageSetup, setOpenPageSetup] = useState(false)
   const [spaceBefore, setSpaceBefore] = useState(0)
@@ -1744,7 +1757,6 @@ export function TiptapToolbar({
     setOpenColor(false)
     setOpenHighlight(false)
     setOpenTableMenu(false)
-    setOpenImageMenu(false)
     setOpenPageSetup(false)
   }
 
@@ -1796,12 +1808,6 @@ export function TiptapToolbar({
     return context ? { contextNode: 'table', ...context } : undefined
   }
 
-  /** Image context for the image toolbar actions, snapshotted after the command. */
-  function imageContextPayload(): BehaviorEventPayload | undefined {
-    const context = editor ? snapshotImageContext(editor) : undefined
-    return context ? { contextNode: 'image', ...context } : undefined
-  }
-
   /**
    * Live table context for the toolbar: drives the header-toggle and alignment
    * labels. Read during render, after the transaction, so the menu reflects the
@@ -1809,12 +1815,6 @@ export function TiptapToolbar({
    */
   const tableContext = useMemo(
     () => (editor ? snapshotTableContext(editor) : undefined),
-    [editor, editor?.state]
-  )
-
-  /** Live image context for the toolbar: drives the alignment and caption labels. */
-  const imageContext = useMemo(
-    () => (editor ? snapshotImageContext(editor) : undefined),
     [editor, editor?.state]
   )
 
@@ -2755,27 +2755,34 @@ export function TiptapToolbar({
                   <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
                     Cell Styling
                   </div>
-                  <MenuItem
-                    onClick={() => {
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px', fontSize: '13px' }}>
+                    <PaletteIcon style={{ width: '14px', height: '14px' }} />
+                    Cell Fill
+                  </div>
+                  <CellFillPicker
+                    inline
+                    onPick={(color) => {
                       closeAllMenus()
-                      // Open color picker for cell background
+                      if (editor) setCellFill(editor, color)
                     }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <PaletteIcon style={{ width: '14px', height: '14px' }} />
-                      Cell Background Color
-                    </span>
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      closeAllMenus()
-                    }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Type style={{ width: '14px', height: '14px' }} />
-                      Cell Text Alignment
-                    </span>
-                  </MenuItem>
+                  />
+                  {(['left', 'center', 'right'] as CellTextAlign[]).map((align) => {
+                    const AlignIcon = align === 'left' ? AlignLeft : align === 'center' ? AlignCenter : AlignRight
+                    return (
+                      <MenuItem
+                        key={align}
+                        onClick={() => {
+                          closeAllMenus()
+                          if (editor) setCellTextAlign(editor, align)
+                        }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <AlignIcon style={{ width: '14px', height: '14px' }} />
+                          {align === 'center' ? 'Center Cell Text' : `Align Cell Text ${align === 'left' ? 'Left' : 'Right'}`}
+                        </span>
+                      </MenuItem>
+                    )
+                  })}
                   <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
                   {/* Table Properties */}
                   <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
@@ -2839,89 +2846,7 @@ export function TiptapToolbar({
             void handleImageFileSelected(e)
           }}
         />
-
-{/* Image alignment only makes sense with an image selected. */}
-        {imageContext && (
-          <div style={{ position: 'relative' }}>
-            <ToolButton
-              icon={AlignCenter}
-              title={`Image Alignment: ${imageContext.imageAlignment}`}
-              onClick={() => setOpenImageMenu((v) => !v)}
-            />
-            {openImageMenu && (
-              <Popover width={220}>
-                <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
-                  Alignment
-                </div>
-                {(['left', 'center', 'right', 'float'] as ImageAlignment[]).map((value) => (
-                  <MenuItem
-                    key={value}
-                    onClick={() => {
-                      closeAllMenus()
-                      setOpenImageMenu(false)
-                      setOpenCalloutMenu(false)
-                      run('image_alignment', () => editor?.chain().focus().setImageAlignment(value).run(), imageContextPayload)
-                    }}
-                    style={
-                      imageContext.imageAlignment === value
-                        ? { fontWeight: 600, color: 'var(--primary)' }
-                        : undefined
-                    }
-                  >
-                    <span style={{ textTransform: 'capitalize' }}>{value}</span>
-                  </MenuItem>
-                ))}
-                <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
-                <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
-                  Text Wrapping
-                </div>
-                {(['inline', 'square', 'tight', 'top-bottom', 'behind', 'in-front'] as ImageWrapMode[]).map((value) => (
-                  <MenuItem
-                    key={value}
-                    onClick={() => {
-                      closeAllMenus()
-                      run('image_wrap_mode', () => editor?.chain().focus().setImageWrapMode(value).run(), imageContextPayload)
-                    }}
-                    style={
-                      imageContext.imageWrapMode === value
-                        ? { fontWeight: 600, color: 'var(--primary)' }
-                        : undefined
-                    }
-                  >
-                    <span style={{ textTransform: 'capitalize' }}>{value.replace('-', ' ')}</span>
-                  </MenuItem>
-                ))}
-                <hr style={{ margin: '4px 0', borderColor: 'var(--border)' }} />
-                <div style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase' }}>
-                  Figure Properties
-                </div>
-                <MenuItem
-                  onClick={() => {
-                    closeAllMenus()
-                    setOpenImageMenu(false)
-                    run('image_caption_add', () => editor?.chain().focus().insertCaption('figure').run(), imageContextPayload)
-                  }}
-                >
-                  Add numbered caption
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    closeAllMenus()
-                    const width = prompt('Enter width (px):')
-                    const height = prompt('Enter height (px):')
-                    if (width && height) {
-                      const clamped = Math.min(parseInt(width), printableWidthPx(pageSize, margins))
-                      run('image_dimensions', () => editor?.chain().focus().setImageDimensions(clamped, parseInt(height)).run(), imageContextPayload)
-                    }
-                  }}
-                >
-                  Set Dimensions
-                </MenuItem>
-              </Popover>
-            )}
-          </div>
-        )}
-
+        {/* Image options live in the floating toolbar under a selected image, so the ribbon never changes with the selection. */}
       </RibbonGroup>
       <Divider />
       <RibbonGroup label="Blocks">
@@ -3790,7 +3715,13 @@ function TiptapBubbleMenu({ editor }: { editor: Editor | null }): JSX.Element | 
 }
 
 /** Floating image options toolbar anchored below the selected image. */
-function TiptapImageToolbar({ editor }: { editor: Editor | null }): JSX.Element | null {
+function TiptapImageToolbar({
+  editor,
+  onFormatApplied,
+}: {
+  editor: Editor | null
+  onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
+}): JSX.Element | null {
   useEditorState({
     editor,
     selector: ({ transactionNumber }) => transactionNumber,
@@ -3800,7 +3731,14 @@ function TiptapImageToolbar({ editor }: { editor: Editor | null }): JSX.Element 
 
   return (
     <BubbleMenu editor={editor} options={IMAGE_MENU_OPTIONS} shouldShow={imageMenuShouldShow}>
-      <ImageOptionsToolbar editor={editor} />
+      <ImageOptionsToolbar
+        editor={editor}
+        // Same behaviour events the ribbon's image menu used to send, so learning keeps its image signal.
+        onAction={(action) => {
+          const context = snapshotImageContext(editor)
+          onFormatApplied?.(action, context ? { contextNode: 'image', ...context } : undefined)
+        }}
+      />
     </BubbleMenu>
   )
 }
@@ -4189,7 +4127,8 @@ export function TiptapCanvas({ editor, onFormatApplied }: TiptapCanvasProps): JS
     <>
       <style>{PROSE_STYLES}</style>
       <TiptapBubbleMenu editor={editor} />
-      <TiptapImageToolbar editor={editor} />
+      <TiptapImageToolbar editor={editor} onFormatApplied={onFormatApplied} />
+      <TableBubbleMenu editor={editor} onFormatApplied={onFormatApplied} />
       <TiptapFloatingMenu editor={editor} onFormatApplied={onFormatApplied} />
       {editor && <EditorContent editor={editor} />}
     </>

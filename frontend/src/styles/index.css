@@ -1079,6 +1079,37 @@ html {
   text-underline-offset: 3px;
 }
 
+/* ── Live collaboration carets ───────────────────────────────────── */
+/* Another person's cursor: a 2px bar in their color with their initials
+   in a pill above it (name on hover). Drawn as a widget decoration, so it
+   never becomes part of the saved document. */
+.collab-caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 2px solid;
+  border-right: 0;
+  word-break: normal;
+  pointer-events: none;
+}
+.collab-caret__label {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  padding: 2px 4px;
+  border-radius: 4px 4px 4px 0;
+  color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: auto;
+}
+
 /* ── Suggestion & style-origin outlines (in-flow DOM wrappers) ───── */
 /* These wrap the target block in the document DOM via ProseMirror node
    decorations, so they are drawn in the content flow with no measured

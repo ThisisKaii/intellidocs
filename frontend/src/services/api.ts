@@ -897,8 +897,9 @@ let sessionRefreshPromise: Promise<boolean> | null = null
 /**
  * Attempt to refresh the Supabase session using the stored refresh token.
  * Persists the rotated access (and refresh) token if the refresh succeeds.
+ * Exported for the collaboration socket, which carries the token in its URL.
  */
-async function recoverAuthSession(): Promise<boolean> {
+export async function recoverAuthSession(): Promise<boolean> {
   if (sessionRefreshPromise) return sessionRefreshPromise
 
   sessionRefreshPromise = (async () => {
@@ -1677,8 +1678,10 @@ export const api = {
   },
 
   drive: {
-    getAuthUrl: async (): Promise<{ url: string }> => {
-      return fetchAPI<{ url: string }>('drive/auth-url')
+    /** Drive consent URL; `loginHint` opens Google on that account instead of an account chooser. */
+    getAuthUrl: async (loginHint?: string): Promise<{ url: string }> => {
+      const query = loginHint ? `?${new URLSearchParams({ loginHint }).toString()}` : ''
+      return fetchAPI<{ url: string }>(`drive/auth-url${query}`)
     },
     status: async (): Promise<{ connected: boolean }> => {
       return fetchAPI<{ connected: boolean }>('drive/status')

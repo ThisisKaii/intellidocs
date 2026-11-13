@@ -54,6 +54,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+        // Also forward WebSocket upgrades: live collaboration connects to /api/ws/collab.
+        ws: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },

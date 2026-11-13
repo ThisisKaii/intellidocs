@@ -3,6 +3,7 @@ import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 
 import { toRoman } from './ieeeNumbering'
+import { hasLocalDocChange } from './collabTransactions'
 
 export type CaptionKind = 'figure' | 'table'
 
@@ -184,7 +185,7 @@ export const CaptionExtension = Extension.create({
       new Plugin({
         key: captionNumbering,
         appendTransaction(transactions, _oldState, newState) {
-          if (!transactions.some((transaction) => transaction.docChanged)) return null
+          if (!hasLocalDocChange(transactions)) return null
           const plan = planCaptionChanges(newState, storage.labelStyle)
           if (plan.edits.length === 0 && plan.unmark.length === 0) return null
           const tr = newState.tr

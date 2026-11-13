@@ -24,6 +24,7 @@ import billingRoutes from './routes/billingRoutes'
 import devReviewRoutes from './routes/devReviewRoutes'
 import mcpRouter from './mcp/mcpServer'
 import { authMiddleware, requireApprovedProfessor } from './middleware/authMiddleware'
+import { attachCollaboration } from './collaboration/yjsServer'
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -88,11 +89,13 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 // Start server if not running tests
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT as number, '0.0.0.0', () => {
+  const server = app.listen(PORT as number, '0.0.0.0', () => {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT}`)
     console.log(`📊 Liveness:  http://0.0.0.0:${PORT}/health/live`)
   console.log(`📊 Readiness: http://0.0.0.0:${PORT}/health/ready`)
   })
+  // Real-time collaboration shares the HTTP port (ws upgrade on /ws/collab/).
+  attachCollaboration(server)
 }
 
 export default app

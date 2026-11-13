@@ -16,6 +16,25 @@ function profileRoleName(profile: ProfileRoleJoin): RoleName | undefined {
   return roles?.role_name ?? undefined
 }
 
+/** Outcome of checking a Supabase access token. */
+export type AccessTokenCheck =
+  | { ok: true; user: { id: string; email: string } }
+  | { ok: false; error: string; code?: 'mfa_required' }
+
+/**
+ * Verify a Supabase access token, including the 2FA rule. Shared by the HTTP middleware and the
+ * collaboration WebSocket, which cannot send headers and passes the token another way.
+ */
+export async function verifyAccessToken(token: string): Promise<AccessTokenCheck> {
+  const { data, error } = await supabase.auth.getUser(token)
+  if (error || !data.user) return { ok: false, error: '401 Unauthorized: Invalid or expired session token' }
+  // An account with 2FA on must present a token that passed the code step.
+  if (isMissingSecondFactor(data.user, token)) {
+    return { ok: false, error: '401 Unauthorized: Two-factor code required', code: 'mfa_required' }
+  }
+  return { ok: true, user: { id: data.user.id, email: data.user.email ?? '' } }
+}
+
 /** Basic authentication middleware: verifies Supabase Bearer JWT token. */
 export async function authMiddleware(
   req: Request,
@@ -29,24 +48,13 @@ export async function authMiddleware(
       return
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data, error } = await supabase.auth.getUser(token)
-
-    if (error || !data.user) {
-      res.status(401).json({ error: '401 Unauthorized: Invalid or expired session token' })
+    const check = await verifyAccessToken(authHeader.replace('Bearer ', ''))
+    if (!check.ok) {
+      res.status(401).json(check.code ? { error: check.error, code: check.code } : { error: check.error })
       return
     }
 
-    // An account with 2FA on must present a token that passed the code step.
-    if (isMissingSecondFactor(data.user, token)) {
-      res.status(401).json({ error: '401 Unauthorized: Two-factor code required', code: 'mfa_required' })
-      return
-    }
-
-    req.user = {
-      id: data.user.id,
-      email: data.user.email ?? '',
-    }
+    req.user = check.user
     next()
   } catch (error) {
     console.error('Auth middleware exception:', error)

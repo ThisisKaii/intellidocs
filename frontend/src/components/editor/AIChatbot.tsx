@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
-import { undoDepth } from '@tiptap/pm/history'
+import { editorUndoDepth, startNewUndoStep } from './undoDepth'
 import { api, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
 import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, resolveTargetRanges, type BlockCategory } from './chatFormatting'
 
@@ -493,7 +493,8 @@ export default function AIChatbot({
 
     // Every change of the request is applied here, one after another, and
     // recorded as one entry so "undo that" takes them all back together.
-    const depthBefore = undoDepth(editor.state)
+    startNewUndoStep(editor.state)
+    const depthBefore = editorUndoDepth(editor.state)
     const labels = changes.map((change) => applyChange(change, msg.preview_format ?? ''))
     const formats = changes.flatMap((change) => change.formats)
 
@@ -522,7 +523,7 @@ export default function AIChatbot({
 
     const appliedLabel = labels.join('; ')
     // Remember how to take this change back (only when the document really changed).
-    if (undoDepth(editor.state) > depthBefore) {
+    if (editorUndoDepth(editor.state) > depthBefore) {
       appliedStackRef.current.push({ depthBefore, label: appliedLabel })
     }
 
@@ -542,7 +543,8 @@ export default function AIChatbot({
   /** Apply every matched learned habit to its blocks, as one change "undo that" can take back. */
   function applyLearnedPlaces(messageIndex: number, rules: LearnedPlace[]): void {
     if (!editor || editor.isDestroyed) return
-    const depthBefore = undoDepth(editor.state)
+    startNewUndoStep(editor.state)
+    const depthBefore = editorUndoDepth(editor.state)
     let changed = 0
     for (const rule of rules) {
       const ranges = findLearnedBlockRanges(editor.state.doc, rule.key)
@@ -563,7 +565,7 @@ export default function AIChatbot({
     onFeedbackLogged?.()
 
     const label = `your usual formatting on ${changed} place${changed === 1 ? '' : 's'}`
-    if (undoDepth(editor.state) > depthBefore) appliedStackRef.current.push({ depthBefore, label })
+    if (editorUndoDepth(editor.state) > depthBefore) appliedStackRef.current.push({ depthBefore, label })
     setMessages((current) =>
       current.map((message, index) =>
         index === messageIndex ? { ...message, preview_status: 'applied', command_applied: label } : message
@@ -588,7 +590,7 @@ export default function AIChatbot({
     const last = appliedStackRef.current.pop()
     if (!editor || editor.isDestroyed || !last) return null
     // Formatting many blocks makes many undo steps (non-adjacent edits are not grouped); the guard only stops a runaway loop.
-    for (let guard = 0; guard < 2000 && undoDepth(editor.state) > last.depthBefore; guard += 1) {
+    for (let guard = 0; guard < 2000 && editorUndoDepth(editor.state) > last.depthBefore; guard += 1) {
       if (!editor.commands.undo()) break
     }
     return last.label
