@@ -229,6 +229,17 @@ function compare(baseline: BodyBaseline, style: BodyStyle): { fix: BodyBaseline;
   if ('fontSize' in baseline && sizesDiffer(baseline.fontSize ?? null, style.fontSize)) {
     fix.fontSize = baseline.fontSize ?? null
     differences.push(style.fontSize !== null && baseline.fontSize != null ? `${style.fontSize}pt instead of ${baseline.fontSize}pt` : 'a different size')
+  } else if (
+    'fontSize' in baseline &&
+    typeof baseline.effectiveSizePt === 'number' &&
+    style.effectiveSizePt !== null &&
+    Math.abs(style.effectiveSizePt - baseline.effectiveSizePt) >= TOLERANCE.effectiveSizePt
+  ) {
+    // The text's own size reads as "the usual inherited size" (12pt is close to the editor's
+    // default), but the paragraphs around it render at another size: an imported thesis sets its
+    // body at 11pt on the paragraph, so a 12pt run is a different size there.
+    fix.fontSize = baseline.effectiveSizePt
+    differences.push(describeNumber.effectiveSizePt(style.effectiveSizePt, baseline.effectiveSizePt))
   } else if (!('fontSize' in baseline) && typeof baseline.effectiveSizePt === 'number' && style.effectiveSizePt !== null &&
     Math.abs(style.effectiveSizePt - baseline.effectiveSizePt) >= TOLERANCE.effectiveSizePt) {
     // No usual size of the text itself: judge the size it renders at against the preset.

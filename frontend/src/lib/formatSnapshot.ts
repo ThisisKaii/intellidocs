@@ -35,7 +35,7 @@ export function readFormatSnapshot(
   const toBool = (value: unknown, fallback: boolean): boolean =>
     typeof value === 'boolean' ? value : fallback
   const toNumberFormat = (value: unknown): PageNumberFormat =>
-    value === 'number' || value === 'roman' ? value : 'none'
+    value === 'number' || value === 'roman' || value === 'manuscript' ? value : 'none'
 
   return {
     formatting_history: toArray(raw.formatting_history),

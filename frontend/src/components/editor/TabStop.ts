@@ -89,26 +89,89 @@ function tabWidth(tab: HTMLElement, paragraph: HTMLElement, left: number, stops:
   return { width: Math.max(0, pos - left - used), stop }
 }
 
+const PARAGRAPH_SELECTOR = 'p, h1, h2, h3, h4, h5, h6'
+
 /** Lay out every tab in the editor, paragraph by paragraph and left to right. */
 function layoutTabs(root: HTMLElement): void {
+  layoutParagraphTabs(root, Array.from(root.querySelectorAll<HTMLElement>(PARAGRAPH_SELECTOR)))
+}
+
+/**
+ * Lay out the tabs of these paragraphs. A tab's width depends only on its own paragraph (the text
+ * before it and the paragraph's stops), so after an edit only the paragraphs that changed need it.
+ */
+function layoutParagraphTabs(root: HTMLElement, paragraphs: Iterable<HTMLElement>): void {
   // CSS `zoom` on the canvas makes getBoundingClientRect() report zoomed px while
   // style.width is unzoomed; divide by the live zoom so both are in the same unit.
   const scale = root.offsetWidth > 0 ? root.getBoundingClientRect().width / root.offsetWidth : 1
-  for (const paragraph of Array.from(root.querySelectorAll<HTMLElement>('p, h1, h2, h3, h4, h5, h6'))) {
+  interface Job {
+    paragraph: HTMLElement
+    tabs: HTMLElement[]
+    stops: CustomTabStop[]
+    defaultTab: number
+    base: number
+    lineEnd: number
+  }
+  // Measure every paragraph first (reads only).
+  const jobs: Job[] = []
+  for (const paragraph of paragraphs) {
+    if (!paragraph.isConnected) continue
     const tabs = Array.from(paragraph.querySelectorAll<HTMLElement>(TAB_SELECTOR))
     if (tabs.length === 0) continue
-    const stops = readTabStops(paragraph)
-    const defaultTab = Number(paragraph.getAttribute('data-default-tab')) || DEFAULT_TAB_PX
     const style = getComputedStyle(paragraph)
     const box = paragraph.getBoundingClientRect()
     const base = box.left - (parseFloat(style.marginLeft) || 0) * scale
-    const lineEnd = (box.right - (parseFloat(style.paddingRight) || 0) * scale - base) / scale
-    tabs.forEach((tab, index) => {
-      const left = (tab.getBoundingClientRect().left - base) / scale
-      const { width, stop } = tabWidth(tab, paragraph, left, stops, defaultTab, lineEnd, scale)
-      const isLast = index === tabs.length - 1
-      const leader = displayedLeader(stop, isLast, isLast && stop?.align === 'right' && stop.leader === 'none' ? textAfter(tab, paragraph) : '')
+    jobs.push({
+      paragraph,
+      tabs,
+      stops: readTabStops(paragraph),
+      defaultTab: Number(paragraph.getAttribute('data-default-tab')) || DEFAULT_TAB_PX,
+      base,
+      lineEnd: (box.right - (parseFloat(style.paddingRight) || 0) * scale - base) / scale,
+    })
+  }
+  // Then tab by tab across all paragraphs: read every paragraph's n-th tab, then write them all.
+  // Reading after each write made the browser lay out the whole document once per tab, which took
+  // most of the time opening a long document. A tab's position depends only on the tabs before it
+  // in its own paragraph, which earlier rounds have already set.
+  // In a table cell a tab's width can change the column widths and so move tabs in other cells:
+  // those are laid out one at a time as before (writing at once), the rest in batched rounds.
+  const inCell = (job: Job): boolean => job.paragraph.closest('td, th') !== null
+  const batched = jobs.filter((job) => !inCell(job))
+  const rounds = Math.max(0, ...batched.map((job) => job.tabs.length))
+  for (let index = 0; index < rounds; index += 1) {
+    const writes: Array<() => void> = []
+    for (const job of batched) {
+      const tab = job.tabs[index]
+      if (!tab) continue
+      const left = (tab.getBoundingClientRect().left - job.base) / scale
+      const { width, stop } = tabWidth(tab, job.paragraph, left, job.stops, job.defaultTab, job.lineEnd, scale)
+      const isLast = index === job.tabs.length - 1
+      const leader = displayedLeader(stop, isLast, isLast && stop?.align === 'right' && stop.leader === 'none' ? textAfter(tab, job.paragraph) : '')
+      const background = leaderBackground(leader)
       // Write only on a real change: every style write re-flows the paginator.
+      const resize = Math.abs(width - tab.offsetWidth) > WIDTH_EPSILON_PX
+      const repaint = tab.style.background !== background && !(background === 'none' && tab.style.background === '')
+      if (resize || repaint) {
+        writes.push(() => {
+          if (resize) tab.style.width = `${width}px`
+          if (repaint) tab.style.background = background
+        })
+      }
+    }
+    for (const write of writes) write()
+  }
+  for (const job of jobs.filter(inCell)) {
+    // The cell may have moved when earlier cells' tabs changed: measure it again.
+    const style = getComputedStyle(job.paragraph)
+    const box = job.paragraph.getBoundingClientRect()
+    const base = box.left - (parseFloat(style.marginLeft) || 0) * scale
+    const lineEnd = (box.right - (parseFloat(style.paddingRight) || 0) * scale - base) / scale
+    job.tabs.forEach((tab, index) => {
+      const left = (tab.getBoundingClientRect().left - base) / scale
+      const { width, stop } = tabWidth(tab, job.paragraph, left, job.stops, job.defaultTab, lineEnd, scale)
+      const isLast = index === job.tabs.length - 1
+      const leader = displayedLeader(stop, isLast, isLast && stop?.align === 'right' && stop.leader === 'none' ? textAfter(tab, job.paragraph) : '')
       if (Math.abs(width - tab.offsetWidth) > WIDTH_EPSILON_PX) tab.style.width = `${width}px`
       const background = leaderBackground(leader)
       if (tab.style.background !== background && !(background === 'none' && tab.style.background === '')) tab.style.background = background
@@ -116,19 +179,55 @@ function layoutTabs(root: HTMLElement): void {
   }
 }
 
-/** Re-run the tab layout after content or layout changes (rAF-coalesced, DOM-only). */
+/** The paragraphs a batch of DOM changes touched: the one around each change, and any added whole. */
+function touchedParagraphs(records: MutationRecord[], into: Set<HTMLElement>): void {
+  for (const record of records) {
+    const target = record.target instanceof HTMLElement ? record.target : record.target.parentElement
+    const around = target?.closest<HTMLElement>(PARAGRAPH_SELECTOR)
+    if (around) into.add(around)
+    record.addedNodes.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return
+      if (node.matches(PARAGRAPH_SELECTOR)) into.add(node)
+      node.querySelectorAll<HTMLElement>(PARAGRAPH_SELECTOR).forEach((paragraph) => into.add(paragraph))
+    })
+  }
+}
+
+/**
+ * Re-run the tab layout after content or layout changes (rAF-coalesced, DOM-only). A size change
+ * lays out every tab; typing lays out only the paragraphs it changed, so a long document does not
+ * measure all its tabs on every keystroke.
+ */
 function watchTabLayout(view: EditorView): { destroy: () => void } {
   let frame = 0
+  let everything = true
+  const pending = new Set<HTMLElement>()
   const schedule = (): void => {
     if (frame) return
     frame = window.requestAnimationFrame(() => {
       frame = 0
-      layoutTabs(view.dom as HTMLElement)
+      const root = view.dom as HTMLElement
+      if (everything) layoutTabs(root)
+      else layoutParagraphTabs(root, pending)
+      everything = false
+      pending.clear()
     })
   }
-  const observer = new ResizeObserver(schedule)
+  // Only a change of width moves tabs (zoom, page size, margins); the editor growing taller as
+  // text is typed does not.
+  let width = -1
+  const observer = new ResizeObserver((entries) => {
+    const next = Math.round(entries[entries.length - 1]?.contentRect.width ?? -1)
+    if (next === width) return
+    width = next
+    everything = true
+    schedule()
+  })
   observer.observe(view.dom)
-  const mutations = new MutationObserver(schedule)
+  const mutations = new MutationObserver((records) => {
+    touchedParagraphs(records, pending)
+    if (pending.size > 0) schedule()
+  })
   mutations.observe(view.dom, { childList: true, subtree: true, characterData: true })
   schedule()
   return {

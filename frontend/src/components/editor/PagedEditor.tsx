@@ -5,6 +5,7 @@ import { ColumnsDraft } from './ColumnsDraft'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCaret from '@tiptap/extension-collaboration-caret'
 import type * as Y from 'yjs'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { WebsocketProvider } from 'y-websocket'
 import {
   buildEditorExtensions,
@@ -25,7 +26,9 @@ import type { GrammarIssue } from './GrammarPanel'
 import { loadEditorContent } from '@/lib/loadEditorContent'
 import type { EditorJson } from '@/services/api'
 import {
+  FIRST_CHAPTER,
   lastLineSlackPx,
+  manuscriptNumberingCss,
   measureKey,
   mergeLayoutSections,
   numberingCss,
@@ -37,10 +40,43 @@ import {
 import { documentSectionBreaks } from './SectionLayout'
 import { sanitizeHeaderHtml } from '@/lib/sanitizeHeaderHtml'
 
+/**
+ * Position of the block that opens Chapter 1, or null. Contents entries also read "CHAPTER I …",
+ * so a heading wins; otherwise the last short line (the contents come before the chapter).
+ * Entries ending in a page number or holding a tab are contents lines, never the chapter.
+ */
+export function firstChapterPos(doc: ProseMirrorNode): number | null {
+  let heading: number | null = null
+  let line: number | null = null
+  doc.forEach((node, offset) => {
+    if (heading !== null || !node.isTextblock) return
+    const text = node.textContent.trim()
+    const match = FIRST_CHAPTER.exec(text)
+    if (!match || text.length > 80) return
+    let tab = false
+    node.forEach((child) => {
+      if (!child.isText && /tab/i.test(child.type.name)) tab = true
+    })
+    if (tab || /\d\s*$/.test(text.slice(match[0].length))) return
+    if (node.type.name === 'heading') heading = offset
+    else line = offset
+  })
+  return heading ?? line
+}
+
 /** Vertical gap between stacked page sheets, in px. */
 const PAGE_GAP = 40
 /** Longest the host waits for the editor's content while the user types (see onUpdate). */
 const EMIT_INTERVAL_MS = 400
+/**
+ * A document this long (ProseMirror positions, about 120 pages) is handed over when typing pauses
+ * instead of every EMIT_INTERVAL_MS: serialising a manuscript of several hundred pages takes long
+ * enough that doing it a few times a second while typing made the editor stutter.
+ */
+const LARGE_DOCUMENT_SIZE = 250_000
+const LARGE_DOCUMENT_PAUSE_MS = 1200
+/** A long document is still handed over at least this often while the user keeps typing (autosave). */
+const LARGE_DOCUMENT_MAX_WAIT_MS = 15_000
 
 /** Horizontal gap between the two page sheets of a spread, in px. */
 const SPREAD_GAP = 24
@@ -302,6 +338,8 @@ export function PagedEditor({
 
   // A scheduled delivery of the editor's content to the host (see onUpdate).
   const emitTimerRef = useRef<number | null>(null)
+  // When the oldest change not yet handed over was made (long documents wait for a pause).
+  const firstPendingRef = useRef<number | null>(null)
   const emitContent = (ed: Editor): void => {
     if (ed.isDestroyed) return
     const html = ed.getHTML()
@@ -361,11 +399,22 @@ export function PagedEditor({
     // of each keystroke's time. While typing, the host gets the content at most every
     // EMIT_INTERVAL_MS; the last change is always delivered (and flushed on unmount).
     onUpdate: ({ editor: ed }) => {
-      if (emitTimerRef.current !== null) return
-      emitTimerRef.current = window.setTimeout(() => {
+      const deliver = (): void => {
         emitTimerRef.current = null
+        firstPendingRef.current = null
         emitContent(ed)
-      }, EMIT_INTERVAL_MS)
+      }
+      if (ed.state.doc.content.size >= LARGE_DOCUMENT_SIZE) {
+        // Long document: wait for a pause in typing (but never longer than the max wait).
+        const now = Date.now()
+        if (firstPendingRef.current === null) firstPendingRef.current = now
+        if (emitTimerRef.current !== null) window.clearTimeout(emitTimerRef.current)
+        const waited = now - firstPendingRef.current
+        emitTimerRef.current = window.setTimeout(deliver, Math.max(0, Math.min(LARGE_DOCUMENT_PAUSE_MS, LARGE_DOCUMENT_MAX_WAIT_MS - waited)))
+        return
+      }
+      if (emitTimerRef.current !== null) return
+      emitTimerRef.current = window.setTimeout(deliver, EMIT_INTERVAL_MS)
     },
   })
 
@@ -375,6 +424,7 @@ export function PagedEditor({
       if (emitTimerRef.current !== null && editor && !editor.isDestroyed) {
         window.clearTimeout(emitTimerRef.current)
         emitTimerRef.current = null
+        firstPendingRef.current = null
         emitContent(editor)
       }
     },
@@ -441,6 +491,7 @@ export function PagedEditor({
     if (emitTimerRef.current !== null) {
       window.clearTimeout(emitTimerRef.current)
       emitTimerRef.current = null
+      firstPendingRef.current = null
     }
 
     // Strip import-only wrapper markup before ProseMirror builds its nodes. The saved JSON, when
@@ -715,8 +766,51 @@ export function PagedEditor({
     }
   }, [editor])
 
-  const romanStyle =
-    headerFooterConfig.header.default.numberFormat === 'roman' || headerFooterConfig.footer.default.numberFormat === 'roman'
+  // Manuscript numbering (no number on the title page, Roman front matter, Arabic from Chapter 1)
+  // needs the page Chapter 1 starts on and the page count, read from the laid-out editor.
+  const manuscript =
+    !layout &&
+    (headerFooterConfig.header.default.numberFormat === 'manuscript' || headerFooterConfig.footer.default.numberFormat === 'manuscript')
+  const [manuscriptPages, setManuscriptPages] = useState<{ chapterPage: number | null; pageCount: number }>({ chapterPage: null, pageCount: 1 })
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !manuscript) return
+    const dom = editor.view.dom as HTMLElement
+    const pitch = page.height + PAGE_GAP
+    let frame = 0
+    const read = (): void => {
+      frame = 0
+      if (editor.isDestroyed) return
+      const rect = dom.getBoundingClientRect()
+      const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
+      const pageCount = Math.max(1, Math.round((rect.height / scale + PAGE_GAP) / pitch))
+      const pos = firstChapterPos(editor.state.doc)
+      let chapterPage: number | null = null
+      const node = pos === null ? null : editor.view.nodeDOM(pos)
+      if (node instanceof HTMLElement) {
+        chapterPage = Math.floor((node.getBoundingClientRect().top - rect.top) / scale / pitch) + 1
+      }
+      setManuscriptPages((previous) =>
+        previous.chapterPage === chapterPage && previous.pageCount === pageCount ? previous : { chapterPage, pageCount },
+      )
+    }
+    const schedule = (): void => {
+      if (!frame) frame = window.requestAnimationFrame(read)
+    }
+    const resize = new ResizeObserver(schedule)
+    resize.observe(dom)
+    const mutations = new MutationObserver(schedule)
+    mutations.observe(dom, { childList: true, subtree: true })
+    schedule()
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      resize.disconnect()
+      mutations.disconnect()
+    }
+  }, [editor, manuscript, page.height])
+
+  const romanStyle = manuscript
+    ? manuscriptNumberingCss(manuscriptPages.chapterPage, manuscriptPages.pageCount)
+    : headerFooterConfig.header.default.numberFormat === 'roman' || headerFooterConfig.footer.default.numberFormat === 'roman'
       ? `.rm-with-pagination .rm-page-number::before,
          .rm-with-pagination .rm-page-number-plus::before {
            content: counter(page-number-plus, upper-roman);

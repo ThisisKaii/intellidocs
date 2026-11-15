@@ -11,7 +11,7 @@ export const documentIdParamSchema = z.object({
 })
 
 /** Page-number style options for headers/footers. */
-export const pageNumberFormatSchema = z.enum(['none', 'number', 'roman'])
+export const pageNumberFormatSchema = z.enum(['none', 'number', 'roman', 'manuscript'])
 
 /** Page size presets supported by the editor. */
 export const pageSizeSchema = z.enum(['short', 'long', 'a4', 'letter', 'legal'])

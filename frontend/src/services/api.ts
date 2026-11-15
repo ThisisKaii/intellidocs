@@ -50,7 +50,7 @@ export interface SubscriptionStatus {
   canceledAt: string | null
 }
 
-export type PageNumberFormat = 'none' | 'number' | 'roman'
+export type PageNumberFormat = 'none' | 'number' | 'roman' | 'manuscript'
 
 export type PageSizeKey = 'short' | 'long' | 'a4' | 'letter' | 'legal'
 
@@ -344,8 +344,44 @@ export interface UserPreset {
   description: string
   rules: FormatRule[]
   version: number
+  /** The look read from an uploaded document; null for a plain fork. */
+  blueprint?: PresetBlueprint | null
   created_at: string
   updated_at: string
+}
+
+/** One heading level's look in a preset read from a document. */
+export interface PresetBlueprintHeading {
+  textAlign: 'left' | 'center' | 'right'
+  fontSize: string
+  fontWeight: 400 | 700
+  fontStyle?: 'normal' | 'italic'
+  textTransform: 'uppercase' | 'capitalize' | 'none'
+}
+
+/** A preset's look, read from a document the user uploaded (mirrors the server's presetBlueprintSchema). */
+export interface PresetBlueprint {
+  version: 1
+  pageSize: 'short' | 'long' | 'a4' | 'letter' | 'legal'
+  orientation: 'portrait' | 'landscape'
+  margins: { top: number; bottom: number; left: number; right: number }
+  fontFamily: string
+  baseFontSize: string
+  lineHeight: number
+  firstLineIndent: string
+  bodyAlign: 'left' | 'center' | 'right' | 'justify'
+  headings: { level1: PresetBlueprintHeading; level2: PresetBlueprintHeading; level3: PresetBlueprintHeading }
+  pageNumbers?: PageNumberFormat
+  sections: Array<{ level: number; text: string }>
+}
+
+/** A preset as shared between users (.idocpreset file). */
+export interface SharedPresetFile {
+  format: 'intellidocs-preset'
+  name: string
+  description?: string
+  baseKey: string
+  blueprint: PresetBlueprint
 }
 
 /** Payload for forking a standard blueprint into a personal preset. */
@@ -1416,6 +1452,21 @@ export const api = {
     /** Delete one of the current user's forked blueprint versions. */
     deleteUserPreset: async (presetId: string): Promise<void> => {
       await fetchAPI<null>(`formatting/user-presets/${presetId}`, { method: 'DELETE' })
+    },
+    /** Make a preset from a .docx or .pdf already in the user's format. */
+    createUserPresetFromFile: async (file: File, name?: string): Promise<UserPreset> => {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (name) formData.append('name', name)
+      return fetchAPI<UserPreset>('formatting/user-presets/from-file', { method: 'POST', body: formData })
+    },
+    /** Add a preset someone shared (.idocpreset) to the current user's presets. */
+    importUserPreset: async (shared: SharedPresetFile): Promise<UserPreset> => {
+      return fetchAPI<UserPreset>('formatting/user-presets/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(shared),
+      })
     },
     /** List the current user's custom Tier 2 bindings. */
     listBindings: async (): Promise<FormatBinding[]> => {

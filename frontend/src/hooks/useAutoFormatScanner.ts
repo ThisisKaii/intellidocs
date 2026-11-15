@@ -10,6 +10,8 @@ import { FRONT_LABEL } from '@/lib/frontMatter'
 import { findShortLineDeviations } from '@/lib/shortLineConsistency'
 import { presetRulesFor } from '@/lib/presetRules'
 import { findExtraBlankLines } from '@/lib/blankLines'
+import { findFigureIssues } from '@/lib/figurePlacement'
+import { basePresetKey } from '@/components/editor/academicPresets'
 import { loadSuggestionMemory, rememberSuggestion } from '@/lib/suggestionMemory'
 import { isChapterHeading, isHeadingLikeParagraph } from '@/components/editor/chatFormatting'
 import {
@@ -132,6 +134,8 @@ export type StructuralRole =
   | 'table_title'
   /** A run of extra empty paragraphs (removed on accept, not restyled). */
   | 'blank_lines'
+  /** A figure out of place (wrapped beside text, off-center) or a caption numbered out of order. */
+  | 'figure'
 
 /**
  * Whether the text after a leading number ("3.1", "2.", "IV.", "B.") reads like a heading and
@@ -846,6 +850,26 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
               ? 'Your text has no blank line between these anywhere else'
               : `Elsewhere these are ${run.usual} blank line${run.usual === 1 ? '' : 's'} apart`,
           captures: { role: 'blank_lines' },
+        })
+      }
+
+      // ── Figures and caption numbers ──────────────────────────────────
+      // A picture with text wrapped beside it or set off-center, and a "Figure N" / "Table N"
+      // whose number does not follow from the captions before it.
+      for (const issue of findFigureIssues(doc, basePresetKey(presetKey) === 'ieee' ? 'ieee' : 'default')) {
+        const key = contentKey(`${issue.preview}|${issue.label}`, issue.kind, seenKeys)
+        if (dismissedRef.current.has(key)) continue
+        candidates.push({
+          key,
+          format: issue.kind,
+          confidence: 82,
+          from: issue.from,
+          to: issue.to,
+          pageNumber: estimatePageNumber(issue.from),
+          preview: issue.preview,
+          label: issue.label,
+          detail: issue.detail,
+          captures: { role: 'figure' },
         })
       }
 

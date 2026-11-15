@@ -3,6 +3,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeSelection, Plugin, PluginKey, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { spanFlags, type CaptionKind } from './ieeeSpan'
+import { updateDecorations } from './changedRanges'
 
 /** Node types that can run across both columns of an IEEE paper. */
 const SPAN_TYPES = ['table', 'imageResize', 'blockMath']
@@ -38,15 +39,30 @@ function captionKind(node: ProseMirrorNode): CaptionKind | null {
   return kind === 'figure' || kind === 'table' ? kind : null
 }
 
+/**
+ * Span decorations for the top-level blocks between `from` and `to`. Whether a caption spans
+ * depends on its neighbours, so the flags are worked out over a few blocks either side.
+ */
+function spansBetween(doc: ProseMirrorNode, from: number, to: number): Decoration[] {
+  const first = doc.resolve(from).index(0)
+  const last = doc.resolve(to).index(0)
+  // One block either side is read too: a caption spans when the block next to it does.
+  const items: Array<{ pos: number; node: ProseMirrorNode; index: number }> = []
+  let pos = doc.resolve(from).posAtIndex(Math.max(0, first - 1), 0)
+  for (let index = Math.max(0, first - 1); index < Math.min(doc.childCount, last + 1); index += 1) {
+    const node = doc.child(index)
+    items.push({ pos, node, index })
+    pos += node.nodeSize
+  }
+  const flags = spanFlags(items.map(({ node }) => ({ span: node.attrs.span === 'full', caption: captionKind(node) })))
+  return items.flatMap(({ pos: at, node, index }, i) =>
+    flags[i] && index >= first && index < last ? [Decoration.node(at, at + node.nodeSize, { class: 'ieee-span' })] : [],
+  )
+}
+
 /** One node decoration per top-level block that runs across both columns (the marked block and its caption). */
 function spanDecorations(doc: ProseMirrorNode): DecorationSet {
-  const items: Array<{ pos: number; node: ProseMirrorNode }> = []
-  doc.forEach((node, offset) => items.push({ pos: offset, node }))
-  const flags = spanFlags(items.map(({ node }) => ({ span: node.attrs.span === 'full', caption: captionKind(node) })))
-  const decorations = items.flatMap(({ pos, node }, index) =>
-    flags[index] ? [Decoration.node(pos, pos + node.nodeSize, { class: 'ieee-span' })] : [],
-  )
-  return DecorationSet.create(doc, decorations)
+  return DecorationSet.create(doc, spansBetween(doc, 0, doc.content.size))
 }
 
 /**
@@ -96,7 +112,8 @@ export const FullSpan = Extension.create({
         key: spanKey,
         state: {
           init: (_config, state) => spanDecorations(state.doc),
-          apply: (tr, previous) => (tr.docChanged ? spanDecorations(tr.doc) : previous),
+          // The changed blocks and one either side (a neighbour's span decides a caption's).
+          apply: (tr, previous) => (tr.docChanged ? updateDecorations(tr, previous, spansBetween, 1) : previous),
         },
         props: { decorations: (state) => spanKey.getState(state) },
       }),

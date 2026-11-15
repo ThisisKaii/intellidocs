@@ -9,6 +9,7 @@ import {
 import PersonalizationProfileModal from '@/components/editor/PersonalizationProfileModal'
 import LearningCard from '@/components/editor/LearningCard'
 import FormattingPanel from '@/components/editor/FormattingPanel'
+import { AUTONOMY_WARNING } from '@/lib/assistantAutonomy'
 
 /** Persisted editor & AI preferences: underline style, sensitivity, highlight color. */
 export function EditorPersonalizationSection(): JSX.Element {
@@ -116,6 +117,23 @@ export function EditorPersonalizationSection(): JSX.Element {
           <p className="text-xs text-muted-foreground">
             Used for in-canvas formatting suggestion highlights and the suggestion pulse.
           </p>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-border pt-5">
+          <label className="flex items-start justify-between gap-4 cursor-pointer">
+            <span>
+              <span className="block text-sm font-medium text-foreground">Let the assistant apply changes without asking</span>
+              <span className="block text-xs text-muted-foreground mt-1">{AUTONOMY_WARNING}</span>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={prefs.assistantAutoApply}
+              onChange={(event) => update({ assistantAutoApply: event.target.checked })}
+              className="mt-1 size-4 accent-[var(--primary)] cursor-pointer shrink-0"
+              aria-label="Let the assistant apply changes without asking"
+            />
+          </label>
         </div>
 
         <div className="border-t border-border pt-5">

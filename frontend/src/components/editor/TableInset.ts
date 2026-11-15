@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { updateDecorations } from './changedRanges'
 
 const insetKey = new PluginKey<DecorationSet>('tableInset')
 
@@ -28,16 +29,22 @@ export function insetStyle(inset: Inset): string {
   return parts.join(';')
 }
 
-/** One node decoration per table that carries an inset. */
-function insetDecorations(doc: ProseMirrorNode): DecorationSet {
+/** Inset decorations for the tables between `from` and `to`. */
+function insetsBetween(doc: ProseMirrorNode, from: number, to: number): Decoration[] {
   const decorations: Decoration[] = []
-  doc.descendants((node, pos) => {
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (node.isTextblock) return false
     if (node.type.name !== 'table') return true
     const inset = parseInset(node.attrs.inset)
     if (inset) decorations.push(Decoration.node(pos, pos + node.nodeSize, { style: insetStyle(inset) }))
     return false
   })
-  return DecorationSet.create(doc, decorations)
+  return decorations
+}
+
+/** One node decoration per table that carries an inset. */
+function insetDecorations(doc: ProseMirrorNode): DecorationSet {
+  return DecorationSet.create(doc, insetsBetween(doc, 0, doc.content.size))
 }
 
 /**
@@ -74,7 +81,7 @@ export const TableInset = Extension.create({
         key: insetKey,
         state: {
           init: (_config, state) => insetDecorations(state.doc),
-          apply: (tr, previous) => (tr.docChanged ? insetDecorations(tr.doc) : previous),
+          apply: (tr, previous) => (tr.docChanged ? updateDecorations(tr, previous, insetsBetween) : previous),
         },
         props: { decorations: (state) => insetKey.getState(state) },
       }),

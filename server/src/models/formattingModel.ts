@@ -11,6 +11,7 @@ import {
 } from '../types/index'
 import { resolveDocumentGenre } from '../utils/documentGenre'
 import { snapshotDocumentVersion } from './documentModel'
+import type { PresetBlueprint } from '../../schemas/formattingSchemas'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -133,6 +134,52 @@ export async function deleteUserPreset(userId: string, presetId: string): Promis
     .eq('user_id', userId)
 
   if (error) throw new Error(`Failed to delete custom preset: ${error.message}`)
+}
+
+/** Thrown when the database has not had migration 047 (user_presets.blueprint) yet. */
+export class MissingBlueprintColumnError extends Error {
+  constructor() {
+    super('Presets made from a file need database migration 047_user_preset_blueprints.sql.')
+  }
+}
+
+/**
+ * Save a preset whose look comes from a blueprint (read from an uploaded document, or a shared
+ * .idocpreset file). Its key keeps the closest built-in preset as its base (`uclm_capstone__f…`),
+ * so everything keyed by the base (access rules, IEEE handling) still applies to it.
+ */
+export async function createBlueprintPreset(
+  userId: string,
+  input: { name: string; description: string; baseKey: string; blueprint: PresetBlueprint }
+): Promise<UserPreset> {
+  const base = await getPresetByKey(input.baseKey)
+  if (!base) throw new Error(`Unknown base preset "${input.baseKey}"`)
+
+  const existing = await getUserPresets(userId)
+  const nextVersion =
+    existing.filter((preset) => preset.base_key === input.baseKey).reduce((highest, preset) => Math.max(highest, preset.version), 1) + 1
+
+  const { data, error } = await supabase
+    .from('user_presets')
+    .insert({
+      user_id: userId,
+      key: `${input.baseKey}__f${Date.now().toString(36)}`,
+      base_key: input.baseKey,
+      name: input.name.trim(),
+      description: input.description.trim(),
+      rules: base.rules,
+      version: nextVersion,
+      blueprint: input.blueprint,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    // PostgREST names the unknown column; anything else is a real failure.
+    if (/blueprint/i.test(error.message)) throw new MissingBlueprintColumnError()
+    throw new Error(`Failed to save preset: ${error.message}`)
+  }
+  return data as UserPreset
 }
 
 // ── Tier 2 — Custom format bindings ──────────────────────────────────────────

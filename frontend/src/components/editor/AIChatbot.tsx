@@ -5,10 +5,16 @@ import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { editorUndoDepth, startNewUndoStep } from './undoDepth'
 import { api, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
 import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, resolveTargetRanges, type BlockCategory } from './chatFormatting'
+import { getEditorPreferences, setEditorPreferences, subscribeEditorPreferences } from '@/lib/editorPreferences'
+import { AUTONOMY_WARNING, asksForMoreThanPermission, detectAutonomyRequest } from '@/lib/assistantAutonomy'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  /** Asks the user to confirm turning on "apply without asking" (with the warning). */
+  autonomy_prompt?: 'pending' | 'accepted' | 'declined' | null
+  /** This change was applied without asking, because the mode was on. */
+  auto_applied?: boolean
   command_applied?: string | null
   preview_format?: string | null
   preview_formats?: string[] | null
@@ -42,7 +48,7 @@ const STORED_MESSAGES = 20
 
 const GREETING: ChatMessage = {
   role: 'assistant',
-  content: 'Hello! I’m your IntelliDocs AI assistant. I can help you think through formatting, wording, and document edits. I won’t auto-apply changes yet, but I can guide you based on your current document.',
+  content: 'Hello! I’m your IntelliDocs AI assistant. I can help you think through formatting, wording, and document edits. I ask before I change your document; if you would rather I apply changes on my own, just tell me.',
 }
 
 /** Session storage key of one document's chat. */
@@ -163,6 +169,54 @@ export default function AIChatbot({
   const lastPreviewRef = useRef<AIChatPreviewMeta | null>(null)
   /** Changes applied from this chat, newest last, so "undo that" can really revert them. */
   const appliedStackRef = useRef<Array<{ depthBefore: number; label: string }>>([])
+  // "Apply without asking": a saved preference, also switched from Settings.
+  const [autoApply, setAutoApply] = useState<boolean>(() => getEditorPreferences().assistantAutoApply)
+  useEffect(() => subscribeEditorPreferences((prefs) => setAutoApply(prefs.assistantAutoApply)), [])
+
+  /** Turn "apply without asking" on or off (saved with the editor preferences). */
+  function setAutonomy(on: boolean): void {
+    setAutoApply(setEditorPreferences({ assistantAutoApply: on }).assistantAutoApply)
+  }
+
+  /** Answer the confirmation card: turn the mode on, or keep asking. */
+  function answerAutonomyPrompt(messageIndex: number, accept: boolean): void {
+    if (accept) {
+      setAutonomy(true)
+      // A change proposed alongside the permission ("…without asking, bold the headings") goes in now.
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index]
+        if (message.role === 'assistant' && message.preview_status === 'pending') {
+          if (!(message.preview_format && hasRejectedPreview(message.preview_format))) handlePreviewApply(index, { ...message, auto_applied: true })
+          break
+        }
+      }
+    }
+    setMessages((current) => [
+      ...current.map((message, index) =>
+        index === messageIndex ? { ...message, autonomy_prompt: accept ? ('accepted' as const) : ('declined' as const) } : message
+      ),
+      {
+        role: 'assistant' as const,
+        content: accept
+          ? 'Apply without asking is on. I will make the changes I suggest right away; say “undo that” to take one back, or “ask me first” to turn this off.'
+          : 'OK, I will keep asking before I change anything.',
+      },
+    ])
+  }
+
+  // While the mode is on, a change the assistant proposes is applied as soon as it arrives.
+  useEffect(() => {
+    if (!autoApply || !editor || editor.isDestroyed || !editor.isEditable) return
+    const index = messages.length - 1
+    const last = messages[index]
+    if (!last || last.role !== 'assistant' || last.preview_status !== 'pending') return
+    // "Previously rejected" changes still wait: the user said no to them in this chat.
+    if (last.preview_format && hasRejectedPreview(last.preview_format)) return
+    setMessages((current) => current.map((message, i) => (i === index ? { ...message, auto_applied: true } : message)))
+    handlePreviewApply(index, last)
+    // handlePreviewApply and hasRejectedPreview read current state; re-running on them would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoApply, messages, editor])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -657,6 +711,22 @@ export default function AIChatbot({
     const userMsg = input.trim()
     setInput('')
     setMessages((current) => [...current, { role: 'user', content: userMsg }])
+
+    // "You can do it without asking" / "ask me first": the apply-without-asking mode. Turning it
+    // on always goes through a confirmation card with the warning; turning it off is immediate.
+    const autonomy = detectAutonomyRequest(userMsg)
+    if (autonomy) {
+      const reply: ChatMessage =
+        autonomy === 'revoke'
+          ? { role: 'assistant', content: 'OK, I will ask before I change anything again.' }
+          : autoApply
+            ? { role: 'assistant', content: 'Apply without asking is already on. Say “ask me first” to turn it off.' }
+            : { role: 'assistant', content: AUTONOMY_WARNING, autonomy_prompt: 'pending' }
+      if (autonomy === 'revoke') setAutonomy(false)
+      setMessages((current) => [...current, reply])
+      if (!asksForMoreThanPermission(userMsg)) return
+    }
+
     setLoading(true)
 
     // "Undo that" really reverts the last change applied from this chat; the
@@ -1092,9 +1162,55 @@ export default function AIChatbot({
                         )}
                       </div>
                     ) : null}
+                    {m.autonomy_prompt === 'pending' && (
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.625rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => answerAutonomyPrompt(i, true)}
+                          style={{
+                            flex: 1,
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            padding: '0.375rem 0.5rem',
+                            borderRadius: '0.375rem',
+                            border: 'none',
+                            backgroundColor: 'var(--primary)',
+                            color: 'var(--primary-foreground)',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          Turn on
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => answerAutonomyPrompt(i, false)}
+                          style={{
+                            flex: 1,
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            padding: '0.375rem 0.5rem',
+                            borderRadius: '0.375rem',
+                            border: '1px solid var(--border)',
+                            backgroundColor: 'transparent',
+                            color: 'var(--muted-foreground)',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          Keep asking
+                        </button>
+                      </div>
+                    )}
+                    {m.autonomy_prompt === 'accepted' && (
+                      <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', opacity: 0.7 }}>Turned on</div>
+                    )}
+                    {m.autonomy_prompt === 'declined' && (
+                      <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', opacity: 0.7 }}>Kept asking</div>
+                    )}
                     {m.command_applied && (
                       <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', opacity: 0.7, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ color: 'var(--success)' }}>✓</span> Applied: {m.command_applied}
+                        <span style={{ color: 'var(--success)' }}>✓</span> {m.auto_applied ? 'Applied without asking' : 'Applied'}: {m.command_applied}
                       </div>
                     )}
                   </div>
@@ -1109,6 +1225,32 @@ export default function AIChatbot({
               )}
               <div ref={bottomRef} />
             </div>
+
+            {autoApply && (
+              <div
+                role="status"
+                style={{
+                  borderTop: '1px solid var(--border)',
+                  padding: '0.375rem 0.75rem',
+                  fontSize: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.5rem',
+                  backgroundColor: 'color-mix(in srgb, var(--warning, #d97706) 12%, transparent)',
+                  color: 'var(--foreground)',
+                }}
+              >
+                <span>Applying changes without asking. Check them: I may get formatting wrong.</span>
+                <button
+                  type="button"
+                  onClick={() => setAutonomy(false)}
+                  style={{ border: 'none', background: 'transparent', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', fontSize: '0.75rem', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                >
+                  Turn off
+                </button>
+              </div>
+            )}
 
             {/* Input */}
             <div style={{ borderTop: '1px solid var(--border)', padding: '0.75rem', display: 'flex', gap: '0.5rem' }}>

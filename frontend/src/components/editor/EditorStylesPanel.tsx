@@ -4,7 +4,8 @@ import type { Editor } from '@tiptap/react'
 import { Check, Eye, EyeOff, GraduationCap, Lock, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { STYLE_ITEMS, type StyleItem } from './styleCommands'
 import { STYLE_GALLERY, StyleTile } from './StyleTile'
-import { ACADEMIC_PRESETS, type AcademicPreset } from './academicPresets'
+import { ACADEMIC_PRESETS, registeredUserPresets, type AcademicPreset } from './academicPresets'
+import DocumentPresetsSection from './DocumentPresetsSection'
 import { useEditorPreferences } from '@/hooks/useEditorPreferences'
 import { setEditorPreferences } from '@/lib/editorPreferences'
 import { useAuth } from '@/hooks/useAuth'
@@ -120,7 +121,8 @@ export default function EditorStylesPanel({
 
   // Custom entries lead the strip so the user's own styles/presets come first.
   const allStyles: StyleEntry[] = [...customStyles, ...STYLE_ITEMS]
-  const allPresets: PresetEntry[] = [...customPresets, ...ACADEMIC_PRESETS]
+  // The user's presets made from their own documents apply their own key (and so their own look).
+  const allPresets: PresetEntry[] = [...customPresets, ...registeredUserPresets(), ...ACADEMIC_PRESETS]
   const { user } = useAuth()
 
   /** Persist a new custom style alias and refresh the list. */
@@ -440,6 +442,8 @@ function ManageStylesModal({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <DocumentPresetsSection />
+
           <div>
             <h4
               style={{

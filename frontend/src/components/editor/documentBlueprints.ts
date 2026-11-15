@@ -202,6 +202,24 @@ function escapeHtml(value: string): string {
  * `data-guide`, which is what marks it as an unwritten placeholder so the
  * editor can draw its dashed guide box.
  */
+/**
+ * The skeleton of a preset made from a document: its section headings in order, each followed by
+ * a paragraph to write in, so a new document starts with the same outline as the one uploaded.
+ */
+export function documentBlueprintFromSections(
+  key: string,
+  name: string,
+  sections: Array<{ level: number; text: string }>,
+): DocumentBlueprint {
+  const outline: BlueprintSection[] = []
+  for (const section of sections) {
+    const level = section.level === 1 || section.level === 2 || section.level === 3 ? section.level : 2
+    outline.push({ block: 'heading', level, placeholder: section.text, hint: `Heading ${level}` })
+    outline.push({ block: 'paragraph', placeholder: 'Write this section here.', hint: 'Body text' })
+  }
+  return { key, name, description: `Outline of ${name}`, presetKey: key, sections: outline }
+}
+
 export function buildBlueprintHtml(blueprint: DocumentBlueprint): string {
   if (blueprint.sections.length === 0) {
     return '<p></p>'

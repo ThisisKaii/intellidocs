@@ -22,13 +22,14 @@ import JoinCodeModal from '@/components/drive/JoinCodeModal'
 import DocumentCreateModal from '@/components/DocumentCreateModal'
 import {
   buildBlueprintHtml,
+  documentBlueprintFromSections,
   type DocumentBlueprint,
 } from '@/components/editor/documentBlueprints'
 import ImportFileModal from '@/components/ImportFileModal'
 import ShareModal from '@/components/ShareModal'
 import { supabase } from '@/lib/supabase'
 import { useDriveCache } from '@/hooks/useDriveCache'
-import { ACADEMIC_PRESETS } from '@/components/editor/academicPresets'
+import { findAcademicPreset, registerUserPresets } from '@/components/editor/academicPresets'
 import { motion } from 'framer-motion'
 
 interface ConfirmDialogState {
@@ -272,11 +273,20 @@ export default function HomePage(): JSX.Element {
     }
   }, [selection.type])
 
+  /** A preset made from a document starts new documents with that document's outline. */
+  function outlineFor(presetKey: string | null, fallback: DocumentBlueprint): DocumentBlueprint {
+    const own = userPresets.find((preset) => preset.key === presetKey && preset.blueprint && preset.blueprint.sections.length > 0)
+    return own?.blueprint ? documentBlueprintFromSections(own.key, own.name, own.blueprint.sections) : fallback
+  }
+
   /* ── User blueprint forks: offer them in the new-document modal ── */
   useEffect(() => {
     api.formatting
       .listUserPresets()
-      .then(setUserPresets)
+      .then((presets) => {
+        registerUserPresets(presets)
+        setUserPresets(presets)
+      })
       .catch(() => {
         /* The user-presets table is not applied yet, or the fetch failed.
          * The modal simply shows the standard blueprints only. */
@@ -376,11 +386,11 @@ export default function HomePage(): JSX.Element {
       setCreateModalError('')
       setCreateSubmitting(true)
       const doc = await api.documents.create(input.title, {
-        content: buildBlueprintHtml(input.blueprint),
+        content: buildBlueprintHtml(outlineFor(input.presetKey, input.blueprint)),
         formatting_preset: input.presetKey ?? undefined,
       })
       // The preset's page size, orientation and margins apply from the first open.
-      const preset = ACADEMIC_PRESETS.find((candidate) => candidate.key === input.presetKey)
+      const preset = findAcademicPreset(input.presetKey)
       if (preset) {
         try {
           await api.documents.update(doc.id, {

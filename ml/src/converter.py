@@ -56,6 +56,44 @@ HIGHLIGHT_COLORS: Dict[str, str] = {
 EMU_PER_INCH = 914400
 TWIPS_PER_PX = 96.0 / 1440.0
 
+
+def _cache_default_styles() -> None:
+    """Remember each styles part's default style per type instead of rescanning every style.
+
+    python-docx answers `paragraph.style` for a paragraph with no w:pStyle (most of them) by
+    walking every w:style in the document and parsing its attributes. The converter asks that for
+    each paragraph many times, which was 75% of a DOCX import and a third of a PDF import. The
+    entry keeps its styles element alive so its id cannot be reused by another document, and the
+    cache is bounded so a long-running converter does not grow. A cached default is checked to
+    still belong to the part and still be marked default, so an edited style list is rescanned.
+    """
+    from docx.oxml.styles import CT_Styles
+
+    original = CT_Styles.default_for
+    cache: "collections.OrderedDict[Tuple[int, Any], Tuple[Any, Any]]" = collections.OrderedDict()
+    lock = threading.Lock()
+
+    def default_for(self: Any, style_type: Any) -> Any:
+        key = (id(self), style_type)
+        with lock:
+            hit = cache.get(key)
+        if hit is not None and hit[0] is self:
+            style = hit[1]
+            if style is None or (style.getparent() is self and style.default):
+                return style
+        style = original(self, style_type)
+        with lock:
+            cache[key] = (self, style)
+            cache.move_to_end(key)
+            while len(cache) > 64:
+                cache.popitem(last=False)
+        return style
+
+    CT_Styles.default_for = default_for
+
+
+_cache_default_styles()
+
 # Marks a column break inside a paragraph until the section's columns are built.
 _COLUMN_MARK = ""
 _PAGE_BREAK_HTML = '<hr class="page-break" data-page-break="true" />'

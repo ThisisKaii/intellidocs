@@ -1,4 +1,5 @@
 import type { PageSizeKey, PageOrientation, MarginValues } from './TiptapEditor'
+import type { PresetBlueprint } from '@/services/api'
 
 /**
  * One-click academic formatting presets. Each preset drives:
@@ -182,20 +183,20 @@ const UCLM_CAPSTONE: PresetInput = {
   key: 'uclm_capstone',
   name: 'UCLM Capstone (Thesis)',
   description:
-    'UCLM spec — 1.5" left binding margin, double-spaced Times New Roman: 11pt body, 12pt headings; uppercase centered chapter headings, roman preliminary page numbers.',
+    'UCLM spec — 1.5" left binding margin, double-spaced Times New Roman: 11pt body and section headings, 12pt chapter headings (CHAPTER I, INTRODUCTION); uppercase centered chapter headings, roman preliminary page numbers.',
   pageSize: 'letter',
   orientation: 'portrait',
   margins: { top: 1, bottom: 1, left: 1.5, right: 1 },
   fontFamily: "'Times New Roman', Times, serif",
-  // Body paragraphs are 11pt; chapter and section headings 12pt (headings below).
+  // Body paragraphs and section headings are 11pt; only chapter headings (CHAPTER I, INTRODUCTION) are 12pt.
   baseFontSize: '11pt',
   lineHeight: 2,
   firstLineIndent: '0.5in',
   titlePageAlign: 'center',
   headings: {
     level1: { textAlign: 'center', fontSize: '12pt', fontWeight: 700, textTransform: 'uppercase' },
-    level2: { textAlign: 'left', fontSize: '12pt', fontWeight: 700, textTransform: 'none' },
-    level3: { textAlign: 'left', fontSize: '12pt', fontWeight: 400, textTransform: 'none', note: 'Italicized' },
+    level2: { textAlign: 'left', fontSize: '11pt', fontWeight: 700, textTransform: 'none' },
+    level3: { textAlign: 'left', fontSize: '11pt', fontWeight: 400, textTransform: 'none', note: 'Italicized' },
   },
 }
 
@@ -209,6 +210,65 @@ export const ACADEMIC_PRESETS: AcademicPreset[] = [APA_7TH, IEEE, UCLM_CAPSTONE]
  */
 export function withComputedCss(preset: PresetInput): AcademicPreset {
   return { ...preset, css: buildCss(preset) }
+}
+
+/** Window event sent after the user makes, imports or deletes a preset, so open pages reload them. */
+export const USER_PRESETS_CHANGED = 'intellidocs:user-presets-changed'
+
+/** The user's own presets that carry a blueprint, by key (filled when their presets load). */
+const userPresetRegistry = new Map<string, AcademicPreset>()
+
+/** CSS-safe font list from a blueprint (the server checks it too). */
+function safeFamily(family: string): string {
+  return /^[\w\s'",.-]+$/.test(family) ? family : "'Times New Roman', Times, serif"
+}
+
+/** A preset whose look was read from a document: the same shape as a built-in one. */
+export function presetFromBlueprint(key: string, name: string, description: string, blueprint: PresetBlueprint): AcademicPreset {
+  const heading = (style: PresetBlueprint['headings']['level1']): HeadingStyle => ({
+    textAlign: style.textAlign,
+    fontSize: style.fontSize,
+    fontWeight: style.fontWeight,
+    fontStyle: style.fontStyle ?? 'normal',
+    textTransform: style.textTransform,
+  })
+  return withComputedCss({
+    key,
+    name,
+    description,
+    pageSize: blueprint.pageSize,
+    orientation: blueprint.orientation,
+    margins: blueprint.margins,
+    fontFamily: safeFamily(blueprint.fontFamily),
+    baseFontSize: blueprint.baseFontSize,
+    lineHeight: blueprint.lineHeight,
+    firstLineIndent: blueprint.firstLineIndent,
+    titlePageAlign: 'center',
+    headings: { level1: heading(blueprint.headings.level1), level2: heading(blueprint.headings.level2), level3: heading(blueprint.headings.level3) },
+    extraCss: blueprint.bodyAlign === 'left' ? '' : `\n.intellidocs-page-editor .ProseMirror p { text-align: ${blueprint.bodyAlign}; }`,
+  })
+}
+
+/** Remember the user's blueprint presets so documents bound to them get their look. */
+export function registerUserPresets(presets: Array<{ key: string; name: string; description: string; blueprint?: PresetBlueprint | null }>): void {
+  userPresetRegistry.clear()
+  for (const preset of presets) {
+    if (preset.blueprint) userPresetRegistry.set(preset.key, presetFromBlueprint(preset.key, preset.name, preset.description, preset.blueprint))
+  }
+}
+
+/** The user's presets that carry a blueprint. */
+export function registeredUserPresets(): AcademicPreset[] {
+  return Array.from(userPresetRegistry.values())
+}
+
+/**
+ * The preset a document's key names: one of the user's blueprint presets, else the built-in
+ * preset the key derives from (`ieee__v2` → IEEE).
+ */
+export function findAcademicPreset(key: string | null | undefined): AcademicPreset | undefined {
+  if (!key) return undefined
+  return userPresetRegistry.get(key) ?? ACADEMIC_PRESETS.find((preset) => preset.key === basePresetKey(key))
 }
 
 /** The built-in preset a (possibly forked) key derives from: `ieee__v2` -> `ieee`. */

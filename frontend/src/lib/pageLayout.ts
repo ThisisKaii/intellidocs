@@ -208,6 +208,52 @@ export function numberingCss(layout: PageLayoutData, measure: PageMeasure): stri
   return rules.join('\n')
 }
 
+/** A section with only numbering set, for documents numbered without imported sections. */
+function numberingSection(index: number, format: string, start: number | null): PageLayoutSection {
+  return {
+    index,
+    header: null,
+    footer: null,
+    first_header: null,
+    first_footer: null,
+    title_pg: false,
+    number_start: start,
+    number_format: format,
+    header_distance: 0,
+    footer_distance: 0,
+  }
+}
+
+/**
+ * Manuscript page numbers: no number on the title page, lower-case Roman numerals on the front
+ * matter (approval sheet, acknowledgement, dedication, contents … counted from the title page,
+ * so the page after it is ii), and Arabic numbers from 1 again where Chapter 1 starts.
+ * `chapterPage` is the page Chapter 1 starts on, or null when there is none (then the pages after
+ * the title page simply carry on in Arabic numbers).
+ */
+export function manuscriptNumberingCss(chapterPage: number | null, pageCount: number): string {
+  const sections = [numberingSection(0, 'none', null)]
+  const starts: PageMeasure['starts'] = []
+  if (chapterPage === null || chapterPage <= 1) {
+    if (pageCount >= 2) {
+      sections.push(numberingSection(1, 'decimal', null))
+      starts.push({ section: 1, page: 2 })
+    }
+  } else {
+    if (chapterPage > 2) {
+      sections.push(numberingSection(1, 'lowerRoman', null))
+      starts.push({ section: 1, page: 2 })
+    }
+    sections.push(numberingSection(2, 'decimal', 1))
+    starts.push({ section: 2, page: chapterPage })
+  }
+  const layout: PageLayoutData = { sections, parts: {}, repeat_art: '', page_art: {} }
+  return numberingCss(layout, { starts, pageCount: Math.max(pageCount, chapterPage ?? 1) })
+}
+
+/** "Chapter 1", "CHAPTER I", "Chapter One": the line that opens a manuscript's first chapter. */
+export const FIRST_CHAPTER = /^chapter\s+(?:1|i|one)\b/i
+
 /** A section break in the document: the section it starts and that section's properties. */
 export interface DocumentSectionBreak {
   section: number

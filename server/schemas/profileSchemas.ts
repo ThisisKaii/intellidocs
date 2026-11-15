@@ -45,6 +45,8 @@ export const editorPreferencesSchema = z.object({
   showStyleGuides: z.boolean(),
   formattingSuggestions: z.boolean(),
   grammarSuggestions: z.boolean(),
+  // Optional: copies saved before the chat's apply-without-asking switch existed lack it.
+  assistantAutoApply: z.boolean().optional(),
 })
 
 export type EditorPreferencesInput = z.infer<typeof editorPreferencesSchema>

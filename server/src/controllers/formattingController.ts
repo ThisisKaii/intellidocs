@@ -1,5 +1,7 @@
 import { Request, Response } from 'express'
 import * as formattingModel from '../models/formattingModel'
+import { buildPresetFromFile } from '../skills/buildPresetFromFile'
+import type { ImportUserPresetInput } from '../../schemas/formattingSchemas'
 import {
   CreateFormatBindingRequest,
   CreateUserPresetRequest,
@@ -76,6 +78,70 @@ export async function createUserPreset(req: Request, res: Response): Promise<voi
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to save custom preset'
     res.status(400).json({ error: message })
+  }
+}
+
+/** Status a thrown error asks for (validation errors carry one), else the fallback. */
+function statusOf(error: unknown, fallback: number): number {
+  if (error instanceof formattingModel.MissingBlueprintColumnError) return 503
+  const status = (error as { status?: unknown } | null)?.status
+  return typeof status === 'number' ? status : fallback
+}
+
+/**
+ * The base a user's own preset is filed under. Its look comes from its blueprint, so a user
+ * without thesis access whose document reads closest to the thesis preset gets the general
+ * preset as its base instead of a preset they cannot open.
+ */
+async function unlockedBase(userId: string, baseKey: string): Promise<string> {
+  const { role } = await getOwnRoleStatus(userId)
+  return canUsePreset(role, baseKey) ? baseKey : 'apa_7th'
+}
+
+/**
+ * Make a preset from an uploaded document already in the user's format: its page, body text,
+ * heading looks and section outline become the preset's blueprint.
+ */
+export async function createUserPresetFromFile(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+    if (!req.file) {
+      res.status(400).json({ error: 'Choose a .docx or .pdf file to make the preset from.' })
+      return
+    }
+    const { blueprint, baseKey: closest, title } = await buildPresetFromFile({ buffer: req.file.buffer, originalname: req.file.originalname })
+    const baseKey = await unlockedBase(userId, closest)
+    const name = typeof req.body?.name === 'string' && req.body.name.trim() ? req.body.name.trim().slice(0, 120) : title.slice(0, 120)
+    const preset = await formattingModel.createBlueprintPreset(userId, {
+      name,
+      description: `Made from ${req.file.originalname}`.slice(0, 400),
+      baseKey,
+      blueprint,
+    })
+    res.status(201).json(preset)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to make a preset from the file'
+    res.status(statusOf(error, 500)).json({ error: message })
+  }
+}
+
+/** Add a preset someone shared (a .idocpreset file) to the current user's presets. */
+export async function importUserPreset(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = getUserId(req, res)
+    if (!userId) return
+    const body = req.body as ImportUserPresetInput
+    const preset = await formattingModel.createBlueprintPreset(userId, {
+      name: body.name,
+      description: body.description ?? '',
+      baseKey: await unlockedBase(userId, body.baseKey),
+      blueprint: body.blueprint,
+    })
+    res.status(201).json(preset)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to import the preset'
+    res.status(statusOf(error, 400)).json({ error: message })
   }
 }
 

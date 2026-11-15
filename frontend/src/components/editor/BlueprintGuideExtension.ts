@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { hasLocalDocChange } from './collabTransactions'
+import { changedBlocks, updateDecorations } from './changedRanges'
 
 /** Wrapper class drawn around an unwritten blueprint placeholder. */
 const GUIDE_CLASS = 'doc-guide'
@@ -45,18 +46,21 @@ function isOutstandingGuide(node: ProseMirrorNode): boolean {
   )
 }
 
-/** Build one node decoration per placeholder block that is still unwritten. */
-function buildGuides(doc: ProseMirrorNode): DecorationSet {
+/** Guide boxes for the unwritten placeholder blocks between `from` and `to`. */
+function guidesBetween(doc: ProseMirrorNode, from: number, to: number): Decoration[] {
   const decorations: Decoration[] = []
-
-  doc.descendants((node, pos) => {
+  doc.nodesBetween(from, to, (node, pos) => {
     if (isOutstandingGuide(node)) {
       decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: GUIDE_CLASS }))
     }
-    return true
+    return !node.isTextblock
   })
+  return decorations
+}
 
-  return DecorationSet.create(doc, decorations)
+/** Build one node decoration per placeholder block that is still unwritten. */
+function buildGuides(doc: ProseMirrorNode): DecorationSet {
+  return DecorationSet.create(doc, guidesBetween(doc, 0, doc.content.size))
 }
 
 /**
@@ -105,21 +109,24 @@ export const BlueprintGuideExtension = Extension.create({
               return meta.enabled ? buildGuides(tr.doc) : DecorationSet.empty
             }
             if (!tr.docChanged) return value
-            return storage.enabled ? buildGuides(tr.doc) : DecorationSet.empty
+            // Only the blocks an edit touched can have gained or lost a guide.
+            return storage.enabled ? updateDecorations(tr, value, guidesBetween) : DecorationSet.empty
           },
         },
         appendTransaction(transactions, _oldState, newState) {
           if (!hasLocalDocChange(transactions)) return null
 
-          // Retire the guide on every placeholder the user has written over.
+          // Retire the guide on every placeholder the user has written over (only edited blocks can be).
           const retire: number[] = []
-          newState.doc.descendants((node, pos) => {
-            const hint = node.attrs[GUIDE_HINT_ATTR]
-            if (typeof hint === 'string' && hint.length > 0 && !isOutstandingGuide(node)) {
-              retire.push(pos)
-            }
-            return true
-          })
+          for (const { from, to } of changedBlocks(transactions, newState.doc)) {
+            newState.doc.nodesBetween(from, to, (node, pos) => {
+              const hint = node.attrs[GUIDE_HINT_ATTR]
+              if (typeof hint === 'string' && hint.length > 0 && !isOutstandingGuide(node)) {
+                retire.push(pos)
+              }
+              return !node.isTextblock
+            })
+          }
 
           if (retire.length === 0) return null
 

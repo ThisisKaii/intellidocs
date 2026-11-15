@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/react'
-import { ACADEMIC_PRESETS, basePresetKey, type HeadingStyle } from './academicPresets'
+import { findAcademicPreset, type HeadingStyle } from './academicPresets'
 import { CellSelection } from '@tiptap/pm/tables'
 import { textRangeInside } from './selectionRanges'
 
@@ -63,7 +63,7 @@ function presetLook(style: HeadingStyle): string {
  * (outline, table of contents, numbering) and never decides how the block looks.
  */
 export function combinedLook(format: string, presetKey: string | null): string {
-  const preset = ACADEMIC_PRESETS.find((candidate) => candidate.key === basePresetKey(presetKey))
+  const preset = findAcademicPreset(presetKey)
   if (preset) {
     if (format === 'title') return presetLook(preset.title ?? preset.headings.level1)
     if (format === 'h1') return presetLook(preset.headings.level1)

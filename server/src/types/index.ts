@@ -33,7 +33,7 @@ export interface StorageSummary {
 }
 
 /** Page-number style for headers/footers. */
-export type PageNumberFormat = 'none' | 'number' | 'roman'
+export type PageNumberFormat = 'none' | 'number' | 'roman' | 'manuscript'
 
 /** Page size presets supported by the editor. */
 export type PageSizeKey = 'short' | 'long' | 'a4' | 'letter' | 'legal'
@@ -281,6 +281,8 @@ export interface UserPreset {
   rules: FormatRule[]
   /** 2 for the first fork of a base, 3 for the next, and so on. */
   version: number
+  /** The look read from an uploaded document (null for a plain fork; absent before migration 047). */
+  blueprint?: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }

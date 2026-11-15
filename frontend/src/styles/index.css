@@ -529,27 +529,32 @@ html {
   }
 }
 
-/* Style-boundary guides (point 20) — colored dashed left edge per block level */
-.guide-boundary .style-guide--h1 {
+/* Style-boundary guides (point 20) — colored dashed left edge per block level. Drawn from the
+   blocks themselves, not per-block decorations: keeping a decoration on every heading up to date
+   cost each keystroke time in proportion to the document's length. */
+.guide-boundary .ProseMirror h1 {
   background-image: repeating-linear-gradient(180deg, var(--guide-h1) 0 6px, transparent 6px 12px);
   background-size: 3px 100%;
   background-repeat: repeat-y;
   background-position: left top;
 }
-.guide-boundary .style-guide--h2,
-.guide-boundary .style-guide--h3 {
+.guide-boundary .ProseMirror h2,
+.guide-boundary .ProseMirror h3,
+.guide-boundary .ProseMirror h4,
+.guide-boundary .ProseMirror h5,
+.guide-boundary .ProseMirror h6 {
   background-image: repeating-linear-gradient(180deg, var(--guide-h2h3) 0 6px, transparent 6px 12px);
   background-size: 3px 100%;
   background-repeat: repeat-y;
   background-position: left top;
 }
-.guide-boundary .style-guide--quote {
+.guide-boundary .ProseMirror blockquote {
   background-image: repeating-linear-gradient(180deg, var(--guide-quote) 0 6px, transparent 6px 12px);
   background-size: 3px 100%;
   background-repeat: repeat-y;
   background-position: left top;
 }
-.guide-boundary .style-guide--title {
+.guide-boundary .ProseMirror h1[data-doc-role='title'] {
   background-image: repeating-linear-gradient(180deg, var(--guide-title) 0 6px, transparent 6px 12px);
   background-size: 3px 100%;
   background-repeat: repeat-y;

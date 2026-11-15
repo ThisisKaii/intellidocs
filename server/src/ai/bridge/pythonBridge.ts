@@ -313,8 +313,8 @@ export interface CompliancePageSetup {
   margins: PageMargins
   showHeader: boolean
   showFooter: boolean
-  headerNumberFormat: 'none' | 'number' | 'roman'
-  footerNumberFormat: 'none' | 'number' | 'roman'
+  headerNumberFormat: 'none' | 'number' | 'roman' | 'manuscript'
+  footerNumberFormat: 'none' | 'number' | 'roman' | 'manuscript'
 }
 
 /** The template rules a document is audited against. */

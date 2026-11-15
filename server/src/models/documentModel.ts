@@ -574,7 +574,7 @@ const readFormatSnapshot = (
   const boolOf = (value: unknown, fallback: boolean): boolean =>
     typeof value === 'boolean' ? value : fallback
   const numberFormat = (value: unknown): PageNumberFormat =>
-    value === 'number' || value === 'roman' ? value : 'none'
+    value === 'number' || value === 'roman' || value === 'manuscript' ? value : 'none'
 
   return {
     formatting_history: stringArray(raw.formatting_history),

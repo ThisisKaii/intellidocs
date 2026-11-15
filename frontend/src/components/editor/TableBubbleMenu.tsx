@@ -46,7 +46,9 @@ export default function TableBubbleMenu({
   onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
 }): JSX.Element | null {
   const [fillOpen, setFillOpen] = useState(false)
-  useEditorState({ editor, selector: ({ transactionNumber }) => transactionNumber })
+  // Re-render with each change only while the caret is in a table: every React render measures the
+  // selection across the whole editor, which made typing in a long document lag.
+  useEditorState({ editor, selector: ({ editor: ed, transactionNumber }) => (ed?.isActive('table') ? transactionNumber : -1) })
   // Stable across renders: BubbleMenu re-registers its plugin (one transaction) whenever this
   // changes, and this component re-renders on every transaction, so an inline function looped.
   const anchor = useCallback((): { getBoundingClientRect: () => DOMRect } | null => {

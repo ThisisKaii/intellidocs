@@ -33,7 +33,7 @@ import { buildGenreSignals, type DocumentGenre, type GenreSource } from '@/lib/g
 import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import EditorSidePanel, { grammarCardKey, type SidePanelTab, type SuggestionReview } from '@/components/editor/EditorSidePanel'
-import { ACADEMIC_PRESETS, basePresetKey } from '@/components/editor/academicPresets'
+import { ACADEMIC_PRESETS, USER_PRESETS_CHANGED, basePresetKey, findAcademicPreset, registerUserPresets } from '@/components/editor/academicPresets'
 import { hasDriftedFromPreset } from '@/components/editor/documentBlueprints'
 import PresetForkPrompt from '@/components/PresetForkPrompt'
 import { applyStyleCommand } from '@/components/editor/styleCommands'
@@ -49,6 +49,7 @@ import { ShieldCheck, ShieldOff, Shield, PanelRight, PanelRightClose, Share2, Pa
 import { useGrammarCheck } from '@/hooks/useGrammarCheck'
 import { useAutoFormatScanner, classifyStructuralRole, REMOVE_BLANK_LINES, type ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import { isBlankParagraph } from '@/lib/blankLines'
+import { CENTER_FIGURE, FIX_CAPTION_NUMBER, UNWRAP_FIGURE, centerFigure, unwrapFigure } from '@/lib/figurePlacement'
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import type { PageLayoutData } from '@/lib/pageLayout'
@@ -261,6 +262,30 @@ export default function Document(): JSX.Element {
   const [showFooter, setShowFooter] = useState<boolean>(false)
   const [headerNumberFormat, setHeaderNumberFormat] = useState<PageNumberFormat>('none')
   const [footerNumberFormat, setFooterNumberFormat] = useState<PageNumberFormat>('none')
+  // The user's presets made from their own documents: a document bound to one gets its look.
+  // Reloaded when the Styles panel makes or imports one.
+  const [, setUserPresetsVersion] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    const load = (): void => {
+      api.formatting
+        .listUserPresets()
+        .then((presets) => {
+          if (cancelled) return
+          registerUserPresets(presets)
+          setUserPresetsVersion((version) => version + 1)
+        })
+        .catch(() => {
+          // No user presets (or the table is not there yet): the built-in presets still work.
+        })
+    }
+    load()
+    window.addEventListener(USER_PRESETS_CHANGED, load)
+    return () => {
+      cancelled = true
+      window.removeEventListener(USER_PRESETS_CHANGED, load)
+    }
+  }, [])
   const [headerPlacement, setHeaderPlacement] = useState<HeaderFooterPlacement>('split')
   const [footerPlacement, setFooterPlacement] = useState<HeaderFooterPlacement>('split')
   const [headerMarginIn, setHeaderMarginIn] = useState<number>(0.5)
@@ -1259,6 +1284,16 @@ export default function Document(): JSX.Element {
         return false
       })
       if (onlyBlank) editor.chain().deleteRange({ from, to }).run()
+      return
+    }
+    if (format === UNWRAP_FIGURE || format === CENTER_FIGURE) {
+      // Recomputed from the block now at `from`: nothing happens if it is no longer that figure.
+      const tr = format === UNWRAP_FIGURE ? unwrapFigure(editor.state, from) : centerFigure(editor.state, from)
+      if (tr) editor.view.dispatch(tr)
+      return
+    }
+    if (format === FIX_CAPTION_NUMBER) {
+      editor.commands.fixCaptionNumber(from)
       return
     }
     if (format === 'title') {
@@ -2506,7 +2541,7 @@ export default function Document(): JSX.Element {
   }
 
   /** Resolve the active preset (if the doc uses one of the academic presets). */
-  const activeAcademicPreset = ACADEMIC_PRESETS.find((p) => p.key === basePresetKey(formattingPreset))
+  const activeAcademicPreset = findAcademicPreset(formattingPreset)
 
   /* ── Blueprint drift → "save as my own version" (section 9) ────────────────
    *
@@ -2746,7 +2781,7 @@ export default function Document(): JSX.Element {
 
   /** "Apply to existing paragraphs": reformat the body into the preset's font, size, spacing and indent (one undo step). */
   function applyPresetToExistingText(presetKey: string): void {
-    const preset = ACADEMIC_PRESETS.find((p) => p.key === basePresetKey(presetKey))
+    const preset = findAcademicPreset(presetKey)
     if (!preset || !editor || editor.isDestroyed || !editor.isEditable) return
     const changed = applyPresetToBody(editor, {
       fontFamily: presetFontFamily(preset),
@@ -2769,7 +2804,7 @@ export default function Document(): JSX.Element {
 
   /** One-click academic preset: page geometry + scoped typography + persisted preset key. */
   async function handleApplyAcademicPreset(key: string): Promise<void> {
-    const preset = ACADEMIC_PRESETS.find((p) => p.key === key)
+    const preset = findAcademicPreset(key)
     if (!preset) return
     if (!canUsePreset(user?.role, key)) {
       setPresetLocked(true)

@@ -55,6 +55,55 @@ export const createUserPresetSchema = z.object({
   rules: z.array(formatRuleSchema).max(200).optional(),
 })
 
+/** One heading level's look in a preset read from a file. */
+export const blueprintHeadingSchema = z.object({
+  textAlign: z.enum(['left', 'center', 'right']),
+  fontSize: z.string().regex(/^\d{1,2}(?:\.\d)?pt$/),
+  fontWeight: z.union([z.literal(400), z.literal(700)]),
+  fontStyle: z.enum(['normal', 'italic']).optional(),
+  textTransform: z.enum(['uppercase', 'capitalize', 'none']),
+})
+
+/**
+ * A preset's blueprint, read from a document the user uploaded: page, body text and heading
+ * looks, and the section headings the document is built from. Shared as a .idocpreset file.
+ */
+export const presetBlueprintSchema = z.object({
+  version: z.literal(1),
+  pageSize: z.enum(['short', 'long', 'a4', 'letter', 'legal']),
+  orientation: z.enum(['portrait', 'landscape']),
+  margins: z.object({
+    top: z.number().min(0).max(4),
+    bottom: z.number().min(0).max(4),
+    left: z.number().min(0).max(4),
+    right: z.number().min(0).max(4),
+  }),
+  fontFamily: z.string().trim().min(1).max(120).regex(/^[\w\s'",.-]+$/, 'Unsupported font name'),
+  baseFontSize: z.string().regex(/^\d{1,2}(?:\.\d)?pt$/),
+  lineHeight: z.number().min(0.8).max(3.5),
+  firstLineIndent: z.string().regex(/^\d(?:\.\d{1,2})?in$/),
+  bodyAlign: z.enum(['left', 'center', 'right', 'justify']),
+  headings: z.object({
+    level1: blueprintHeadingSchema,
+    level2: blueprintHeadingSchema,
+    level3: blueprintHeadingSchema,
+  }),
+  pageNumbers: z.enum(['none', 'number', 'roman', 'manuscript']).optional(),
+  /** Section headings in order (CHAPTER I, INTRODUCTION, …): the outline new documents start from. */
+  sections: z.array(z.object({ level: z.number().int().min(1).max(3), text: z.string().trim().min(1).max(160) })).max(80),
+})
+
+/** A shared .idocpreset file being added to the current user's presets. */
+export const importUserPresetSchema = z.object({
+  format: z.literal('intellidocs-preset'),
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(400).optional(),
+  baseKey: z.string().trim().min(1).max(100),
+  blueprint: presetBlueprintSchema,
+})
+
+export type PresetBlueprint = z.infer<typeof presetBlueprintSchema>
+export type ImportUserPresetInput = z.infer<typeof importUserPresetSchema>
 export type CreateFormatBindingInput = z.infer<typeof createFormatBindingSchema>
 export type UpdateFormatBindingInput = z.infer<typeof updateFormatBindingSchema>
 export type TierCheckInput = z.infer<typeof tierCheckSchema>

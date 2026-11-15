@@ -15,7 +15,7 @@ interface MarginValues {
 }
 
 /** Page number format options. */
-type PageNumberFormat = 'none' | 'number' | 'roman'
+type PageNumberFormat = 'none' | 'number' | 'roman' | 'manuscript'
 
 /** Horizontal placement of a header/footer zone's content. */
 type HeaderFooterPlacement = 'left' | 'center' | 'right' | 'split'

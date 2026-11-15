@@ -27,7 +27,6 @@ import { TableInset } from './TableInset'
 import { FullSpan, spanTarget } from './FullSpan'
 import { BlueprintGuideExtension } from './BlueprintGuideExtension'
 import { HarperLinterExtension } from './HarperLinterExtension'
-import { StyleGuideExtension } from './StyleGuideExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { ListItem, OrderedList } from '@tiptap/extension-list'
 import { PageBreak } from './PageBreak'
@@ -1340,7 +1339,6 @@ const editorExtensionsAfterStarterKit = [
   SuggestionDecorationsExtension,
   BlueprintGuideExtension,
   HarperLinterExtension,
-  StyleGuideExtension,
   MarkdownTriggers,
   ImageResizeBehaviorExtension,
 ]
@@ -1720,10 +1718,12 @@ export function TiptapToolbar({
   const headerInputRef = useRef<HTMLInputElement>(null)
   const footerInputRef = useRef<HTMLInputElement>(null)
 
-  // Re-render on every TipTap transaction so active/disabled states stay fresh.
+  // Re-render when what the ribbon shows changes (active marks, the block's type and settings, the
+  // lists/tables around the caret, undo/redo), not on every keystroke: each React render measures
+  // the selection across the whole editor, which made typing in a long manuscript lag.
   useEditorState({
     editor,
-    selector: ({ transactionNumber }) => transactionNumber,
+    selector: ({ editor: ed }) => (ed ? toolbarSignature(ed) : ''),
   })
 
   /** The table, figure or equation the caret is in or on (it can run across both IEEE columns), if any. */
@@ -3575,6 +3575,7 @@ function NumberFormatSelect({ value, onChange, disabled }: NumberFormatSelectPro
       <option value="none">None</option>
       <option value="number">1, 2, 3</option>
       <option value="roman">I, II, III</option>
+      <option value="manuscript" title="No number on the title page, i, ii, iii up to Chapter 1, then 1, 2, 3">Manuscript (i, ii … then 1, 2 …)</option>
     </select>
   )
 }
@@ -3637,11 +3638,38 @@ function applyHeadingStyle(editor: Editor, level: 1 | 2): void {
   applyStyleCommand(editor, format, undefined, undefined, getEditorPresetKey(editor))
 }
 
+/**
+ * Everything the ribbon's buttons and fields reflect, as one string: the marks at the caret (or
+ * stored for the next character), the block the caret is in with its attributes, the nodes around
+ * it, the kind of selection and whether undo/redo are possible. Typing plain text leaves it the same.
+ */
+export function toolbarSignature(editor: Editor): string {
+  const { state } = editor
+  const { selection } = state
+  const $from = selection.$from
+  const marks = (state.storedMarks ?? $from.marks()).map((mark) => `${mark.type.name}${JSON.stringify(mark.attrs)}`).join(',')
+  const around: string[] = []
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth)
+    around.push(depth === $from.depth ? `${node.type.name}${JSON.stringify(node.attrs)}` : node.type.name)
+  }
+  const kind = selection.empty ? 'caret' : selection instanceof NodeSelection ? `node:${selection.node.type.name}` : 'range'
+  let history = ''
+  try {
+    history = `${editor.can().undo() ? 'u' : ''}${editor.can().redo() ? 'r' : ''}`
+  } catch {
+    // A collaborative editor without the history commands.
+  }
+  return `${kind}|${marks}|${around.join('>')}|${history}|${editor.isEditable ? 'e' : ''}`
+}
+
 /** Selection toolbar shown above highlighted text (TipTap BubbleMenu). */
 function TiptapBubbleMenu({ editor }: { editor: Editor | null }): JSX.Element | null {
+  // Its buttons only matter while text is selected; re-rendering on every keystroke made React
+  // measure the selection across the whole document each time (slow in a long manuscript).
   useEditorState({
     editor,
-    selector: ({ transactionNumber }) => transactionNumber,
+    selector: ({ editor: ed, transactionNumber }) => (ed && !ed.state.selection.empty ? transactionNumber : -1),
   })
 
   if (!editor) return null
@@ -3730,9 +3758,10 @@ function TiptapImageToolbar({
   editor: Editor | null
   onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
 }): JSX.Element | null {
+  // Only while a picture is selected (see TiptapBubbleMenu).
   useEditorState({
     editor,
-    selector: ({ transactionNumber }) => transactionNumber,
+    selector: ({ editor: ed, transactionNumber }) => (ed?.isActive('imageResize') ? transactionNumber : -1),
   })
 
   if (!editor) return null
@@ -3759,9 +3788,11 @@ function TiptapFloatingMenu({
   editor: Editor | null
   onFormatApplied?: (action: string, payload?: BehaviorEventPayload) => void
 }): JSX.Element | null {
+  // Only on an empty line, where the menu shows (see TiptapBubbleMenu).
   useEditorState({
     editor,
-    selector: ({ transactionNumber }) => transactionNumber,
+    selector: ({ editor: ed, transactionNumber }) =>
+      ed && ed.state.selection.empty && ed.state.selection.$from.parent.content.size === 0 ? transactionNumber : -1,
   })
 
   if (!editor) return null

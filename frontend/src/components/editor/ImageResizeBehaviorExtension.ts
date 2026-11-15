@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { ImageAlignment } from './behaviorListener'
+import { changedBlocks } from './changedRanges'
 
 /** Payload reported when an image resize finishes. */
 export interface ImageResizeReport {
@@ -59,6 +60,7 @@ function imagePositions(doc: ProseMirrorNode): Map<number, ProseMirrorNode> {
   const images = new Map<number, ProseMirrorNode>()
   doc.descendants((node, pos) => {
     if (node.type.name === 'imageResize') images.set(pos, node)
+    return !node.isTextblock
   })
   return images
 }
@@ -129,6 +131,18 @@ export const ImageResizeBehaviorExtension = Extension.create<ImageResizeBehavior
             (transaction) => transaction.docChanged && !transaction.getMeta(resizePluginKey),
           )
           if (!edited) return null
+          // A resize changes an image's attributes: an edit that touched no picture is not one.
+          // (Comparing every image of a long document on each keystroke made typing lag.)
+          const touchesImage = changedBlocks(transactions, newState.doc).some(({ from, to }) => {
+            let found = false
+            newState.doc.nodesBetween(from, to, (node) => {
+              if (found || node.isTextblock) return false
+              if (node.type.name === 'imageResize') found = true
+              return !found
+            })
+            return found
+          })
+          if (!touchesImage) return null
 
           const before = imagePositions(oldState.doc)
           const after = imagePositions(newState.doc)

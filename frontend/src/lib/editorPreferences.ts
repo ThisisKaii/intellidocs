@@ -26,6 +26,8 @@ export interface EditorPreferences {
   formattingSuggestions: boolean
   /** Grammar and spelling checking (underlines, panel list) on or off. */
   grammarSuggestions: boolean
+  /** The chat assistant applies its changes without waiting for Apply (off unless the user turns it on). */
+  assistantAutoApply: boolean
 }
 
 const STORAGE_KEY = 'intellidocs:editor-preferences'
@@ -38,6 +40,7 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   showStyleGuides: true,
   formattingSuggestions: true,
   grammarSuggestions: true,
+  assistantAutoApply: false,
 }
 
 /**
@@ -127,6 +130,7 @@ export function sanitizePreferences(value: unknown): Partial<EditorPreferences> 
   if (typeof raw.showStyleGuides === 'boolean') result.showStyleGuides = raw.showStyleGuides
   if (typeof raw.formattingSuggestions === 'boolean') result.formattingSuggestions = raw.formattingSuggestions
   if (typeof raw.grammarSuggestions === 'boolean') result.grammarSuggestions = raw.grammarSuggestions
+  if (typeof raw.assistantAutoApply === 'boolean') result.assistantAutoApply = raw.assistantAutoApply
   return result
 }
 

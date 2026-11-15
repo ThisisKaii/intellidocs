@@ -1,8 +1,93 @@
 diff --git a/node_modules/tiptap-pagination-plus/dist/PaginationPlus.js b/node_modules/tiptap-pagination-plus/dist/PaginationPlus.js
-index 186b675..0f51894 100644
+index 186b675..e90df1c 100644
 --- a/node_modules/tiptap-pagination-plus/dist/PaginationPlus.js
 +++ b/node_modules/tiptap-pagination-plus/dist/PaginationPlus.js
-@@ -537,8 +537,10 @@ const calculatePageCount = (view, pageOptions, headerHeight = 0, footerHeight =
+@@ -6,20 +6,63 @@ import { deepEqualIterative, footerClickEvent, getCustomPages, getFooter, getFoo
+ const page_count_meta_key = "PAGE_COUNT_META_KEY";
+ const footer_height_meta_key = "FOOTER_HEIGHT_META_KEY";
+ const key = new PluginKey('brDecoration');
+-function buildDecorations(doc) {
++// One shared render function and key: a widget rebuilt for an unchanged line break then compares
++// equal to the old one and keeps its DOM (new closures made every such paragraph re-render).
++function renderBrDecoration() {
++    const el = document.createElement('span');
++    el.classList.add('rm-br-decoration');
++    return el;
++}
++function brWidgetsBetween(doc, from, to) {
+     const decorations = [];
+-    doc.descendants((node, pos) => {
++    doc.nodesBetween(from, to, (node, pos) => {
+         if (node.type.name === 'hardBreak') {
+-            const afterPos = pos + 1;
+-            const widget = Decoration.widget(afterPos, () => {
+-                const el = document.createElement('span');
+-                el.classList.add('rm-br-decoration');
+-                return el;
+-            });
+-            decorations.push(widget);
++            decorations.push(Decoration.widget(pos + 1, renderBrDecoration, { key: 'rm-br-decoration' }));
+         }
++        return !node.isLeaf;
+     });
+-    return DecorationSet.create(doc, decorations);
++    return decorations;
++}
++function buildDecorations(doc) {
++    return DecorationSet.create(doc, brWidgetsBetween(doc, 0, doc.content.size));
++}
++/** Ranges of tr.doc the transaction changed, widened to their whole textblocks. */
++function changedTextblockRanges(tr) {
++    const ranges = [];
++    tr.steps.forEach((step, index) => {
++        const map = tr.mapping.maps[index];
++        for (const range of ranges) {
++            range.from = map.map(range.from, -1);
++            range.to = map.map(range.to, 1);
++        }
++        let mapped = false;
++        map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
++            ranges.push({ from: newStart, to: newEnd });
++            mapped = true;
++        });
++        if (!mapped) {
++            const at = typeof step.pos === 'number' ? step.pos : step.from;
++            if (typeof at === 'number')
++                ranges.push({ from: at, to: typeof step.to === 'number' ? step.to : at + 1 });
++        }
++    });
++    const size = tr.doc.content.size;
++    return ranges.map(({ from, to }) => {
++        const $from = tr.doc.resolve(Math.max(0, Math.min(size, Math.min(from, to))));
++        const $to = tr.doc.resolve(Math.max(0, Math.min(size, Math.max(from, to))));
++        return {
++            from: $from.parent.isTextblock ? $from.start() : $from.pos,
++            to: $to.parent.isTextblock ? $to.end() : $to.pos,
++        };
++    });
++}
++/** Keep the line-break widgets up to date by rebuilding only where the document changed. */
++function updateBrDecorations(tr, old) {
++    let set = old.map(tr.mapping, tr.doc);
++    for (const { from, to } of changedTextblockRanges(tr)) {
++        set = set.remove(set.find(from, to)).add(tr.doc, brWidgetsBetween(tr.doc, from, to));
++    }
++    return set;
+ }
+ const defaultPageConfig = {
+     enabled: true,
+@@ -427,7 +470,9 @@ export const PaginationPlus = Extension.create({
+                             tr.steps.some(step => step instanceof RemoveMarkStep) ||
+                             tr.steps.some(step => step instanceof RemoveNodeMarkStep) ||
+                             tr.steps.some(step => step instanceof AttrStep)) {
+-                            return buildDecorations(tr.doc);
++                            // Rebuilding every widget after each keystroke walked the whole
++                            // document and re-rendered every paragraph with a line break.
++                            return updateBrDecorations(tr, old);
+                         }
+                         return old;
+                     }
+@@ -537,8 +582,10 @@ const calculatePageCount = (view, pageOptions, headerHeight = 0, footerHeight =
          if (lastElementOfEditor && lastPageBreak) {
              const lastElementRect = lastElementOfEditor.getBoundingClientRect();
              const lastPageBreakRect = lastPageBreak.getBoundingClientRect();
