@@ -253,10 +253,29 @@ export async function requestFeatureExport(): Promise<PipelineExportResponse> {
   return response.data
 }
 
+export interface ConversionOptions {
+  /**
+   * Ask for the pictures beside the JSON instead of inline (see resolveConvertedImages). A large
+   * manuscript's inline pictures make the response longer than Node can hold as one string.
+   */
+  separateImages?: boolean
+  /** Ask for a long manuscript back split into document tabs (tab markers in its HTML and JSON). */
+  splitTabs?: boolean
+}
+
+/** The converter's query string for these options. */
+function conversionParams(options: ConversionOptions): Record<string, string> | undefined {
+  const params: Record<string, string> = {}
+  if (options.separateImages) params.images = 'separate'
+  if (options.splitTabs) params.tabs = 'true'
+  return Object.keys(params).length > 0 ? params : undefined
+}
+
 /** Send a file buffer to Python ML FastAPI service for high-fidelity conversion. */
 export async function requestDocumentConversion(
   fileBuffer: Buffer,
-  filename: string
+  filename: string,
+  options: ConversionOptions = {}
 ): Promise<PythonConversionResponse> {
   const mlApiUrl = getMLApiUrl()
 
@@ -268,6 +287,7 @@ export async function requestDocumentConversion(
     formData,
     {
       headers: formData.getHeaders(),
+      params: conversionParams(options),
     }
   )
 
@@ -281,7 +301,8 @@ export async function requestDocumentConversion(
  */
 export async function requestDocumentConversionFromPath(
   filePath: string,
-  filename: string
+  filename: string,
+  options: ConversionOptions = {}
 ): Promise<PythonConversionResponse> {
   const mlApiUrl = getMLApiUrl()
 
@@ -295,10 +316,27 @@ export async function requestDocumentConversionFromPath(
       headers: formData.getHeaders(),
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
+      params: conversionParams(options),
     }
   )
 
   return pythonConversionResponseSchema.parse(response.data)
+}
+
+/** One picture of a conversion requested with separateImages. */
+export async function fetchConvertedImage(imageSet: string, key: string): Promise<Buffer> {
+  const response = await axios.get<ArrayBuffer>(
+    `${getMLApiUrl()}/convert/images/${encodeURIComponent(imageSet)}/${encodeURIComponent(key)}`,
+    { responseType: 'arraybuffer', timeout: 60000 }
+  )
+  return Buffer.from(response.data)
+}
+
+/** Let the converter drop a conversion's pictures once they are stored. Never throws. */
+export async function releaseConvertedImages(imageSet: string): Promise<void> {
+  await axios
+    .delete(`${getMLApiUrl()}/convert/images/${encodeURIComponent(imageSet)}`, { timeout: 15000 })
+    .catch(() => undefined)
 }
 
 export interface PageMargins {

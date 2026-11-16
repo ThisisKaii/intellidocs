@@ -156,6 +156,12 @@ export const pythonConversionResponseSchema = z.object({
       overlays: pageLayoutBaseSchema.shape.overlays,
     })
     .optional(),
+  /**
+   * Requested with images=separate: the pictures are `idoc-image:<key>` tokens in every field, and
+   * GET /convert/images/{image_set}/{key} serves each one (resolveConvertedImages).
+   */
+  image_set: z.string().optional(),
+  images: z.array(z.object({ key: z.string(), mime: z.string(), bytes: z.number() })).optional(),
 })
 
 export type PredictionTextInput = z.infer<typeof predictionTextSchema>

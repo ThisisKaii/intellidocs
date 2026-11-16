@@ -1,4 +1,5 @@
 import { getDocumentById } from '../../models/documentModel'
+import { documentBody } from '../../models/documentTabModel'
 import { type Document } from '../../types'
 import { type z } from 'zod'
 import { getDocumentContentSchema } from '../../../schemas/mcpSchemas'
@@ -31,7 +32,7 @@ export async function getDocumentContent(
   content: string
 }> {
   const doc: Document = await getDocumentById(args.documentId, ctx.userId)
-  const plainText = toPlainText(doc.content ?? '')
+  const plainText = toPlainText(await documentBody(doc))
 
   const pageSize = args.pageSize ?? DEFAULT_PAGE_SIZE
   const totalPages = Math.max(1, Math.ceil(plainText.length / pageSize))

@@ -23,10 +23,11 @@ if TYPE_CHECKING:
 import anyio
 import anyio.to_thread
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+import converted_images
 from converter import convert_docx_bytes_to_html, convert_pdf_bytes_to_html
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -819,8 +820,19 @@ async def audit_compliance(request: ComplianceAuditRequest) -> dict[str, Any]:
 
 
 @app.post("/convert/document")
-def convert_document(file: UploadFile = File(...)) -> dict[str, Any]:
+def convert_document(
+    file: UploadFile = File(...),
+    images: Literal["inline", "separate"] = "inline",
+    tabs: bool = False,
+) -> dict[str, Any]:
     """Convert uploaded .docx or .pdf file into high-fidelity HTML.
+
+    With `images=separate`, pictures leave the response: each becomes an `idoc-image:<key>` token,
+    `images` lists them and `image_set` names where GET /convert/images/{set}/{key} serves them.
+    A large manuscript's pictures would otherwise make the response too big for the server to read.
+
+    With `tabs=true`, a long manuscript (see tab_plan) comes back split into document tabs: a tab
+    marker before each tab in both the HTML and the editor JSON.
 
     Returns {"html", "page_setup", "header", "footer", "header_number_format",
     "footer_number_format", "page_art", "hf"} so the server can persist page
@@ -837,15 +849,32 @@ def convert_document(file: UploadFile = File(...)) -> dict[str, Any]:
 
     try:
         if filename_lower.endswith(".docx"):
-            result = convert_docx_bytes_to_html(content_bytes)
+            result = convert_docx_bytes_to_html(content_bytes, split_tabs=tabs)
         elif filename_lower.endswith(".pdf"):
-            result = convert_pdf_bytes_to_html(content_bytes)
+            result = convert_pdf_bytes_to_html(content_bytes, split_tabs=tabs)
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format for high-fidelity conversion.")
 
-        return result
+        return converted_images.externalise(result) if images == "separate" else result
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"Document conversion failed: {error}") from error
+
+
+@app.get("/convert/images/{set_id}/{key}")
+def converted_image(set_id: str, key: str) -> Response:
+    """One picture of a conversion made with images=separate."""
+    found = converted_images.read_image(set_id, key)
+    if found is None:
+        raise HTTPException(status_code=404, detail="Image not found.")
+    data, mime = found
+    return Response(content=data, media_type=mime)
+
+
+@app.delete("/convert/images/{set_id}")
+def release_converted_images(set_id: str) -> dict[str, str]:
+    """Drop a conversion's pictures once the server has stored them."""
+    converted_images.release(set_id)
+    return {"status": "ok"}
 
 
 @app.post("/pipeline/aggregate")

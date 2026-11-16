@@ -2,8 +2,8 @@ import type { Document, EditorJson } from '../../types/index'
 import { joinBody, splitBody, stripTabBreaks } from '../../utils/documentTabs'
 
 /**
- * Document tabs against an in-memory database. `assemble_document_tabs` is emulated with joinBody
- * (the SQL function writes the same markers), and `snapshot_document_version` copies the document.
+ * Document tabs against an in-memory database. A tabbed document's row holds only its skeleton (the
+ * tab markers); its text is read back from the tabs with documentBody.
  */
 
 type Row = Record<string, unknown>
@@ -13,6 +13,7 @@ const db: { documents: Row[]; document_tabs: Row[]; document_versions: Row[]; ta
   document_versions: [],
   tabsMissing: false,
 }
+const insertCalls: Array<{ table: string; rows: number }> = []
 const MISSING = { code: 'PGRST205', message: "Could not find the table 'public.document_tabs'" }
 
 function query(table: 'documents' | 'document_tabs' | 'document_versions') {
@@ -42,9 +43,17 @@ function query(table: 'documents' | 'document_tabs' | 'document_versions') {
       return { data: null, error: null }
     }
     if (op.kind === 'insert') {
-      const row = { tab_id: `33333333-3333-4333-8333-33333333333${db[table].length}`, created_at: new Date().toISOString(), page_count: 0, word_count: 0, ...(op.payload as Row) }
-      db[table].push(row)
-      return { data: [row], error: null }
+      // One row or a batch; a new document gets an id as the database would give it.
+      const incoming = Array.isArray(op.payload) ? (op.payload as Row[]) : [op.payload as Row]
+      const added = incoming.map((payload) => {
+        const row: Row = { tab_id: `33333333-3333-4333-8333-33333333333${db[table].length}`, created_at: new Date().toISOString(), page_count: 0, word_count: 0, ...payload }
+        if (table === 'documents') row.id = row.id ?? `doc-${db.documents.length + 1}`
+        if (table === 'document_versions') row.version_id = `v-${db.document_versions.length + 1}`
+        db[table].push(row)
+        insertCalls.push({ table, rows: incoming.length })
+        return row
+      })
+      return { data: added, error: null }
     }
     let out = rows()
     if (orders.includes('position')) out = [...out].sort((a, b) => Number(a.position) - Number(b.position))
@@ -122,8 +131,8 @@ jest.mock('../../utils/redisClient', () => ({
 }))
 jest.mock('../userModel', () => ({ assertWithinStorageQuota: jest.fn(async () => undefined) }))
 
-import { updateDocument } from '../documentModel'
-import { deleteTab, listTabs, mergeTabs, saveTab, splitDocument } from '../documentTabModel'
+import { restoreDocumentVersion, updateDocument } from '../documentModel'
+import { createTabbedDocument, deleteTab, documentBody, getTab, listTabs, mergeTabs, saveTab, splitDocument } from '../documentTabModel'
 
 const OWNER = 'owner-1'
 const para = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] })
@@ -134,6 +143,18 @@ const markerHtml = (title: string) => `<div data-tab-break="" data-title="${titl
 const BODY_HTML = '<p>Title page</p><h1>CHAPTER I</h1><p>Intro text</p><h1>CHAPTER II</h1><p>Review text</p>'
 const BODY_JSON: EditorJson = { type: 'doc', content: [para('Title page'), heading('CHAPTER I'), para('Intro text'), heading('CHAPTER II'), para('Review text')] }
 const SPLIT_HTML = `${markerHtml('Front matter')}<p>Title page</p>${markerHtml('Chapter 1')}<h1>CHAPTER I</h1><p>Intro text</p>${markerHtml('Chapter 2')}<h1>CHAPTER II</h1><p>Review text</p>`
+/** The text a tabbed document reads back, without its markers. */
+async function wholeText(doc: Document): Promise<string> {
+  return stripTabBreaks(await documentBody(doc), null).content
+}
+
+/** The document row's own content holds nothing but its tab markers. */
+function expectSkeleton(doc: Document, titles: string[]): void {
+  expect(stripTabBreaks(doc.content, null).content).toBe('')
+  expect(doc.content_json).toBeNull()
+  expect(splitBody(doc.content, null)!.map((part) => part.title)).toEqual(titles)
+}
+
 const SPLIT_JSON: EditorJson = {
   type: 'doc',
   content: [marker('Front matter'), para('Title page'), marker('Chapter 1'), heading('CHAPTER I'), para('Intro text'), marker('Chapter 2'), heading('CHAPTER II'), para('Review text')],
@@ -148,16 +169,18 @@ beforeEach(() => {
   db.document_tabs = []
   db.document_versions = []
   db.tabsMissing = false
+  insertCalls.length = 0
 })
 
 describe('splitting a document into tabs', () => {
-  it('makes one tab per marker and writes every marker back with its tab id', async () => {
+  it('makes one tab per marker and keeps only the markers, with their tab ids, in the document row', async () => {
     const tabs = await splitDocument(theDocument(), SPLIT_HTML, SPLIT_JSON)
     expect(tabs.map((tab) => tab.title)).toEqual(['Front matter', 'Chapter 1', 'Chapter 2'])
-    const parts = splitBody(theDocument().content, theDocument().content_json)!
-    expect(parts.map((part) => part.tabId)).toEqual(tabs.map((tab) => tab.tab_id))
-    // Nothing but the markers changed.
-    expect(stripTabBreaks(theDocument().content, theDocument().content_json)).toEqual({ content: BODY_HTML, content_json: BODY_JSON })
+    expectSkeleton(theDocument(), ['Front matter', 'Chapter 1', 'Chapter 2'])
+    expect(splitBody(theDocument().content, null)!.map((part) => part.tabId)).toEqual(tabs.map((tab) => tab.tab_id))
+    // The text is in the tabs, unchanged.
+    expect(await wholeText(theDocument())).toBe(BODY_HTML)
+    expect((await getTab('d1', tabs[1].tab_id)).content_json).toEqual({ type: 'doc', content: [heading('CHAPTER I'), para('Intro text')] })
   })
 
   it('refuses a split whose text differs from the saved document', async () => {
@@ -177,16 +200,47 @@ describe('a document with tabs', () => {
     await splitDocument(theDocument(), SPLIT_HTML, SPLIT_JSON)
   })
 
-  it('saves one tab and rebuilds the whole body around it', async () => {
+  it('saves one tab without copying any text into the document row, and versions that tab', async () => {
     const [, chapter1] = await listTabs('d1')
     await saveTab(theDocument(), chapter1.tab_id, {
       content: '<h1>CHAPTER I</h1><p>Rewritten intro</p>',
       content_json: { type: 'doc', content: [heading('CHAPTER I'), para('Rewritten intro')] },
       page_count: 12,
     })
-    const merged = stripTabBreaks(theDocument().content, theDocument().content_json)
-    expect(merged.content).toBe('<p>Title page</p><h1>CHAPTER I</h1><p>Rewritten intro</p><h1>CHAPTER II</h1><p>Review text</p>')
+    expectSkeleton(theDocument(), ['Front matter', 'Chapter 1', 'Chapter 2'])
+    expect(await wholeText(theDocument())).toBe('<p>Title page</p><h1>CHAPTER I</h1><p>Rewritten intro</p><h1>CHAPTER II</h1><p>Review text</p>')
     expect((await listTabs('d1'))[1]).toMatchObject({ page_count: 12, word_count: 4 })
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(db.document_versions).toEqual([
+      expect.objectContaining({ tab_id: chapter1.tab_id, tab_title: 'Chapter 1', tab_position: 1, content: '<h1>CHAPTER I</h1><p>Rewritten intro</p>' }),
+    ])
+  })
+
+  it('never takes a whole-document version of a tabbed document (it would hold only the markers)', async () => {
+    await updateDocument('d1', OWNER, { title: 'Renamed thesis' })
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(db.document_versions.filter((version) => !version.tab_id)).toEqual([])
+  })
+
+  it('restores a version of one tab over that tab only', async () => {
+    const [, chapter1] = await listTabs('d1')
+    await saveTab(theDocument(), chapter1.tab_id, { content: '<h1>CHAPTER I</h1><p>First draft</p>', content_json: null })
+    await new Promise((resolve) => setImmediate(resolve))
+    const version = db.document_versions[0]
+    await saveTab(theDocument(), chapter1.tab_id, { content: '<h1>CHAPTER I</h1><p>Second draft</p>', content_json: null })
+    await restoreDocumentVersion('d1', version.version_id as string, OWNER)
+    expect(await wholeText(theDocument())).toBe('<p>Title page</p><h1>CHAPTER I</h1><p>First draft</p><h1>CHAPTER II</h1><p>Review text</p>')
+    expect(theDocument().title).toBe('Thesis')
+  })
+
+  it('puts a deleted tab back where it was when its version is restored', async () => {
+    const tabs = await listTabs('d1')
+    await deleteTab(theDocument(), tabs[1].tab_id)
+    const saved = db.document_versions.find((version) => version.reason === 'before_tab_deleted')!
+    await restoreDocumentVersion('d1', saved.version_id as string, OWNER)
+    expect((await listTabs('d1')).map((tab) => tab.title)).toEqual(['Front matter', 'Chapter 1', 'Chapter 2'])
+    expectSkeleton(theDocument(), ['Front matter', 'Chapter 1', 'Chapter 2'])
+    expect(await wholeText(theDocument())).toBe(BODY_HTML)
   })
 
   it('refuses a whole-body save that would drop the tabs', async () => {
@@ -200,13 +254,14 @@ describe('a document with tabs', () => {
   it('re-syncs the tabs from a whole-body save that keeps the markers', async () => {
     const before = await listTabs('d1')
     // The editor showing the whole body edits chapter 2 and renames it.
-    const edited = theDocument().content.replace('Review text', 'Review, revised').replace('data-title="Chapter 2"', 'data-title="Review"')
+    const edited = (await documentBody(theDocument())).replace('Review text', 'Review, revised').replace('data-title="Chapter 2"', 'data-title="Review"')
     await updateDocument('d1', OWNER, { content: edited, content_json: null, title: 'Thesis v2' })
     const after = await listTabs('d1')
     expect(after.map((tab) => tab.tab_id)).toEqual(before.map((tab) => tab.tab_id))
     expect(after[2].title).toBe('Review')
     expect(theDocument().title).toBe('Thesis v2')
-    expect(stripTabBreaks(theDocument().content, null).content).toContain('Review, revised')
+    expectSkeleton(theDocument(), ['Front matter', 'Chapter 1', 'Review'])
+    expect(await wholeText(theDocument())).toContain('Review, revised')
   })
 
   it('merges back into one untabbed body', async () => {
@@ -216,12 +271,70 @@ describe('a document with tabs', () => {
     expect(theDocument().content_json).toEqual(BODY_JSON)
   })
 
+  it('keeps a manuscript too long for one body in its tabs', async () => {
+    const [, chapter1] = await listTabs('d1')
+    await saveTab(theDocument(), chapter1.tab_id, { content: `<p>${'word '.repeat(1_700_000)}</p>`, content_json: null })
+    await expect(mergeTabs(theDocument())).rejects.toMatchObject({ status: 413, code: 'merge_too_large' })
+    expect(await listTabs('d1')).toHaveLength(3)
+  })
+
   it('saves a version before deleting a tab, and keeps the last tab', async () => {
     const tabs = await listTabs('d1')
     await deleteTab(theDocument(), tabs[2].tab_id)
-    expect(db.document_versions.some((version) => version.reason === 'before_tab_deleted' && String(version.content).includes('Review text'))).toBe(true)
+    expect(db.document_versions).toContainEqual(
+      expect.objectContaining({ reason: 'before_tab_deleted', tab_id: tabs[2].tab_id, tab_position: 2, content: '<h1>CHAPTER II</h1><p>Review text</p>' }),
+    )
     expect((await listTabs('d1')).map((tab) => tab.title)).toEqual(['Front matter', 'Chapter 1'])
     await deleteTab(theDocument(), tabs[1].tab_id)
     await expect(deleteTab(theDocument(), tabs[0].tab_id)).rejects.toMatchObject({ status: 409, code: 'last_tab' })
+  })
+})
+
+describe('importing a manuscript the converter split into tabs', () => {
+  const request = { title: 'Long thesis', content: SPLIT_HTML, content_json: SPLIT_JSON }
+
+  it('creates the document with its tabs, the row holding only their markers', async () => {
+    const doc = await createTabbedDocument(OWNER, request)
+    const created = db.documents.find((row) => row.id === doc.id)! as unknown as Document
+    const tabs = await listTabs(doc.id)
+    expect(tabs.map((tab) => tab.title)).toEqual(['Front matter', 'Chapter 1', 'Chapter 2'])
+    expectSkeleton(created, ['Front matter', 'Chapter 1', 'Chapter 2'])
+    expect(await wholeText(created)).toBe(BODY_HTML)
+    const json = await Promise.all(tabs.map(async (tab) => (await getTab(doc.id, tab.tab_id)).content_json))
+    expect(json).toEqual([
+      { type: 'doc', content: [para('Title page')] },
+      { type: 'doc', content: [heading('CHAPTER I'), para('Intro text')] },
+      { type: 'doc', content: [heading('CHAPTER II'), para('Review text')] },
+    ])
+    expect((created as unknown as Record<string, unknown>).preview_snippet).toContain('Title page')
+  })
+
+  it('inserts the tabs in batches, never the whole manuscript in one request', async () => {
+    const chapter = (n: number) => `${markerHtml(`Chapter ${n}`)}<p>${'word '.repeat(400_000)}</p>`
+    await createTabbedDocument(OWNER, { title: 'Huge', content: [1, 2, 3, 4].map(chapter).join(''), content_json: null })
+    const tabInserts = insertCalls.filter((call) => call.table === 'document_tabs')
+    expect(tabInserts.map((call) => call.rows)).toEqual([1, 1, 1, 1])
+  })
+
+  it('creates a body without markers as an ordinary document', async () => {
+    const doc = await createTabbedDocument(OWNER, { title: 'Short', content: BODY_HTML, content_json: BODY_JSON })
+    expect(await listTabs(doc.id)).toEqual([])
+    expect(db.documents.find((row) => row.id === doc.id)!.content).toBe(BODY_HTML)
+  })
+
+  it('falls back to one untabbed body before migration 048', async () => {
+    db.tabsMissing = true
+    const doc = await createTabbedDocument(OWNER, request)
+    const created = db.documents.filter((row) => row.title === 'Long thesis')
+    expect(created).toHaveLength(1)
+    expect(created[0].id).toBe(doc.id)
+    expect(created[0].content).toBe(BODY_HTML)
+    expect(created[0].content_json).toEqual(BODY_JSON)
+  })
+})
+
+describe('reading a document whole', () => {
+  it('returns an untabbed document as it is stored', async () => {
+    expect(await documentBody(theDocument())).toBe(BODY_HTML)
   })
 })

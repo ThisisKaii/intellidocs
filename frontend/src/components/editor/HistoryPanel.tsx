@@ -13,6 +13,8 @@ interface HistoryPanelProps {
    * comparison is asked for — versions hold the whole document, the editor only one tab.
    */
   loadCurrentHtml?: () => Promise<string>
+  /** The tab open in a document split into tabs: its versions are listed (tabs are versioned one by one). */
+  tabId?: string | null
   onRestored: (version: DocumentVersion) => void
 }
 
@@ -36,6 +38,7 @@ export default function HistoryPanel({
   documentId,
   currentHtml,
   loadCurrentHtml,
+  tabId,
   onRestored,
 }: HistoryPanelProps): JSX.Element {
   const [versions, setVersions] = useState<DocumentVersion[]>([])
@@ -50,7 +53,7 @@ export default function HistoryPanel({
     let cancelled = false
     setLoading(true)
     void api.documents
-      .versions(documentId)
+      .versions(documentId, tabId)
       .then((list) => {
         if (!cancelled) setVersions(list)
       })
@@ -63,7 +66,7 @@ export default function HistoryPanel({
     return () => {
       cancelled = true
     }
-  }, [documentId])
+  }, [documentId, tabId])
 
   async function handleRestore(v: DocumentVersion): Promise<void> {
     if (!documentId) return
@@ -86,7 +89,8 @@ export default function HistoryPanel({
     }
     setDiffingId(v.version_id)
     try {
-      const current = loadCurrentHtml ? await loadCurrentHtml() : currentHtml
+      // A tab's version is compared with that tab; a whole-document version with the whole document.
+      const current = !v.tab_id && loadCurrentHtml ? await loadCurrentHtml() : currentHtml
       setDiffHtml(diffToHtml(v.content, current))
     } catch {
       setError('Could not load the document to compare.')
@@ -157,6 +161,7 @@ export default function HistoryPanel({
                   <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 600, color: 'var(--foreground)' }}>
                     {v.version_number ? `Version ${v.version_number} — ` : ''}
                     {formatStamp(v.created_at)}
+                    {v.tab_id ? ` · ${v.tab_title ?? 'Tab'}` : tabId ? ' · Whole document' : ''}
                     {delta != null && delta !== 0 && (
                       <span style={{ fontWeight: 500 }}>
                         {' '}

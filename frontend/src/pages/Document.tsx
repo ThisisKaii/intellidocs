@@ -5,6 +5,7 @@ import { api, type DocumentFeedback, type DocumentRecord, type DocumentTabSummar
 import { getHTMLFromFragment } from '@tiptap/core'
 import TabSidebar from '@/components/editor/TabSidebar'
 import SplitTabsDialog from '@/components/editor/SplitTabsDialog'
+import TabLayoutMeasurer, { type TabFacts } from '@/components/editor/TabLayoutMeasurer'
 import { dismissSplitPrompt, insertTabBreaks, proposalWordCounts, proposeChapterSplit, splitPromptDismissed, type ProposedTab } from '@/lib/documentTabs'
 import { defaultTabFormat, resolveTabNumbering, sectionTabNumbering, splitNumbering, tabPageLabel } from '@/lib/tabNumbering'
 import { readSectionProps } from '@/lib/sectionProps'
@@ -2309,6 +2310,20 @@ export default function Document(): JSX.Element {
     return () => window.clearInterval(timer)
   }, [editor, id, activeTabId, readOnly])
 
+  /**
+   * A tab laid out in the background (TabLayoutMeasurer): its pages, outline and caption counts,
+   * kept with the tab so the tabs after it number from the right place before anyone opens it.
+   */
+  function recordTabFacts(tabId: string, facts: TabFacts): void {
+    if (!id) return
+    const previous = docTabsRef.current?.find((tab) => tab.tab_id === tabId)?.caption_counts ?? {}
+    const captionCounts = { ...previous, ...facts.caption_counts }
+    setDocTabs((current) =>
+      current?.map((tab) => (tab.tab_id === tabId ? { ...tab, page_count: facts.page_count, outline: facts.outline, caption_counts: captionCounts } : tab)) ?? current,
+    )
+    void api.documents.tabs.update(id, tabId, { page_count: facts.page_count, outline: facts.outline, caption_counts: captionCounts }).catch(() => {})
+  }
+
   // Downloads of a document split into tabs: which tabs to export is asked first.
   const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null)
   const [exportBusy, setExportBusy] = useState<boolean>(false)
@@ -4056,6 +4071,21 @@ export default function Document(): JSX.Element {
             />
           )}
 
+          {isTabbed && !readOnly && id && docTabs && (
+            <TabLayoutMeasurer
+              documentId={id}
+              shareToken={shareToken}
+              tabs={docTabs}
+              activeTabId={activeTabId}
+              pageSize={pageSize}
+              margins={margins}
+              orientation={orientation}
+              headerFooterConfig={headerFooterConfig}
+              pageLayout={pageLayout}
+              underlineStyle={prefs.underlineStyle}
+              onMeasured={recordTabFacts}
+            />
+          )}
           <ExportTabsDialog
             format={exportFormat}
             tabs={docTabs ?? []}
@@ -4361,6 +4391,7 @@ export default function Document(): JSX.Element {
           documentTitle={title}
           documentContent={chatContent}
           currentHtml={content}
+          historyTabId={activeTabId}
           loadCurrentHtml={isTabbed && id && docTabs ? () => {
             const live = liveEditorRef.current
             return bodyForExport({ kind: 'whole' }, {

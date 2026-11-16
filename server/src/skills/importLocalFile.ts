@@ -1,7 +1,9 @@
 import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
 import * as documentModel from '../models/documentModel'
+import { createTabbedDocument } from '../models/documentTabModel'
 import { PageNumberFormat, Document, EditorJson } from '../types/index'
 import { uploadImportImages } from './uploadImportImages'
+import { importImageStore, resolveConvertedImages } from './resolveConvertedImages'
 import { buildImportedLayout } from './buildImportedLayout'
 import { prepareImportedContent } from './prepareImportedContent'
 import { validateImportUpload, type ImportUpload } from './validateImportUpload'
@@ -85,10 +87,16 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
     } | undefined
     let importedLayout: Awaited<ReturnType<typeof buildImportedLayout>> | undefined
 
+    // The converter's pictures, removed again if this import does not create its document.
+    const pictures = importImageStore(userId)
+
     // Try Python microservice for high-fidelity conversion (tables, images, typography, layout)
     if (effectiveExt === '.docx' || effectiveExt === '.pdf') {
       try {
-        const pyResult = await requestDocumentConversion(file.buffer, file.originalname)
+        const pyResult = await resolveConvertedImages(
+          await requestDocumentConversion(file.buffer, file.originalname, { separateImages: true, splitTabs: true }),
+          pictures.store,
+        )
         if (pyResult && pyResult.html) {
           htmlContent = pyResult.html
           contentJson = pyResult.content_json
@@ -101,6 +109,8 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
         }
       } catch (pyError) {
         console.warn('Python converter service unavailable, falling back to local converter:', pyError)
+        // The converter's pictures are only kept when its HTML is still used (a layout step failed).
+        if (!htmlContent) await pictures.discard()
       }
     }
 
@@ -218,33 +228,39 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
       htmlContent = htmlBlocks.join('\n')
     }
 
-    // Embedded base64 images go to storage so the saved document stays small.
-    const [stored, storedHeader, storedFooter] = await Promise.all([
-      prepareImportedContent(userId, htmlContent, contentJson),
-      uploadImportImages(userId, headerContent),
-      uploadImportImages(userId, footerContent),
-    ])
+    try {
+      // Embedded base64 images go to storage so the saved document stays small.
+      const [stored, storedHeader, storedFooter] = await Promise.all([
+        prepareImportedContent(userId, htmlContent, contentJson),
+        uploadImportImages(userId, headerContent),
+        uploadImportImages(userId, footerContent),
+      ])
 
-    // Create the document with the converted content, page setup, and header/footer
-    const document = await documentModel.createDocument(userId, {
-      title,
-      unique_title: true,
-      content: stored.content,
-      content_json: stored.content_json,
-      header_content: storedHeader,
-      footer_content: storedFooter,
-      // Word's header/footer exists on the page; turn the editor's on whenever
-      // the file had text or a PAGE field there (page numbers are re-created by
-      // the editor, not stored as the frozen number Word last saved).
-      show_header: headerContent !== '' || headerNumberFormat !== 'none',
-      show_footer: footerContent !== '' || footerNumberFormat !== 'none',
-      header_number_format: headerNumberFormat,
-      footer_number_format: footerNumberFormat,
-      page_size: pageSetup?.page_size,
-      margins: pageSetup?.margins,
-      orientation: pageSetup?.orientation,
-      // Header/footer art, per-section headers and numbering from the converter win over the plain fields.
-      ...(importedLayout ?? {}),
-    })
-  return document
+      // Create the document with the converted content, page setup, and header/footer
+      // A long manuscript arrives split into chapter tabs (the converter places the markers).
+      const document = await createTabbedDocument(userId, {
+        title,
+        unique_title: true,
+        content: stored.content,
+        content_json: stored.content_json,
+        header_content: storedHeader,
+        footer_content: storedFooter,
+        // Word's header/footer exists on the page; turn the editor's on whenever
+        // the file had text or a PAGE field there (page numbers are re-created by
+        // the editor, not stored as the frozen number Word last saved).
+        show_header: headerContent !== '' || headerNumberFormat !== 'none',
+        show_footer: footerContent !== '' || footerNumberFormat !== 'none',
+        header_number_format: headerNumberFormat,
+        footer_number_format: footerNumberFormat,
+        page_size: pageSetup?.page_size,
+        margins: pageSetup?.margins,
+        orientation: pageSetup?.orientation,
+        // Header/footer art, per-section headers and numbering from the converter win over the plain fields.
+        ...(importedLayout ?? {}),
+      })
+      return document
+    } catch (error) {
+      await pictures.discard()
+      throw error
+    }
 }

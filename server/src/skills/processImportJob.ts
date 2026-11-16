@@ -5,8 +5,10 @@ import path from 'path'
 import type { drive_v3 } from 'googleapis/build/src/apis/drive'
 import * as driveModel from '../models/driveModel'
 import * as documentModel from '../models/documentModel'
+import { createTabbedDocument } from '../models/documentTabModel'
 import { prepareImportedContent } from './prepareImportedContent'
 import { buildImportedLayout } from './buildImportedLayout'
+import { importImageStore, resolveConvertedImages, type StoreImage } from './resolveConvertedImages'
 import type { PythonConversionResponse } from '../../schemas/predictionSchemas'
 import {
   createImportJob,
@@ -63,12 +65,14 @@ function conversionFilename(title: string, mimeType: string): string {
  * streaming callers pass a path so a large document is never fully buffered.
  */
 async function convertToHtml(args: {
+  /** Stores the converter's pictures (and removes them when the result is not used). */
+  pictures: { store: StoreImage; discard: () => Promise<void> }
   filePath: string
   title: string
   mimeType: string
   buffer: Buffer | null
 }): Promise<{ html: string; converterError: string | null; conversion: PythonConversionResponse | null }> {
-  const { filePath, title, mimeType, buffer } = args
+  const { pictures, filePath, title, mimeType, buffer } = args
   const readBuffered = async (): Promise<Buffer> =>
     buffer ? buffer : await createReadStream(filePath).toArray().then((chunks) => Buffer.concat(chunks))
 
@@ -76,15 +80,19 @@ async function convertToHtml(args: {
   let html = ''
   let conversion: PythonConversionResponse | null = null
   try {
-    const pyResult = buffer
-      ? await requestDocumentConversion(buffer, conversionFilename(title, mimeType))
-      : await requestDocumentConversionFromPath(filePath, conversionFilename(title, mimeType))
+    const pyResult = await resolveConvertedImages(
+      buffer
+        ? await requestDocumentConversion(buffer, conversionFilename(title, mimeType), { separateImages: true, splitTabs: true })
+        : await requestDocumentConversionFromPath(filePath, conversionFilename(title, mimeType), { separateImages: true, splitTabs: true }),
+      pictures.store,
+    )
     if (pyResult?.html) {
       html = pyResult.html
       conversion = pyResult
     }
   } catch (error) {
     converterError = error instanceof Error ? error.message : String(error)
+    await pictures.discard()
   }
 
   if (!html && (mimeType === DOCX_MIME || /\.docx$/i.test(title))) {
@@ -131,6 +139,9 @@ async function convertToHtml(args: {
  */
 export async function processImportJob(job: ImportJob): Promise<void> {
   const tempPath = path.join(os.tmpdir(), `intellidocs-import-${job.id}`)
+  // The converter's pictures, removed again if the import fails before its document exists.
+  const pictures = importImageStore(job.userId)
+  let created = false
 
   try {
     await updateImportJob(job.id, { state: 'downloading', progress: 0 })
@@ -156,7 +167,7 @@ export async function processImportJob(job: ImportJob): Promise<void> {
     const wake = await waitForConverter(() => updateImportJob(job.id, { waking: true }))
     if (wake.wakeMs > 0) await updateImportJob(job.id, { waking: false })
     const convertStartedAt = Date.now()
-    const { html, conversion } = await convertToHtml({ filePath: tempPath, title, mimeType, buffer: null })
+    const { html, conversion } = await convertToHtml({ pictures, filePath: tempPath, title, mimeType, buffer: null })
     console.info(`[import] ${title}: converter wake ${Math.round(wake.wakeMs / 1000)}s, convert ${Math.round((Date.now() - convertStartedAt) / 1000)}s`)
 
     // The server owns document creation so the import finishes even when the
@@ -164,13 +175,14 @@ export async function processImportJob(job: ImportJob): Promise<void> {
     const { content, content_json } = await prepareImportedContent(job.userId, html, conversion?.content_json)
     // Header/footer art, per-section headers and page setup travel with the file when the converter read them.
     const layout = conversion ? await buildImportedLayout(job.userId, conversion) : {}
-    const document = await documentModel.createDocument(job.userId, {
+    const document = await createTabbedDocument(job.userId, {
       title,
       unique_title: true,
       content,
       content_json,
       ...layout,
     })
+    created = true
     await updateImportJob(job.id, {
       state: 'done',
       progress: 100,
@@ -178,6 +190,7 @@ export async function processImportJob(job: ImportJob): Promise<void> {
       documentId: document.id,
     })
   } catch (error) {
+    if (!created) await pictures.discard()
     await failImportJob(
       job.id,
       error instanceof Error ? error.message : String(error)

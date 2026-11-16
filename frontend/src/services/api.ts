@@ -152,6 +152,9 @@ export interface DocumentVersion {
   editor_prefs: Record<string, unknown> | null
   reason: string
   created_at: string
+  /** A version of one tab of a tabbed document: the tab, and its title then. Null for a whole document. */
+  tab_id?: string | null
+  tab_title?: string | null
 }
 
 export interface FolderRecord {
@@ -1390,8 +1393,8 @@ export const api = {
       return fetchAPI<null>(`documents/${id}/pin`, { method: 'DELETE' })
     },
     /** List version snapshots for a document (owner only, newest first). */
-    versions: async (id: string): Promise<DocumentVersion[]> => {
-      return fetchAPI<DocumentVersion[]>(`documents/${id}/versions`)
+    versions: async (id: string, tabId?: string | null): Promise<DocumentVersion[]> => {
+      return fetchAPI<DocumentVersion[]>(`documents/${id}/versions${tabId ? `?tab=${encodeURIComponent(tabId)}` : ''}`)
     },
     /** Restore a specific version snapshot, returning the restored document. */
     restoreVersion: async (id: string, versionId: string): Promise<DocumentRecord> => {

@@ -2,6 +2,8 @@ import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { getClassSubmissionLinks } from './folderModel'
 import { readAccountNames } from '../utils/accountNames'
+import { documentBody } from './documentTabModel'
+import { hasTabBreaks } from '../utils/documentTabs'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -278,6 +280,16 @@ export interface PlagiarismMatchRecord {
   created_at: string
 }
 
+/**
+ * The rows with each tabbed document's text read from its tabs (its own row holds only the tab
+ * markers). One document at a time, so a few long manuscripts never sit in memory at once twice.
+ */
+async function withBodies<T extends { id: string; content: string }>(rows: T[]): Promise<T[]> {
+  const out: T[] = []
+  for (const row of rows) out.push(hasTabBreaks(row.content) ? { ...row, content: await documentBody(row) } : row)
+  return out
+}
+
 /** One document linked to a class folder, verified by the caller's ownership. */
 export async function getFolderDocument(
   folderId: string,
@@ -297,7 +309,7 @@ export async function getFolderDocument(
     .single()
 
   if (error || !data) throw new Error('Document not found')
-  return data as ScanDocument
+  return (await withBodies([data as ScanDocument]))[0]
 }
 
 /** Every other document linked to the folder, for peer comparison. */
@@ -317,7 +329,7 @@ export async function getFolderPeerDocuments(
     .in('id', documentIds)
 
   if (docError) throw new Error(`Failed to load peer documents: ${docError.message}`)
-  return (docs ?? []) as ScanDocument[]
+  return withBodies((docs ?? []) as ScanDocument[])
 }
 
 /** A peer document plus the class folder it was submitted to. */
@@ -355,7 +367,8 @@ export async function getProfessorPeerDocuments(
     .limit(GLOBAL_PEER_LIMIT)
 
   if (docError) throw new Error(`Failed to load peer documents: ${docError.message}`)
-  return (docs ?? []).map((doc) => ({ ...(doc as ScanDocument), folder_id: folderByDocument.get(doc.id as string)! }))
+  const withText = await withBodies((docs ?? []) as ScanDocument[])
+  return withText.map((doc) => ({ ...doc, folder_id: folderByDocument.get(doc.id)! }))
 }
 
 /** The student's other live documents (latest 30, content only) for self-check. */
@@ -373,7 +386,7 @@ export async function getOwnOtherDocuments(
     .limit(30)
 
   if (error) throw new Error(`Failed to load your documents: ${error.message}`)
-  return (data ?? []) as { id: string; title: string; content: string }[]
+  return withBodies((data ?? []) as { id: string; title: string; content: string }[])
 }
 
 /** The student's other live documents as scan peers (latest 30). */
@@ -391,7 +404,7 @@ export async function getOwnOtherScanDocuments(
     .limit(30)
 
   if (error) throw new Error(`Failed to load your documents: ${error.message}`)
-  return (data ?? []) as ScanDocument[]
+  return withBodies((data ?? []) as ScanDocument[])
 }
 
 /** Persist a completed scan and return the stored row. */

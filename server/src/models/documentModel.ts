@@ -13,7 +13,7 @@ import { genreForPreset } from '../utils/documentGenre'
 import { hasTabBreaks } from '../utils/documentTabs'
 // Circular on purpose: the tab model builds on this one, and whole-body saves of a tabbed document
 // re-sync its tabs. Only used inside functions, so the cycle is safe.
-import { syncTabsFromBody } from './documentTabModel'
+import { restoreTabVersion, syncTabsFromBody } from './documentTabModel'
 
 export const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -92,6 +92,25 @@ export async function uploadDocumentImage(
   }
   const { data } = supabase.storage.from('document-images').getPublicUrl(objectPath)
   return data.publicUrl
+}
+
+/** Where a stored picture lives in the document-images bucket, from its public URL (null for any other URL). */
+function documentImagePath(url: string): string | null {
+  const marker = '/object/public/document-images/'
+  const at = url.indexOf(marker)
+  return at < 0 ? null : decodeURIComponent(url.slice(at + marker.length).split('?')[0])
+}
+
+/**
+ * Delete pictures uploaded for an import that did not create its document, so a failed import
+ * leaves nothing behind in storage. Best-effort: a picture that cannot be removed is left.
+ */
+export async function deleteDocumentImages(urls: string[]): Promise<void> {
+  const paths = urls.map(documentImagePath).filter((path): path is string => Boolean(path))
+  for (let start = 0; start < paths.length; start += 100) {
+    const { error } = await supabase.storage.from('document-images').remove(paths.slice(start, start + 100))
+    if (error) console.warn('Could not remove pictures of a failed import:', error.message)
+  }
 }
 
 /** 1-hour TTL for cached document reads. */
@@ -432,19 +451,20 @@ export async function createDocument(
   // The editor's JSON of `content` (an import the converter wrote JSON for), loaded in place of the HTML.
   const jsonColumn = req.content_json ? { content_json: req.content_json } : {}
 
-  let { data, error } = await supabase
-    .from('documents')
-    .insert({ ...row, ...layoutColumn, ...jsonColumn, ...genreColumn, preview_snippet: extractPreviewSnippet(req.content ?? '') })
-    .select()
-    .single()
+  const full = { ...row, ...layoutColumn, ...jsonColumn, ...genreColumn, preview_snippet: extractPreviewSnippet(req.content ?? '') }
+  // Only the light columns come back: echoing a large manuscript's content (13 MB of HTML) doubled the
+  // statement's time and ran it past Supabase's statement timeout. The content is what was just sent.
+  let sent: Record<string, unknown> = full
+  let { data, error } = await supabase.from('documents').insert(full).select(LIST_BASE_COLUMNS).single()
 
   if (isUndefinedColumnError(error)) {
     // A migration (026 snippet, 032 page layout, 037 content JSON) is missing: retry without those columns.
-    ;({ data, error } = await supabase.from('documents').insert(row).select().single())
+    sent = row
+    ;({ data, error } = await supabase.from('documents').insert(row).select(LIST_BASE_COLUMNS).single())
   }
 
-  if (error) throw new Error(`Failed to create document: ${error.message}`)
-  return data
+  if (error || !data) throw new Error(`Failed to create document: ${error?.message ?? 'no row returned'}`)
+  return { ...sent, ...data } as Document
 }
 
 /**
@@ -671,6 +691,9 @@ export async function snapshotDocumentVersion(
   doc: Document,
   reason = 'autosave',
 ): Promise<void> {
+  // A tabbed document's row holds only its skeleton: its versions are kept per tab
+  // (documentTabModel), and a skeleton restored as a version would empty every tab.
+  if (hasTabBreaks(doc.content)) return
   try {
     if (!(await versionSnapshotDue(doc.id))) return
 
@@ -702,23 +725,28 @@ export async function snapshotDocumentVersion(
   }
 }
 
-/** List version snapshots for a document, newest first. */
+/**
+ * List version snapshots for a document, newest first. With `tabId`, a tabbed document's history
+ * of that tab plus its whole-document versions (from before the split); every version without
+ * migration 049, which adds per-tab versions.
+ */
 export async function getDocumentVersions(
   documentId: string,
   userId: string,
+  tabId?: string,
 ): Promise<DocumentVersion[]> {
   // Only the owner may read the version history of a document.
   const doc = await getDocumentById(documentId, userId)
 
-  const { data, error } = await supabase
-    .from('document_versions')
-    .select('*')
-    .eq('document_id', doc.id)
-    .order('created_at', { ascending: false })
-    .limit(50)
+  const list = (forTab: string | undefined) => {
+    const query = supabase.from('document_versions').select('*').eq('document_id', doc.id)
+    return (forTab ? query.or(`tab_id.eq.${forTab},tab_id.is.null`) : query).order('created_at', { ascending: false }).limit(50)
+  }
+  let { data, error } = await list(tabId)
+  if (tabId && isUndefinedColumnError(error)) ({ data, error } = await list(undefined))
 
   if (error) throw new Error(`Failed to list document versions: ${error.message}`)
-  return data || []
+  return (data as DocumentVersion[] | null) || []
 }
 
 /** Fetch a single version snapshot (owner only). */
@@ -751,6 +779,13 @@ export async function restoreDocumentVersion(
   userId: string,
 ): Promise<Document> {
   const version = await getDocumentVersionById(documentId, versionId, userId)
+  // A version of one tab restores that tab only (migration 049).
+  if (version.tab_id) {
+    const doc = await getDocumentById(documentId, userId)
+    await restoreTabVersion(doc, { ...version, tab_id: version.tab_id })
+    await invalidateDocumentCache(documentId)
+    return getDocumentById(documentId, userId)
+  }
   const prefs = readFormatSnapshot(version.editor_prefs)
 
   // A version saved before migration 037 has no JSON, so the restored HTML must load on its own:

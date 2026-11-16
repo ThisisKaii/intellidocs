@@ -9,6 +9,7 @@ import { auditCompliance } from '../skills/auditCompliance'
 import { similarityQuerySchema } from '../../schemas/plagiarismSchemas'
 import type { AddCommentInput, SubmitGradeInput } from '../../schemas/professorSchemas'
 import { DEFAULT_CLASS_RUBRIC, type ClassRubric, type ReviewRubric } from '../types/index'
+import { documentBody } from '../models/documentTabModel'
 
 /**
  * Send 403 unless the document was handed in to one of this professor's
@@ -175,7 +176,7 @@ export async function runComplianceAudit(req: AuthenticatedRequest, res: Respons
     )
 
     const report = await auditCompliance({
-      content: document.content,
+      content: await documentBody(document),
       pageSetup: {
         margins: document.margins,
         showHeader: document.show_header,

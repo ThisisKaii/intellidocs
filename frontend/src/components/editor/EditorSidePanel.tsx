@@ -73,6 +73,8 @@ interface EditorSidePanelProps {
   currentHtml: string
   /** For a document split into tabs: the whole current document, for the history comparison. */
   loadCurrentHtml?: () => Promise<string>
+  /** The open tab of a tabbed document, whose versions the history lists. */
+  historyTabId?: string | null
   /** For a document split into tabs: which other tab a chat target is in. */
   locateInOtherTab?: (target: string) => string | null
   scannerSuggestions: ScannerSuggestion[]
@@ -136,6 +138,7 @@ export default function EditorSidePanel({
   documentContent,
   currentHtml,
   loadCurrentHtml,
+  historyTabId,
   locateInOtherTab,
   scannerSuggestions,
   activeScannerKey = null,
@@ -327,6 +330,7 @@ export default function EditorSidePanel({
               documentId={documentId}
               currentHtml={currentHtml}
               loadCurrentHtml={loadCurrentHtml}
+              tabId={historyTabId}
               onRestored={(version) => onVersionRestored?.(version)}
             />
           )}

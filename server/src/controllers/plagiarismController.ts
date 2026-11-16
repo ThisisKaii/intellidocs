@@ -13,6 +13,7 @@ import { reviewOriginalityWithCouncil } from '../skills/reviewOriginalityWithCou
 import { consumeAIQuota } from '../models/aiQuotaModel'
 import { sliceDocumentContent } from '../utils/webText'
 import type { WebCheckPayload } from '../../schemas/plagiarismSchemas'
+import { documentBody } from '../models/documentTabModel'
 
 /** True when the user owns the folder (folderModel throws otherwise). */
 async function ownsFolder(userId: string, folderId: string): Promise<boolean> {
@@ -134,7 +135,7 @@ export async function selfCheck(req: AuthenticatedRequest, res: Response): Promi
     const others = await plagiarismModel.getOwnOtherDocuments(userId, documentId)
 
     const result = await runOriginalityCheck({
-      document: { id: document.id, title: document.title, content: document.content },
+      document: { id: document.id, title: document.title, content: await documentBody(document) },
       others,
     })
     res.json(result)
@@ -164,7 +165,7 @@ export async function webCheck(req: AuthenticatedRequest, res: Response): Promis
       return
     }
 
-    const contentToCheck = sliceDocumentContent(document.content || '', { scope, chapterTitle, pageStart, pageEnd })
+    const contentToCheck = sliceDocumentContent(await documentBody(document), { scope, chapterTitle, pageStart, pageEnd })
 
     res.json(await runWebOriginalityCheck({ documentHtml: contentToCheck }))
   } catch (err) {
@@ -197,7 +198,7 @@ export async function selfCheckReview(req: AuthenticatedRequest, res: Response):
     }
 
     const result = await reviewOriginalityWithCouncil({
-      document: { id: document.id, user_id: userId, title: document.title, content: document.content },
+      document: { id: document.id, user_id: userId, title: document.title, content: await documentBody(document) },
       others,
     })
     res.json(result)

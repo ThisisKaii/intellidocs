@@ -23,6 +23,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 import omml
+import tab_plan
 from html import unescape as _html_unescape
 from docir import (
     ColumnBreak,
@@ -97,6 +98,8 @@ _cache_default_styles()
 # Marks a column break inside a paragraph until the section's columns are built.
 _COLUMN_MARK = ""
 _PAGE_BREAK_HTML = '<hr class="page-break" data-page-break="true" />'
+# A paragraph whose last content is a page break: (opening tag, content before the break).
+_TRAILING_PAGE_BREAK = re.compile(r'(<p\b[^>]*>)(.*)<hr class="page-break" data-page-break="true" /></p>', re.DOTALL)
 # Where a continuous section starts (frontend SectionMark): takes no room and never breaks a page.
 _SECTION_MARK_HTML = '<div class="intellidocs-section-mark" data-section="{index}"></div>'
 
@@ -1942,6 +1945,9 @@ class _ConversionState(threading.local):
         # The body paragraphs being written belong to a table of contents (or a list of tables or
         # figures), whose entries get dot leaders (see _toc_region_step).
         self.in_toc = False
+        # Body elements that start a document tab, with the tab's title (see tab_plan); empty when
+        # the document is not split.
+        self.tab_starts: Dict[Any, str] = {}
 
 
 _STATE = _ConversionState()
@@ -3305,7 +3311,7 @@ def _tc_width_px(tc: Any) -> Optional[float]:
     """Width of a table cell from its w:tcW (twips) in px, or None when not a dxa width."""
     width = tc.find(qn("w:tcPr") + "/" + qn("w:tcW"))
     if width is not None and width.get(qn("w:type")) == "dxa" and width.get(qn("w:w")):
-        return int(width.get(qn("w:w"))) * TWIPS_PER_PX
+        return float(width.get(qn("w:w"))) * TWIPS_PER_PX
     return None
 
 
@@ -3352,7 +3358,7 @@ def _table_column_px(tbl: Any, rows: List[List[Dict[str, Any]]], text_width_px: 
     cell's w:tcW; the result is scaled down to the printable width.
     """
     grid_el = tbl.find(qn("w:tblGrid"))
-    grid = [int(g.get(qn("w:w"))) * TWIPS_PER_PX for g in grid_el.findall(qn("w:gridCol")) if g.get(qn("w:w"))] if grid_el is not None else []
+    grid = [float(g.get(qn("w:w"))) * TWIPS_PER_PX for g in grid_el.findall(qn("w:gridCol")) if g.get(qn("w:w"))] if grid_el is not None else []
     if len(grid) > 1 and len({round(w) for w in grid}) == 1 and rows:
         first = rows[0]
         widths = [_tc_width_px(c["el"]) for c in first if c["span"] == 1]
@@ -3807,6 +3813,41 @@ def _write_body_html(
             out.append(marked)
             jout.append([node])
 
+    def emit_tab_break(title: str) -> None:
+        """Start a document tab: the marker goes at the top level, before the page break that puts the
+        tab's first page on a new page, so that break belongs to the new tab.
+
+        A paragraph ending in a page break ("text<br type=page/>¶") is read by the editor as the text,
+        the break and an empty paragraph: the paragraph mark Word carries to the next page. The break
+        and that empty line move into the new tab; the text stays at the end of the previous one."""
+        close_all_lists()
+        at = len(out)
+        while at > 0 and out[at - 1].startswith(_PAGE_BREAK_HTML[:-3]) and out[at - 1].endswith("/>"):
+            at -= 1
+        moved: List[Tuple[str, Any]] = []
+        if at == len(out) and at > 0:
+            ending = _TRAILING_PAGE_BREAK.fullmatch(out[at - 1])
+            nodes = jout[at - 1]
+            tail = (
+                nodes[-2:]
+                if isinstance(nodes, list) and len(nodes) >= 2 and nodes[-2].get("type") == "pageBreak"
+                and nodes[-1].get("type") == "paragraph" and not nodes[-1].get("content")
+                else None
+            )
+            if ending and (tail is not None or nodes is None):
+                open_tag, inner = ending.group(1), ending.group(2)
+                if inner.strip():
+                    out[at - 1] = f"{open_tag}{inner}</p>"
+                    jout[at - 1] = nodes[:-2] if tail is not None else None
+                    moved = [(_PAGE_BREAK_HTML, [tail[0]] if tail else None), (f"{open_tag}</p>", [tail[1]] if tail else None)]
+                else:
+                    at -= 1  # only the break: the whole paragraph goes with the new tab
+        out.insert(at, f'<div data-tab-break="" data-tab-id="" data-title="{_html_escape(title, quote=True)}"></div>')
+        jout.insert(at, [{"type": "tabBreak", "attrs": {"tabId": None, "title": title}}])
+        for html, node in moved:
+            out.append(html)
+            jout.append(node)
+
     def emit_textboxes(element: Any) -> None:
         """Text-box paragraphs anchored to a paragraph, as ordinary paragraphs after it."""
         for box_p in _textbox_paragraphs(element):
@@ -3820,6 +3861,9 @@ def _write_body_html(
     section_starts: Dict[int, int] = {0: 0}
     previous_closed_section = False
     for element in _iter_block_elements(doc.element.body):
+        tab_title = _STATE.tab_starts.get(element)
+        if tab_title is not None:
+            emit_tab_break(tab_title)
         if previous_closed_section:
             section_no += 1
             close_all_lists()
@@ -4603,19 +4647,75 @@ def _widow_control_on(doc: docx.Document) -> bool:
     return True
 
 
-def convert_docx_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
+def convert_docx_bytes_to_html(file_bytes: bytes, split_tabs: bool = False) -> Dict[str, Any]:
     """High-fidelity DOCX to HTML converter using python-docx XML traversal.
 
     Returns html, page_setup, and plain-text header/footer so the server can
     persist page size/margins and reuse the editor's header/footer features.
+    With split_tabs, a long manuscript comes back with document-tab markers (see tab_plan).
     """
-    return _docx_document_to_result(docx.Document(io.BytesIO(file_bytes)))
+    doc = docx.Document(io.BytesIO(file_bytes))
+    _round_fractional_measures(doc)
+    return _docx_document_to_result(doc, split_tabs=split_tabs)
+
+
+_WORD_NAMESPACE = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_FRACTIONAL_NUMBER = re.compile(r"-?\d+\.\d+")
+
+
+def _round_fractional_measures(doc: docx.Document) -> None:
+    """Round Word measurements written with a fraction ("856.0000000000002", Google Docs exports)
+    to whole numbers. Word's schema makes twips, half-points and the like integers and Word reads
+    these files fine; rounding them once here keeps every reader of an attribute working."""
+    for part in doc.part.package.parts:
+        element = getattr(part, "_element", None)
+        if element is None:
+            continue
+        for node in element.iter():
+            for name, value in node.attrib.items():
+                if name.startswith(_WORD_NAMESPACE) and _FRACTIONAL_NUMBER.fullmatch(value):
+                    node.set(name, str(round(float(value))))
+
+
+def _tab_blocks(doc: docx.Document) -> Tuple[List[Any], List[tab_plan.Block]]:
+    """The body's top-level elements, in the order the body writer walks them, described for tab_plan."""
+    elements = list(_iter_block_elements(doc.element.body))
+    blocks: List[tab_plan.Block] = []
+    for element in elements:
+        text = "".join(t.text or "" for t in element.iter(qn("w:t")))
+        pictures = sum(1 for _ in element.iter(qn("w:drawing")))
+        if element.tag != qn("w:p"):
+            rows = sum(1 for _ in element.iter(qn("w:tr")))
+            blocks.append(tab_plan.Block(text=text, pictures=pictures, table_rows=rows, is_paragraph=False))
+            continue
+        try:
+            style_name = (Paragraph(element, doc).style.name or "").lower()
+        except Exception:
+            style_name = ""
+        heading = _heading_kind(style_name) if style_name else None
+        has_tab = any(True for run in element.iter(qn("w:r")) for _ in run.iter(qn("w:tab")))
+        blocks.append(tab_plan.Block(text=text, heading=heading[0] if heading else None, has_tab=has_tab, pictures=pictures))
+    return elements, blocks
+
+
+def _plan_tab_starts(doc: docx.Document) -> Dict[Any, str]:
+    """{body element: tab title} for a long manuscript; {} for one opened whole. Documents with
+    several text columns are never split (a marker must not land inside a column layout)."""
+    if any(
+        int(cols.get(qn("w:num")) or 1) > 1
+        for cols in doc.element.body.iter(qn("w:cols"))
+        if (cols.get(qn("w:num")) or "1").isdigit()
+    ):
+        return {}
+    elements, blocks = _tab_blocks(doc)
+    return {elements[index]: title for index, title in tab_plan.plan_tabs(blocks).items()}
 
 
 def _docx_document_to_result(
     doc: docx.Document,
     page_break_after: Optional[Set[Any]] = None,
     compress_images: bool = False,
+    split_tabs: bool = False,
 ) -> Dict[str, Any]:
     """Convert an open DOCX document to the {html, page_setup, header, footer} result."""
     doc_parts: Dict[str, bytes] = {}
@@ -4632,7 +4732,11 @@ def _docx_document_to_result(
         page_break_after = _page_break_paragraphs(doc)
     _set_page_geometry(doc)
     doc.part._intellidocs_notes = {"footnote": {}, "endnote": {}}
-    html = _body_to_html(doc, doc_parts, page_break_after)
+    _STATE.tab_starts = _plan_tab_starts(doc) if split_tabs else {}
+    try:
+        html = _body_to_html(doc, doc_parts, page_break_after)
+    finally:
+        _STATE.tab_starts = {}
     html, body_art = _extract_page_art(html)
     html += _notes_html(doc, doc_parts)
     header, footer, header_number_format, footer_number_format = _extract_header_footer(doc)
@@ -5767,7 +5871,7 @@ def _reflow_pdf_table_cells(doc: docx.Document) -> int:
     return joined
 
 
-def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
+def convert_pdf_bytes_to_html(file_bytes: bytes, split_tabs: bool = False) -> Dict[str, Any]:
     """Convert a PDF by normalizing it to DOCX with pdf2docx, repairing what
     pdf2docx drops (page breaks, headings, running headers, image weight), then
     reusing the DOCX emitter so spacing, blank lines and page setup are defined
@@ -5819,7 +5923,7 @@ def convert_pdf_bytes_to_html(file_bytes: bytes) -> Dict[str, Any]:
     _absorb_table_continuation_lines(doc, page_break_after)
     _drop_false_vertical_merges(doc)
     doc.part._is_pdf_import = True  # pdf2docx leaves cell padding at zero; see _table_cell_margins
-    result = _docx_document_to_result(doc, page_break_after, compress_images=True)
+    result = _docx_document_to_result(doc, page_break_after, compress_images=True, split_tabs=split_tabs)
     _furniture_to_layout(result, furniture, page_count)
     if _pdf_two_column_body(file_bytes):
         result["two_column_body"] = True

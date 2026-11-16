@@ -24,7 +24,9 @@ export async function getDocumentVersions(req: Request, res: Response): Promise<
       res.status(400).json({ error: 'Document ID is required' })
       return
     }
-    const versions = await documentModel.getDocumentVersions(id, userId)
+    // A tabbed document's history is read one tab at a time (?tab=<tab id>).
+    const tab = typeof req.query.tab === 'string' && /^[0-9a-f-]{36}$/i.test(req.query.tab) ? req.query.tab : undefined
+    const versions = await documentModel.getDocumentVersions(id, userId, tab)
     res.json(versions)
   } catch (error) {
     const status = (error as Error & { status?: number }).status

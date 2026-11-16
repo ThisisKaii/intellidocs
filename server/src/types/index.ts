@@ -643,6 +643,13 @@ export interface DocumentVersion {
   editor_prefs: Record<string, unknown> | null
   reason: string
   created_at: string
+  /**
+   * A version of one tab of a tabbed document (migration 049): the tab, its title and place then.
+   * Null for a version of a whole document.
+   */
+  tab_id?: string | null
+  tab_title?: string | null
+  tab_position?: number | null
 }
 
 /** Format state captured with a version snapshot (stored in editor_prefs). */

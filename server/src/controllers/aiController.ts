@@ -19,6 +19,7 @@ import {
   isUsualFormattingRequest,
   learnedFormattingReply,
 } from '../skills/buildLearnedFormattingPlan'
+import { documentBody } from '../models/documentTabModel'
 
 interface ErrorWithStatus {
   status?: number
@@ -583,7 +584,7 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       if (body.documentId) {
         try {
           const doc = await getDocumentForUser(body.documentId, userId, req.user?.email)
-          const sections = splitIntoSections(doc.content ?? '')
+          const sections = splitIntoSections(await documentBody(doc))
           retrieved = retrieveSections(sections, message)
           allTitles = sections.map((section) => section.title).filter((title) => title !== 'Opening of the document')
         } catch {

@@ -1,5 +1,6 @@
 import { EDITOR_JSON_MAX_CHARS } from '../../schemas/documentSchemas'
 import type { EditorJson } from '../types/index'
+import { hasTabBreaks } from '../utils/documentTabs'
 import { sanitizeImportedHtml } from './sanitizeImportedHtml'
 import { uploadImportImagesWithSources, withStoredImageSources } from './uploadImportImages'
 
@@ -11,7 +12,8 @@ import { uploadImportImagesWithSources, withStoredImageSources } from './uploadI
  * it loads with no HTML parse. The same pictures are pointed at the same stored files in both. If the
  * clean-up changed the HTML's text the JSON would no longer match it, and the JSON is dropped: the
  * editor then parses the HTML, as it does for every import without JSON, and saves JSON from there.
- * The same happens when the JSON is over the stored size cap.
+ * The same happens when the JSON is over the stored size cap. A long manuscript the converter split
+ * into tabs keeps its JSON here: the cap applies to each tab (documentTabModel.createTabbedDocument).
  */
 export async function prepareImportedContent(
   userId: string,
@@ -26,6 +28,7 @@ export async function prepareImportedContent(
     return { content, content_json: null }
   }
   const contentJson = withStoredImageSources(json, sources)
+  if (hasTabBreaks(content)) return { content, content_json: contentJson }
   if (JSON.stringify(contentJson).length > EDITOR_JSON_MAX_CHARS) {
     console.warn('Converter JSON is over the stored size cap; storing the HTML only.')
     return { content, content_json: null }
