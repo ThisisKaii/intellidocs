@@ -10,6 +10,10 @@ import { professorCanReview } from './professorModel'
 import { nextUniqueTitle } from '../utils/uniqueTitle'
 import { extractPreviewSnippet } from '../utils/previewSnippet'
 import { genreForPreset } from '../utils/documentGenre'
+import { hasTabBreaks } from '../utils/documentTabs'
+// Circular on purpose: the tab model builds on this one, and whole-body saves of a tabbed document
+// re-sync its tabs. Only used inside functions, so the cycle is safe.
+import { syncTabsFromBody } from './documentTabModel'
 
 export const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -130,7 +134,7 @@ async function getCachedDocument(id: string): Promise<Document | null> {
 }
 
 /** Invalidate a document cache entry after a write (fail-open). */
-async function invalidateDocumentCache(id: string): Promise<void> {
+export async function invalidateDocumentCache(id: string): Promise<void> {
   if (!DOC_CACHE_ENABLED) return
   try {
     const redis = await getRedisClient()
@@ -262,6 +266,41 @@ export async function getDocumentForUser(
   }
 
   void cacheDocument(doc)
+  return doc
+}
+
+/**
+ * A document's settings without its body (no `content` / `content_json`), with the same access
+ * checks as getDocumentForUser. Used where the body is not needed (saving one tab of a document
+ * split into tabs), so a long manuscript is not read on every save.
+ */
+export async function getDocumentMetaForUser(
+  id: string,
+  userId: string,
+  userEmail: string | undefined,
+  shareToken?: string | undefined,
+): Promise<Document> {
+  const { data, error } = await supabase.from('documents').select(LIST_BASE_COLUMNS).eq('id', id).single()
+  if (error) {
+    if (error.code === 'PGRST116') {
+      const notFound = new Error('Document not found') as Error & { status: number }
+      notFound.status = 404
+      throw notFound
+    }
+    throw new Error(`Failed to get document: ${error.message}`)
+  }
+  const doc = { ...(data as unknown as Document), content: '', content_json: null }
+  const viaShareLink = Boolean(shareToken) && doc.share_token === shareToken && !isShareLinkExpired(doc.share_expires_at)
+  const canRead =
+    doc.user_id === userId ||
+    (await hasShareAccess(id, userId, userEmail, 'view')) ||
+    viaShareLink ||
+    (await professorCanReview(userId, id))
+  if (!canRead) {
+    const forbidden = new Error('You do not have access to this document') as Error & { status: number }
+    forbidden.status = 403
+    throw forbidden
+  }
   return doc
 }
 
@@ -480,6 +519,28 @@ export async function updateDocument(
     )
   }
 
+  // A document split into tabs (migration 048) keeps each tab in its own row. A whole body sent for
+  // it must carry the tab markers: its tabs are re-synced from them. Without markers (an editor that
+  // does not know the document has tabs) it would silently drop every tab, so it is refused.
+  if (req.content !== undefined && (hasTabBreaks(doc.content) || hasTabBreaks(req.content))) {
+    if (!hasTabBreaks(req.content)) {
+      const conflict = new Error('This document is split into tabs. Reload it to keep editing.') as Error & { status: number; code: string }
+      conflict.status = 409
+      conflict.code = 'document_has_tabs'
+      throw conflict
+    }
+    const rest: Record<string, unknown> = { ...req }
+    delete rest.content
+    delete rest.content_json
+    if (Object.keys(rest).length > 0) {
+      const { error: restError } = await supabase.from('documents').update(rest).eq('id', id)
+      if (restError) throw new Error(`Failed to update document: ${restError.message}`)
+    }
+    await syncTabsFromBody(doc, req.content, req.content_json)
+    await invalidateDocumentCache(id)
+    return getDocumentForUser(id, userId, undefined, shareToken)
+  }
+
   // Refresh the grid-preview snippet whenever the content changes. The stored editor JSON is
   // replaced with the JSON sent alongside, or cleared when none was: JSON left over from an
   // earlier save would otherwise load in place of this newer HTML.
@@ -538,7 +599,7 @@ export async function deleteDocument(
 const VERSION_THROTTLE_MS = 3000
 
 /** Format state bundled into every version snapshot (stored in editor_prefs). */
-const buildFormatSnapshot = (doc: Document): FormatSnapshot => ({
+export const buildFormatSnapshot = (doc: Document): FormatSnapshot => ({
   formatting_history: Array.isArray(doc.formatting_history)
     ? (doc.formatting_history as string[])
     : [],
@@ -589,19 +650,29 @@ const readFormatSnapshot = (
   }
 }
 
+/**
+ * Whether a document is due a version snapshot (none in the last VERSION_THROTTLE_MS). Throws when
+ * the throttle store cannot be read; callers treat snapshots as best-effort.
+ */
+export async function versionSnapshotDue(documentId: string): Promise<boolean> {
+  const redis = await getRedisClient()
+  const raw = await redis.get(`version:${documentId}:last`)
+  return !raw || Date.now() - Number(raw) >= VERSION_THROTTLE_MS
+}
+
+/** Record that a document was just snapshotted (starts the throttle window). */
+export async function markVersionSnapshot(documentId: string): Promise<void> {
+  const redis = await getRedisClient()
+  await redis.set(`version:${documentId}:last`, String(Date.now()), { EX: 3600 })
+}
+
 /** Insert a new version snapshot, throttled to avoid a row per keystroke. */
 export async function snapshotDocumentVersion(
   doc: Document,
   reason = 'autosave',
 ): Promise<void> {
   try {
-    const redis = await getRedisClient()
-    const key = `version:${doc.id}:last`
-    const raw = await redis.get(key)
-    if (raw) {
-      const last = Number(raw)
-      if (Date.now() - last < VERSION_THROTTLE_MS) return
-    }
+    if (!(await versionSnapshotDue(doc.id))) return
 
     const snapshot: Record<string, unknown> = {
       document_id: doc.id,
@@ -625,7 +696,7 @@ export async function snapshotDocumentVersion(
     if (error) {
       throw new Error(`Failed to snapshot document version: ${error.message}`)
     }
-    await redis.set(key, String(Date.now()), { EX: 3600 })
+    await markVersionSnapshot(doc.id)
   } catch {
     /* Version snapshotting is best-effort and must never break saves. */
   }
@@ -712,5 +783,19 @@ export async function restoreDocumentVersion(
 
   if (error) throw new Error(`Failed to restore document version: ${error.message}`)
   void invalidateDocumentCache(documentId)
-  return data!
+
+  // The restored body's tab markers decide the tabs: a version taken while the document had tabs
+  // brings them back, one taken before the split leaves it untabbed. Before migration 048 there
+  // are no tabs to sync.
+  const restoredDoc = data! as Document
+  try {
+    await syncTabsFromBody(restoredDoc, version.content, version.content_json ?? null)
+  } catch (syncError) {
+    if ((syncError as { code?: string }).code !== 'tabs_unavailable') throw syncError
+  }
+  if (hasTabBreaks(version.content)) {
+    await invalidateDocumentCache(documentId)
+    return getDocumentById(documentId, userId)
+  }
+  return restoredDoc
 }

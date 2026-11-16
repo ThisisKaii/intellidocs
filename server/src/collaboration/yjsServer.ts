@@ -8,6 +8,7 @@ import * as decoding from 'lib0/decoding'
 import { z } from 'zod'
 import { verifyAccessToken } from '../middleware/authMiddleware'
 import * as documentModel from '../models/documentModel'
+import * as documentTabModel from '../models/documentTabModel'
 import { isPmDoc, seedYDocFromJson } from './yjsJson'
 
 /**
@@ -21,7 +22,10 @@ import { isPmDoc, seedYDocFromJson } from './yjsJson'
  * run a single server instance.
  */
 
-/** URL prefix; the room is the document id: `/ws/collab/<documentId>?token=…[&share=…]`. */
+/**
+ * URL prefix. The room is the document: `/ws/collab/<documentId>?token=…[&share=…]`, or one tab of a
+ * document split into tabs (migration 048): `/ws/collab/<documentId>/<tabId>?…`, seeded from that tab.
+ */
 export const COLLAB_PATH = '/ws/collab/'
 
 /**
@@ -44,6 +48,7 @@ const MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 
 const connectionQuerySchema = z.object({
   documentId: z.string().uuid(),
+  tabId: z.string().uuid().optional(),
   token: z.string().min(10),
   share: z.string().min(1).max(200).optional(),
 })
@@ -76,7 +81,7 @@ function broadcast(room: Room, message: Uint8Array, except?: Connection): void {
   for (const conn of room.connections.values()) if (conn !== except) send(conn, message)
 }
 
-function createRoom(documentId: string, json: unknown): Room {
+function createRoom(roomKey: string, json: unknown): Room {
   const doc = new Y.Doc()
   if (isPmDoc(json)) seedYDocFromJson(doc, json)
   const awareness = new awarenessProtocol.Awareness(doc)
@@ -107,13 +112,13 @@ function createRoom(documentId: string, json: unknown): Room {
     }
   )
 
-  rooms.set(documentId, room)
+  rooms.set(roomKey, room)
   return room
 }
 
-function destroyRoom(documentId: string, room: Room): void {
-  if (rooms.get(documentId) !== room) return
-  rooms.delete(documentId)
+function destroyRoom(roomKey: string, room: Room): void {
+  if (rooms.get(roomKey) !== room) return
+  rooms.delete(roomKey)
   room.awareness.destroy()
   room.doc.destroy()
 }
@@ -166,16 +171,20 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
     else pending.push(bytes)
   })
 
+  const [documentPart, tabPart, ...extra] = url.pathname.slice(COLLAB_PATH.length).split('/')
   const parsed = connectionQuerySchema.safeParse({
-    documentId: decodeURIComponent(url.pathname.slice(COLLAB_PATH.length)),
+    documentId: decodeURIComponent(documentPart ?? ''),
+    tabId: tabPart ? decodeURIComponent(tabPart) : undefined,
     token: url.searchParams.get('token') ?? '',
     share: url.searchParams.get('share') ?? undefined,
   })
-  if (!parsed.success) {
+  if (!parsed.success || extra.length > 0) {
     ws.close(CLOSE_NOT_FOUND, 'Invalid collaboration request')
     return
   }
-  const { documentId, token, share } = parsed.data
+  const { documentId, tabId, token, share } = parsed.data
+  // One room per document, or per tab of a document split into tabs.
+  const roomKey = tabId ? `${documentId}:${tabId}` : documentId
 
   const auth = await verifyAccessToken(token).catch(() => null)
   if (!auth?.ok) {
@@ -188,7 +197,7 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
   try {
     const doc = await documentModel.getDocumentForUser(documentId, auth.user.id, auth.user.email, share)
     readOnly = !(await documentModel.canEditDocument(doc, auth.user.id, share))
-    savedJson = doc.content_json
+    savedJson = tabId ? (await documentTabModel.getTab(documentId, tabId)).content_json : doc.content_json
   } catch (error) {
     const status = (error as { status?: number }).status
     ws.close(status === 404 ? CLOSE_NOT_FOUND : CLOSE_FORBIDDEN, 'No access to this document')
@@ -196,7 +205,7 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
   }
   if (ws.readyState !== WebSocket.OPEN) return
 
-  let room = rooms.get(documentId)
+  let room = rooms.get(roomKey)
   if (!room) {
     // A document saved before content_json existed can't be seeded without the editor schema;
     // the client opens it solo, and its first save writes content_json for next time.
@@ -205,7 +214,7 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
       return
     }
     // Synchronous from here on, so two first visitors can never seed the same room twice.
-    room = createRoom(documentId, savedJson)
+    room = createRoom(roomKey, savedJson)
   }
   if (room.idleTimer) {
     clearTimeout(room.idleTimer)
@@ -236,7 +245,7 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
       awarenessProtocol.removeAwarenessStates(activeRoom.awareness, Array.from(conn.awarenessIds), null)
     }
     if (activeRoom.connections.size === 0) {
-      activeRoom.idleTimer = setTimeout(() => destroyRoom(documentId, activeRoom), ROOM_IDLE_MS)
+      activeRoom.idleTimer = setTimeout(() => destroyRoom(roomKey, activeRoom), ROOM_IDLE_MS)
       activeRoom.idleTimer.unref()
     }
   })

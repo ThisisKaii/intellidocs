@@ -1,5 +1,7 @@
 import { Request, Response } from 'express'
 import * as documentModel from '../models/documentModel'
+import * as documentTabModel from '../models/documentTabModel'
+import { hasTabBreaks } from '../utils/documentTabs'
 import { resolvePendingSharesByUser } from '../models/shareModel'
 import { CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
 import { importLocalFile } from '../skills/importLocalFile'
@@ -185,7 +187,9 @@ export async function getDocument(req: Request, res: Response): Promise<void> {
     // Whether this caller may save: a reviewing professor can read a submission but not edit it,
     // so the client opens it read-only instead of showing an editor whose saves would be refused.
     const canEdit = await documentModel.canEditDocument(document, userId, shareToken)
-    res.status(200).json({ ...document, can_edit: canEdit })
+    // A document split into chapter tabs lists them (without their bodies); [] for every other document.
+    const tabs = hasTabBreaks(document.content) ? await documentTabModel.listTabs(document.id) : []
+    res.status(200).json({ ...document, can_edit: canEdit, tabs })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     const status = (error as Error & { status?: number }).status ?? 500
@@ -249,7 +253,8 @@ export async function updateDocument(req: Request, res: Response): Promise<void>
     // destructive overwrite) keep it instead of collapsing into a 500.
     const status = (error as { status?: number }).status
     if (status === 403 || status === 409) {
-      res.status(status).json({ error: (error as Error).message })
+      const code = (error as { code?: string }).code
+      res.status(status).json({ error: (error as Error).message, ...(code ? { code } : {}) })
       return
     }
     if (status === 413) {

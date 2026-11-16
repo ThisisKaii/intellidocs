@@ -78,3 +78,20 @@ describe('inserting a caption into a document that already has some', () => {
     expect(texts(editor)[2]).toBe('Figure 1: Typed')
   })
 })
+
+describe('captions in one tab of a document split into tabs', () => {
+  it('continues the numbering after the figures of the tabs before it', () => {
+    const editor = editorWith('<p>Figure 5: A</p><p>Figure 6: B</p>')
+    const context = { offsets: { figure: 4, table: 0 }, schemes: { figure: 'sequence' as const } }
+    expect(misnumberedCaptions(findCaptions(editor.state.doc), 'default', false, context)).toEqual([])
+    // Without knowing the earlier tabs, the same chapter would look misnumbered.
+    expect(misnumberedCaptions(findCaptions(editor.state.doc), 'default').map((fix) => fix.expected)).toEqual(['Figure 1', 'Figure 2'])
+    expect(labelForNewCaption(editor.state.doc, 'figure', editor.state.doc.content.size, 'default', context)).toBe('Figure 7')
+  })
+
+  it('leaves a chapter that restarts at 1 alone when the document restarts per chapter', () => {
+    const editor = editorWith('<h1>Chapter 3</h1><p>Table 1. A</p><p>Table 2. B</p>')
+    const context = { offsets: { figure: 0, table: 6 }, schemes: { table: 'restart' as const } }
+    expect(misnumberedCaptions(findCaptions(editor.state.doc), 'default', false, context)).toEqual([])
+  })
+})

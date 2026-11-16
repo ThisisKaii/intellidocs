@@ -15,6 +15,8 @@ export interface CollaborationSession {
   mode: CollabMode
   ydoc: Y.Doc | null
   provider: WebsocketProvider | null
+  /** The room this session decided about (a document id, or `<document>/<tab>` for one tab). */
+  room: string | null
 }
 
 /** How long to wait for the first sync before opening the document solo. */
@@ -42,18 +44,19 @@ function currentToken(): string {
 }
 
 /**
- * One shared Yjs document per open document, synced through the server's collaboration socket.
- * Decides once per document whether the editor runs collaboratively or solo; a session that
- * started collaborative stays so (y-websocket reconnects by itself after network drops).
+ * One shared Yjs document per open document (or per open tab of a document split into tabs: room
+ * `<documentId>/<tabId>`), synced through the server's collaboration socket. Decides once per room
+ * whether the editor runs collaboratively or solo; a session that started collaborative stays so
+ * (y-websocket reconnects by itself after network drops).
  */
 export function useCollaboration(documentId: string | undefined, shareToken: string | undefined, enabled: boolean): CollaborationSession {
-  const [session, setSession] = useState<CollaborationSession>({ mode: enabled ? 'connecting' : 'solo', ydoc: null, provider: null })
+  const [session, setSession] = useState<CollaborationSession>({ mode: enabled ? 'connecting' : 'solo', ydoc: null, provider: null, room: null })
   const shareRef = useRef(shareToken)
   shareRef.current = shareToken
 
   useEffect(() => {
     if (!enabled || !documentId || !currentToken()) {
-      setSession({ mode: 'solo', ydoc: null, provider: null })
+      setSession({ mode: 'solo', ydoc: null, provider: null, room: documentId ?? null })
       return
     }
 
@@ -76,7 +79,7 @@ export function useCollaboration(documentId: string | undefined, shareToken: str
       if (settled) return
       settled = true
       teardown()
-      setSession({ mode: 'solo', ydoc: null, provider: null })
+      setSession({ mode: 'solo', ydoc: null, provider: null, room: documentId })
     }
 
     const timeout = window.setTimeout(goSolo, SYNC_TIMEOUT_MS)
@@ -85,7 +88,7 @@ export function useCollaboration(documentId: string | undefined, shareToken: str
       if (!synced || settled) return
       settled = true
       window.clearTimeout(timeout)
-      setSession({ mode: 'collab', ydoc, provider })
+      setSession({ mode: 'collab', ydoc, provider, room: documentId })
     })
 
     // Before every (re)connect, carry the freshest session token; the URL is rebuilt from params.
@@ -114,7 +117,7 @@ export function useCollaboration(documentId: string | undefined, shareToken: str
     return () => {
       window.clearTimeout(timeout)
       teardown()
-      setSession({ mode: enabled ? 'connecting' : 'solo', ydoc: null, provider: null })
+      setSession({ mode: enabled ? 'connecting' : 'solo', ydoc: null, provider: null, room: null })
     }
   }, [documentId, enabled])
 

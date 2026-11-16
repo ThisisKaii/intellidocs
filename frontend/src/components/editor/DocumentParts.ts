@@ -57,6 +57,73 @@ export function pageNumberAt(editor: Editor, pos: number): number {
   return Math.max(1, page)
 }
 
+/**
+ * A page lookup for many positions at once: the page header zones are measured once (pageNumberAt
+ * measures them all for every position, which is slow for a long table of contents).
+ */
+export function pageFinder(editor: Editor): (pos: number) => number {
+  const tops: number[] = []
+  editor.view.dom.querySelectorAll<HTMLElement>('.rm-page-header').forEach((zone) => {
+    const rect = zone.getBoundingClientRect()
+    if (rect.height > 0) tops.push(rect.top)
+  })
+  tops.sort((a, b) => a - b)
+  return (pos: number): number => {
+    let top: number
+    try {
+      top = editor.view.coordsAtPos(Math.min(pos, editor.state.doc.content.size)).top
+    } catch {
+      return 1
+    }
+    let low = 0
+    let high = tops.length
+    while (low < high) {
+      const middle = (low + high) >> 1
+      if (tops[middle] <= top + 1) low = middle + 1
+      else high = middle
+    }
+    return Math.max(1, low)
+  }
+}
+
+/** One heading or caption of a tab, with the page (within the tab) it is on. */
+export interface OutlineItem {
+  kind: 'heading' | 'figure' | 'table'
+  level: number
+  text: string
+  page: number
+}
+
+/**
+ * The headings and captions of the document in the editor, with their pages — what a tab of a
+ * document split into tabs stores, so the table of contents and the lists of figures and tables can
+ * be built across tabs without loading them. `pos` is kept for callers that split a whole body.
+ */
+export function documentOutline(editor: Editor): Array<OutlineItem & { pos: number }> {
+  const pageOf = pageFinder(editor)
+  const items: Array<OutlineItem & { pos: number }> = []
+  for (const entry of collectSections(editor)) items.push({ kind: 'heading', level: entry.level, text: entry.text.slice(0, 400), page: pageOf(entry.pos), pos: entry.pos })
+  for (const kind of ['figure', 'table'] as const) {
+    for (const entry of collectCaptions(editor, kind)) items.push({ kind, level: 1, text: entry.text.slice(0, 400), page: pageOf(entry.pos), pos: entry.pos })
+  }
+  return items.sort((a, b) => a.pos - b.pos)
+}
+
+/** An entry from another tab for a generated list: its text, level and page as it should print. */
+export interface ExternalListEntry {
+  text: string
+  level: number
+  pageLabel: string
+}
+
+/** Entries from the tabs before and after the open one (a document split into tabs). */
+export interface CrossTabEntries {
+  before: ExternalListEntry[]
+  after: ExternalListEntry[]
+  /** How a page of the open tab prints (its numbering continues from the tabs before it). */
+  pageLabel: (page: number) => string
+}
+
 /** Width in px of the text column, used for the right-aligned page-number tab stop. */
 function textColumnWidth(editor: Editor): number {
   const dom = editor.view.dom as HTMLElement
@@ -100,7 +167,7 @@ function collectCaptions(editor: Editor, kind: 'figure' | 'table'): PartEntry[] 
 }
 
 /** One title paragraph plus one tab-aligned line per entry (page number right, dotted leader). */
-function buildListNodes(editor: Editor, kind: GeneratedKind, entries: PartEntry[]): JSONContent[] {
+function buildListNodes(editor: Editor, kind: GeneratedKind, entries: Array<{ text: string; level: number; pageLabel: string }>): JSONContent[] {
   const stops = JSON.stringify([['right', textColumnWidth(editor), 'dot']])
   const title: JSONContent = {
     type: 'paragraph',
@@ -119,7 +186,7 @@ function buildListNodes(editor: Editor, kind: GeneratedKind, entries: PartEntry[
     content: [
       { type: 'text', text: `${' '.repeat((entry.level - 1) * 4)}${entry.text}` },
       { type: 'tab' },
-      { type: 'text', text: String(pageNumberAt(editor, entry.pos)) },
+      { type: 'text', text: entry.pageLabel },
     ],
   }))
   return [title, ...lines]
@@ -194,10 +261,17 @@ function findGeneratedRange(editor: Editor, kind: GeneratedKind): { from: number
   return from >= 0 ? { from, to } : null
 }
 
-/** Build the nodes for a table of contents or a list of figures/tables from the live document. */
-export function buildAutoNodes(editor: Editor, kind: 'toc' | 'lof' | 'lot'): JSONContent[] {
+/**
+ * Build the nodes for a table of contents or a list of figures/tables from the live document. In a
+ * document split into tabs, `crossTab` brings the other tabs' entries (from their stored outlines)
+ * and prints the open tab's pages with its continued numbering.
+ */
+export function buildAutoNodes(editor: Editor, kind: 'toc' | 'lof' | 'lot', crossTab: CrossTabEntries | null = null): JSONContent[] {
   const entries = kind === 'toc' ? collectSections(editor) : collectCaptions(editor, kind === 'lof' ? 'figure' : 'table')
-  return buildListNodes(editor, kind, entries)
+  const pageOf = pageFinder(editor)
+  const label = crossTab?.pageLabel ?? ((page: number) => String(page))
+  const own = entries.map((entry) => ({ text: entry.text, level: entry.level, pageLabel: label(pageOf(entry.pos)) }))
+  return buildListNodes(editor, kind, crossTab ? [...crossTab.before, ...own, ...crossTab.after] : own)
 }
 
 /**

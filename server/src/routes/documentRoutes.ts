@@ -6,12 +6,18 @@ import * as documentOpenController from '../controllers/documentOpenController'
 import * as documentPinController from '../controllers/documentPinController'
 import * as documentGenreController from '../controllers/documentGenreController'
 import * as documentFeedbackController from '../controllers/documentFeedbackController'
+import * as documentTabController from '../controllers/documentTabController'
 import { validateBody, validateParams, validateQuery } from '../middleware/validate'
 import {
+  addTabSchema,
   createDocumentSchema,
   documentIdParamSchema,
+  documentTabParamsSchema,
   joinCodeSchema,
+  saveTabSchema,
+  splitTabsSchema,
   updateDocumentSchema,
+  updateTabSchema,
 } from '../../schemas/documentSchemas'
 import { importQuerySchema } from '../../schemas/importSchemas'
 import { detectGenreSchema, setGenreSchema } from '../../schemas/genreSchemas'
@@ -115,6 +121,16 @@ router.post('/:id/share-link', shareController.createShareLink)
 router.put('/:id/share-link', shareController.updateShareLink)
 router.post('/:id/share-code', shareController.createShareCode)
 router.delete('/:id/share-link', shareController.revokeShareLink)
+
+/** Document tabs (migration 048): one document, a tab per chapter. Split/merge before /:tabId. */
+router.get('/:id/tabs', validateParams(documentIdParamSchema), documentTabController.listTabs)
+router.post('/:id/tabs/split', validateParams(documentIdParamSchema), validateBody(splitTabsSchema), documentTabController.splitTabs)
+router.post('/:id/tabs/merge', validateParams(documentIdParamSchema), documentTabController.mergeTabs)
+router.post('/:id/tabs', validateParams(documentIdParamSchema), validateBody(addTabSchema), documentTabController.addTab)
+router.get('/:id/tabs/:tabId', validateParams(documentTabParamsSchema), documentTabController.getTab)
+router.put('/:id/tabs/:tabId', validateParams(documentTabParamsSchema), validateBody(saveTabSchema), documentTabController.saveTab)
+router.patch('/:id/tabs/:tabId', validateParams(documentTabParamsSchema), validateBody(updateTabSchema), documentTabController.updateTab)
+router.delete('/:id/tabs/:tabId', validateParams(documentTabParamsSchema), documentTabController.deleteTab)
 
 /** Undo-lock version history — owner can list and restore snapshots. */
 router.get('/:id/versions', documentController.getDocumentVersions)

@@ -150,17 +150,28 @@ export function captionScheme(entries: CaptionEntry[]): CaptionScheme {
 }
 
 /**
+ * Where the open part of a document split into tabs stands: how many figures and tables the tabs
+ * before it hold, and the numbering scheme of the whole document (one tab cannot tell a sequence
+ * from numbers that restart in each chapter). Absent for a document without tabs.
+ */
+export interface CaptionContext {
+  offsets: Record<CaptionKind, number>
+  schemes?: Partial<Record<CaptionKind, CaptionScheme>>
+}
+
+/**
  * The label every caption should have, in document order.
  *
  * Tagged captions take the label style's word ("Figure" / "Fig." / "TABLE"); captions that came
  * with the document keep their own word and spacing, only their number changes.
  */
-export function expectedLabels(entries: CaptionEntry[], style: CaptionLabelStyle): Map<CaptionEntry, string> {
+export function expectedLabels(entries: CaptionEntry[], style: CaptionLabelStyle, context: CaptionContext | null = null): Map<CaptionEntry, string> {
   const result = new Map<CaptionEntry, string>()
   for (const kind of ['figure', 'table'] as const) {
     const ofKind = entries.filter((entry) => entry.kind === kind)
-    const scheme = captionScheme(ofKind)
-    let count = 0
+    const scheme = context?.schemes?.[kind] ?? captionScheme(ofKind)
+    // One sequence through the whole document: a tab continues after the tabs before it.
+    let count = scheme === 'sequence' ? context?.offsets[kind] ?? 0 : 0
     let lastChapter: number | null = null
     for (const entry of ofKind) {
       let number: string
@@ -187,8 +198,13 @@ export function expectedLabels(entries: CaptionEntry[], style: CaptionLabelStyle
 }
 
 /** Captions whose label is not what their place in the document gives them. */
-export function misnumberedCaptions(entries: CaptionEntry[], style: CaptionLabelStyle, onlyPlain = false): CaptionFix[] {
-  const expected = expectedLabels(entries, style)
+export function misnumberedCaptions(
+  entries: CaptionEntry[],
+  style: CaptionLabelStyle,
+  onlyPlain = false,
+  context: CaptionContext | null = null,
+): CaptionFix[] {
+  const expected = expectedLabels(entries, style, context)
   const fixes: CaptionFix[] = []
   for (const entry of entries) {
     if (onlyPlain && entry.tagged) continue
@@ -212,10 +228,11 @@ export function labelForNewCaption(
   kind: CaptionKind,
   pos: number,
   style: CaptionLabelStyle,
+  context: CaptionContext | null = null,
 ): string {
   const entries = findCaptions(doc).filter((entry) => entry.kind === kind)
   const before = entries.filter((entry) => entry.pos < pos)
-  const scheme = captionScheme(entries)
+  const scheme = context?.schemes?.[kind] ?? captionScheme(entries)
   if (scheme === 'sequence' || before.length === 0) {
     if (scheme === 'chapter') {
       // First caption of its kind in a chapter-numbered document: chapter of the place, number 1.
@@ -230,7 +247,7 @@ export function labelForNewCaption(
       })
       return `${captionLabel(kind, 1, style).split(/\s/)[0]} ${chapter}.1`
     }
-    return captionLabel(kind, before.length + 1, style)
+    return captionLabel(kind, before.length + 1 + (scheme === 'sequence' ? context?.offsets[kind] ?? 0 : 0), style)
   }
   // Number it as if it were already there, then read off its label.
   const previous = before[before.length - 1]
@@ -243,7 +260,7 @@ export function labelForNewCaption(
     }
     return node.type.name !== 'table'
   })
-  const expected = expectedLabels(entries, style)
+  const expected = expectedLabels(entries, style, context)
   const previousNumber = (expected.get(previous) ?? previous.label).split(/\s+/).pop() ?? '1'
   const [major, minor] = previousNumber.includes('.') ? previousNumber.split('.').map(Number) : [null, Number(previousNumber)]
   const word = captionLabel(kind, 1, style).split(/\s/)[0]

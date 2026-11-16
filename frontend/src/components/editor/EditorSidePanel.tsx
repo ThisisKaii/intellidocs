@@ -71,6 +71,10 @@ interface EditorSidePanelProps {
   documentContent: string
   /** The full document HTML for the history comparison (documentContent is a shortened AI summary). */
   currentHtml: string
+  /** For a document split into tabs: the whole current document, for the history comparison. */
+  loadCurrentHtml?: () => Promise<string>
+  /** For a document split into tabs: which other tab a chat target is in. */
+  locateInOtherTab?: (target: string) => string | null
   scannerSuggestions: ScannerSuggestion[]
   /** Key of the suggestion currently highlighted in the editor (drives the active card state). */
   activeScannerKey?: string | null
@@ -131,6 +135,8 @@ export default function EditorSidePanel({
   documentTitle,
   documentContent,
   currentHtml,
+  loadCurrentHtml,
+  locateInOtherTab,
   scannerSuggestions,
   activeScannerKey = null,
   mlSuggestions,
@@ -311,6 +317,7 @@ export default function EditorSidePanel({
               documentContent={documentContent}
               onFocusEditor={onFocusEditor}
               onApplyPreset={onApplyPreset}
+              locateInOtherTab={locateInOtherTab}
               docked
             />
           </div>
@@ -319,6 +326,7 @@ export default function EditorSidePanel({
             <HistoryPanel
               documentId={documentId}
               currentHtml={currentHtml}
+              loadCurrentHtml={loadCurrentHtml}
               onRestored={(version) => onVersionRestored?.(version)}
             />
           )}

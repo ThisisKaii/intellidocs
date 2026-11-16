@@ -1,9 +1,24 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { api, type DocumentFeedback, type DocumentRecord, type EditorJson, type PageNumberFormat, type TierCheckResponse } from '@/services/api'
+import { api, type DocumentFeedback, type DocumentRecord, type DocumentTabSummary, type EditorJson, type PageNumberFormat, type TabNumbering, type TierCheckResponse } from '@/services/api'
+import { getHTMLFromFragment } from '@tiptap/core'
+import TabSidebar from '@/components/editor/TabSidebar'
+import SplitTabsDialog from '@/components/editor/SplitTabsDialog'
+import { dismissSplitPrompt, insertTabBreaks, proposalWordCounts, proposeChapterSplit, splitPromptDismissed, type ProposedTab } from '@/lib/documentTabs'
+import { defaultTabFormat, resolveTabNumbering, sectionTabNumbering, splitNumbering, tabPageLabel } from '@/lib/tabNumbering'
+import { readSectionProps } from '@/lib/sectionProps'
+import ExportTabsDialog, { type ExportChoice } from '@/components/editor/ExportTabsDialog'
+import WholeDocumentView from '@/components/editor/WholeDocumentView'
+import { documentOutline, pageFinder, type CrossTabEntries } from '@/components/editor/DocumentParts'
+import { captionScheme, findCaptions, type CaptionContext } from '@/components/editor/captionNumbering'
+import { bodyForExport, exportTitle, selectedTabs, type ExportFormat } from '@/lib/tabExport'
+import { exportThesisPdf, exportThesisWord } from '@/lib/thesisExport'
+import { exportIeeeDocx } from '@/lib/ieeeExport'
 import {
   TiptapToolbar,
+  downloadDOCX,
+  downloadHTML,
   type Editor,
   type PageSizeKey,
   type PageOrientation,
@@ -89,6 +104,19 @@ const AVATAR_COLORS = [
 ]
 
 /** Deterministic avatar color for a collaborator. */
+/** Where a document's unsaved local copy is kept: per tab for a document split into tabs. */
+function tabDraftKey(documentId: string, tabId: string | null): string {
+  return tabId ? `${documentId}#${tabId}` : documentId
+}
+
+/** Keep the open tab in the address bar (`?tab=`), so a reload or a shared link opens the same tab. */
+function setTabInUrl(tabId: string | null): void {
+  const url = new URL(window.location.href)
+  if (tabId) url.searchParams.set('tab', tabId)
+  else url.searchParams.delete('tab')
+  if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url)
+}
+
 function avatarColor(userId: string): string {
   let hash = 0
   for (let i = 0; i < userId.length; i++) {
@@ -195,15 +223,34 @@ export default function Document(): JSX.Element {
   const docChannelRef = useRef<RealtimeChannel | null>(null)
   const [remotePresence, setRemotePresence] = useState<Map<string, RemotePresence>>(new Map())
 
-  // Live collaboration: a shared Yjs document per open document, or solo when that isn't possible.
-  const collab = useCollaboration(id, shareToken, Boolean(user?.id))
+  // Document tabs (a document split into chapter tabs, migration 048): the tabs (null until the
+  // document loads, [] when it has none), the tab open in the editor, and — separately — the tab whose
+  // text the save refs below hold, so a save during a switch can never land in the wrong tab.
+  const [docTabs, setDocTabs] = useState<DocumentTabSummary[] | null>(null)
+  const docTabsRef = useRef<DocumentTabSummary[] | null>(null)
+  docTabsRef.current = docTabs
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const contentTabRef = useRef<string | null>(null)
+  // The document-wide fields (title, header/footer, page setup) as last saved, for a tabbed save.
+  const savedDocumentFieldsRef = useRef<string>('')
+  const [tabBusy, setTabBusy] = useState<boolean>(false)
+  // The whole document, read-only, one tab under another (instead of the open tab's editor).
+  const [wholeView, setWholeView] = useState<boolean>(false)
+  // Bumped to load the document again (after a split, merge, tab delete or restored version).
+  const [reloadKey, setReloadKey] = useState<number>(0)
+  const isTabbed = Boolean(docTabs && docTabs.length > 0)
+
+  // Live collaboration: a shared Yjs document per open document (per open tab when it has tabs),
+  // or solo when that isn't possible.
+  const collabRoom = id && isTabbed && activeTabId ? `${id}/${activeTabId}` : id
+  const collab = useCollaboration(collabRoom, shareToken, Boolean(user?.id))
   const collabModeRef = useRef(collab.mode)
   collabModeRef.current = collab.mode
   // The document id whose server copy has been applied (or failed to load).
   const [loadedDocId, setLoadedDocId] = useState<string | null>(null)
   // The shared editor mounts only after the server copy is in: that copy reaches the editor as a
   // `content` change, and arriving after the shared document it would overwrite everyone's edits.
-  const editorReady = collab.mode === 'solo' || (collab.mode === 'collab' && loadedDocId === id)
+  const editorReady = collab.mode === 'solo' || (collab.mode === 'collab' && loadedDocId === id && collab.room === collabRoom)
   const collabUserName = (user?.displayName || user?.email?.split('@')[0] || 'Anonymous').trim()
   const editorCollaboration = useMemo<EditorCollaboration | null>(
     () =>
@@ -811,23 +858,41 @@ export default function Document(): JSX.Element {
         // Paint from the IndexedDB cache first so the editor is instant on reload.
         const cached = await getCachedDocumentRead(docId)
         if (cancelled) return
-        if (cached && latestContentRef.current === '') {
+        // A cached document split into tabs holds the whole body, not one tab: never paint it.
+        const cachedTabbed = Boolean(cached?.tabs?.length) || Boolean(cached?.content?.includes('data-tab-break'))
+        if (cached && latestContentRef.current === '' && !cachedTabbed) {
           applyLoadedDocument(cached)
         }
 
         const doc = await api.documents.get(docId, shareToken)
         if (cancelled) return
-        applyLoadedDocument(doc)
+        // A document split into tabs opens one tab: the one in the URL, else the first.
+        const tabs = doc.tabs ?? []
+        let shown: DocumentRecord = doc
+        let tabId: string | null = null
+        if (tabs.length > 0) {
+          const wanted = new URLSearchParams(window.location.search).get('tab')
+          tabId = tabs.some((tab) => tab.tab_id === wanted) ? (wanted as string) : tabs[0].tab_id
+          const tab = await api.documents.tabs.get(docId, tabId, shareToken)
+          if (cancelled) return
+          shown = { ...doc, content: tab.content, content_json: tab.content_json }
+        }
+        contentTabRef.current = tabId
+        setDocTabs(tabs)
+        setActiveTabId(tabId)
+        setTabInUrl(tabId)
+        applyLoadedDocument(shown)
         documentLoadedRef.current = true
         setLoadedDocId(docId)
         // Opening a document puts it first in "Recent" and restarts its 7 days.
         void api.documents.markOpened(docId)
         // Edits that never reached the server are offered back, never applied silently.
-        const draft = readLocalDraft(docId)
-        if (draft && draft.content !== (doc.content ?? '') && new Date(draft.savedAt).getTime() > new Date(doc.updated_at).getTime()) {
+        const draftKey = tabDraftKey(docId, tabId)
+        const draft = readLocalDraft(draftKey)
+        if (draft && draft.content !== (shown.content ?? '') && new Date(draft.savedAt).getTime() > new Date(doc.updated_at).getTime()) {
           setRecoveredDraft(draft)
         } else if (draft) {
-          clearLocalDraft(docId)
+          clearLocalDraft(draftKey)
         }
         // Share-link visitors who are not the owner get a read-only session —
         // unless the link grants edit permission and is not expired.
@@ -857,7 +922,7 @@ export default function Document(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, reloadKey])
 
   /* ── Supabase Realtime: live doc sync + collaborator presence ───────── */
   useEffect(() => {
@@ -879,16 +944,38 @@ export default function Document(): JSX.Element {
     let lastApplied: string | null = null
     channel.on('broadcast', { event: 'doc_sync' }, ({ payload }: { payload: unknown }) => {
       if (readOnly || !isDocSyncNotice(payload)) return
+      // Someone split, merged, added, moved or removed tabs: load the document again.
+      if (payload.tabs_changed) {
+        void reloadDocument(true)
+        return
+      }
       if (!isNewer(payload.updated_at, lastApplied)) return
       void fetchAnnouncedDocument(payload, () => api.documents.get(docId, shareToken))
-        .then((doc) => {
+        .then(async (doc) => {
           // A slower fetch for an earlier notice must not replace a newer state already applied.
           if (!doc || !isNewer(doc.updated_at, lastApplied)) return
           lastApplied = doc.updated_at
+          // A document split into tabs: only a save of the tab open here changes this editor.
+          const openTab = contentTabRef.current
+          if (openTab) {
+            if (collabModeRef.current !== 'collab' && payload.tab_id === openTab) {
+              const tab = await api.documents.tabs.get(docId, openTab, shareToken)
+              if (contentTabRef.current === openTab && latestContentRef.current !== tab.content) {
+                latestContentRef.current = tab.content
+                latestJsonRef.current = tab.content_json ?? null
+                setContentJson(tab.content_json ?? null)
+                setContent(tab.content)
+              }
+            }
+          } else if (doc.content?.includes('data-tab-break')) {
+            // It was split into tabs elsewhere: open it as a tabbed document.
+            void reloadDocument(true)
+            return
+          }
           // In a live session the body already arrives through the shared document; replacing it
           // with a save (which may be seconds old) would undo others' newest typing. Only the
           // title and header/footer, which are not part of the shared body, are taken from here.
-          if (collabModeRef.current !== 'collab' && latestContentRef.current !== doc.content) {
+          if (!openTab && collabModeRef.current !== 'collab' && latestContentRef.current !== doc.content) {
             latestContentRef.current = doc.content
             latestJsonRef.current = doc.content_json ?? null
             setContentJson(doc.content_json ?? null)
@@ -1738,11 +1825,11 @@ export default function Document(): JSX.Element {
     pendingSaveRef.current = false
     setSaveStatus('saving')
 
+    // The tab whose text the refs hold (null for a document without tabs).
+    const savingTab = contentTabRef.current
     try {
-      const savedDoc = await api.documents.update(id, {
+      const documentFields = {
         title: nextTitle,
-        content: nextContent,
-        content_json: nextJson,
         header_content: latestHeaderRef.current,
         footer_content: latestFooterRef.current,
         show_header: latestHeaderSettingsRef.current.showHeader,
@@ -1753,25 +1840,59 @@ export default function Document(): JSX.Element {
         margins: latestPageSetupRef.current.margins,
         orientation: latestPageSetupRef.current.orientation,
         formatting_history: nextFormatHistory,
-      }, shareToken)
+      }
+      let savedAt: string | undefined
+      if (savingTab) {
+        // A document split into tabs saves the open tab's text, then the document-wide settings.
+        const pages = livePageCount()
+        // What the other tabs need to know about this one: its headings and captions with their
+        // pages (contents and lists across tabs) and its caption counts (numbering continues).
+        const laidOut = live && !live.isDestroyed ? live : null
+        const outline = laidOut ? documentOutline(laidOut).map(({ kind, level, text, page }) => ({ kind, level, text, page })) : null
+        const previousCounts = docTabsRef.current?.find((tab) => tab.tab_id === savingTab)?.caption_counts ?? {}
+        const captionCounts = laidOut ? { ...previousCounts, ...captionCountsOf(laidOut) } : null
+        const savedTab = await api.documents.tabs.save(
+          id,
+          savingTab,
+          {
+            content: nextContent,
+            content_json: nextJson,
+            ...(pages > 0 ? { page_count: pages } : {}),
+            ...(outline ? { outline } : {}),
+            ...(captionCounts ? { caption_counts: captionCounts } : {}),
+          },
+          shareToken,
+        )
+        setDocTabs((current) => current?.map((tab) => (tab.tab_id === savingTab ? { ...tab, ...savedTab } : tab)) ?? current)
+        savedAt = savedTab.updated_at
+        // The title, header/footer and page setup go only when one of them changed since they were
+        // last saved: each request costs seconds on a long document, and typing changes none of them.
+        const fieldsKey = JSON.stringify(documentFields)
+        if (fieldsKey !== savedDocumentFieldsRef.current) {
+          savedAt = (await api.documents.update(id, documentFields, shareToken)).updated_at
+          savedDocumentFieldsRef.current = fieldsKey
+        }
+      } else {
+        savedAt = (await api.documents.update(id, { ...documentFields, content: nextContent, content_json: nextJson }, shareToken)).updated_at
+      }
       // Edits made while this request was in flight are newer than nextContent: never put the older copy
       // back (it used to overwrite them in the editor), and say Saved only once nothing waits to be saved.
       saveRetryCountRef.current = 0
       setSaveStatus(pendingSaveRef.current ? 'unsaved' : 'saved')
       setStorageFull(false)
-      if (!pendingSaveRef.current) clearLocalDraft(id)
+      if (!pendingSaveRef.current) clearLocalDraft(tabDraftKey(id, savingTab))
       if (id) void evictCachedDocument(id)
 
       // Announce the save to collaborators on the live channel; they fetch the saved document.
       const channel = docChannelRef.current
-      if (channel && savedDoc?.updated_at) {
-        const notice: DocSyncNotice = { updated_at: savedDoc.updated_at, sender_id: user?.id ?? '', timestamp: Date.now() }
+      if (channel && savedAt) {
+        const notice: DocSyncNotice = { updated_at: savedAt, sender_id: user?.id ?? '', timestamp: Date.now(), ...(savingTab ? { tab_id: savingTab } : {}) }
         void channel.send({ type: 'broadcast', event: 'doc_sync', payload: notice }).catch(() => {})
       }
     } catch (error) {
       console.error('Autosave failed', error)
       // Keep the unsaved edits in this browser so a closed tab or a long outage loses nothing.
-      writeLocalDraft(id, { title: nextTitle, content: nextContent, content_json: nextJson })
+      writeLocalDraft(tabDraftKey(id, savingTab), { title: nextTitle, content: nextContent, content_json: nextJson })
       if ((error as { status?: number }).status === 413) {
         // Out of storage: retrying can't help. The draft above keeps the edits until space is freed.
         pendingSaveRef.current = false
@@ -1812,7 +1933,7 @@ export default function Document(): JSX.Element {
       const liveHtml = live && !live.isDestroyed && live.isEditable ? live.getHTML() : null
       const unseen = liveHtml !== null && liveHtml !== latestContentRef.current
       if (unseen || pendingSaveRef.current || savingRef.current) {
-        writeLocalDraft(id, {
+        writeLocalDraft(tabDraftKey(id, contentTabRef.current), {
           title: latestTitleRef.current,
           content: unseen && liveHtml !== null ? liveHtml : latestContentRef.current,
           content_json: unseen && live ? live.getJSON() : latestJsonRef.current,
@@ -1836,9 +1957,481 @@ export default function Document(): JSX.Element {
 
   /** Forget recovered unsaved edits and keep the saved copy. */
   function discardRecoveredDraft(): void {
-    if (id) clearLocalDraft(id)
+    if (id) clearLocalDraft(tabDraftKey(id, contentTabRef.current))
     setRecoveredDraft(null)
   }
+
+  /* ── Document tabs ─────────────────────────────────────────────────────── */
+
+  /** Pages the open editor lays out (one page-break zone per page). */
+  function livePageCount(): number {
+    const live = liveEditorRef.current
+    if (!live || live.isDestroyed) return 0
+    return live.view.dom.querySelectorAll('.rm-page-break').length
+  }
+
+  /**
+   * Save now whatever is waiting (or, with `force`, the current text even when nothing is):
+   * before switching tabs, splitting or merging, the server must hold exactly what is on screen.
+   */
+  async function flushSave(force: boolean): Promise<void> {
+    if (autosaveTimer.current) {
+      clearTimeout(autosaveTimer.current)
+      autosaveTimer.current = null
+    }
+    for (let wait = 0; wait < 150 && savingRef.current; wait += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    if (readOnly) return
+    if (force || pendingSaveRef.current) await saveDocument()
+  }
+
+  /** Load the document again (its tabs may have changed); `save` first sends what is waiting. */
+  async function reloadDocument(save: boolean): Promise<void> {
+    if (save) {
+      await flushSave(false)
+    } else {
+      // A restored version replaced the text on the server: what was waiting must not overwrite it.
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+      pendingSaveRef.current = false
+    }
+    setReloadKey((key) => key + 1)
+  }
+
+  /** Tell the people in this document that its tabs changed (they load it again). */
+  function announceTabsChanged(): void {
+    const channel = docChannelRef.current
+    if (!channel) return
+    const notice: DocSyncNotice = { updated_at: new Date().toISOString(), sender_id: user?.id ?? '', timestamp: Date.now(), tabs_changed: true }
+    void channel.send({ type: 'broadcast', event: 'doc_sync', payload: notice }).catch(() => {})
+  }
+
+  /** Open another tab: the open one is saved first, then the other's text is loaded. */
+  async function switchTab(tabId: string): Promise<void> {
+    if (!id || tabBusy || tabId === contentTabRef.current) return
+    setTabBusy(true)
+    // Typing into the closing tab while it saves and the next one loads would go nowhere: stop it,
+    // and save everything typed up to now.
+    const closing = liveEditorRef.current
+    if (closing && !closing.isDestroyed) closing.setEditable(false)
+    try {
+      await flushSave(false)
+      const tab = await api.documents.tabs.get(id, tabId, shareToken)
+      // Nothing typed into the closing editor may be saved into the opening tab.
+      documentLoadedRef.current = false
+      contentTabRef.current = tabId
+      latestContentRef.current = tab.content
+      latestJsonRef.current = tab.content_json ?? null
+      setContentJson(tab.content_json ?? null)
+      setContent(tab.content)
+      setActiveTabId(tabId)
+      setTabInUrl(tabId)
+      resetCompositionBaseline(updateWordCount(tab.content))
+      setSaveStatus('saved')
+      documentLoadedRef.current = true
+      const draftKey = tabDraftKey(id, tabId)
+      const draft = readLocalDraft(draftKey)
+      if (draft && draft.content !== tab.content && new Date(draft.savedAt).getTime() > new Date(tab.updated_at).getTime()) {
+        setRecoveredDraft(draft)
+      } else {
+        setRecoveredDraft(null)
+        if (draft) clearLocalDraft(draftKey)
+      }
+      editorCanvasRef.current?.scrollTo({ top: 0 })
+    } catch (error) {
+      console.error('Could not open the tab', error)
+      setTabError(error instanceof Error ? error.message : 'Could not open that tab.')
+      // Still on the closing tab: let it be edited again.
+      if (closing && !closing.isDestroyed && !readOnly) closing.setEditable(true)
+    } finally {
+      setTabBusy(false)
+    }
+  }
+
+  /** Figures and tables in an editor's document (what a tab stores for the tabs after it). */
+  function captionCountsOf(source: Editor): { figure: number; table: number } {
+    const entries = findCaptions(source.state.doc)
+    return {
+      figure: entries.filter((entry) => entry.kind === 'figure').length,
+      table: entries.filter((entry) => entry.kind === 'table').length,
+    }
+  }
+
+  /**
+   * At a split the whole document is still laid out in the editor: read each future tab's page
+   * count, outline (pages counted within the tab) and caption counts, and the document's caption
+   * numbering scheme, so every tab knows where it stands without being opened.
+   */
+  function splitFacts(
+    source: Editor,
+    chosen: ProposedTab[],
+  ): Array<{ pageCount: number; outline: Array<{ kind: 'heading' | 'figure' | 'table'; level: number; text: string; page: number }>; captionCounts: Record<string, unknown> }> {
+    const doc = source.state.doc
+    const pageOf = pageFinder(source)
+    const totalPages = Math.max(1, source.view.dom.querySelectorAll('.rm-page-break').length)
+    const offsets: number[] = []
+    let pos = 0
+    for (let index = 0; index < doc.childCount; index += 1) {
+      offsets.push(pos)
+      pos += doc.child(index).nodeSize
+    }
+    offsets.push(pos)
+    // A tab's first page is where its first real block is (a page break opening it sits on the page before).
+    const firstPage = chosen.map((tab, order) => {
+      let index = order === 0 ? 0 : tab.start
+      while (index < doc.childCount - 1 && ['pageBreak', 'sectionMark'].includes(doc.child(index).type.name)) index += 1
+      return order === 0 ? 1 : pageOf(offsets[index] + 1)
+    })
+    const ranges = chosen.map((tab, order) => ({
+      from: order === 0 ? 0 : offsets[tab.start],
+      to: order + 1 < chosen.length ? offsets[chosen[order + 1].start] : pos,
+    }))
+    const outline = documentOutline(source)
+    const captions = findCaptions(doc)
+    const schemes = {
+      figure: captionScheme(captions.filter((entry) => entry.kind === 'figure')),
+      table: captionScheme(captions.filter((entry) => entry.kind === 'table')),
+    }
+    return chosen.map((_tab, order) => {
+      const { from, to } = ranges[order]
+      const inside = <T extends { pos: number }>(item: T): boolean => item.pos >= from && item.pos < to
+      const next = order + 1 < chosen.length ? firstPage[order + 1] : totalPages + 1
+      return {
+        pageCount: Math.max(1, next - firstPage[order]),
+        outline: outline.filter(inside).map(({ kind, level, text, page }) => ({ kind, level, text, page: Math.max(1, page - firstPage[order] + 1) })),
+        captionCounts: {
+          figure: captions.filter((entry) => entry.kind === 'figure' && inside(entry)).length,
+          table: captions.filter((entry) => entry.kind === 'table' && inside(entry)).length,
+          schemes,
+        },
+      }
+    })
+  }
+
+  // A heading picked in another tab's outline: scrolled to once that tab's editor is up.
+  const pendingHeadingRef = useRef<{ text: string; level: number } | null>(null)
+  useEffect(() => {
+    const pending = pendingHeadingRef.current
+    if (!pending || !editor || editor.isDestroyed) return
+    const timer = window.setTimeout(() => {
+      if (editor.isDestroyed) return
+      const pos = findHeadingPosition(editor, pending.text, pending.level)
+      if (pos === null) return
+      pendingHeadingRef.current = null
+      flashBlockAt(pos)
+      editor.chain().focus().setTextSelection(pos + 1).run()
+      scrollCanvasToPos(pos + 1)
+    }, 600)
+    return () => window.clearTimeout(timer)
+  }, [editor])
+
+  /** Show the whole document read-only, or go back to editing the open tab (saved first). */
+  async function toggleWholeView(): Promise<void> {
+    if (!wholeView) await flushSave(false)
+    setWholeView((on) => !on)
+    editorCanvasRef.current?.scrollTo({ top: 0 })
+  }
+
+  /** Rename, move or renumber a tab. */
+  async function changeTab(tabId: string, changes: { title?: string; position?: number; numbering?: TabNumbering | null }): Promise<void> {
+    if (!id) return
+    setTabBusy(true)
+    try {
+      setDocTabs(await api.documents.tabs.update(id, tabId, changes))
+      announceTabsChanged()
+    } catch (error) {
+      setTabError(error instanceof Error ? error.message : 'Could not change the tab.')
+    } finally {
+      setTabBusy(false)
+    }
+  }
+
+  /** Add an empty tab after another one and open it. */
+  async function addTabAfter(afterTabId: string): Promise<void> {
+    if (!id) return
+    setTabBusy(true)
+    let created: DocumentTabSummary | null = null
+    try {
+      created = await api.documents.tabs.add(id, 'Untitled tab', afterTabId)
+      setDocTabs(await api.documents.tabs.list(id, shareToken))
+      announceTabsChanged()
+    } catch (error) {
+      setTabError(error instanceof Error ? error.message : 'Could not add a tab.')
+    } finally {
+      setTabBusy(false)
+    }
+    if (created) await switchTab(created.tab_id)
+  }
+
+  /** Delete a tab (the server keeps a version first). Deleting the open one opens its neighbour. */
+  async function deleteTabById(tabId: string): Promise<void> {
+    if (!id || !docTabs) return
+    const index = docTabs.findIndex((tab) => tab.tab_id === tabId)
+    const open = tabId === contentTabRef.current
+    setTabBusy(true)
+    try {
+      if (open) {
+        // Its unsaved text goes nowhere: the tab is about to be deleted.
+        if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+        pendingSaveRef.current = false
+      }
+      const remaining = await api.documents.tabs.remove(id, tabId)
+      clearLocalDraft(tabDraftKey(id, tabId))
+      announceTabsChanged()
+      if (open) {
+        setTabInUrl(remaining[Math.max(0, Math.min(index, remaining.length - 1))]?.tab_id ?? null)
+        setReloadKey((key) => key + 1)
+      } else {
+        setDocTabs(remaining)
+      }
+    } catch (error) {
+      setTabError(error instanceof Error ? error.message : 'Could not delete the tab.')
+    } finally {
+      setTabBusy(false)
+    }
+  }
+
+  /** Put every tab back into one body (the text is unchanged). */
+  async function mergeAllTabs(): Promise<void> {
+    if (!id) return
+    setTabBusy(true)
+    try {
+      await flushSave(false)
+      await api.documents.tabs.merge(id)
+      announceTabsChanged()
+      setTabInUrl(null)
+      setReloadKey((key) => key + 1)
+    } catch (error) {
+      setTabError(error instanceof Error ? error.message : 'Could not merge the tabs.')
+    } finally {
+      setTabBusy(false)
+    }
+  }
+
+  // The split offer: proposed once the document is open, shown by itself once per document.
+  const [splitProposal, setSplitProposal] = useState<ProposedTab[] | null>(null)
+  const [splitOpen, setSplitOpen] = useState<boolean>(false)
+  const [splitBusy, setSplitBusy] = useState<boolean>(false)
+  const [splitError, setSplitError] = useState<string>('')
+  const [tabError, setTabError] = useState<string>('')
+  const splitWordCounts = useMemo(
+    () => (splitOpen && splitProposal && editor && !editor.isDestroyed ? proposalWordCounts(editor.getJSON() as EditorJson, splitProposal) : []),
+    [splitOpen, splitProposal, editor],
+  )
+
+  useEffect(() => {
+    setSplitProposal(null)
+    setSplitOpen(false)
+    if (!editor || !id || readOnly || isTabbed || loadedDocId !== id || docTabs === null) return
+    // After the document has settled in the editor (an import loads in one go).
+    const timer = window.setTimeout(() => {
+      if (editor.isDestroyed) return
+      const proposal = proposeChapterSplit(editor.getJSON() as EditorJson)
+      setSplitProposal(proposal)
+      // Asks by itself only the owner, and only once per document ("Not now" is remembered).
+      if (proposal && docOwnerId === user?.id && !splitPromptDismissed(id)) setSplitOpen(true)
+    }, 1500)
+    return () => window.clearTimeout(timer)
+    // The proposal is read once per opened document; typing does not re-ask.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, id, readOnly, isTabbed, loadedDocId, docTabs === null])
+
+  /** Open the split dialog from the left panel, with a fresh proposal from the current text. */
+  function openSplitDialog(): void {
+    if (!editor || editor.isDestroyed) return
+    const proposal = proposeChapterSplit(editor.getJSON() as EditorJson)
+    setSplitProposal(proposal)
+    setSplitError('')
+    if (proposal) setSplitOpen(true)
+  }
+
+  /** Split into the chosen tabs: save, place the markers, send them, then open the first tab. */
+  async function splitIntoTabs(chosen: ProposedTab[]): Promise<void> {
+    const live = liveEditorRef.current
+    if (!id || !live || live.isDestroyed) return
+    setSplitBusy(true)
+    setSplitError('')
+    try {
+      // The server checks the split against the saved text, so save exactly what is on screen first.
+      await flushSave(true)
+      const json = live.getJSON() as EditorJson
+      const facts = splitFacts(live, chosen)
+      const marked = insertTabBreaks(json, chosen)
+      const html = getHTMLFromFragment(live.schema.nodeFromJSON(marked).content, live.schema)
+      const created = await api.documents.tabs.split(id, { content: html, content_json: marked })
+      // Page numbers per tab. An imported Word document keeps its own: each tab takes the numbering
+      // of the section that opens it (Chapter 1 restarting at 1, Roman front matter). Otherwise a
+      // manuscript numbers its front matter in Roman numerals and Chapter 1 from 1.
+      const nodes = (json.content ?? []) as Array<{ type?: string; attrs?: Record<string, unknown> }>
+      const format = headerNumberFormat !== 'none' ? headerNumberFormat : footerNumberFormat
+      let chapterSeen = false
+      for (const [index, tab] of created.entries()) {
+        const kind = chosen[index]?.kind ?? 'chapter'
+        let numbering: TabNumbering | null
+        if (pageLayout) {
+          const opening = index === 0 ? null : nodes[chosen[index]?.start ?? -1]
+          numbering = index === 0
+            ? sectionTabNumbering(pageLayout.sections[0] ? { start: pageLayout.sections[0].number_start, format: pageLayout.sections[0].number_format } : null)
+            : sectionTabNumbering(opening && (opening.type === 'pageBreak' || opening.type === 'sectionMark') ? readSectionProps(opening.attrs?.sectionProps)?.numbering : null)
+        } else {
+          numbering = splitNumbering(format, kind, kind === 'chapter' && !chapterSeen)
+        }
+        if (kind === 'chapter') chapterSeen = true
+        const fact = facts[index]
+        await api.documents.tabs.update(id, tab.tab_id, {
+          ...(numbering ? { numbering } : {}),
+          ...(fact ? { page_count: fact.pageCount, outline: fact.outline, caption_counts: fact.captionCounts } : {}),
+        })
+      }
+      announceTabsChanged()
+      setSplitOpen(false)
+      setTabInUrl(created[0]?.tab_id ?? null)
+      setReloadKey((key) => key + 1)
+    } catch (error) {
+      setSplitError(error instanceof Error ? error.message : 'The document could not be split.')
+    } finally {
+      setSplitBusy(false)
+    }
+  }
+
+  // Report how many pages the open tab takes once it is laid out, so the tabs after it number
+  // their pages from the right place (also when it was opened and not edited).
+  useEffect(() => {
+    if (!editor || !id || !activeTabId || readOnly) return
+    const timer = window.setInterval(() => {
+      if (editor.isDestroyed || contentTabRef.current !== activeTabId) return
+      const pages = editor.view.dom.querySelectorAll('.rm-page-break').length
+      const tab = docTabsRef.current?.find((candidate) => candidate.tab_id === activeTabId)
+      if (!tab || pages <= 0 || tab.page_count === pages) return
+      setDocTabs((current) => current?.map((candidate) => (candidate.tab_id === activeTabId ? { ...candidate, page_count: pages } : candidate)) ?? current)
+      void api.documents.tabs.update(id, activeTabId, { page_count: pages }).catch(() => {})
+    }, 4000)
+    return () => window.clearInterval(timer)
+  }, [editor, id, activeTabId, readOnly])
+
+  // Downloads of a document split into tabs: which tabs to export is asked first.
+  const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null)
+  const [exportBusy, setExportBusy] = useState<boolean>(false)
+  const [exportError, setExportError] = useState<string>('')
+  const [exportPresetTab, setExportPresetTab] = useState<string | null>(null)
+
+  /** The toolbar's export menu: a tabbed document opens the tab chooser; any other exports as before. */
+  function requestExport(format: ExportFormat): boolean {
+    if (!isTabbed) return false
+    setExportError('')
+    setExportPresetTab(null)
+    setExportFormat(format)
+    return true
+  }
+
+  /** Export the chosen tabs in the chosen format. */
+  async function runExport(choice: ExportChoice): Promise<void> {
+    const format = exportFormat
+    if (!format || !id || !docTabs) return
+    const live = liveEditorRef.current
+    const context = {
+      documentId: id,
+      shareToken,
+      tabs: docTabs,
+      openTabId: contentTabRef.current,
+      liveHtml: live && !live.isDestroyed ? live.getHTML() : latestContentRef.current,
+    }
+    if (format === 'print' && choice.selection.kind === 'tab') {
+      // The open tab is what is on screen: the browser prints it as laid out.
+      setExportFormat(null)
+      window.setTimeout(() => window.print(), 50)
+      return
+    }
+    setExportBusy(true)
+    setExportError('')
+    try {
+      const html = await bodyForExport(choice.selection, context)
+      const name = exportTitle(title, choice.selection, context)
+      // Part of the document keeps the page numbers it has in the whole (Chapter 3 from 41) unless
+      // "number from 1" was ticked.
+      const first = selectedTabs(choice.selection, context)[0]
+      const documentFormat = headerNumberFormat !== 'none' ? headerNumberFormat : footerNumberFormat
+      const bodyStart =
+        choice.numberFromOne || choice.selection.kind === 'whole' || !first
+          ? 1
+          : resolveTabNumbering(docTabs, first.tab_id, defaultTabFormat(documentFormat))?.start ?? 1
+      if (format === 'word') downloadDOCX(html, name)
+      else if (format === 'ieeeWord') await exportIeeeDocx(html, name)
+      else if (format === 'thesisWord') exportThesisWord(html, name, { bodyStart })
+      else if (format === 'html') downloadHTML(html, name)
+      else exportThesisPdf(html, name)
+      setExportFormat(null)
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'The download could not be prepared.')
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
+  // The open tab's caption numbering continues from the figures and tables of the tabs before it
+  // (when the whole document numbers them in one sequence).
+  const captionContext = useMemo<CaptionContext | null>(() => {
+    if (!docTabs || docTabs.length === 0 || !activeTabId) return null
+    const index = docTabs.findIndex((tab) => tab.tab_id === activeTabId)
+    if (index < 0) return null
+    const offsets = { figure: 0, table: 0 }
+    for (const tab of docTabs.slice(0, index)) {
+      offsets.figure += Number(tab.caption_counts?.figure) || 0
+      offsets.table += Number(tab.caption_counts?.table) || 0
+    }
+    const stored = docTabs.find((tab) => tab.caption_counts?.schemes)?.caption_counts?.schemes as CaptionContext['schemes'] | undefined
+    return { offsets, schemes: stored }
+  }, [docTabs, activeTabId])
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.storage.captions.context = captionContext
+  }, [editor, captionContext])
+
+  /** The other tabs' entries for a table of contents or list of figures/tables (stored outlines). */
+  function crossTabEntries(kind: 'toc' | 'lof' | 'lot'): CrossTabEntries | null {
+    if (!docTabs || docTabs.length === 0 || !activeTabId) return null
+    const index = docTabs.findIndex((tab) => tab.tab_id === activeTabId)
+    if (index < 0) return null
+    const documentFormat = headerNumberFormat !== 'none' ? headerNumberFormat : footerNumberFormat
+    const format = defaultTabFormat(documentFormat)
+    const wanted = kind === 'toc' ? 'heading' : kind === 'lof' ? 'figure' : 'table'
+    const entriesOf = (tab: DocumentTabSummary) => {
+      const numbering = resolveTabNumbering(docTabs, tab.tab_id, format)
+      return (tab.outline ?? [])
+        .filter((item) => (item.kind ?? 'heading') === wanted)
+        .map((item) => ({ text: item.text, level: Math.max(1, item.level), pageLabel: tabPageLabel(numbering, item.page) }))
+    }
+    const own = resolveTabNumbering(docTabs, activeTabId, format)
+    return {
+      before: docTabs.slice(0, index).flatMap(entriesOf),
+      after: docTabs.slice(index + 1).flatMap(entriesOf),
+      pageLabel: (page: number) => tabPageLabel(own, page),
+    }
+  }
+
+  /** The other tab whose headings name a chat target ("the Introduction" → "Chapter 1: Introduction"). */
+  function locateInOtherTab(target: string): string | null {
+    const wanted = target.toLowerCase().replace(/\s+/g, ' ').trim()
+    if (!wanted || !docTabs) return null
+    for (const tab of docTabs) {
+      if (tab.tab_id === activeTabId) continue
+      if (tab.title.toLowerCase().includes(wanted)) return tab.title
+      const hit = (tab.outline ?? []).some((item) => (item.kind ?? 'heading') === 'heading' && item.text.toLowerCase().includes(wanted))
+      if (hit) return tab.title
+    }
+    return null
+  }
+
+  // Words in the whole document: the open tab as typed, the others as last saved.
+  const totalWordCount = isTabbed && docTabs
+    ? docTabs.reduce((sum, tab) => sum + (tab.tab_id === activeTabId ? wordCount : tab.word_count || 0), 0)
+    : wordCount
+
+  // The open tab's page numbers, continued from the tabs before it.
+  const activeTabNumbering = useMemo(() => {
+    if (!docTabs || docTabs.length === 0 || !activeTabId) return null
+    const documentFormat = headerNumberFormat !== 'none' ? headerNumberFormat : footerNumberFormat
+    return resolveTabNumbering(docTabs, activeTabId, defaultTabFormat(documentFormat))
+  }, [docTabs, activeTabId, headerNumberFormat, footerNumberFormat])
 
   /**
    * New content to save. `json` is the editor's JSON of it; content from anywhere else (an import,
@@ -1876,6 +2469,7 @@ export default function Document(): JSX.Element {
         char_count: charCount,
         position: selectionPos,
         doc_size: docSize,
+        ...(contentTabRef.current ? { tab_id: contentTabRef.current } : {}),
       })
       .catch((error) => console.error('Composition telemetry log failed', error))
   }
@@ -3186,6 +3780,9 @@ export default function Document(): JSX.Element {
               pageSetupFocusRequest={pageSetupFocusRequest}
               onPageSetupFocusHandled={handlePageSetupFocusHandled}
               onOpenPersonalization={() => setProfileModalOpen(true)}
+              onExportRequest={requestExport}
+              wholeBodyActionsBlocked={isTabbed ? 'This document is split into tabs. Merge the tabs first (left panel) to import a file over it or restructure it.' : null}
+              onBlockedAction={setTabError}
             />
           </div>
         )}
@@ -3261,6 +3858,44 @@ export default function Document(): JSX.Element {
               'width 200ms ease-in-out, min-width 200ms ease-in-out, max-width 200ms ease-in-out, opacity 200ms ease-in-out, transform 200ms ease-in-out',
           }}
         >
+          {isTabbed && docTabs && (
+            <TabSidebar
+              tabs={docTabs}
+              activeTabId={activeTabId}
+              busy={tabBusy}
+              readOnly={readOnly}
+              onOpen={(tabId) => void switchTab(tabId)}
+              onRename={(tabId, title) => void changeTab(tabId, { title })}
+              onMove={(tabId, position) => void changeTab(tabId, { position })}
+              onSetNumbering={(tabId, numbering) => void changeTab(tabId, { numbering })}
+              onAdd={(afterTabId) => void addTabAfter(afterTabId)}
+              onDelete={(tabId) => void deleteTabById(tabId)}
+              onMergeAll={() => void mergeAllTabs()}
+              wholeView={wholeView}
+              onToggleWholeView={() => void toggleWholeView()}
+              onOpenHeading={(tabId, text, level) => {
+                pendingHeadingRef.current = { text, level }
+                setWholeView(false)
+                void switchTab(tabId)
+              }}
+              onDownload={(tabId) => {
+                setExportError('')
+                setExportPresetTab(tabId)
+                setExportFormat('word')
+              }}
+            />
+          )}
+          {!isTabbed && splitProposal && !readOnly && (
+            <div style={{ borderBottom: '1px solid var(--border)', padding: '0.5rem 0.75rem' }}>
+              <button
+                type="button"
+                onClick={openSplitDialog}
+                className="w-full rounded-md border border-border px-2 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                Split into chapter tabs
+              </button>
+            </div>
+          )}
           <OutlineNavigator
             content={settledContent}
             editor={editor}
@@ -3354,14 +3989,31 @@ export default function Document(): JSX.Element {
               </button>
             )}
             {activeAcademicPreset && <style>{activeAcademicPreset.css}</style>}
-            {!editorReady ? (
+            {wholeView && isTabbed && docTabs && id ? (
+              <WholeDocumentView
+                documentId={id}
+                shareToken={shareToken}
+                tabs={docTabs}
+                defaultFormat={defaultTabFormat(headerNumberFormat !== 'none' ? headerNumberFormat : footerNumberFormat)}
+                pageSize={pageSize}
+                margins={margins}
+                orientation={orientation}
+                headerFooterConfig={headerFooterConfig}
+                pageLayout={pageLayout}
+                underlineStyle={prefs.underlineStyle}
+                onEditTab={(tabId) => {
+                  setWholeView(false)
+                  if (tabId !== contentTabRef.current) void switchTab(tabId)
+                }}
+              />
+            ) : !editorReady ? (
               <div role="status" className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" /> Opening document…
               </div>
             ) : (
             <PagedEditor
               // A fresh editor per document and per mode: collaboration binds the editor to one shared document.
-              key={`${id}:${collab.mode}`}
+              key={`${id}:${activeTabId ?? 'body'}:${collab.mode}`}
               collaboration={editorCollaboration}
               content={content}
               contentJson={contentJson}
@@ -3381,6 +4033,7 @@ export default function Document(): JSX.Element {
               onHydrationChange={setIsHydrating}
               onHeaderFooterActivate={handleHeaderFooterActivate}
               onFormatApplied={handleFormat}
+              tabNumbering={activeTabNumbering}
             />
             )}
 
@@ -3397,10 +4050,61 @@ export default function Document(): JSX.Element {
           {/* Academic word & page target progress widget (plan point 25) */}
           {!readOnly && (
             <WordProgress
-              wordCount={wordCount}
+              wordCount={totalWordCount}
               targetWords={3000}
               wordsPerPage={pageSize === 'a4' ? 300 : 275}
             />
+          )}
+
+          <ExportTabsDialog
+            format={exportFormat}
+            tabs={docTabs ?? []}
+            openTabId={activeTabId}
+            busy={exportBusy}
+            error={exportError}
+            presetTabId={exportPresetTab}
+            onFormatChange={setExportFormat}
+            onExport={(choice) => void runExport(choice)}
+            onClose={() => setExportFormat(null)}
+          />
+          <SplitTabsDialog
+            open={splitOpen && Boolean(splitProposal)}
+            proposal={splitProposal ?? []}
+            wordCounts={splitWordCounts}
+            busy={splitBusy}
+            error={splitError}
+            onSplit={(chosen) => void splitIntoTabs(chosen)}
+            onDismiss={() => {
+              if (id) dismissSplitPrompt(id)
+              setSplitOpen(false)
+            }}
+          />
+          {tabError && (
+            <div
+              role="alert"
+              style={{
+                position: 'fixed',
+                bottom: '1.5rem',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 45,
+                padding: '0.5rem 0.875rem',
+                borderRadius: '0.5rem',
+                border: '1px solid var(--border)',
+                background: 'var(--card)',
+                color: 'var(--foreground)',
+                fontSize: '0.8125rem',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                display: 'flex',
+                gap: '0.75rem',
+                alignItems: 'center',
+              }}
+            >
+              {tabError}
+              <button type="button" onClick={() => setTabError('')} style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}>
+                Dismiss
+              </button>
+            </div>
           )}
 
           {/* Unsaved edits from an earlier session */}
@@ -3657,6 +4361,17 @@ export default function Document(): JSX.Element {
           documentTitle={title}
           documentContent={chatContent}
           currentHtml={content}
+          loadCurrentHtml={isTabbed && id && docTabs ? () => {
+            const live = liveEditorRef.current
+            return bodyForExport({ kind: 'whole' }, {
+              documentId: id,
+              shareToken,
+              tabs: docTabs,
+              openTabId: contentTabRef.current,
+              liveHtml: live && !live.isDestroyed ? live.getHTML() : latestContentRef.current,
+            })
+          } : undefined}
+          locateInOtherTab={isTabbed ? locateInOtherTab : undefined}
           scannerSuggestions={scannerSuggestions}
           activeScannerKey={scannerActive?.key ?? null}
           mlSuggestions={showSuggestions ? suggestions : []}
@@ -3679,6 +4394,12 @@ export default function Document(): JSX.Element {
           readOnly={readOnly}
           onApplyPreset={readOnly ? undefined : (key) => { void handleApplyAcademicPreset(key) }}
           onVersionRestored={(version) => {
+            // The server already rebuilt the tabs of a restored version (or removed them, for one
+            // taken before a split): load the document again rather than pushing one body in.
+            if (isTabbed || version.content.includes('data-tab-break')) {
+              void reloadDocument(false)
+              return
+            }
             // Push the restored snapshot back into both the editor and the
             // page state so the canvas reflects the restored history point.
             const snapshot = readFormatSnapshot(version.editor_prefs)
@@ -3719,7 +4440,7 @@ export default function Document(): JSX.Element {
           }}
           toolsSection={
             <>
-              <DocumentPartsPanel editor={editor} readOnly={readOnly} />
+              <DocumentPartsPanel editor={editor} readOnly={readOnly} crossTab={isTabbed ? crossTabEntries : undefined} />
 
 
               <CitationAssistant

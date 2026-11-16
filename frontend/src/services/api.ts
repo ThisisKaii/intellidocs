@@ -133,6 +133,8 @@ export interface DocumentRecord {
   owner_display_name?: string | null
   /** Whether the current user can edit this document (server-computed). */
   can_edit?: boolean
+  /** The document's tabs (without their bodies) when it is split into tabs; empty otherwise. */
+  tabs?: DocumentTabSummary[]
 }
 
 export interface DocumentVersion {
@@ -211,6 +213,8 @@ export interface BehaviorEvent {
   position?: number
   /** Document size at event time, for position normalisation. */
   doc_size?: number
+  /** A document split into tabs: the tab the event happened in (position and doc_size are within it). */
+  tab_id?: string
 }
 
 export interface BehaviorSummaryLatestEvent extends BehaviorEvent {
@@ -382,6 +386,47 @@ export interface SharedPresetFile {
   description?: string
   baseKey: string
   blueprint: PresetBlueprint
+}
+
+/** `?shareToken=…` for a document opened through a share link, else nothing. */
+function shareQuery(shareToken?: string | null): string {
+  return shareToken ? `?shareToken=${encodeURIComponent(shareToken)}` : ''
+}
+
+/** A tab's page numbering; null continues the previous tab's numbers. */
+export interface TabNumbering {
+  format: 'none' | 'roman' | 'arabic'
+  restart: boolean
+  start: number
+  hideFirst: boolean
+}
+
+/** A heading or caption of a tab, with the page (within the tab) it is on. */
+export interface TabOutlineItem {
+  kind?: 'heading' | 'figure' | 'table'
+  level: number
+  text: string
+  page: number
+}
+
+/** One tab of a document split into tabs (migration 048), without its body. */
+export interface DocumentTabSummary {
+  tab_id: string
+  title: string
+  position: number
+  page_count: number
+  word_count: number
+  numbering: TabNumbering | null
+  caption_counts: Record<string, unknown> | null
+  outline: TabOutlineItem[] | null
+  updated_at: string
+}
+
+/** One tab with its body. */
+export interface DocumentTab extends DocumentTabSummary {
+  document_id: string
+  content: string
+  content_json: EditorJson | null
 }
 
 /** Payload for forking a standard blueprint into a personal preset. */
@@ -1353,6 +1398,69 @@ export const api = {
       return fetchAPI<DocumentRecord>(`documents/${id}/versions/${versionId}/restore`, {
         method: 'POST',
       })
+    },
+    /** Tabs of a document split into tabs (migration 048). */
+    tabs: {
+      list: async (id: string, shareToken?: string | null): Promise<DocumentTabSummary[]> =>
+        (await fetchAPI<{ tabs: DocumentTabSummary[] }>(`documents/${id}/tabs${shareQuery(shareToken)}`)).tabs,
+      get: async (id: string, tabId: string, shareToken?: string | null): Promise<DocumentTab> =>
+        fetchAPI<DocumentTab>(`documents/${id}/tabs/${tabId}${shareQuery(shareToken)}`),
+      save: async (
+        id: string,
+        tabId: string,
+        body: {
+          content: string
+          content_json?: EditorJson | null
+          page_count?: number
+          caption_counts?: Record<string, unknown> | null
+          outline?: TabOutlineItem[] | null
+        },
+        shareToken?: string | null,
+      ): Promise<DocumentTabSummary> =>
+        fetchAPI<DocumentTabSummary>(`documents/${id}/tabs/${tabId}${shareQuery(shareToken)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      /** Split into tabs: the body with a tab marker before each tab. */
+      split: async (id: string, body: { content: string; content_json: EditorJson | null }): Promise<DocumentTabSummary[]> =>
+        (
+          await fetchAPI<{ tabs: DocumentTabSummary[] }>(`documents/${id}/tabs/split`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+        ).tabs,
+      merge: async (id: string): Promise<void> => {
+        await fetchAPI<{ tabs: [] }>(`documents/${id}/tabs/merge`, { method: 'POST' })
+      },
+      add: async (id: string, title: string, afterTabId?: string): Promise<DocumentTabSummary> =>
+        fetchAPI<DocumentTabSummary>(`documents/${id}/tabs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, afterTabId }),
+        }),
+      update: async (
+        id: string,
+        tabId: string,
+        changes: {
+          title?: string
+          position?: number
+          numbering?: TabNumbering | null
+          page_count?: number
+          outline?: TabOutlineItem[] | null
+          caption_counts?: Record<string, unknown> | null
+        },
+      ): Promise<DocumentTabSummary[]> =>
+        (
+          await fetchAPI<{ tabs: DocumentTabSummary[] }>(`documents/${id}/tabs/${tabId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(changes),
+          })
+        ).tabs,
+      remove: async (id: string, tabId: string): Promise<DocumentTabSummary[]> =>
+        (await fetchAPI<{ tabs: DocumentTabSummary[] }>(`documents/${id}/tabs/${tabId}`, { method: 'DELETE' })).tabs,
     },
     /** Import a file and wait for the created document (used by the editor's own import). */
     import: async (file: File): Promise<DocumentRecord> => {

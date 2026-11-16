@@ -31,6 +31,7 @@ import { MarkdownTriggers } from './MarkdownTriggers'
 import { ListItem, OrderedList } from '@tiptap/extension-list'
 import { PageBreak } from './PageBreak'
 import { SectionMark } from './SectionMark'
+import { TabBreak } from './TabBreak'
 import { SectionLayout } from './SectionLayout'
 import { ColumnSection, SectionColumn } from './ColumnSection'
 import { WrapBlock } from './WrapBlock'
@@ -135,7 +136,7 @@ import { mergeStyleDecls } from '@/lib/inlineStyle'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 /** Download document content as a standalone clean HTML file. */
-function downloadHTML(html: string, title: string): void {
+export function downloadHTML(html: string, title: string): void {
   const docTitle = title.trim() || 'Untitled Document'
   const content = `<!DOCTYPE html>
 <html>
@@ -173,7 +174,7 @@ function downloadHTML(html: string, title: string): void {
 }
 
 /** Download document content as a Word-compatible document (.doc). */
-function downloadDOCX(html: string, title: string): void {
+export function downloadDOCX(html: string, title: string): void {
   const docTitle = title.trim() || 'Untitled Document'
   const content = `<!DOCTYPE html>
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -1300,6 +1301,7 @@ const editorExtensionsAfterStarterKit = [
   PageBreak,
   BlockStyleParser,
   SectionMark,
+  TabBreak,
   SectionLayout,
   ColumnSection,
   SectionColumn,
@@ -1577,6 +1579,17 @@ interface ToolbarProps {
   /** Called after a focus request has been handled so the host can clear it. */
   onPageSetupFocusHandled?: () => void
   onOpenPersonalization?: () => void
+  /**
+   * A document split into tabs asks which tabs to export first: returning true means the host
+   * took the export over (see ExportTabsDialog); otherwise the open editor is exported as before.
+   */
+  onExportRequest?: (format: 'word' | 'ieeeWord' | 'thesisWord' | 'pdf' | 'html' | 'print') => boolean
+  /**
+   * Set for a document split into tabs: importing a file into it and the IEEE restructure replace
+   * the whole body, so they say why they are unavailable (this message) instead of running.
+   */
+  wholeBodyActionsBlocked?: string | null
+  onBlockedAction?: (message: string) => void
   /** Document-type (genre) badge rendered at the start of the right-hand cluster. */
   genreBadge?: ReactNode
 }
@@ -1631,6 +1644,9 @@ export function TiptapToolbar({
   pageSetupFocusRequest = null,
   onPageSetupFocusHandled,
   onOpenPersonalization,
+  onExportRequest,
+  wholeBodyActionsBlocked = null,
+  onBlockedAction,
 }: ToolbarProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'styles'>('home')
   /** Ribbon folded to its tab strip, for more writing space on short screens (Ctrl+F1, as in Word). */
@@ -1733,8 +1749,11 @@ export function TiptapToolbar({
   // because the shared extension array is built once at module scope, so the
   // handler cannot be passed as a static extension option.
   useEffect(() => {
-    if (!editor) return
-    editor.storage.imageResizeBehavior.onResize = (report) => {
+    // An editor being replaced (another document tab, a reload) can already be destroyed here, and
+    // a destroyed editor has no extension storage left.
+    const behavior = editor && !editor.isDestroyed ? editor.storage.imageResizeBehavior : undefined
+    if (!behavior) return
+    behavior.onResize = (report) => {
       onFormatApplied?.('image_resize', {
         contextNode: 'image',
         imageWidth: report.width,
@@ -1743,7 +1762,7 @@ export function TiptapToolbar({
       })
     }
     return () => {
-      editor.storage.imageResizeBehavior.onResize = null
+      behavior.onResize = null
     }
   }, [editor, onFormatApplied])
 
@@ -2501,7 +2520,10 @@ export function TiptapToolbar({
                 if (editor) applyIeeeNumbering(editor)
               })
             }
-            onRestructure={() => setRestructureOpen(true)}
+            onRestructure={() => {
+              if (wholeBodyActionsBlocked) onBlockedAction?.(wholeBodyActionsBlocked)
+              else setRestructureOpen(true)
+            }}
             onPreview={() => setIeeePreviewHtml(editor?.getHTML() ?? '')}
             columnsDraft={columnsDraft}
             onToggleColumnsDraft={() => toggleColumnsDraft()}
@@ -2930,9 +2952,13 @@ export function TiptapToolbar({
           disabled={isImporting}
           onMouseDown={(e) => {
             e.preventDefault()
+            if (wholeBodyActionsBlocked) {
+              onBlockedAction?.(wholeBodyActionsBlocked)
+              return
+            }
             fileInputRef.current?.click()
           }}
-          title="Import Document (.docx, .doc, .pdf, .txt, .html)"
+          title={wholeBodyActionsBlocked ?? 'Import Document (.docx, .doc, .pdf, .txt, .html)'}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -3528,12 +3554,12 @@ export function TiptapToolbar({
         onOpenPersonalization={onOpenPersonalization}
         exportActions={{
           ieee: isIeee,
-          onWord: () => { if (editor) downloadDOCX(editor.getHTML(), documentTitle) },
-          onIeeeWord: () => { if (editor) void exportIeeeDocx(editor.getHTML(), documentTitle) },
-          onThesisWord: () => { if (editor) exportThesisWord(editor.getHTML(), documentTitle) },
-          onPdf: () => { if (editor) exportThesisPdf(editor.getHTML(), documentTitle) },
-          onHtml: () => { if (editor) downloadHTML(editor.getHTML(), documentTitle) },
-          onPrint: () => printDocument(),
+          onWord: () => { if (onExportRequest?.('word')) return; if (editor) downloadDOCX(editor.getHTML(), documentTitle) },
+          onIeeeWord: () => { if (onExportRequest?.('ieeeWord')) return; if (editor) void exportIeeeDocx(editor.getHTML(), documentTitle) },
+          onThesisWord: () => { if (onExportRequest?.('thesisWord')) return; if (editor) exportThesisWord(editor.getHTML(), documentTitle) },
+          onPdf: () => { if (onExportRequest?.('pdf')) return; if (editor) exportThesisPdf(editor.getHTML(), documentTitle) },
+          onHtml: () => { if (onExportRequest?.('html')) return; if (editor) downloadHTML(editor.getHTML(), documentTitle) },
+          onPrint: () => { if (onExportRequest?.('print')) return; printDocument() },
         }}
       />
       </div>
@@ -3644,6 +3670,7 @@ function applyHeadingStyle(editor: Editor, level: 1 | 2): void {
  * it, the kind of selection and whether undo/redo are possible. Typing plain text leaves it the same.
  */
 export function toolbarSignature(editor: Editor): string {
+  if (editor.isDestroyed) return 'destroyed'
   const { state } = editor
   const { selection } = state
   const $from = selection.$from

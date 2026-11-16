@@ -13,6 +13,7 @@ import {
   findCaptions,
   labelForNewCaption,
   misnumberedCaptions,
+  type CaptionContext,
   type CaptionEntry,
   type CaptionKind,
   type CaptionLabelStyle,
@@ -36,7 +37,8 @@ declare module '@tiptap/core' {
   }
 
   interface Storage {
-    captions: { labelStyle: CaptionLabelStyle }
+    /** `context`: for one tab of a document split into tabs, the captions of the tabs before it. */
+    captions: { labelStyle: CaptionLabelStyle; context: CaptionContext | null }
   }
 }
 
@@ -76,6 +78,7 @@ function planCaptionChanges(
   style: CaptionLabelStyle,
   includePlain: boolean,
   entries: CaptionEntry[] = findCaptions(state.doc),
+  context: CaptionContext | null = null,
 ): { edits: CaptionEdit[]; unmark: number[] } {
   const edits: CaptionEdit[] = []
   const unmark: number[] = []
@@ -88,7 +91,7 @@ function planCaptionChanges(
     if ((kind === 'figure' || kind === 'table') && !recognised.has(pos)) unmark.push(pos)
     return false
   })
-  for (const { entry, expected } of misnumberedCaptions(entries, style)) {
+  for (const { entry, expected } of misnumberedCaptions(entries, style, false, context)) {
     if (!entry.tagged && !includePlain) continue
     const from = entry.pos + 1
     edits.push({ pos: entry.pos, from, to: from + entry.label.length, insert: expected })
@@ -150,7 +153,7 @@ export const CaptionExtension = Extension.create({
   name: 'captions',
 
   addStorage() {
-    return { labelStyle: 'default' as CaptionLabelStyle }
+    return { labelStyle: 'default' as CaptionLabelStyle, context: null as CaptionContext | null }
   },
 
   addGlobalAttributes() {
@@ -193,7 +196,7 @@ export const CaptionExtension = Extension.create({
           }
 
           // Numbered after the captions above it, whether the editor or the original file made them.
-          const label = `${labelForNewCaption(state.doc, kind, pos, this.storage.labelStyle)}. `
+          const label = `${labelForNewCaption(state.doc, kind, pos, this.storage.labelStyle, this.storage.context)}. `
           const paragraph = schema.nodes.paragraph.create(
             { captionKind: kind, textAlign: 'center' },
             schema.text(label)
@@ -210,7 +213,7 @@ export const CaptionExtension = Extension.create({
       renumberCaptions:
         () =>
         ({ state, tr, dispatch }) => {
-          const plan = planCaptionChanges(state, this.storage.labelStyle, true)
+          const plan = planCaptionChanges(state, this.storage.labelStyle, true, undefined, this.storage.context)
           if (plan.edits.length === 0 && plan.unmark.length === 0) return true
           if (dispatch) {
             applyCaptionChanges(tr, plan)
@@ -229,7 +232,7 @@ export const CaptionExtension = Extension.create({
       fixCaptionNumber:
         (pos: number) =>
         ({ state, tr, dispatch }) => {
-          const fix = misnumberedCaptions(findCaptions(state.doc), this.storage.labelStyle).find(({ entry }) => entry.pos === pos)
+          const fix = misnumberedCaptions(findCaptions(state.doc), this.storage.labelStyle, false, this.storage.context).find(({ entry }) => entry.pos === pos)
           if (!fix) return false
           if (dispatch) {
             const from = pos + 1
@@ -257,7 +260,7 @@ export const CaptionExtension = Extension.create({
           // the document's own captions are renumbered too. Typing a new one by hand is not.
           const inserted = transactions.some((tr) => tr.getMeta(CAPTION_INSERTED) === true)
           const removed = after.figure < before.figure || after.table < before.table
-          const plan = planCaptionChanges(newState, storage.labelStyle, inserted || removed, entries)
+          const plan = planCaptionChanges(newState, storage.labelStyle, inserted || removed, entries, storage.context)
           if (plan.edits.length === 0 && plan.unmark.length === 0) return null
           const tr = newState.tr
           applyCaptionChanges(tr, plan)

@@ -178,3 +178,72 @@ export const updateDocumentSchema = z
 
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>
 export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>
+// ── Document tabs (migration 048) ───────────────────────────────────────────
+
+/** `:id` and `:tabId` of a tab route. */
+export const documentTabParamsSchema = z.object({
+  id: z.string().uuid('Invalid document id'),
+  tabId: z.string().uuid('Invalid tab id'),
+})
+
+const tabTitleSchema = z.string().trim().min(1, 'A tab needs a title').max(120, 'Tab titles are 120 characters at most')
+
+/** A tab's page numbering; null continues the previous tab's numbers. */
+export const tabNumberingSchema = z.object({
+  format: z.enum(['none', 'roman', 'arabic']),
+  restart: z.boolean(),
+  start: z.number().int().min(1).max(100000),
+  hideFirst: z.boolean(),
+})
+
+/** A tab's headings and captions with the page (within the tab) each is on. */
+const tabOutlineSchema = z
+  .array(
+    z.object({
+      kind: z.enum(['heading', 'figure', 'table']).optional(),
+      level: z.number().int().min(0).max(6),
+      text: z.string().max(400),
+      page: z.number().int().min(0).max(100000),
+    }),
+  )
+  .max(3000)
+
+/** Save one tab's body (the editor sends only the open tab). */
+export const saveTabSchema = z.object({
+  content: z.string().max(8000000, 'Content is too large'),
+  content_json: editorJsonSchema.nullable().optional(),
+  page_count: z.number().int().min(0).max(100000).optional(),
+  caption_counts: z.record(z.unknown()).nullable().optional(),
+  outline: tabOutlineSchema.nullable().optional(),
+})
+
+/** Split a document: its body with a tab marker before each tab. */
+export const splitTabsSchema = z.object({
+  content: z.string().max(8000000, 'Content is too large'),
+  content_json: editorJsonSchema.nullable().optional(),
+})
+
+export const addTabSchema = z.object({
+  title: tabTitleSchema,
+  afterTabId: z.string().uuid().optional(),
+})
+
+export const updateTabSchema = z
+  .object({
+    title: tabTitleSchema.optional(),
+    position: z.number().int().min(0).max(1000).optional(),
+    numbering: tabNumberingSchema.nullable().optional(),
+    // How many pages the tab took when the editor last laid it out (where later tabs' pages start).
+    page_count: z.number().int().min(0).max(100000).optional(),
+    // Set when a split lays out every tab at once (later saves keep them up to date).
+    outline: tabOutlineSchema.nullable().optional(),
+    caption_counts: z.record(z.unknown()).nullable().optional(),
+  })
+  .refine((data) => data.title !== undefined || data.position !== undefined || data.numbering !== undefined || data.page_count !== undefined || data.outline !== undefined || data.caption_counts !== undefined, {
+    message: 'At least one field must be provided',
+  })
+
+export type SaveTabInput = z.infer<typeof saveTabSchema>
+export type SplitTabsInput = z.infer<typeof splitTabsSchema>
+export type AddTabInput = z.infer<typeof addTabSchema>
+export type UpdateTabInput = z.infer<typeof updateTabSchema>

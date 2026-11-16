@@ -21,6 +21,14 @@ jest.mock('../../models/documentModel', () => ({
   canEditDocument: jest.fn(async (_doc: unknown, userId: string) => userId !== 'viewer-token'),
 }))
 
+const TAB = '33333333-3333-4333-8333-333333333333'
+jest.mock('../../models/documentTabModel', () => ({
+  getTab: jest.fn(async (documentId: string, tabId: string) => {
+    if (tabId !== '33333333-3333-4333-8333-333333333333') throw Object.assign(new Error('Tab not found'), { status: 404 })
+    return { document_id: documentId, tab_id: tabId, content_json: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'chapter two' }] }] } }
+  }),
+}))
+
 import { attachCollaboration, closeAllRooms, CLOSE_NO_SAVED_JSON, CLOSE_UNAUTHORIZED } from '../yjsServer'
 
 const SEEDED = '11111111-1111-4111-8111-111111111111'
@@ -138,6 +146,23 @@ describe('collaboration server', () => {
   it('tells the client to open solo when the document has no saved JSON yet', async () => {
     const { provider } = connect(NO_JSON, 'owner-token')
     expect(await closeCode(provider)).toBe(CLOSE_NO_SAVED_JSON)
+  })
+
+  it('gives each tab its own room, seeded from that tab', async () => {
+    const whole = connect(SEEDED, 'owner-token')
+    const tabA = connect(`${SEEDED}/${TAB}`, 'owner-token')
+    const tabB = connect(`${SEEDED}/${TAB}`, 'editor-token')
+    await Promise.all([synced(whole.provider), synced(tabA.provider), synced(tabB.provider)])
+    expect(text(tabA.doc)).toBe('<paragraph>chapter two</paragraph>')
+    typeInto(tabA.doc, ' edited')
+    await eventually(() => text(tabB.doc) === '<paragraph>chapter two edited</paragraph>')
+    // The tab's room is not the document's.
+    expect(text(whole.doc)).not.toContain('chapter two')
+  })
+
+  it('refuses a tab that does not exist', async () => {
+    const { provider } = connect(`${SEEDED}/44444444-4444-4444-8444-444444444444`, 'owner-token')
+    expect(await closeCode(provider)).toBe(4404)
   })
 
   it('refuses a session that does not verify', async () => {

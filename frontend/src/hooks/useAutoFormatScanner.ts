@@ -11,6 +11,7 @@ import { findShortLineDeviations } from '@/lib/shortLineConsistency'
 import { presetRulesFor } from '@/lib/presetRules'
 import { findExtraBlankLines } from '@/lib/blankLines'
 import { findFigureIssues } from '@/lib/figurePlacement'
+import type { CaptionContext } from '@/components/editor/captionNumbering'
 import { basePresetKey } from '@/components/editor/academicPresets'
 import { loadSuggestionMemory, rememberSuggestion } from '@/lib/suggestionMemory'
 import { isChapterHeading, isHeadingLikeParagraph } from '@/components/editor/chatFormatting'
@@ -856,7 +857,8 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
       // ── Figures and caption numbers ──────────────────────────────────
       // A picture with text wrapped beside it or set off-center, and a "Figure N" / "Table N"
       // whose number does not follow from the captions before it.
-      for (const issue of findFigureIssues(doc, basePresetKey(presetKey) === 'ieee' ? 'ieee' : 'default')) {
+      const captionContext = (editor.storage as unknown as { captions?: { context?: CaptionContext | null } }).captions?.context ?? null
+      for (const issue of findFigureIssues(doc, basePresetKey(presetKey) === 'ieee' ? 'ieee' : 'default', captionContext)) {
         const key = contentKey(`${issue.preview}|${issue.label}`, issue.kind, seenKeys)
         if (dismissedRef.current.has(key)) continue
         candidates.push({

@@ -50,6 +50,8 @@ export const behaviorEventSchema = z.object({
   char_count: z.number().int().nonnegative().optional(),
   position: z.number().int().nonnegative().optional(),
   doc_size: z.number().int().nonnegative().optional(),
+  // A document split into tabs: the tab the event happened in (`position`/`doc_size` are within it).
+  tab_id: z.string().uuid().optional(),
 })
 
 /** Infer the runtime-validated behavior event type from the schema. */

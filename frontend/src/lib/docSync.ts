@@ -13,6 +13,10 @@ export interface DocSyncNotice {
   updated_at: string
   sender_id: string
   timestamp: number
+  /** For a document split into tabs: the tab that was saved (only editors showing it fetch it). */
+  tab_id?: string
+  /** Tabs were split, merged, added, moved or removed: collaborators load the document again. */
+  tabs_changed?: boolean
 }
 
 /** Whether a broadcast payload is a save notice. */

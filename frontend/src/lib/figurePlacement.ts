@@ -1,7 +1,7 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 
-import { findCaptions, misnumberedCaptions, type CaptionLabelStyle } from '@/components/editor/captionNumbering'
+import { findCaptions, misnumberedCaptions, type CaptionContext, type CaptionLabelStyle } from '@/components/editor/captionNumbering'
 
 /**
  * Where figures sit, and whether their captions are numbered right.
@@ -96,7 +96,11 @@ function nameOf(caption: ProseMirrorNode | null, fallback: string): string {
 }
 
 /** Every figure placement problem and misnumbered caption, in document order. */
-export function findFigureIssues(doc: ProseMirrorNode, labelStyle: CaptionLabelStyle = 'default'): FigureIssue[] {
+export function findFigureIssues(
+  doc: ProseMirrorNode,
+  labelStyle: CaptionLabelStyle = 'default',
+  captionContext: CaptionContext | null = null,
+): FigureIssue[] {
   const issues: FigureIssue[] = []
   const standalone: Array<{ node: ProseMirrorNode; pos: number; caption: ProseMirrorNode | null }> = []
 
@@ -169,7 +173,7 @@ export function findFigureIssues(doc: ProseMirrorNode, labelStyle: CaptionLabelS
     }
   }
 
-  for (const { entry, expected } of misnumberedCaptions(findCaptions(doc), labelStyle)) {
+  for (const { entry, expected } of misnumberedCaptions(findCaptions(doc), labelStyle, false, captionContext)) {
     issues.push({
       kind: FIX_CAPTION_NUMBER,
       from: entry.pos,

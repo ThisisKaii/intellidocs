@@ -8,6 +8,11 @@ interface HistoryPanelProps {
   documentId: string | undefined
   /** The full HTML of the document as it is now; never a shortened summary. */
   currentHtml: string
+  /**
+   * For a document split into tabs: the whole current document (all tabs), loaded when a
+   * comparison is asked for — versions hold the whole document, the editor only one tab.
+   */
+  loadCurrentHtml?: () => Promise<string>
   onRestored: (version: DocumentVersion) => void
 }
 
@@ -30,6 +35,7 @@ function formatStamp(iso: string): string {
 export default function HistoryPanel({
   documentId,
   currentHtml,
+  loadCurrentHtml,
   onRestored,
 }: HistoryPanelProps): JSX.Element {
   const [versions, setVersions] = useState<DocumentVersion[]>([])
@@ -72,14 +78,20 @@ export default function HistoryPanel({
     }
   }
 
-  function toggleDiff(v: DocumentVersion): void {
+  async function toggleDiff(v: DocumentVersion): Promise<void> {
     if (diffingId === v.version_id) {
       setDiffingId(null)
       setDiffHtml(null)
       return
     }
     setDiffingId(v.version_id)
-    setDiffHtml(diffToHtml(v.content, currentHtml))
+    try {
+      const current = loadCurrentHtml ? await loadCurrentHtml() : currentHtml
+      setDiffHtml(diffToHtml(v.content, current))
+    } catch {
+      setError('Could not load the document to compare.')
+      setDiffingId(null)
+    }
   }
 
   return (
@@ -182,7 +194,7 @@ export default function HistoryPanel({
                 </div>
                 <button
                   type="button"
-                  onClick={() => toggleDiff(v)}
+                  onClick={() => void toggleDiff(v)}
                   style={diffButtonStyle(diffingId === v.version_id)}
                 >
                   <Diff style={{ width: '12px', height: '12px' }} />

@@ -39,7 +39,7 @@ function wordPageSetupCss(): string {
 /** Word page-number field code; `{ PAGE \* roman }` or `{ PAGE \* arabic }`. */
 function pageNumberField(numberFormat: 'roman-lower' | 'arabic', restartAt?: number): string {
   const numeric = numberFormat === 'roman-lower' ? 'roman' : 'arabic'
-  const restart = restartAt ? '<w:pgNumType w:start="1"/>' : ''
+  const restart = restartAt ? `<w:pgNumType w:start="${Math.max(1, Math.round(restartAt))}"/>` : ''
   return `<span style="mso-element:footer">
     <span style="mso-field-code:'PAGE  \\* ${numeric}'">{ PAGE \\* ${numeric} }</span>
   </span>
@@ -47,7 +47,11 @@ function pageNumberField(numberFormat: 'roman-lower' | 'arabic', restartAt?: num
 }
 
 /** Produce the self-contained Word (.doc) HTML for the thesis layout. */
-export function buildThesisWordHtml(html: string, title: string): string {
+/**
+ * `bodyStart`: the number the body's first page shows (a chapter exported on its own keeps its
+ * page numbers from the whole document; 1 by default).
+ */
+export function buildThesisWordHtml(html: string, title: string, options: { bodyStart?: number } = {}): string {
   const safeTitle = esc(title.trim() || 'Untitled Document')
   return `<!DOCTYPE html>
 <html xmlns:o='urn:schemas-microsoft-com:office:office'
@@ -94,7 +98,7 @@ export function buildThesisWordHtml(html: string, title: string): string {
 <!-- Body: arabic starting at 1 -->
 <div class="WordSectionBody">
   ${html}
-  ${pageNumberField('arabic', 1)}
+  ${pageNumberField('arabic', options.bodyStart ?? 1)}
 </div>
 
 </body>
@@ -151,10 +155,10 @@ function downloadBlob(content: string, fileName: string, mime: string): void {
 }
 
 /** One-click Word export with the defense-ready layout. */
-export function exportThesisWord(html: string, title: string): void {
+export function exportThesisWord(html: string, title: string, options: { bodyStart?: number } = {}): void {
   const fileTitle = (title.trim() || 'Untitled').replace(/[\\/:*?"<>|]+/g, '')
   downloadBlob(
-    buildThesisWordHtml(html, title),
+    buildThesisWordHtml(html, title, options),
     `${fileTitle} Thesis (Defense-Ready).doc`,
     'application/msword;charset=utf-8'
   )

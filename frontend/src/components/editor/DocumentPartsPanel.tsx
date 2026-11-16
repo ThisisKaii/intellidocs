@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { ListTree, Image as ImageIcon, Table2, RefreshCw } from 'lucide-react'
-import { buildAutoNodes, insertOrUpdateGenerated, type GeneratedKind } from './DocumentParts'
+import { buildAutoNodes, insertOrUpdateGenerated, type CrossTabEntries, type GeneratedKind } from './DocumentParts'
 
 interface DocumentPartsPanelProps {
   editor: Editor | null
   readOnly?: boolean
+  /** A document split into tabs: the other tabs' entries for each list (from their stored outlines). */
+  crossTab?: (kind: 'toc' | 'lof' | 'lot') => CrossTabEntries | null
 }
 
 type AutoKind = Extract<GeneratedKind, 'toc' | 'lof' | 'lot'>
@@ -17,17 +19,17 @@ const PARTS: Array<{ kind: AutoKind; label: string; hint: string; icon: JSX.Elem
 ]
 
 /** Tools card that inserts or refreshes the table of contents and the lists of figures and tables. */
-export default function DocumentPartsPanel({ editor, readOnly = false }: DocumentPartsPanelProps): JSX.Element {
+export default function DocumentPartsPanel({ editor, readOnly = false, crossTab }: DocumentPartsPanelProps): JSX.Element {
   const [message, setMessage] = useState<string | null>(null)
 
   /** Build the block from the live document, then rebuild once more so page numbers settle after reflow. */
   function run(kind: AutoKind): void {
     if (!editor || editor.isDestroyed || !editor.isEditable) return
-    const updated = insertOrUpdateGenerated(editor, kind, buildAutoNodes(editor, kind))
+    const updated = insertOrUpdateGenerated(editor, kind, buildAutoNodes(editor, kind, crossTab?.(kind) ?? null))
     setMessage(updated ? 'Updated.' : 'Inserted below your cursor.')
     window.setTimeout(() => {
       if (editor.isDestroyed) return
-      insertOrUpdateGenerated(editor, kind, buildAutoNodes(editor, kind))
+      insertOrUpdateGenerated(editor, kind, buildAutoNodes(editor, kind, crossTab?.(kind) ?? null))
     }, 700)
   }
 

@@ -38,6 +38,7 @@ import {
   type PageMeasure,
 } from '@/lib/pageLayout'
 import { documentSectionBreaks } from './SectionLayout'
+import { layoutForTab, tabNumberingCss, type ResolvedTabNumbering } from '@/lib/tabNumbering'
 import { sanitizeHeaderHtml } from '@/lib/sanitizeHeaderHtml'
 
 /**
@@ -62,6 +63,12 @@ export function firstChapterPos(doc: ProseMirrorNode): number | null {
     else line = offset
   })
   return heading ?? line
+}
+
+/** Limit page-numbering rules to one editor's container (see the `scopeId` prop). */
+function scopeCss(css: string, scopeId: string | undefined): string {
+  if (!scopeId) return css
+  return css.replace(/(^|[,}\n]\s*)\.rm-with-pagination/g, `$1[data-editor-scope="${scopeId}"] .rm-with-pagination`)
 }
 
 /** Vertical gap between stacked page sheets, in px. */
@@ -233,6 +240,16 @@ interface PagedEditorProps {
    * Fixed for the editor's lifetime (the host remounts the editor to change it).
    */
   collaboration?: EditorCollaboration | null
+  /**
+   * For one tab of a document split into tabs: the number its first page shows and its format, from
+   * the tabs before it (lib/tabNumbering). Replaces the document-wide numbering for this tab.
+   */
+  tabNumbering?: ResolvedTabNumbering | null
+  /**
+   * Several editors on one page (the whole-document view shows tabs one under another): each
+   * numbers its own pages, so its numbering CSS is limited to its own container.
+   */
+  scopeId?: string
 }
 
 /** The shared document and how this person's caret appears to others. */
@@ -300,6 +317,8 @@ export function PagedEditor({
   onHeaderFooterActivate,
   onFormatApplied,
   collaboration = null,
+  tabNumbering = null,
+  scopeId,
 }: PagedEditorProps): JSX.Element {
   const propsRef = useRef({ onContentChange, onGrammarClick })
   propsRef.current = { onContentChange, onGrammarClick }
@@ -434,6 +453,9 @@ export function PagedEditor({
   // Report the editor so the toolbar and AI features can act on it.
   useEffect(() => {
     onActiveEditorChange(editor)
+    // This editor is destroyed when the component goes (another tab, a reload, collaboration
+    // starting): the page must not keep rendering toolbars against it.
+    return () => onActiveEditorChange(null)
   }, [editor, onActiveEditorChange])
 
   // Sections whose margins differ from the page setup are moved by the difference (SectionLayout).
@@ -768,12 +790,17 @@ export function PagedEditor({
 
   // Manuscript numbering (no number on the title page, Roman front matter, Arabic from Chapter 1)
   // needs the page Chapter 1 starts on and the page count, read from the laid-out editor.
+  // A tab of a split document takes its numbering from the tabs before it instead.
+  const showsNumbers =
+    headerFooterConfig.header.default.numberFormat !== 'none' || headerFooterConfig.footer.default.numberFormat !== 'none'
+  const tabNumbered = Boolean(tabNumbering) && showsNumbers
   const manuscript =
     !layout &&
+    !tabNumbered &&
     (headerFooterConfig.header.default.numberFormat === 'manuscript' || headerFooterConfig.footer.default.numberFormat === 'manuscript')
   const [manuscriptPages, setManuscriptPages] = useState<{ chapterPage: number | null; pageCount: number }>({ chapterPage: null, pageCount: 1 })
   useEffect(() => {
-    if (!editor || editor.isDestroyed || !manuscript) return
+    if (!editor || editor.isDestroyed || !(manuscript || (tabNumbered && !layout))) return
     const dom = editor.view.dom as HTMLElement
     const pitch = page.height + PAGE_GAP
     let frame = 0
@@ -783,7 +810,7 @@ export function PagedEditor({
       const rect = dom.getBoundingClientRect()
       const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
       const pageCount = Math.max(1, Math.round((rect.height / scale + PAGE_GAP) / pitch))
-      const pos = firstChapterPos(editor.state.doc)
+      const pos = manuscript ? firstChapterPos(editor.state.doc) : null
       let chapterPage: number | null = null
       const node = pos === null ? null : editor.view.nodeDOM(pos)
       if (node instanceof HTMLElement) {
@@ -806,9 +833,11 @@ export function PagedEditor({
       resize.disconnect()
       mutations.disconnect()
     }
-  }, [editor, manuscript, page.height])
+  }, [editor, manuscript, tabNumbered, layout, page.height])
 
-  const romanStyle = manuscript
+  const romanStyle = tabNumbered && tabNumbering && !layout
+    ? tabNumberingCss(tabNumbering, manuscriptPages.pageCount)
+    : manuscript
     ? manuscriptNumberingCss(manuscriptPages.chapterPage, manuscriptPages.pageCount)
     : headerFooterConfig.header.default.numberFormat === 'roman' || headerFooterConfig.footer.default.numberFormat === 'roman'
       ? `.rm-with-pagination .rm-page-number::before,
@@ -931,7 +960,7 @@ export function PagedEditor({
   }
 
   return (
-    <div className={containerClassName} style={containerStyle}>
+    <div className={containerClassName} style={containerStyle} data-editor-scope={scopeId}>
       <style>
         {`.ProseMirror.rm-with-pagination {
             /* The library draws a 1px border on the page stack (border-box), which
@@ -1050,7 +1079,7 @@ export function PagedEditor({
           .ProseMirror.ieee-columns-draft .ieee-span {
             column-span: all;
           }
-          ${layout ? numberingCss(layout, measure) : romanStyle}
+          ${scopeCss(layout ? numberingCss(tabNumbered && tabNumbering ? layoutForTab(layout, tabNumbering) : layout, measure) : romanStyle, scopeId)}
           ${spreadPreview ? spreadStyle : ''}
           ${pageLabel === null ? '' : '.intellidocs-page-editor--spread .rm-pages-wrapper { counter-reset: spread-page; }'}`}
       </style>

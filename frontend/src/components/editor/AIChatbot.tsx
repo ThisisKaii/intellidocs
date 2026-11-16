@@ -96,6 +96,11 @@ interface AIChatbotProps {
   docked?: boolean
   /** Switch the document to an academic preset (page setup, body and heading styles). */
   onApplyPreset?: (presetKey: string) => void
+  /**
+   * A document split into tabs: the title of the other tab a target ("the Introduction") is in,
+   * when it is not in the open one; null when no tab has it.
+   */
+  locateInOtherTab?: (target: string) => string | null
 }
 
 /** Text-align values for the align_* formats, keyed by format name. */
@@ -159,6 +164,7 @@ export default function AIChatbot({
   onFocusEditor,
   docked = false,
   onApplyPreset,
+  locateInOtherTab,
 }: AIChatbotProps): JSX.Element {
   const [open, setOpen] = useState<boolean>(docked)
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredChat(documentId))
@@ -480,7 +486,12 @@ export default function AIChatbot({
     let targetWarning = ''
     if (target && scope === 'all') {
       const places = applyFormatsToTarget(target, change.targetMode, formats, fontSize, normalize, style)
-      if (places === 0) targetWarning = ` (could not find "${target}" in the document)`
+      if (places === 0) {
+        const elsewhere = locateInOtherTab?.(target) ?? null
+        targetWarning = elsewhere
+          ? ` (“${target}” is in the “${elsewhere}” tab: open that tab and ask again)`
+          : ` (could not find "${target}" in the document)`
+      }
       else if (change.targetMode === 'literal' && places > 1) targetWarning = ` (${places} places)`
     } else if (scope === 'all' && targetCategory && targetCategory !== 'all') {
       applyFormatsToBlocks(targetCategory, formats, fontSize, normalize, style)
