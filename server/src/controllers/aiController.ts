@@ -20,6 +20,10 @@ import {
   learnedFormattingReply,
 } from '../skills/buildLearnedFormattingPlan'
 import { documentBody } from '../models/documentTabModel'
+import { detectWritingTask, type WritingTask } from '../skills/detectWritingTask'
+import { orchestrateSectionDraft } from '../skills/orchestrateSectionDraft'
+import { groundLiteratureCitations } from '../skills/groundLiteratureCitations'
+import { refineAcademicTone } from '../skills/refineAcademicTone'
 
 interface ErrorWithStatus {
   status?: number
@@ -45,6 +49,8 @@ interface AIChatBody {
   rejectedFormattingPreviews?: RejectedFormattingPreview[]
   /** The most recent formatting preview this user saw, for follow-up resolution. */
   lastPreview?: AIChatPreviewContext | null
+  /** Text selected in the editor when the message was sent. */
+  selectionText?: string
 }
 
 /** Compact snapshot of a previously shown formatting preview (from the client). */
@@ -451,6 +457,77 @@ function labelForFormat(preview: AIChatPreviewContext): string {
   return fmt ? (labels[fmt] ?? fmt) : 'Formatting'
 }
 
+/** Chat response for a Batch E writing-assist request: a deterministic reply plus the card's payload. */
+async function runWritingTask(
+  task: WritingTask,
+  body: AIChatBody,
+  userId: string,
+  email: string | undefined
+): Promise<Record<string, unknown>> {
+  const providerSummary = getProviderSummary()
+  const chat = (reply: string): Record<string, unknown> => ({ reply, provider: providerSummary.provider, model: providerSummary.model, mode: 'chat', preview: null })
+
+  if (task.kind === 'decline') {
+    return chat(
+      'I can’t write sections or essays from a topic: IntelliDocs works with your own writing. I can organise your notes into a formal section ("Organise my notes for the Introduction: …"), find real published sources for a claim ("Find citations for …"), or polish your own sentences (select a paragraph and ask me to refine it).'
+    )
+  }
+
+  if (task.kind === 'structure') {
+    let genre: string | undefined
+    if (body.documentId) {
+      try {
+        genre = resolveDocumentGenre(await getDocumentForUser(body.documentId, userId, email))
+      } catch {
+        genre = undefined
+      }
+    }
+    const result = await orchestrateSectionDraft({ sectionTitle: task.sectionTitle, userNotes: task.notes, genre })
+    if (result.declined !== undefined) return chat(result.declined)
+    const structured = { sectionTitle: result.sectionTitle, outline: result.outline, paragraphs: result.paragraphs, warnings: result.warnings }
+    const points = structured.outline.reduce((total, move) => total + move.notes.length, 0)
+    return {
+      ...chat(
+        `I organised your ${points} points into ${structured.paragraphs.length} paragraph${structured.paragraphs.length === 1 ? '' : 's'} for “${structured.sectionTitle}”. Check the wording below, then insert it at your cursor.`
+      ),
+      mode: 'structure',
+      structured,
+    }
+  }
+
+  if (task.kind === 'citations') {
+    if (!task.query) return chat('Tell me the claim or topic to find sources for, or select the sentence in your document and ask again.')
+    const papers = await groundLiteratureCitations({ query: task.query, limit: task.limit })
+    if (papers.length === 0) {
+      return chat('I couldn’t find published papers matching that in Crossref or Semantic Scholar. Try fewer, more specific keywords.')
+    }
+    return {
+      ...chat(
+        `I found ${papers.length} published paper${papers.length === 1 ? '' : 's'} in Crossref and Semantic Scholar. Read each abstract to check it really supports your claim, then tick the ones to cite.`
+      ),
+      mode: 'citations',
+      papers,
+      citationQuery: task.query,
+    }
+  }
+
+  if (!task.text) return chat('Select the paragraph you want refined in your document, then ask again.')
+  const refinement = await refineAcademicTone({ text: task.text, focus: task.focus, contextText: body.documentContent ?? '' })
+  if (refinement.edits.length === 0 && refinement.notices.length === 0) {
+    return chat('That passage already reads as formal academic writing; I have no changes to suggest.')
+  }
+  const count = refinement.edits.length
+  return {
+    ...chat(
+      count > 0
+        ? `I have ${count} suggested revision${count === 1 ? '' : 's'}. Apply the ones you agree with; nothing changes until you do.`
+        : 'I have no wording changes, but there is something to check below.'
+    ),
+    mode: 'refine',
+    refinement: { ...refinement, sourceText: task.text },
+  }
+}
+
 /** Handle authenticated AI chatbot requests. */
 export async function chatWithAI(req: Request, res: Response): Promise<void> {
   try {
@@ -478,6 +555,14 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
           resetInSeconds: quota.resetInSeconds,
         },
       })
+      return
+    }
+
+    // Organise notes, find citations, refine tone: each agent's result is a
+    // preview card in the chat; nothing reaches the document without a click.
+    const writingTask = detectWritingTask(message, body.selectionText ?? '')
+    if (writingTask) {
+      res.status(200).json(await runWritingTask(writingTask, body, userId, req.user?.email))
       return
     }
 

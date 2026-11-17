@@ -569,3 +569,61 @@ export function resolveTargetRanges(doc: ProseMirrorNode, target: string, mode: 
   }
   return [section]
 }
+
+/** Every place a piece of text occurs inside one textblock (text split across marks still matches). */
+export function findTextOccurrences(doc: ProseMirrorNode, needle: string): TextRange[] {
+  const hits: TextRange[] = []
+  if (!needle) return hits
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true
+    let text = ''
+    const positions: number[] = []
+    node.forEach((child, offset) => {
+      if (child.isText && child.text) {
+        for (let index = 0; index < child.text.length; index += 1) {
+          text += child.text[index]
+          positions.push(pos + 1 + offset + index)
+        }
+      } else {
+        // An inline node (picture, hard break) is a character no text can match.
+        text += '\uFFFC'
+        positions.push(pos + 1 + offset)
+      }
+    })
+    let index = text.indexOf(needle)
+    while (index !== -1) {
+      hits.push({ from: positions[index], to: positions[index + needle.length - 1] + 1 })
+      index = text.indexOf(needle, index + 1)
+    }
+    return false
+  })
+  return hits
+}
+
+/**
+ * Replace the user's words with revisions, keeping their marks, in ONE
+ * transaction so a single undo takes them all back. For each revision the
+ * occurrence inside `range` (where the text was when it was proposed) wins;
+ * otherwise the text must occur exactly once in the document. Returns, per
+ * revision, whether it was applied (false once the user has edited it away).
+ */
+export function replaceTextsInRange(editor: Editor, range: TextRange | null, revisions: Array<{ original: string; refined: string }>): boolean[] {
+  const { tr } = editor.state
+  let current = range
+  const applied = revisions.map(({ original, refined }) => {
+    const hits = findTextOccurrences(tr.doc, original)
+    const inRange = current ? hits.filter((hit) => hit.from >= (current as TextRange).from && hit.to <= (current as TextRange).to) : []
+    const target = inRange.length === 1 ? inRange[0] : hits.length === 1 ? hits[0] : null
+    if (!target) return false
+    const stepsBefore = tr.mapping.maps.length
+    tr.insertText(refined, target.from, target.to)
+    // Later revisions are searched in the range as this one reshaped it.
+    if (current) {
+      const mapping = tr.mapping.slice(stepsBefore)
+      current = { from: mapping.map(current.from, -1), to: mapping.map(current.to, 1) }
+    }
+    return true
+  })
+  if (applied.some(Boolean)) editor.view.dispatch(tr.scrollIntoView())
+  return applied
+}

@@ -3,8 +3,11 @@ import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { editorUndoDepth, startNewUndoStep } from './undoDepth'
-import { api, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
-import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, resolveTargetRanges, type BlockCategory } from './chatFormatting'
+import { api, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type AIGroundedPaper, type AIStructuredSection, type AIToneRefinement, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
+import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, replaceTextsInRange, resolveTargetRanges, type BlockCategory, type TextRange } from './chatFormatting'
+import { CitationsCard, RefineCard, StructureCard, type CardStatus, type EditStatus } from './WritingAssistCards'
+import { buildStructuredSectionContent, headingLevelAt } from './structuredSection'
+import { findAcademicPreset } from './academicPresets'
 import { getEditorPreferences, setEditorPreferences, subscribeEditorPreferences } from '@/lib/editorPreferences'
 import { AUTONOMY_WARNING, asksForMoreThanPermission, detectAutonomyRequest } from '@/lib/assistantAutonomy'
 
@@ -36,6 +39,19 @@ interface ChatMessage {
   sources?: Array<{ title: string }>
   /** "Apply my usual formatting": the learned habits that match blocks of this document. */
   preview_learned?: LearnedPlace[] | null
+  /** "Organise my notes…": the user's notes as a section, inserted on confirmation. */
+  structured?: AIStructuredSection | null
+  /** "Find citations…": real papers the user ticks to cite. */
+  papers?: AIGroundedPaper[] | null
+  /** "Refine this…": revisions of the user's own text, applied one by one. */
+  refinement?: AIToneRefinement | null
+  /** State of a structure or citations card. */
+  assist_status?: CardStatus | null
+  /** State of each revision in `refinement.edits`. */
+  edit_statuses?: EditStatus[] | null
+  /** The selection when the request was sent, and its text, to cite after or refine inside. */
+  assist_range?: TextRange | null
+  assist_selection?: string | null
 }
 
 /** A learned habit and how many blocks of the open document it matches. */
@@ -101,6 +117,21 @@ interface AIChatbotProps {
    * when it is not in the open one; null when no tab has it.
    */
   locateInOtherTab?: (target: string) => string | null
+  /** Note structuring, citation and refinement wiring from the document page. */
+  writingAssist?: WritingAssistWiring
+}
+
+/** What the document page provides for the writing-assist cards. */
+export interface WritingAssistWiring {
+  /** The document's formatting preset key, for the inserted section's heading and indent. */
+  activePreset: string | null
+  /** Label of the citation style new citations go in as, e.g. "IEEE [1]". */
+  citationStyleLabel: string
+  /** Cite the ticked papers after `at` (or at the cursor) and add them to the references. */
+  onAddCitations: (papers: AIGroundedPaper[], at: TextRange | null) => void
+  /** A message to send as if typed (the bubble menu's "Find citations"). */
+  pendingPrompt: string | null
+  onPendingPromptConsumed: () => void
 }
 
 /** Text-align values for the align_* formats, keyed by format name. */
@@ -153,6 +184,37 @@ const CATEGORY_NOTES: Record<BlockCategory, string> = {
   questions: 'the research questions',
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/** A /mcp writing-assist tool's result as a chat card payload; null for every other tool. */
+function mcpWritingAssist(
+  tool: string,
+  result: unknown
+): { reply: string; structured?: AIStructuredSection; papers?: AIGroundedPaper[]; refinement?: AIToneRefinement } | null {
+  if (!isRecord(result)) return null
+  if (tool === 'structureUserSection') {
+    if (typeof result.declined === 'string') return { reply: result.declined }
+    if (typeof result.sectionTitle === 'string' && Array.isArray(result.outline) && Array.isArray(result.paragraphs) && Array.isArray(result.warnings)) {
+      return {
+        reply: 'Here are your notes organised into a section. Check the wording, then insert it at your cursor.',
+        structured: result as unknown as AIStructuredSection,
+      }
+    }
+  }
+  if (tool === 'searchLiteratureAndCite' && Array.isArray(result.papers)) {
+    const papers = result.papers as AIGroundedPaper[]
+    return papers.length > 0
+      ? { reply: `I found ${papers.length} published paper${papers.length === 1 ? '' : 's'}. Check each abstract, then tick the ones to cite.`, papers }
+      : { reply: 'No published papers matched that query.' }
+  }
+  if (tool === 'refineAcademicStyle' && Array.isArray(result.edits) && Array.isArray(result.notices) && typeof result.sourceText === 'string') {
+    return { reply: 'Here are the suggested revisions. Nothing changes until you apply one.', refinement: result as unknown as AIToneRefinement }
+  }
+  return null
+}
+
 /** Floating AI chatbot for natural language document help. */
 export default function AIChatbot({
   editor,
@@ -165,6 +227,7 @@ export default function AIChatbot({
   docked = false,
   onApplyPreset,
   locateInOtherTab,
+  writingAssist,
 }: AIChatbotProps): JSX.Element {
   const [open, setOpen] = useState<boolean>(docked)
   const [messages, setMessages] = useState<ChatMessage[]>(() => readStoredChat(documentId))
@@ -354,14 +417,10 @@ export default function AIChatbot({
   /** Parse key=value arguments for MCP tool calls. */
   function parseMcpArgs(raw: string): Record<string, string> {
     const args: Record<string, string> = {}
-    const parts = raw.split(/\s+/).filter(Boolean)
-
-    for (const part of parts) {
-      const [key, ...rest] = part.split('=')
-      if (!key || rest.length === 0) continue
-      args[key] = rest.join('=')
+    // A value runs until the next " key=", so "text=This proves it focus=all" keeps its spaces.
+    for (const match of raw.matchAll(/(\w+)=((?:(?!\s+\w+=)[\s\S])*)/g)) {
+      args[match[1]] = match[2].trim()
     }
-
     return args
   }
 
@@ -715,12 +774,101 @@ export default function AIChatbot({
     )
   }
 
-  /** Send a message to the backend AI chat endpoint. */
-  async function send(): Promise<void> {
-    if (!input.trim() || loading) return
+  /** Update one message of the chat. */
+  function patchMessage(messageIndex: number, patch: Partial<ChatMessage>): void {
+    setMessages((current) => current.map((message, index) => (index === messageIndex ? { ...message, ...patch } : message)))
+  }
 
-    const userMsg = input.trim()
-    setInput('')
+  /** Run one document change from a writing-assist card as its own undo step ("undo that" reverts it). */
+  function recordChange(label: string, change: (target: Editor) => boolean): boolean {
+    if (!editor || editor.isDestroyed || !editor.isEditable) return false
+    startNewUndoStep(editor.state)
+    const depthBefore = editorUndoDepth(editor.state)
+    const changed = change(editor)
+    if (changed && editorUndoDepth(editor.state) > depthBefore) appliedStackRef.current.push({ depthBefore, label })
+    return changed
+  }
+
+  /** Insert the organised section after the block holding the cursor (replacing it when it is an empty line). */
+  function insertStructured(messageIndex: number, section: AIStructuredSection): void {
+    const inserted = recordChange(`the organised “${section.sectionTitle}” section`, (target) => {
+      const { $to } = target.state.selection
+      const emptyLine = $to.depth > 0 && $to.parent.isTextblock && $to.parent.textContent.trim() === '' && $to.depth === 1
+      const at: number | TextRange = emptyLine
+        ? { from: $to.before(1), to: $to.after(1) }
+        : $to.depth > 0
+          ? $to.after(1)
+          : $to.pos
+      const pos = typeof at === 'number' ? at : at.from
+      const content = buildStructuredSectionContent(section, findAcademicPreset(writingAssist?.activePreset), headingLevelAt(target.state.doc, pos))
+      return target.chain().focus().insertContentAt(at, content).run()
+    })
+    if (inserted) patchMessage(messageIndex, { assist_status: 'done' })
+  }
+
+  /** Cite the ticked papers where the selection was when the user asked, if that text is still there. */
+  function citePapers(messageIndex: number, message: ChatMessage, papers: AIGroundedPaper[]): void {
+    if (!writingAssist || papers.length === 0 || !editor || editor.isDestroyed) return
+    const range = message.assist_range
+    const stillThere =
+      range && message.assist_selection && range.to <= editor.state.doc.content.size &&
+      editor.state.doc.textBetween(range.from, range.to, '\n') === message.assist_selection
+    writingAssist.onAddCitations(papers, stillThere ? range : null)
+    patchMessage(messageIndex, { assist_status: 'done' })
+  }
+
+  /** Apply some of a refinement's revisions; ones whose text has changed are marked stale. */
+  function applyRevisions(messageIndex: number, message: ChatMessage, indices: number[]): void {
+    const refinement = message.refinement
+    if (!refinement) return
+    const statuses = [...(message.edit_statuses ?? refinement.edits.map((): EditStatus => 'pending'))]
+    const label = indices.length === 1 ? 'a revision' : `${indices.length} revisions`
+    const chosen = indices.filter((index) => refinement.edits[index] && statuses[index] === 'pending')
+    recordChange(label, (target) => {
+      // All chosen revisions go in as one transaction, so one undo reverts them together.
+      const applied = replaceTextsInRange(target, message.assist_range ?? null, chosen.map((index) => refinement.edits[index]))
+      chosen.forEach((index, k) => {
+        statuses[index] = applied[k] ? 'applied' : 'stale'
+      })
+      return applied.some(Boolean)
+    })
+    patchMessage(messageIndex, { edit_statuses: statuses })
+  }
+
+  /** The assistant message for a writing-assist response (organise, cite, refine). */
+  function writingAssistMessage(
+    reply: string,
+    payload: { structured?: AIStructuredSection; papers?: AIGroundedPaper[]; refinement?: AIToneRefinement },
+    selection: { range: TextRange | null; text: string }
+  ): ChatMessage {
+    const base: ChatMessage = { role: 'assistant', content: reply, assist_range: selection.range, assist_selection: selection.text || null }
+    if (payload.structured) return { ...base, structured: payload.structured, assist_status: 'pending' }
+    if (payload.papers && payload.papers.length > 0) return { ...base, papers: payload.papers, assist_status: 'pending' }
+    if (payload.refinement) return { ...base, refinement: payload.refinement, edit_statuses: payload.refinement.edits.map((): EditStatus => 'pending') }
+    return base
+  }
+
+  // The bubble menu's "Find citations": send its prompt as soon as the chat is free.
+  useEffect(() => {
+    const prompt = writingAssist?.pendingPrompt
+    if (!prompt || loading) return
+    writingAssist.onPendingPromptConsumed()
+    void send(prompt)
+    // send reads current state; it is not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writingAssist?.pendingPrompt, loading])
+
+  /** Send a message to the backend AI chat endpoint (the typed input, or `text` when given). */
+  async function send(text?: string): Promise<void> {
+    const typed = text === undefined
+    if (!(typed ? input : text).trim() || loading) return
+
+    const userMsg = (typed ? input : text).trim()
+    if (typed) setInput('')
+    // What the user had selected: "refine this" and "find citations for this" mean it.
+    const selection = editor && !editor.isDestroyed && !editor.state.selection.empty ? editor.state.selection : null
+    const selectionRange: TextRange | null = selection ? { from: selection.from, to: selection.to } : null
+    const selectionText = selection && editor ? editor.state.doc.textBetween(selection.from, selection.to, '\n') : ''
     setMessages((current) => [...current, { role: 'user', content: userMsg }])
 
     // "You can do it without asking" / "ask me first": the apply-without-asking mode. Turning it
@@ -779,7 +927,24 @@ export default function AIChatbot({
           if (!toolArgs.mode) toolArgs.mode = 'preview'
         }
 
-        const result = await api.mcp.callTool(mcpCommand.tool as never, toolArgs)
+        // The writing-assist tools work on the selection unless the command gives the text.
+        if (mcpCommand.tool === 'structureUserSection') {
+          toolArgs.userNotes ??= selectionText
+          toolArgs.sectionTitle ??= 'New section'
+        }
+        if (mcpCommand.tool === 'searchLiteratureAndCite') {
+          toolArgs.query ??= selectionText
+          toolArgs.style ??= writingAssist?.citationStyleLabel.toLowerCase().startsWith('ieee') ? 'ieee' : 'apa'
+        }
+        if (mcpCommand.tool === 'refineAcademicStyle') toolArgs.text ??= selectionText
+
+        const result = await api.mcp.callTool<unknown>(mcpCommand.tool as never, toolArgs)
+        // Their results become the same confirm-first cards as in chat, never a direct edit.
+        const assist = mcpWritingAssist(mcpCommand.tool, result)
+        if (assist) {
+          setMessages((current) => [...current, writingAssistMessage(assist.reply, assist, { range: selectionRange, text: selectionText })])
+          return
+        }
         setMessages((current) => [
           ...current,
           {
@@ -848,8 +1013,17 @@ export default function AIChatbot({
         documentContent,
         history,
         rejectedPreviews,
-        lastPreviewRef.current
+        lastPreviewRef.current,
+        selectionText
       )
+
+      if (response.mode === 'structure' || response.mode === 'citations' || response.mode === 'refine') {
+        setMessages((current) => [
+          ...current,
+          writingAssistMessage(response.reply, { structured: response.structured, papers: response.papers, refinement: response.refinement }, { range: selectionRange, text: selectionText }),
+        ])
+        return
+      }
 
       const previewFormat =
         response.preview && typeof response.preview.format === 'string'
@@ -1033,7 +1207,7 @@ export default function AIChatbot({
                       border: m.role === 'user' ? 'none' : '1px solid var(--border)',
                     }}
                   >
-                    {m.content}
+                    <span style={{ whiteSpace: 'pre-wrap' }}>{m.content}</span>
                     {m.role === 'assistant' && m.sources ? (
                       <div style={{ marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.25rem' }}>
                         {m.sources.map((source) => (
@@ -1050,6 +1224,42 @@ export default function AIChatbot({
                         <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>AI answer · check important details</span>
                       </div>
                     ) : null}
+                    {m.structured && (
+                      <StructureCard
+                        section={m.structured}
+                        status={m.assist_status ?? 'pending'}
+                        onInsert={() => m.structured && insertStructured(i, m.structured)}
+                        onDismiss={() => patchMessage(i, { assist_status: 'dismissed' })}
+                      />
+                    )}
+                    {m.papers && m.papers.length > 0 && (
+                      <CitationsCard
+                        papers={m.papers}
+                        status={writingAssist ? (m.assist_status ?? 'pending') : 'dismissed'}
+                        styleLabel={writingAssist?.citationStyleLabel ?? 'citations'}
+                        onCite={(papers) => citePapers(i, m, papers)}
+                        onDismiss={() => patchMessage(i, { assist_status: 'dismissed' })}
+                      />
+                    )}
+                    {m.refinement && (
+                      <RefineCard
+                        refinement={m.refinement}
+                        statuses={m.edit_statuses ?? m.refinement.edits.map((): EditStatus => 'pending')}
+                        onApply={(index) => applyRevisions(i, m, [index])}
+                        onDismiss={(index) =>
+                          patchMessage(i, {
+                            edit_statuses: (m.edit_statuses ?? []).map((status, k) => (k === index ? 'dismissed' : status)),
+                          })
+                        }
+                        onApplyAll={() =>
+                          applyRevisions(
+                            i,
+                            m,
+                            (m.edit_statuses ?? []).flatMap((status, k) => (status === 'pending' ? [k] : []))
+                          )
+                        }
+                      />
+                    )}
                     {m.preview_status || m.preview_format || (m.preview_formats?.length ?? 0) > 0 || m.preview_font_size ? (
                       <div
                         style={{
@@ -1265,13 +1475,18 @@ export default function AIChatbot({
 
             {/* Input */}
             <div style={{ borderTop: '1px solid var(--border)', padding: '0.75rem', display: 'flex', gap: '0.5rem' }}>
-              <input
+              <textarea
                 value={input}
+                rows={Math.min(Math.max(input.split('\n').length, 1), 6)}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') send() }}
+                // Enter sends; Shift+Enter starts a new line, so pasted notes keep their bullets.
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
                 placeholder="Ask for writing or formatting help..."
+                aria-label="Message the assistant"
                 style={{
                   flex: 1,
+                  resize: 'none',
+                  lineHeight: 1.4,
                   fontSize: '0.875rem',
                   backgroundColor: 'var(--secondary)',
                   borderRadius: '0.375rem',
@@ -1283,17 +1498,17 @@ export default function AIChatbot({
                   transition: 'border-color 150ms, box-shadow 150ms',
                 }}
                 onFocus={(e) => {
-                  (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--ring)';
-                  (e.currentTarget as HTMLInputElement).style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--ring) 15%, transparent)';
+                  (e.currentTarget as HTMLTextAreaElement).style.borderColor = 'var(--ring)';
+                  (e.currentTarget as HTMLTextAreaElement).style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--ring) 15%, transparent)';
                 }}
                 onBlur={(e) => {
-                  (e.currentTarget as HTMLInputElement).style.borderColor = 'var(--border)';
-                  (e.currentTarget as HTMLInputElement).style.boxShadow = 'none';
+                  (e.currentTarget as HTMLTextAreaElement).style.borderColor = 'var(--border)';
+                  (e.currentTarget as HTMLTextAreaElement).style.boxShadow = 'none';
                 }}
               />
               <button
                 type="button"
-                onClick={send}
+                onClick={() => void send()}
                 disabled={!input.trim() || loading}
                 aria-label="Send message"
                 style={{

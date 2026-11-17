@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { api, type DocumentFeedback, type DocumentRecord, type DocumentTabSummary, type EditorJson, type PageNumberFormat, type TabNumbering, type TierCheckResponse } from '@/services/api'
+import { api, type AIGroundedPaper, type DocumentFeedback, type DocumentRecord, type DocumentTabSummary, type EditorJson, type PageNumberFormat, type TabNumbering, type TierCheckResponse } from '@/services/api'
 import { getHTMLFromFragment } from '@tiptap/core'
 import TabSidebar from '@/components/editor/TabSidebar'
 import SplitTabsDialog from '@/components/editor/SplitTabsDialog'
@@ -81,7 +81,9 @@ import type { TOCEntry } from '@/components/editor/TableOfContents'
 import { OutlineNavigator } from '@/components/editor/OutlineNavigator'
 import { CitationAssistant } from '@/components/editor/CitationAssistant'
 import HelpSheet from '@/components/editor/HelpSheet'
-import { CITATION_STYLE_LABELS, type CitationData, type CitationNumberMap, type CitationReference, type CitationStyle } from '@/lib/citationFormats'
+import { CITATION_STYLE_LABELS, citeReferences, formatBibliographyEntry, generateCitationKey, orderForBibliography, type CitationData, type CitationNumberMap, type CitationReference, type CitationStyle } from '@/lib/citationFormats'
+import { onFindCitationsRequest } from '@/lib/findCitationsRequest'
+import type { TextRange } from '@/components/editor/chatFormatting'
 import DocumentPartsPanel from '@/components/editor/DocumentPartsPanel'
 import { buildReferenceNodes, insertOrUpdateGenerated, pageNumberAt, referencesHeadingEnd } from '@/components/editor/DocumentParts'
 import { OfflineIndicator } from '@/components/editor/OfflineIndicator'
@@ -477,6 +479,8 @@ export default function Document(): JSX.Element {
   const [showGridlines, setShowGridlines] = useState<boolean>(false)
   const [citationStyle, setCitationStyle] = useState<CitationStyle>('ieee')
   const [references, setReferences] = useState<CitationReference[]>([])
+  /** A message for the assistant to send, set by the selection toolbar's "Find citations". */
+  const [assistantPrompt, setAssistantPrompt] = useState<string | null>(null)
   /** The citation data last loaded from or saved to the server, as JSON; edits are compared against it. */
   const savedCitationsRef = useRef<string | null>(null)
   const referencesKey = id ? `intellidocs.references.${id}` : null
@@ -3035,6 +3039,94 @@ export default function Document(): JSX.Element {
     editor.view.dispatch(tr)
   }
 
+  /** Put bibliography entries in the document: under its own References heading, or a generated block. */
+  function insertBibliography(entries: string[]): void {
+    if (!editor || !editor.isEditable) return
+    // Fill the document's own References heading when it has one, instead of adding a second title.
+    const heading = referencesHeadingEnd(editor)
+    if (heading && !editor.getHTML().includes('data-generated="refs"')) {
+      const range = heading.placeholder ?? { from: heading.at, to: heading.at }
+      editor.chain().focus().insertContentAt(range, buildReferenceNodes(entries, false)).run()
+      return
+    }
+    insertOrUpdateGenerated(editor, 'refs', buildReferenceNodes(entries, !heading))
+  }
+
+  /**
+   * The style the assistant cites in. Until the first source is added it follows the
+   * preset (IEEE documents number, APA ones use author-date); after that, the document's own.
+   */
+  const assistantCitationStyle: CitationStyle = (() => {
+    if (references.length > 0) return citationStyle
+    const base = basePresetKey(formattingPreset)
+    if (base === 'ieee') return 'ieee'
+    if (base === 'apa_7th') return 'apa'
+    return citationStyle
+  })()
+
+  /**
+   * Cite papers the user ticked in the assistant: add them to the references (reusing ones already
+   * there), put the in-text marker after the sentence or selection, and refresh the bibliography
+   * when the document already has one (numbered for IEEE, alphabetical for APA).
+   */
+  function addCitationsFromAssistant(papers: AIGroundedPaper[], at: TextRange | null): void {
+    if (!editor || editor.isDestroyed || !editor.isEditable) return
+    const style = assistantCitationStyle
+    const usedIds = new Set(references.map((ref) => ref.id))
+    const incoming: CitationReference[] = papers.map((paper) => {
+      const key = generateCitationKey(paper)
+      let id = key
+      for (let suffix = 2; usedIds.has(id); suffix += 1) id = `${key}${suffix}`
+      usedIds.add(id)
+      // Only the bibliographic fields are kept; the search's abstract and counts are not saved.
+      return {
+        id,
+        type: paper.type,
+        authors: paper.authors,
+        title: paper.title,
+        year: paper.year,
+        venue: paper.venue,
+        volume: paper.volume,
+        issue: paper.issue,
+        pages: paper.pages,
+        doi: paper.doi,
+        url: paper.url,
+        publisher: paper.publisher,
+      }
+    })
+    const { references: next, marker } = citeReferences(references, incoming, style)
+    if (!marker) return
+
+    // "...in transformers." becomes "...in transformers [3]." — the marker goes before closing punctuation.
+    const { doc } = editor.state
+    let pos = Math.min(at ? at.to : editor.state.selection.to, doc.content.size)
+    if (/[.,;:]/.test(doc.textBetween(Math.max(0, pos - 1), pos))) pos -= 1
+    const spaced = /\s/.test(doc.textBetween(Math.max(0, pos - 1), pos)) || pos === 0 ? marker : ` ${marker}`
+    editor.chain().focus().insertContentAt(pos, spaced).run()
+
+    if (style !== citationStyle) setCitationStyle(style)
+    setReferences(next)
+    // Update a generated bibliography, or fill an empty References section. A list the author typed
+    // under the heading is left alone; the Citation Assistant's "Insert in document" is there for that.
+    const heading = referencesHeadingEnd(editor)
+    const afterHeading = heading ? editor.state.doc.nodeAt(heading.at) : null
+    const emptySection = Boolean(heading && (heading.placeholder || !afterHeading || afterHeading.type.name === 'heading' || afterHeading.textContent.trim() === ''))
+    if (emptySection || editor.getHTML().includes('data-generated="refs"')) {
+      insertBibliography(orderForBibliography(next, style).map((ref, index) => formatBibliographyEntry(ref, style, index + 1)))
+    }
+  }
+
+  // The selection toolbar's "Find citations": open the assistant and ask it about the selection.
+  useEffect(
+    () =>
+      onFindCitationsRequest(() => {
+        setRightPanelOpen(true)
+        setSidePanelTab('assistant')
+        setAssistantPrompt('Find citations for the selected text')
+      }),
+    []
+  )
+
   /** Panel card opened on a grammar/spelling issue: select the words, scroll to them and spotlight the line. */
   function openGrammarInDocument(issue: GrammarIssue): void {
     const range = locateIssue(issue)
@@ -4538,6 +4630,13 @@ export default function Document(): JSX.Element {
             })
           } : undefined}
           locateInOtherTab={isTabbed ? locateInOtherTab : undefined}
+          writingAssist={{
+            activePreset: formattingPreset,
+            citationStyleLabel: CITATION_STYLE_LABELS[assistantCitationStyle].split(/\s{2,}/).join(' '),
+            onAddCitations: addCitationsFromAssistant,
+            pendingPrompt: assistantPrompt,
+            onPendingPromptConsumed: () => setAssistantPrompt(null),
+          }}
           scannerSuggestions={scannerSuggestions}
           activeScannerKey={scannerActive?.key ?? null}
           mlSuggestions={showSuggestions ? suggestions : []}
@@ -4619,17 +4718,7 @@ export default function Document(): JSX.Element {
                 references={references}
                 onReferencesChange={setReferences}
                 onCitationNumbersChanged={remapCitationMarkers}
-                onInsertBibliography={(entries) => {
-                  if (!editor || !editor.isEditable) return
-                  // Fill the document's own References heading when it has one, instead of adding a second title.
-                  const heading = referencesHeadingEnd(editor)
-                  if (heading && !editor.getHTML().includes('data-generated="refs"')) {
-                    const range = heading.placeholder ?? { from: heading.at, to: heading.at }
-                    editor.chain().focus().insertContentAt(range, buildReferenceNodes(entries, false)).run()
-                    return
-                  }
-                  insertOrUpdateGenerated(editor, 'refs', buildReferenceNodes(entries, !heading))
-                }}
+                onInsertBibliography={insertBibliography}
                 onInsertCitation={(citationText: string) => {
                   if (editor) {
                     editor.chain().focus().insertContent(citationText).run()

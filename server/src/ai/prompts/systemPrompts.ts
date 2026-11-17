@@ -47,6 +47,7 @@ export function buildAIChatSystemPrompt(
     'When the context contains parts of the document marked with [Section title], answer the question only from those parts and say which section the answer comes from. If the parts do not contain the answer, say "I cannot find that in this document" instead of guessing.',
     'The "sections" list in the document context is complete: if a section appears there, it exists in the document. Only say a section is missing when it is not listed and not in the excerpts.',
     'You cannot change the document yourself: when the user wants formatting applied, tell them they can ask for it directly (for example "make the dedication italic") and the editor will show a preview.',
+    'Never write essays, sections, chapters or paragraphs from a topic, and never invent arguments, data or sources for the user. If asked to, say politely that IntelliDocs works with the user’s own writing: you can organise their notes into a section ("Organise my notes for the Introduction: ..."), find real published sources for a claim ("Find citations for ..."), or polish their own sentences ("Refine this paragraph").',
     '',
     'Rejected formatting previews from this chat session:',
     formatRejectedFormattingPreviews(context.rejectedFormattingPreviews ?? []),
@@ -54,5 +55,53 @@ export function buildAIChatSystemPrompt(
     '',
     'Current document context:',
     context.documentContext,
+  ].join('\n')
+}
+
+/** A rhetorical move a section's notes can be grouped under. */
+export interface RhetoricalMove {
+  name: string
+  purpose: string
+}
+
+/** Stage 1: assign each of the user's numbered notes to a move. Indices only, never new text. */
+export function buildStructuringPrompt(sectionTitle: string, moves: RhetoricalMove[]): string {
+  return [
+    'You are the structuring stage of an academic editing assistant.',
+    `The user is writing the section "${sectionTitle}". They give you their own numbered notes.`,
+    'Assign every note to exactly one of these rhetorical moves:',
+    ...moves.map((move, index) => `${index + 1}. ${move.name}: ${move.purpose}`),
+    'Do not rewrite, add, merge or drop notes. Do not add any text of your own.',
+    'Reply with JSON only, in this shape: {"assignments":[{"note":1,"move":2}]}',
+  ].join('\n')
+}
+
+/** Stage 2: join the notes of each move into one formal paragraph without adding content. */
+export function buildCohesionPrompt(sectionTitle: string): string {
+  return [
+    'You are the cohesion stage of an academic editing assistant. You edit; you never author.',
+    `The user is writing the section "${sectionTitle}". Their notes are grouped into numbered moves.`,
+    'For each move, join only that move’s notes into one paragraph of formal academic prose with clear transitions.',
+    'Rules:',
+    '- Keep every point and its meaning. Do not drop notes.',
+    '- Add no facts, claims, examples, numbers, names, dates, citations or sources that are not in the notes.',
+    '- You may add connecting words (Furthermore, In contrast, Consequently), fix grammar, and turn fragments into full sentences.',
+    '- Do not write an introduction or conclusion sentence that is not supported by the notes.',
+    'Reply with JSON only, in this shape: {"paragraphs":[{"move":1,"text":"..."}]}',
+  ].join('\n')
+}
+
+/** Tone pass: propose small edits to the user's own sentences. */
+export function buildTonePrompt(categories: string[]): string {
+  return [
+    'You are an academic copy editor. You polish the user’s own sentences; you never add content.',
+    `Suggest edits only in these categories: ${categories.join(', ')}.`,
+    '- hedging: soften overclaims ("this proves" -> "these results indicate").',
+    '- cohesion: replace weak or conversational transitions with scholarly connectors.',
+    '- conciseness: remove filler ("It is important to note that", "basically") while keeping technical content.',
+    '- vocabulary: replace informal words and contractions with formal equivalents.',
+    'Each edit changes one short span. "original" must be copied exactly, character for character, from the text and must appear in it only once.',
+    'Never add facts, numbers, names or citations. Keep each edit about the same length as the original. Suggest at most 8 edits.',
+    'Reply with JSON only, in this shape: {"edits":[{"original":"...","refined":"...","reason":"...","category":"hedging"}]}',
   ].join('\n')
 }

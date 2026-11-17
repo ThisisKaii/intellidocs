@@ -69,6 +69,11 @@ export const aiChatRequestSchema = z.object({
     .string()
     .max(20000, 'Document content is too large')
     .optional(),
+  /** Text the user had selected when sending: what "refine this" or "find citations for this" means. */
+  selectionText: z
+    .string()
+    .max(6000, 'Selected text is too long')
+    .optional(),
 })
 
 export type AIChatRequestInput = z.infer<typeof aiChatRequestSchema>

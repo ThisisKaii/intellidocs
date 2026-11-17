@@ -680,10 +680,65 @@ export interface AIChatResponse {
   reply: string
   provider: string
   model: string
-  mode?: 'chat' | 'preview'
+  mode?: 'chat' | 'preview' | 'structure' | 'citations' | 'refine'
   preview?: AIChatPreview | null
   /** Sections of the document an AI answer was based on; present only for AI answers. */
   sources?: Array<{ title: string }>
+  /** mode 'structure': the user's notes organised into a section. */
+  structured?: AIStructuredSection
+  /** mode 'citations': real papers from Crossref / Semantic Scholar. */
+  papers?: AIGroundedPaper[]
+  citationQuery?: string
+  /** mode 'refine': suggested edits to the user's own text. */
+  refinement?: AIToneRefinement
+}
+
+/** One rhetorical move of an organised section, listing the user's own points under it. */
+export interface AIOutlineMove {
+  name: string
+  purpose: string
+  notes: string[]
+}
+
+/** The user's notes organised into formal paragraphs (server: orchestrateSectionDraft). */
+export interface AIStructuredSection {
+  sectionTitle: string
+  outline: AIOutlineMove[]
+  paragraphs: string[]
+  warnings: string[]
+}
+
+/** A published paper found by literature search; never written by the model. */
+export interface AIGroundedPaper {
+  type: 'journal' | 'book' | 'conference' | 'website' | 'thesis' | 'report' | 'other'
+  authors: string[]
+  title: string
+  year: number
+  venue?: string
+  volume?: string
+  issue?: string
+  pages?: string
+  doi?: string
+  url?: string
+  publisher?: string
+  source: 'crossref' | 'semanticscholar'
+  abstract?: string
+  citationCount?: number
+}
+
+export type AIToneCategory = 'hedging' | 'cohesion' | 'conciseness' | 'vocabulary'
+
+export interface AIToneEdit {
+  original: string
+  refined: string
+  reason: string
+  ruleCategory: AIToneCategory
+}
+
+export interface AIToneRefinement {
+  edits: AIToneEdit[]
+  notices: Array<{ category: 'acronym'; term: string; message: string }>
+  sourceText: string
 }
 
 export type MCPToolName =
@@ -694,6 +749,9 @@ export type MCPToolName =
   | 'predictNextFormat'
   | 'getBehaviorSummary'
   | 'explainSuggestion'
+  | 'structureUserSection'
+  | 'searchLiteratureAndCite'
+  | 'refineAcademicStyle'
 
 export interface MCPToolCall { 
   tool: MCPToolName
@@ -1706,7 +1764,8 @@ export const api = {
       documentContent?: string,
       history?: AIChatHistoryMessage[],
       rejectedFormattingPreviews?: RejectedFormattingPreview[],
-      lastPreview?: AIChatPreviewMeta | null
+      lastPreview?: AIChatPreviewMeta | null,
+      selectionText?: string
     ): Promise<AIChatResponse> => {
       return fetchAPI<AIChatResponse>('ai/chat', {
         method: 'POST',
@@ -1719,6 +1778,7 @@ export const api = {
           history,
           rejectedFormattingPreviews,
           lastPreview,
+          selectionText: selectionText ? selectionText.slice(0, 6000) : undefined,
         }),
       })
     },

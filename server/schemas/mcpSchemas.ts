@@ -9,6 +9,9 @@ export const mcpToolCallSchema = z.object({
     'predictNextFormat',
     'getBehaviorSummary',
     'explainSuggestion',
+    'structureUserSection',
+    'searchLiteratureAndCite',
+    'refineAcademicStyle',
   ]),
   args: z.record(z.unknown()),
 })
@@ -53,6 +56,25 @@ export const explainSuggestionSchema = z.object({
   format: z.string().min(1),
   confidence: z.number().min(0).max(1),
   reason: z.string().optional(),
+})
+
+export const structureUserSectionSchema = z.object({
+  sectionTitle: z.string().trim().min(1).max(200),
+  /** The user's own notes or rough draft; the tool organises them and never writes from a topic. */
+  userNotes: z.string().trim().min(1, 'Notes are required').max(12000),
+  genre: z.enum(['ieee', 'thesis', 'memo', 'general']).optional(),
+})
+
+export const searchLiteratureAndCiteSchema = z.object({
+  query: z.string().trim().min(3).max(300),
+  claimText: z.string().trim().max(2000).optional(),
+  style: z.enum(['ieee', 'apa']),
+  limit: z.coerce.number().int().min(1).max(5).optional(),
+})
+
+export const refineAcademicStyleSchema = z.object({
+  text: z.string().trim().min(1).max(6000),
+  focus: z.enum(['clarity', 'hedging', 'vocabulary', 'all']).default('all'),
 })
 
 export type MCPToolCallInput = z.infer<typeof mcpToolCallSchema>

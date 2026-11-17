@@ -241,3 +241,6 @@ function getProfileSummaries(): AIProviderSummary[] {
 }
 
 export const aiClient = { chat, chatWithMeta, stream, getProviderSummary, getProfileSummaries }
+
+/** A chat call with the same shape as aiClient.chatWithMeta, injectable so skills can be tested offline. */
+export type ChatCompleter = (messages: Message[], systemPrompt?: string) => Promise<AIResponse>

@@ -271,3 +271,53 @@ export function removeReferenceAndRenumber(
     mapping,
   }
 }
+
+/** Title reduced to letters and digits, so the same work from two indexes compares equal. */
+function titleKey(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+/**
+ * Cite several sources at one point in the text. Sources already in the list are
+ * reused (matched by DOI or title) rather than added twice; IEEE gives each newly
+ * cited source the next number. Returns the updated list and the marker to insert:
+ * "[3], [4]" for IEEE, "(Smith, 2020; Vaswani et al., 2017)" for the author styles.
+ */
+export function citeReferences(
+  existing: CitationReference[],
+  incoming: CitationReference[],
+  style: CitationStyle
+): { references: CitationReference[]; marker: string } {
+  const references = [...existing]
+  const citedIds: string[] = []
+  for (const source of incoming) {
+    const doi = source.doi?.toLowerCase()
+    const index = references.findIndex(
+      (ref) => (doi !== undefined && ref.doi?.toLowerCase() === doi) || titleKey(ref.title) === titleKey(source.title)
+    )
+    if (index === -1) {
+      references.push(source)
+      citedIds.push(source.id)
+    } else if (!citedIds.includes(references[index].id)) {
+      citedIds.push(references[index].id)
+    }
+  }
+  if (style === 'ieee') {
+    let next = references.reduce((max, ref) => Math.max(max, ref.cited ?? 0), 0)
+    for (const id of citedIds) {
+      const index = references.findIndex((ref) => ref.id === id)
+      if (references[index].cited == null) {
+        next += 1
+        references[index] = { ...references[index], cited: next }
+      }
+    }
+  }
+  const cited = citedIds.map((id) => references.find((ref) => ref.id === id)).filter((ref): ref is CitationReference => ref !== undefined)
+  if (cited.length === 0) return { references, marker: '' }
+  if (style === 'ieee') {
+    const numbers = cited.map((ref) => ref.cited ?? 0).sort((a, b) => a - b)
+    return { references, marker: numbers.map((n) => `[${n}]`).join(', ') }
+  }
+  const parts = sortReferences(cited).map((ref) => formatInTextCitation(ref, style).replace(/^\(|\)$/g, ''))
+  return { references, marker: `(${parts.join('; ')})` }
+}

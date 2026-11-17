@@ -31,7 +31,7 @@ function mapType(type: string | undefined): CitationLookupResult['type'] {
 }
 
 /** Convert a Crossref work into a reference with one "Given Family" name per author. */
-function toReference(work: CrossrefWork): CitationLookupResult | null {
+export function toReference(work: CrossrefWork): CitationLookupResult | null {
   const title = work.title?.[0]?.trim()
   if (!title) return null
   const year = work.issued?.['date-parts']?.[0]?.[0] ?? work.published?.['date-parts']?.[0]?.[0] ?? new Date().getFullYear()

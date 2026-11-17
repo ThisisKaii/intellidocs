@@ -107,7 +107,9 @@ import {
   Merge,
   Scissors as SplitSquare,
   Palette as PaletteIcon,
+  BookOpen,
 } from 'lucide-react'
+import { requestFindCitations } from '@/lib/findCitationsRequest'
 import { api } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { LetterSpacingExtension } from './LetterSpacingExtension'
@@ -3871,6 +3873,17 @@ function TiptapBubbleMenu({ editor }: { editor: Editor | null }): JSX.Element | 
           title="Highlight"
           active={editor.isActive('highlight')}
           onClick={() => editor.chain().focus().toggleHighlight({ color: '#ffff00' }).run()}
+        />
+        <Divider />
+        <ToolButton
+          icon={BookOpen}
+          title="Find citations"
+          ariaLabel="Find published sources for the selected text"
+          onClick={() => {
+            const { from, to } = editor.state.selection
+            const text = editor.state.doc.textBetween(from, to, ' ').trim()
+            if (text) requestFindCitations(text)
+          }}
         />
         <Divider />
         <ToolButton

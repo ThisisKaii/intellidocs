@@ -17,7 +17,7 @@ import {
   HelpCircle,
   GraduationCap,
 } from 'lucide-react'
-import AIChatbot from './AIChatbot'
+import AIChatbot, { type WritingAssistWiring } from './AIChatbot'
 import HistoryPanel from './HistoryPanel'
 import type { DocumentFeedback, DocumentVersion } from '@/services/api'
 import { FeedbackPanel, hasFeedback } from './FeedbackPanel'
@@ -78,6 +78,8 @@ interface EditorSidePanelProps {
   historyTabId?: string | null
   /** For a document split into tabs: which other tab a chat target is in. */
   locateInOtherTab?: (target: string) => string | null
+  /** Note structuring, citation search and refinement wiring for the assistant. */
+  writingAssist?: WritingAssistWiring
   scannerSuggestions: ScannerSuggestion[]
   /** Key of the suggestion currently highlighted in the editor (drives the active card state). */
   activeScannerKey?: string | null
@@ -145,6 +147,7 @@ export default function EditorSidePanel({
   loadCurrentHtml,
   historyTabId,
   locateInOtherTab,
+  writingAssist,
   scannerSuggestions,
   activeScannerKey = null,
   mlSuggestions,
@@ -329,6 +332,7 @@ export default function EditorSidePanel({
               onFocusEditor={onFocusEditor}
               onApplyPreset={onApplyPreset}
               locateInOtherTab={locateInOtherTab}
+              writingAssist={writingAssist}
               docked
             />
           </div>
