@@ -51,6 +51,22 @@ describe('tool registry', () => {
     expect(section.card.preview).toMatchObject({ targetMode: 'heading', scope: 'all' })
   })
 
+  it('formatBlocks: a block by position, page and section, read the way models write them', async () => {
+    const last = (await callTool('formatBlocks', { targetCategory: 'paragraphs', position: 'last', page: '1', formats: ['bold'], scope: 'selection' })) as {
+      card: { reply: string; preview: { targetIndex: number; targetPage: number; scope: string } }
+    }
+    // A named place is the document's, even when the caller said "selection".
+    expect(last.card.preview).toMatchObject({ targetIndex: -1, targetPage: 1, scope: 'all' })
+    expect(last.card.reply).toContain('the last paragraph on page 1')
+    const opening = (await callTool('formatBlocks', { targetCategory: 'paragraphs', target: 'statement of the problem', position: 1, formats: ['bold'] })) as {
+      card: { preview: { targetMode: string; targetIndex: number } }
+    }
+    expect(opening.card.preview).toMatchObject({ targetMode: 'section', targetIndex: 1 })
+    const here = (await callTool('formatBlocks', { targetCategory: 'headings', page: 'this', formats: ['italic'] })) as { card: { preview: { targetPage: string } } }
+    expect(here.card.preview.targetPage).toBe('current')
+    await expect(callTool('formatBlocks', { targetCategory: 'paragraphs', position: 0, formats: ['bold'] })).rejects.toBeInstanceOf(ZodError)
+  })
+
   it('rejects a call that changes nothing or names a bad value', async () => {
     await expect(callTool('formatBlocks', { targetCategory: 'headings' })).rejects.toBeInstanceOf(ZodError)
     await expect(callTool('formatBlocks', { targetCategory: 'except:everything', bold: true })).rejects.toBeInstanceOf(ZodError)

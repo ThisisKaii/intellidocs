@@ -20,6 +20,9 @@ export interface FormattingOperation {
   target: string | null
   targetMode: TargetMode | null
   targetCategory: TargetCategory
+  /** A block picked by position (1-based, -1 = last) and/or a page; see FormattingIntentResult. */
+  targetIndex: number | null
+  targetPage: number | 'current' | null
   /** Line spacing, first-line indent, font family and letter case. */
   style: StyleChange
   /** The words of the request this operation came from. */
@@ -131,6 +134,8 @@ function toOperation(intent: FormattingIntentResult, pending: Pending, piece: st
     target: intent.target,
     targetMode: intent.targetMode,
     targetCategory: intent.targetCategory,
+    targetIndex: intent.targetIndex,
+    targetPage: intent.targetPage,
     style: mergeStyle(pending.style, intent.style),
     text: [...pending.text, piece].join(' and '),
   }
@@ -142,6 +147,8 @@ function sameOperation(a: FormattingOperation, b: FormattingOperation): boolean 
     a.target === b.target &&
     a.targetMode === b.targetMode &&
     a.targetCategory === b.targetCategory &&
+    a.targetIndex === b.targetIndex &&
+    a.targetPage === b.targetPage &&
     a.normalize === b.normalize &&
     a.fontSize === b.fontSize &&
     JSON.stringify(a.style) === JSON.stringify(b.style) &&

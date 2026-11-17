@@ -343,6 +343,61 @@ function exceptRanges(doc: ProseMirrorNode, category: ExceptCategory): TextRange
 
 const HEADING_LEVEL_CATEGORIES: Partial<Record<AIChatBlockCategory, number>> = { h1Headings: 1, h2Headings: 2, h3Headings: 3 }
 
+/** Where a positional change points: a kind of block, which one, on which page, in which section. */
+export interface BlockPlace {
+  /** The kind of block; 'all' is every text block ("make page 3 double-spaced"). */
+  category: AIChatTargetCategory
+  /** 1-based; -1 is the last one; null is every one there. */
+  index: number | null
+  /** A page of the document, or the page the cursor is on. */
+  page: number | 'current' | null
+  /** The section or chapter it is in ("introduction", "chapter 2"). */
+  within: string | null
+}
+
+/** Every non-empty text block as a range. */
+function textblockRanges(doc: ProseMirrorNode): TextRange[] {
+  const ranges: TextRange[] = []
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true
+    if (node.content.size > 0 && node.textContent.trim()) ranges.push({ from: pos + 1, to: pos + node.nodeSize - 1 })
+    return false
+  })
+  return ranges
+}
+
+/**
+ * The blocks a positional change points at: "the 2nd paragraph of the Introduction", "the last
+ * table on page 4", "the headings on this page". The section's own heading is not one of its
+ * blocks. `pageOf` maps a position to its page (the editor's layout); without it a page cannot be
+ * resolved and nothing matches. Empty when the place does not exist.
+ */
+export function findPlacedRanges(
+  doc: ProseMirrorNode,
+  place: BlockPlace,
+  pageOf: ((pos: number) => number) | null,
+  currentPage: number | null
+): TextRange[] {
+  let ranges = place.category === 'all' ? textblockRanges(doc) : findCategoryRanges(doc, place.category)
+  if (place.within) {
+    const section = resolveTargetRanges(doc, place.within, 'section')
+    if (section.length === 0) return []
+    const from = Math.min(...section.map((range) => range.from))
+    const to = Math.max(...section.map((range) => range.to))
+    ranges = ranges.filter((range) => range.from > from && range.to <= to)
+  }
+  if (place.page !== null) {
+    const page = place.page === 'current' ? currentPage : place.page
+    if (!pageOf || page === null) return []
+    ranges = ranges.filter((range) => pageOf(range.from) === page)
+  }
+  if (place.index !== null) {
+    const picked = place.index === -1 ? ranges[ranges.length - 1] : ranges[place.index - 1]
+    return picked ? [picked] : []
+  }
+  return ranges
+}
+
 /** Every text block a category names, each as its own range (questions: one range per run). */
 export function findCategoryRanges(doc: ProseMirrorNode, category: BlockCategory): TextRange[] {
   if (isExcept(category)) return exceptRanges(doc, category)

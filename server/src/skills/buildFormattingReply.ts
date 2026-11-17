@@ -1,4 +1,4 @@
-import { describeTargetCategory, type StyleChange, type TargetCategory, type TargetMode } from './parseFormattingIntent'
+import { describePosition, describeTargetCategory, type BlockCategory, type StyleChange, type TargetCategory, type TargetMode } from './parseFormattingIntent'
 
 /** The facts of a formatting preview that the chat reply describes. */
 export interface FormattingReplyInput {
@@ -9,6 +9,9 @@ export interface FormattingReplyInput {
   target: string | null
   targetMode: TargetMode | null
   targetCategory: TargetCategory | null
+  /** A block picked by position and/or page ("the 2nd paragraph of the Introduction"). */
+  targetIndex?: number | null
+  targetPage?: number | 'current' | null
   /** Line spacing, first-line indent, font family and letter case, when asked for. */
   style?: StyleChange | null
 }
@@ -78,6 +81,16 @@ function changeWords(input: FormattingReplyInput): string[] {
 
 /** Describe what part of the document the change touches. */
 function describeSubject(input: FormattingReplyInput): string {
+  const positional = (input.targetIndex ?? null) !== null || (input.targetPage ?? null) !== null
+  const category = input.targetCategory ?? 'all'
+  if (positional && !category.startsWith('except:')) {
+    return describePosition({
+      category: category as BlockCategory | 'all',
+      index: input.targetIndex ?? null,
+      page: input.targetPage ?? null,
+      within: input.target,
+    })
+  }
   if (input.target && input.targetMode === 'literal') return `the words “${input.target}”`
   if (input.target && input.targetMode === 'title') return 'the document title'
   if (input.target && input.targetMode === 'heading') return `the ${displayTarget(input.target)} heading`

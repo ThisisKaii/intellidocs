@@ -91,3 +91,16 @@ export async function resetAIQuota(
   const key = buildQuotaKey(userId, scope)
   await client.del(key)
 }
+/** Give back one unit (an AI call that ended in a question or nothing to do is not charged). */
+export async function refundAIQuota(
+  userId: string,
+  scope = 'default'
+): Promise<void> {
+  const client = await getRedisClient()
+  const key = buildQuotaKey(userId, scope)
+  const count = Number(await client.get(key))
+  if (!Number.isFinite(count) || count <= 0) return
+  // Keep the window's remaining time: the refund must not extend or restart it.
+  const ttl = await client.ttl(key)
+  await client.set(key, String(count - 1), { EX: ttl > 0 ? ttl : getQuotaWindowSeconds() })
+}

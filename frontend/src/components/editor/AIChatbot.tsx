@@ -3,9 +3,10 @@ import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { editorUndoDepth, startNewUndoStep } from './undoDepth'
-import { api, type AIAutomation, type AISuggestionGroup, type MarginValues, type PageOrientation, type PageSizeKey, type AIChatBlockCategory, type AIChatResponse, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type AIGroundedPaper, type AIStructuredSection, type AIToneRefinement, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
-import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, replaceTextsInRange, resolveTargetRanges, type BlockCategory, type TextRange } from './chatFormatting'
-import { AutoCaptionCard, AutomationCard, CitationsCard, RefineCard, StructureCard, type CardStatus, type EditStatus } from './WritingAssistCards'
+import { api, type AIAutomation, type AIClarify, type AISuggestionGroup, type MarginValues, type PageOrientation, type PageSizeKey, type AIChatBlockCategory, type AIChatResponse, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type AIGroundedPaper, type AIStructuredSection, type AIToneRefinement, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
+import { applyFormatsToRanges, findPlacedRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, replaceTextsInRange, resolveTargetRanges, type BlockCategory, type TextRange } from './chatFormatting'
+import { pageFinder } from './DocumentParts'
+import { AutoCaptionCard, AutomationCard, CitationsCard, ClarifyCard, RefineCard, StructureCard, type CardStatus, type EditStatus } from './WritingAssistCards'
 import { captionsWithoutTitle, planAutoCaptions, type AutoCaptionItem } from './autoCaption'
 import { findCaptions, misnumberedCaptions, resolveCaptionConfig, type CaptionContext, type CaptionKind, type CaptionStyleSpec } from './captionNumbering'
 import { buildStructuredSectionContent, headingLevelAt } from './structuredSection'
@@ -27,6 +28,11 @@ interface ChatMessage {
   preview_target?: string | null
   preview_target_mode?: AIChatTargetMode | null
   preview_target_category?: AIChatTargetCategory | null
+  /** A block picked by position (1-based, -1 = last) and/or a page ("the 2nd paragraph on page 3"). */
+  preview_target_index?: number | null
+  preview_target_page?: number | 'current' | null
+  /** The opening words of the block a positional change picked, to check before Apply. */
+  preview_place_text?: string | null
   preview_normalize?: boolean | null
   /** Every change of a multi-change preview, applied together in order. */
   preview_operations?: AIChatFormattingOperation[] | null
@@ -56,6 +62,14 @@ interface ChatMessage {
   automation?: AIAutomation | null
   automation_lines?: string[] | null
   automation_result?: string | null
+  /** Chosen by the AI fallback (no fixed rule recognised the request): marked, and reported back. */
+  routed_by_ai?: boolean
+  route_id?: string | null
+  /** "Which did you mean?" and its options; the option picked, once answered. */
+  clarify?: AIClarify | null
+  clarify_choice?: string | null
+  /** For a change to a kind of block: how many blocks of the document it matches. */
+  preview_block_count?: number | null
   /** State of a structure or citations card. */
   assist_status?: CardStatus | null
   /** State of each revision in `refinement.edits`. */
@@ -210,6 +224,8 @@ interface PlannedChange {
   target: string | null
   targetMode: AIChatTargetMode | null
   targetCategory: AIChatTargetCategory | null
+  targetIndex?: number | null
+  targetPage?: number | 'current' | null
   normalize: boolean
   style: AIChatStyleChange | null
 }
@@ -521,6 +537,13 @@ export default function AIChatbot({
   /** Human-readable scope suffix for the preview, honoring chapter targets. */
   function previewScopeLabel(msg: ChatMessage): string {
     if (msg.preview_scope === 'all') {
+      // A block picked by position: its opening words (the reason line says where), or how many.
+      if ((msg.preview_target_index ?? null) !== null || (msg.preview_target_page ?? null) !== null) {
+        const count = msg.preview_block_count ?? 0
+        if (count === 0) return '— nothing there in this document'
+        if (msg.preview_target_index !== null && msg.preview_target_index !== undefined) return `— “${msg.preview_place_text ?? ''}”`
+        return `— ${count} block${count === 1 ? '' : 's'}`
+      }
       if (msg.preview_target && msg.preview_target_mode === 'literal') return `— the words “${msg.preview_target}”`
       if (msg.preview_target && msg.preview_target_mode === 'title') return '— the document title'
       if (msg.preview_target && msg.preview_target_mode === 'heading') return `— the “${msg.preview_target}” heading line`
@@ -531,7 +554,12 @@ export default function AIChatbot({
           .join(' ')
         return `— ${capitalized}`
       }
-      if (msg.preview_target_category && msg.preview_target_category !== 'all') return `— ${categoryNote(msg.preview_target_category)}`
+      if (msg.preview_target_category && msg.preview_target_category !== 'all') {
+        // How many blocks it matches, so a wrong reading ("0 tables") shows before Apply.
+        const count = msg.preview_block_count
+        const counted = count === null || count === undefined ? '' : count === 0 ? ' (none in this document)' : ` (${count})`
+        return `— ${categoryNote(msg.preview_target_category)}${counted}`
+      }
       return '— entire document'
     }
     return ''
@@ -666,7 +694,12 @@ export default function AIChatbot({
       scope === 'all' && targetCategory && targetCategory !== 'all' ? ` (${categoryNote(targetCategory)})` : ''
 
     let targetWarning = ''
-    if (target && scope === 'all') {
+    const positional = (change.targetIndex ?? null) !== null || (change.targetPage ?? null) !== null
+    if (positional && scope === 'all') {
+      const ranges = placedRanges(change)
+      if (ranges.length === 0) targetWarning = ' (nothing there in this document now)'
+      else applyFormatsToRanges(editor, ranges, formats, fontSize, normalize, style)
+    } else if (target && scope === 'all') {
       const places = applyFormatsToTarget(target, change.targetMode, formats, fontSize, normalize, style)
       if (places === 0) {
         const elsewhere = locateInOtherTab?.(target) ?? null
@@ -688,7 +721,7 @@ export default function AIChatbot({
       applyFormatsToSelection(editor, formats, fontSize, style)
     }
 
-    return `${describeChangeParts(change, fallbackFormat).join(' + ')}${target && scope === 'all' ? ` on “${target}”` : ''}${scopeNote}${targetWarning}`
+    return `${describeChangeParts(change, fallbackFormat).join(' + ')}${target && scope === 'all' && !positional ? ` on “${target}”` : ''}${positional ? '' : scopeNote}${targetWarning}`
   }
 
   /** Apply a confirmed formatting preview to the editor (selection or whole doc). */
@@ -717,6 +750,7 @@ export default function AIChatbot({
 
   /** Apply a preview card; a change to the whole document is checkpointed in History first. */
   function handlePreviewApply(messageIndex: number, msg: ChatMessage): void {
+    reportRoute(msg, true)
     const big = Boolean(msg.preview_learned || msg.preview_preset_key || msg.preview_operations?.length || msg.preview_scope === 'all')
     if (!big) {
       applyPreviewNow(messageIndex, msg)
@@ -754,6 +788,8 @@ export default function AIChatbot({
       target: msg.preview_target ?? null,
       targetMode: msg.preview_target_mode ?? null,
       targetCategory: msg.preview_target_category ?? null,
+      targetIndex: msg.preview_target_index ?? null,
+      targetPage: msg.preview_target_page ?? null,
       normalize: msg.preview_normalize ?? false,
       style: msg.preview_style ?? null,
     }
@@ -766,6 +802,8 @@ export default function AIChatbot({
             target: operation.target,
             targetMode: operation.targetMode,
             targetCategory: operation.targetCategory,
+            targetIndex: operation.targetIndex ?? null,
+            targetPage: operation.targetPage ?? null,
             normalize: operation.normalize,
             style: operation.style ?? null,
           }))
@@ -882,6 +920,7 @@ export default function AIChatbot({
     format: string,
     reason?: string | null
   ): void {
+    reportRoute(messages[messageIndex], false)
     const rejectedPreview: RejectedFormattingPreview = {
       format,
       reason: reason ?? 'User rejected the preview suggestion.',
@@ -999,6 +1038,7 @@ export default function AIChatbot({
 
   /** Run an automation the user applied, after saving a History checkpoint of the document. */
   function runAutomation(messageIndex: number, automation: AIAutomation, lines: string[]): void {
+    reportRoute(messages[messageIndex], true)
     const what = lines.length > 0 ? `${AUTOMATION_NAMES[automation.action]} (${lines.slice(0, 3).join('; ')}${lines.length > 3 ? '; …' : ''})` : AUTOMATION_NAMES[automation.action]
     afterCheckpoint(messageIndex, what, () => runAutomationNow(messageIndex, automation))
   }
@@ -1042,6 +1082,7 @@ export default function AIChatbot({
 
   /** Add every missing caption in one step (one undo), after a History checkpoint. */
   function addAutoCaptions(messageIndex: number, kinds: CaptionKind[]): void {
+    reportRoute(messages[messageIndex], true)
     const count = planCaptions(kinds).length
     afterCheckpoint(messageIndex, `Auto caption (${count} caption${count === 1 ? '' : 's'})`, () => addAutoCaptionsNow(messageIndex, kinds))
   }
@@ -1139,22 +1180,27 @@ export default function AIChatbot({
    * results both come through here, so the same change always gets the same card.
    */
   function showResponse(response: AIChatResponse, selection: { range: TextRange | null; text: string }): void {
+    // A change the AI chose is marked as such, and reports back whether it was applied.
+    const routed: Partial<ChatMessage> = response.routedBy === 'ai' ? { routed_by_ai: true, route_id: response.routeId ?? null } : {}
+    const add = (message: ChatMessage): void => setMessages((current) => [...current, { ...message, ...routed }])
+
+    if (response.mode === 'clarify' && response.clarify) {
+      add({ role: 'assistant', content: response.reply, clarify: response.clarify })
+      return
+    }
+
     if (response.mode === 'captions') {
-      setMessages((current) => [...current, autoCaptionMessage(response.reply, response.captionKinds ?? ['figure', 'table'])])
+      add(autoCaptionMessage(response.reply, response.captionKinds ?? ['figure', 'table']))
       return
     }
 
     if (response.mode === 'automation' && response.automation) {
-      const automation = response.automation
-      setMessages((current) => [...current, automationMessage(response.reply, automation)])
+      add(automationMessage(response.reply, response.automation))
       return
     }
 
     if (response.mode === 'structure' || response.mode === 'citations' || response.mode === 'refine') {
-      setMessages((current) => [
-        ...current,
-        writingAssistMessage(response.reply, { structured: response.structured, papers: response.papers, refinement: response.refinement }, selection),
-      ])
+      add(writingAssistMessage(response.reply, { structured: response.structured, papers: response.papers, refinement: response.refinement }, selection))
       return
     }
 
@@ -1198,7 +1244,7 @@ export default function AIChatbot({
             role: 'assistant',
             content: 'None of the paragraphs or headings in this document match your learned habits for this genre yet, so there is nothing to change.',
           }
-      setMessages((current) => [...current, learnedMsg])
+      add(learnedMsg)
       return
     }
 
@@ -1214,6 +1260,8 @@ export default function AIChatbot({
       preview_target: response.preview?.target ?? null,
       preview_target_mode: response.preview?.targetMode ?? null,
       preview_target_category: response.preview?.targetCategory ?? null,
+      preview_target_index: response.preview?.targetIndex ?? null,
+      preview_target_page: response.preview?.targetPage ?? null,
       preview_normalize: response.preview?.normalize ?? false,
       preview_font_size: response.preview?.fontSize ?? null,
       preview_operations: response.preview?.operations && response.preview.operations.length > 0 ? response.preview.operations : null,
@@ -1221,6 +1269,7 @@ export default function AIChatbot({
       preview_preset_key: response.preview?.presetKey ?? null,
       preview_reason: previewFormat ? previewReason : null,
       preview_status: previewFormat ? 'pending' : null,
+      ...previewPlace(response.preview ?? null),
       sources: previewFormat ? undefined : response.sources,
     }
 
@@ -1238,13 +1287,68 @@ export default function AIChatbot({
           target: response.preview?.target ?? null,
           targetMode: response.preview?.targetMode ?? null,
           targetCategory: response.preview?.targetCategory ?? null,
+          targetIndex: response.preview?.targetIndex ?? null,
+          targetPage: response.preview?.targetPage ?? null,
           normalize: response.preview?.normalize ?? false,
           style: response.preview?.style ?? null,
           operations: response.preview?.operations,
         }
       : lastPreviewRef.current
 
-    setMessages((current) => [...current, assistantMsg])
+    add(assistantMsg)
+  }
+
+  /** The blocks a positional change points at, under the editor's current layout. */
+  function placedRanges(change: Pick<PlannedChange, 'targetCategory' | 'targetIndex' | 'targetPage' | 'target'>): TextRange[] {
+    if (!editor || editor.isDestroyed) return []
+    let pageOf: ((pos: number) => number) | null = null
+    try {
+      pageOf = pageFinder(editor)
+    } catch {
+      pageOf = null
+    }
+    return findPlacedRanges(
+      editor.state.doc,
+      { category: change.targetCategory ?? 'all', index: change.targetIndex ?? null, page: change.targetPage ?? null, within: change.target },
+      pageOf,
+      pageOf ? pageOf(editor.state.selection.from) : null
+    )
+  }
+
+  /** What a preview matches now: how many blocks, and for a block picked by position, its opening words. */
+  function previewPlace(preview: AIChatResponse['preview'] | null): Pick<ChatMessage, 'preview_block_count' | 'preview_place_text'> {
+    if (!preview || !editor || editor.isDestroyed) return { preview_block_count: null, preview_place_text: null }
+    if ((preview.targetIndex ?? null) !== null || (preview.targetPage ?? null) !== null) {
+      const ranges = placedRanges({ targetCategory: preview.targetCategory ?? null, targetIndex: preview.targetIndex ?? null, targetPage: preview.targetPage ?? null, target: preview.target ?? null })
+      const first = ranges[0]
+      const text = first ? editor.state.doc.textBetween(first.from, first.to, ' ').trim() : ''
+      return { preview_block_count: ranges.length, preview_place_text: text.length > 60 ? `${text.slice(0, 60)}…` : text }
+    }
+    return { preview_block_count: blockCount(preview.scope ?? null, preview.targetCategory ?? null), preview_place_text: null }
+  }
+
+  /** How many blocks a change to a kind of block would touch now (null for other changes). */
+  function blockCount(scope: 'selection' | 'all' | null, category: AIChatTargetCategory | null): number | null {
+    if (scope !== 'all' || !category || category === 'all' || !editor || editor.isDestroyed) return null
+    return findCategoryRanges(editor.state.doc, category).length
+  }
+
+  /** Report whether an AI-chosen change was applied, so a rejected route is asked afresh next time. */
+  function reportRoute(message: ChatMessage | undefined, applied: boolean): void {
+    if (!message?.route_id) return
+    api.ai.routeFeedback(message.route_id, applied).catch(() => undefined)
+  }
+
+  /** "Which did you mean?": show the card for the option picked. */
+  function pickClarifyOption(messageIndex: number, message: ChatMessage, option: AIClarify['options'][number]): void {
+    patchMessage(messageIndex, { clarify_choice: option.label })
+    showResponse({ provider: 'assistant', model: 'clarify', ...option.card, routedBy: 'ai', routeId: message.route_id ?? undefined }, { range: null, text: '' })
+  }
+
+  /** Dismiss a card; for an AI-chosen change that is a rejection. */
+  function dismissCard(messageIndex: number, message: ChatMessage): void {
+    reportRoute(message, false)
+    patchMessage(messageIndex, { assist_status: 'dismissed' })
   }
 
   /** Send a message to the backend AI chat endpoint (the typed input, or `text` when given). */
@@ -1544,6 +1648,14 @@ export default function AIChatbot({
                         <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>AI answer · check important details</span>
                       </div>
                     ) : null}
+                    {m.clarify && (
+                      <ClarifyCard clarify={m.clarify} choice={m.clarify_choice ?? null} onPick={(option) => pickClarifyOption(i, m, option)} />
+                    )}
+                    {m.routed_by_ai && (m.preview_status || m.automation || m.auto_captions || m.clarify) && (
+                      <div style={{ marginTop: '0.375rem', fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>
+                        Understood with AI · check the change before applying it
+                      </div>
+                    )}
                     {m.automation && (
                       <AutomationCard
                         automation={m.automation}
@@ -1552,7 +1664,7 @@ export default function AIChatbot({
                         result={m.automation_result ?? null}
                         available={m.automation.action === 'renumberCaptions' || Boolean(automations)}
                         onApply={() => m.automation && runAutomation(i, m.automation, m.automation_lines ?? [])}
-                        onDismiss={() => patchMessage(i, { assist_status: 'dismissed' })}
+                        onDismiss={() => dismissCard(i, m)}
                       />
                     )}
                     {m.auto_captions && (
@@ -1561,7 +1673,7 @@ export default function AIChatbot({
                         status={m.assist_status ?? 'pending'}
                         untitled={m.captions_untitled ?? null}
                         onApply={() => addAutoCaptions(i, m.caption_kinds ?? ['figure', 'table'])}
-                        onDismiss={() => patchMessage(i, { assist_status: 'dismissed' })}
+                        onDismiss={() => dismissCard(i, m)}
                         onNextUntitled={goToNextUntitledCaption}
                       />
                     )}
@@ -1674,6 +1786,9 @@ export default function AIChatbot({
                           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.625rem' }}>
                             <button
                               type="button"
+                              // A change that matches nothing in this document has nothing to apply.
+                              disabled={m.preview_block_count === 0}
+                              title={m.preview_block_count === 0 ? 'Nothing in this document matches this change' : undefined}
                               onClick={() => handlePreviewApply(i, m)}
                               style={{
                                 flex: 1,
@@ -1684,7 +1799,8 @@ export default function AIChatbot({
                                 border: 'none',
                                 backgroundColor: 'var(--primary)',
                                 color: 'var(--primary-foreground)',
-                                cursor: 'pointer',
+                                cursor: m.preview_block_count === 0 ? 'not-allowed' : 'pointer',
+                                opacity: m.preview_block_count === 0 ? 0.5 : 1,
                                 fontFamily: 'inherit',
                               }}
                             >

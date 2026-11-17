@@ -45,6 +45,13 @@ export interface FormattingIntentResult {
   style: StyleChange
   /** An academic preset the user asked to format with ("format in APA style"), as its preset key. */
   preset: string | null
+  /**
+   * A block picked by where it is ("the 2nd paragraph of the Introduction", "the last table on
+   * page 4"): which one (1-based, -1 = last; null = every one there) and on which page. Used with
+   * targetCategory (the kind of block) and target (the section it is in, when named).
+   */
+  targetIndex: number | null
+  targetPage: number | 'current' | null
 }
 
 export type TargetMode = 'literal' | 'heading' | 'section' | 'title'
@@ -245,13 +252,143 @@ const BLOCK_NOUN_PATTERN = new RegExp(
  * to apply, so "make all h2 12pt" resizes the H2s instead of making everything H2.
  */
 const HEADING_LEVEL_PATTERN = new RegExp(
-  String.raw`${GROUP}(?:h([123])s?|head(?:ing|er)s?\s*([123])s?|level[\s-]*([123])\s+head(?:ing|er)s?)\b|\bh([123])s\b|\bhead(?:ing|er)s\s*([123])\b`
+  String.raw`${GROUP}(?:h([123])s?|head(?:ing|er)s?\s*([123])s?|level[\s-]*([123])\s+head(?:ing|er)s?)\b|\bh([123])s\b|\bhead(?:ing|er)s\s*([123])\b|\bhead(?:ing|er)\s*([123])s\b`
 )
 
 const CATEGORY_NOUN_PATTERN = new RegExp(
   `${SECTION_CATEGORY_PATTERN.source}|${HEADING_LEVEL_PATTERN.source}|\\b(?:chapter\\s+(?:headings?|titles?|headers?))\\b|\\b(?:all|every|each|the)\\s+(?:the\\s+)?(?:headings|headers)\\b`,
   'g'
 )
+
+/** Where a positional request points: which one, on which page, in which section (any may be absent). */
+export interface TargetPosition {
+  category: BlockCategory | 'all'
+  /** 1-based; -1 is the last one. Null: every one (on the page / in the section). */
+  index: number | null
+  /** A page of the document (1-based), or the page the cursor is on. */
+  page: number | 'current' | null
+  /** The section or chapter it is in ("introduction", "chapter 2"), when one is named. */
+  within: string | null
+  /** The words that said it, so they are not also read as a format ("the 2nd bullet list"). */
+  phrase: string
+}
+
+const ORDINAL_WORDS: Record<string, number> = {
+  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, last: -1, final: -1, opening: 1, closing: -1, concluding: -1,
+}
+
+/** Block nouns a position can name, singular or plural, longest first. */
+const POSITION_NOUNS: Array<[RegExp, BlockCategory]> = [
+  [/^(?:bullet(?:ed)?\s+(?:lists?|points?)|unordered\s+lists?)$/, 'bulletLists'],
+  [/^(?:numbered|ordered)\s+lists?$/, 'numberedLists'],
+  [/^(?:section\s+(?:headings?|headers?|titles?)|sub-?(?:headings?|headers?))$/, 'sections'],
+  [/^chapter\s+(?:headings?|titles?)$/, 'chapters'],
+  [/^(?:block\s*)?quotes?$|^quotations?$/, 'quotes'],
+  [/^(?:paragraphs?|paras?)$/, 'paragraphs'],
+  [/^(?:headings?|headers?|titles?)$/, 'headings'],
+  [/^tables?$/, 'tables'],
+  [/^lists?$/, 'lists'],
+  [/^captions?$/, 'captions'],
+  [/^(?:research\s+)?questions?$/, 'questions'],
+]
+const POSITION_NOUN_SOURCE = String.raw`(?:bullet(?:ed)?\s+(?:lists?|points?)|unordered\s+lists?|(?:numbered|ordered)\s+lists?|section\s+(?:headings?|headers?|titles?)|sub-?(?:headings?|headers?)|chapter\s+(?:headings?|titles?)|block\s*quotes?|quotations?|quotes?|paragraphs?|paras?|headings?|headers?|titles?|tables?|lists?|captions?|(?:research\s+)?questions?)`
+const ORDINAL_SOURCE = String.raw`(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|final|opening|closing|concluding|\d{1,3}(?:st|nd|rd|th))`
+
+/** "the 2nd paragraph", "the last table", "the first bullet list". */
+const ORDINAL_POSITION = new RegExp(String.raw`\b(?:the\s+)?${ORDINAL_SOURCE}\s+(?:one\s+of\s+the\s+)?(${POSITION_NOUN_SOURCE})\b`)
+/** "paragraph 3" (not "heading 2" or "table 2": those are a level and a caption number). */
+const NUMBERED_PARAGRAPH = /\b(?:paragraph|para)\s+(\d{1,3})\b(?!\s*(?:st|nd|rd|th))/
+/** "the headings on page 3", "the tables on this page": a kind of block on a page, all of them. */
+const NOUN_ON_PAGE = new RegExp(String.raw`\b(?:the\s+|all\s+(?:the\s+)?|every\s+)?(${POSITION_NOUN_SOURCE})\s+on\s+(?:the\s+)?(?:page\s+\d{1,4}|(?:this|current|same)\s+page)\b`)
+/** "on page 3", "on this page", "page 3's". */
+const PAGE_PATTERN = /\bon\s+(?:the\s+)?(?:page\s+(\d{1,4})|(?:this|current|same)\s+page)\b|\bpage\s+(\d{1,4})(?:'s)?\b/
+
+function categoryOfNoun(noun: string): BlockCategory | null {
+  const clean = noun.replace(/\s+/g, ' ').trim()
+  return POSITION_NOUNS.find(([pattern]) => pattern.test(clean))?.[1] ?? null
+}
+
+function ordinalValue(word: string): number | null {
+  if (word in ORDINAL_WORDS) return ORDINAL_WORDS[word]
+  const value = Number.parseInt(word, 10)
+  return Number.isFinite(value) && value >= 1 && value <= 500 ? value : null
+}
+
+/**
+ * A request that points at blocks by where they are: "the 2nd paragraph of the Introduction",
+ * "the last table in chapter 2", "the first paragraph on page 3", "the headings on this page".
+ * The section is found among the document's own sections; the page is resolved by the editor,
+ * which knows the layout. Null when the request names no position.
+ */
+export function detectPosition(message: string, knownTitles: readonly string[] = []): TargetPosition | null {
+  let category: BlockCategory | 'all' | null = null
+  let index: number | null = null
+  let phrase = ''
+
+  const ordinal = ORDINAL_POSITION.exec(message)
+  const numbered = NUMBERED_PARAGRAPH.exec(message)
+  const onPage = NOUN_ON_PAGE.exec(message)
+  if (ordinal) {
+    category = categoryOfNoun(ordinal[2])
+    index = ordinalValue(ordinal[1])
+    phrase = ordinal[0]
+  } else if (numbered) {
+    category = 'paragraphs'
+    index = ordinalValue(numbered[1])
+    phrase = numbered[0]
+  } else if (onPage) {
+    category = categoryOfNoun(onPage[1])
+    phrase = onPage[0]
+  }
+
+  const pageMatch = PAGE_PATTERN.exec(message)
+  const pageNumber = pageMatch?.[1] ?? pageMatch?.[2]
+  const page: number | 'current' | null = pageMatch ? (pageNumber ? Number.parseInt(pageNumber, 10) : 'current') : null
+  // "make page 3 double-spaced": everything on that page. A block named without saying which
+  // ("the paragraph at the top of page 3") is not everything: the AI fallback reads that one.
+  if (category === null && page !== null) {
+    if (new RegExp(String.raw`\b${POSITION_NOUN_SOURCE}\b`).test(message)) return null
+    if (/\bpage\s+\d{1,4}\b|\b(?:this|current)\s+page\b/.test(message)) category = 'all'
+  }
+  if (category === null || (index === null && page === null)) return null
+
+  // "... of the Introduction", "... in chapter 2", "... under Scope": a section of this document.
+  let within: string | null = null
+  const after = phrase ? message.slice(message.indexOf(phrase) + phrase.length) : message
+  const scope = /\b(?:of|in|under|within|from)\s+(?:the\s+)?(.+)$/.exec(after)
+  if (scope && !/^\s*(?:the\s+)?(?:page|document|doc|paper|whole)\b/.test(scope[1])) {
+    const found = detectTarget(scope[1], knownTitles)
+    if (found && (found.mode === 'section' || found.mode === 'heading')) within = found.target
+  }
+  return { category, index, page, within, phrase }
+}
+
+/** "the second paragraph", "the last table", "the paragraphs" (with no index). */
+export function describePosition(position: Pick<TargetPosition, 'category' | 'index' | 'page' | 'within'>): string {
+  const nouns: Record<BlockCategory | 'all', [string, string]> = {
+    paragraphs: ['paragraph', 'paragraphs'], headings: ['heading', 'headings'], h1Headings: ['Heading 1', 'Heading 1s'],
+    h2Headings: ['Heading 2', 'Heading 2s'], h3Headings: ['Heading 3', 'Heading 3s'], sections: ['section heading', 'section headings'],
+    chapters: ['chapter heading', 'chapter headings'], questions: ['research question', 'research questions'], lists: ['list', 'lists'],
+    bulletLists: ['bulleted list', 'bulleted lists'], numberedLists: ['numbered list', 'numbered lists'], tables: ['table', 'tables'],
+    captions: ['caption', 'captions'], quotes: ['block quote', 'block quotes'], all: ['block', 'text'],
+  }
+  const [singular, plural] = nouns[position.category]
+  const words = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth']
+  const which =
+    position.index === null
+      ? position.category === 'all' ? 'all the text' : `the ${plural}`
+      : position.index === -1
+        ? `the last ${singular}`
+        : `the ${words[position.index] ?? `${position.index}th`} ${singular}`
+  const where = [
+    position.within ? `of ${position.within.replace(/\b[a-z]/g, (letter) => letter.toUpperCase())}` : '',
+    position.page === 'current' ? 'on this page' : position.page !== null ? `on page ${position.page}` : '',
+  ].filter(Boolean)
+  return [which, ...where].join(' ')
+}
+
+/** Numbers of figures, tables, captions, pages, chapters or sections: never a request for a numbered list. */
+const NUMBERS_OF_THINGS = /\b(?:figures?|tables?|captions?|pages?|chapters?|sections?|equations?)\s+(?:numbers|numbering|numbered|number)\b/g
 
 /** "everything except the headings", "all text other than the tables": the words after it name what to leave alone. */
 const EXCEPT_PATTERN = /\b(?:except(?:\s+for)?|but\s+not|other\s+than|apart\s+from|aside\s+from|excluding|not\s+including|save\s+for)\s+(.+)$/
@@ -901,9 +1038,13 @@ export function parseFormattingIntent(
   ]
 
   // Heading nouns that only say which blocks to change are not formats.
-  const formatText = normalized
+  // "the 2nd bullet list", "paragraph 3 on page 2": where, not what to apply.
+  const position = detectPosition(normalized, options.knownTitles ?? [])
+  const formatText = (position ? normalized.replace(position.phrase, ' it ').replace(PAGE_PATTERN, ' ') : normalized)
     .replace(CATEGORY_NOUN_PATTERN, ' ')
     .replace(BLOCK_NOUN_PATTERN, ' them ')
+    // "the figure numbering", "page numbers": numbers of things, not a numbered list.
+    .replace(NUMBERS_OF_THINGS, ' ')
     .replace(/\s+/g, ' ')
   const matches: Array<{ format: FormattingIntent; phrase: string; confidence: number }> = []
 
@@ -961,13 +1102,15 @@ export function parseFormattingIntent(
     }
   }
 
-  const detected = detectTarget(normalized, options.knownTitles ?? [])
-  const target = detected?.target ?? null
-  const targetCategory = detectTargetCategory(normalized)
+  // A position names its own place: the kind of block, and the section it is in (if any).
+  const detected = position ? null : detectTarget(normalized, options.knownTitles ?? [])
+  const target = position ? position.within : (detected?.target ?? null)
+  const targetCategory: TargetCategory = position ? position.category : detectTargetCategory(normalized)
   // A named section or chapter means its title line, unless the request says the
   // whole section or asks for a body change (spacing, indent, lists, justify).
-  const targetMode: TargetMode | null =
-    detected?.mode === 'section' && !WHOLE_SECTION_PATTERN.test(normalized) && !isBodyChange(formats, style)
+  const targetMode: TargetMode | null = position
+    ? (position.within ? 'section' : null)
+    : detected?.mode === 'section' && !WHOLE_SECTION_PATTERN.test(normalized) && !isBodyChange(formats, style)
       ? 'heading'
       : (detected?.mode ?? null)
   // Line spacing and font family with no place named mean the document, as in
@@ -977,6 +1120,7 @@ export function parseFormattingIntent(
     (style.lineSpacing !== null || style.fontFamily !== null) && !/\b(?:this|these|selected|selection|highlighted)\b/.test(normalized)
   // A named category ("all headings") is itself a document-wide request.
   const scope: 'selection' | 'all' =
+    position !== null ||
     target !== null ||
     targetCategory !== 'all' ||
     documentWideStyle ||
@@ -996,6 +1140,8 @@ export function parseFormattingIntent(
     targetMode,
     targetCategory,
     style,
-    preset: target === null && targetCategory === 'all' ? detectPreset(normalized) : null,
+    preset: target === null && targetCategory === 'all' && !position ? detectPreset(normalized) : null,
+    targetIndex: position?.index ?? null,
+    targetPage: position?.page ?? null,
   }
 }

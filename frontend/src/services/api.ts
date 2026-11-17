@@ -621,6 +621,9 @@ export interface AIChatFormattingOperation {
   target: string | null
   targetMode: AIChatTargetMode | null
   targetCategory: AIChatTargetCategory
+  /** A block picked by position (1-based, -1 = last) and/or a page. */
+  targetIndex?: number | null
+  targetPage?: number | 'current' | null
   style: AIChatStyleChange
   /** The change in words, e.g. "Make every chapter heading bold and centered". */
   summary: string
@@ -643,6 +646,8 @@ export interface AIChatPreview {
   targetMode?: AIChatTargetMode | null
   /** Block category a bulk request targets: headings, section headings, paragraphs, chapter headings, or all. */
   targetCategory?: AIChatTargetCategory | null
+  targetIndex?: number | null
+  targetPage?: number | 'current' | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
   /** Several independent changes from one request, applied together; the fields above describe the first. */
@@ -677,6 +682,8 @@ export interface AIChatPreviewMeta {
   target?: string | null
   targetMode?: AIChatTargetMode | null
   targetCategory?: AIChatTargetCategory | null
+  targetIndex?: number | null
+  targetPage?: number | 'current' | null
   normalize?: boolean
   style?: AIChatStyleChange | null
   operations?: AIChatFormattingOperation[]
@@ -700,7 +707,13 @@ export interface AIChatResponse {
   reply: string
   provider: string
   model: string
-  mode?: 'chat' | 'preview' | 'structure' | 'citations' | 'refine' | 'captions' | 'automation'
+  mode?: 'chat' | 'preview' | 'structure' | 'citations' | 'refine' | 'captions' | 'automation' | 'clarify'
+  /** 'ai': no fixed rule recognised the request; the AI picked the change (still only a card). */
+  routedBy?: 'ai'
+  /** For an AI-picked change: reported back when it is applied or rejected. */
+  routeId?: string
+  /** mode 'clarify': two or three readings of the request, each a ready card. */
+  clarify?: AIClarify
   preview?: AIChatPreview | null
   /** mode 'captions': which kinds to auto-caption; the editor finds what has no caption. */
   captionKinds?: Array<'figure' | 'table'>
@@ -794,6 +807,15 @@ export type AIAutomation =
   | { action: 'fixSuggestions'; only: AISuggestionGroup }
   | { action: 'pageSetup'; pageSize?: PageSizeKey; orientation?: PageOrientation; margins?: Partial<MarginValues> }
   | { action: 'bibliography' }
+
+/** A card the assistant can show: an /ai/chat reply without the provider details. */
+export type AIAssistantCard = Omit<AIChatResponse, 'provider' | 'model'>
+
+/** "Which did you mean?": each option is the card that reading would show. */
+export interface AIClarify {
+  question: string
+  options: Array<{ label: string; card: AIAssistantCard }>
+}
 
 export interface MCPToolCall { 
   tool: MCPToolName
@@ -1837,6 +1859,14 @@ export const api = {
       return fetchAPI<LearningSummary>('ai/feedback/stats')
     },
     /** Log structured user feedback (acceptance or rejection) for an AI formatting prediction. */
+    /** Applied or rejected: a change the AI fallback chose (its routeId), so the route is kept or asked afresh. */
+    routeFeedback: async (routeId: string, applied: boolean): Promise<void> => {
+      await fetchAPI<void>('ai/route-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routeId, applied }),
+      })
+    },
     logFeedback: async (payload: {
       documentId?: string
       predictionType: 'format_prompt' | 'suggestion_panel' | 'chat_preview'

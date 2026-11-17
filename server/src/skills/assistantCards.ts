@@ -1,4 +1,4 @@
-import { buildFormattingReply } from './buildFormattingReply'
+import { buildFormattingReply, summarizeFormattingChange } from './buildFormattingReply'
 import { hasStyleChange, type FormattingIntent, type StyleChange, type TargetCategory, type TargetMode } from './parseFormattingIntent'
 import type { CaptionKind } from './detectCaptionRequest'
 
@@ -46,6 +46,8 @@ export interface FormattingPreviewPayload {
   target?: string | null
   targetMode?: TargetMode | null
   targetCategory?: TargetCategory | null
+  targetIndex?: number | null
+  targetPage?: number | 'current' | null
   normalize?: boolean
   style?: StyleChange | null
   presetKey?: string | null
@@ -109,6 +111,9 @@ export interface FormattingChange {
   target: string | null
   targetMode: TargetMode | null
   targetCategory: TargetCategory
+  /** A block picked by position (1-based, -1 = last) and/or a page. */
+  targetIndex: number | null
+  targetPage: number | 'current' | null
   style: StyleChange
 }
 
@@ -125,19 +130,19 @@ export function formattingCard(change: FormattingChange): AssistantCard {
     : primary
       ? (FORMAT_LABELS[primary] ?? primary)
       : hasStyleChange({ ...change.style, fontSizeStep: null }) ? 'Text style' : 'Font size'
-  const reply = buildFormattingReply(
-    {
-      formats: change.formats,
-      fontSize: change.fontSize,
-      normalize: change.normalize,
-      scope: change.scope,
-      target: change.target,
-      targetMode: change.targetMode,
-      targetCategory: change.targetCategory,
-      style: change.style,
-    },
-    JSON.stringify(change)
-  )
+  const facts = {
+    formats: change.formats,
+    fontSize: change.fontSize,
+    normalize: change.normalize,
+    scope: change.scope,
+    target: change.target,
+    targetMode: change.targetMode,
+    targetCategory: change.targetCategory,
+    targetIndex: change.targetIndex,
+    targetPage: change.targetPage,
+    style: change.style,
+  }
+  const reply = buildFormattingReply(facts, JSON.stringify(change))
   return {
     reply,
     mode: 'preview',
@@ -145,13 +150,16 @@ export function formattingCard(change: FormattingChange): AssistantCard {
       format: primary ?? 'body_text',
       label,
       confidence: 0.9,
-      reason: reply,
+      // The card's line says what changes; the reply around it already says it in a sentence.
+      reason: `${summarizeFormattingChange(facts)}.`,
       formats: change.formats,
       scope: change.scope,
       fontSize: change.fontSize,
       target: change.target,
       targetMode: change.targetMode,
       targetCategory: change.targetCategory,
+      targetIndex: change.targetIndex,
+      targetPage: change.targetPage,
       normalize: change.normalize,
       style: change.normalize ? null : change.style,
     },

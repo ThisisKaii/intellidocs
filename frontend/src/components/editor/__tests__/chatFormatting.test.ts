@@ -11,6 +11,7 @@ import {
   applyStyle,
   applyPresetToBody,
   findCategoryRanges,
+  findPlacedRanges,
   preferWholeBlocks,
   resolveTargetRanges,
   findLiteralRanges,
@@ -163,6 +164,29 @@ describe('findCategoryRanges', () => {
     expect(html).toMatch(/font-size: 18pt[^"]*font-family: Arial|font-family: Arial[^"]*font-size: 18pt/)
     // No size of its own and no rendered size (jsdom): body size 12pt, so 14pt.
     expect(html).toMatch(/font-size: 14pt[^"]*">\s?plain/)
+  })
+
+  it('picks a block by position, in a section and on a page', () => {
+    const ed = open(
+      '<h1>Introduction</h1><p>Intro one.</p><p>Intro two.</p><h1>Scope</h1><p>Scope one.</p><p>Scope two.</p><p>Scope three.</p>' +
+        '<table><tbody><tr><td><p>A</p></td></tr></tbody></table><table><tbody><tr><td><p>B</p></td></tr></tbody></table>'
+    )
+    const pick = (place: Parameters<typeof findPlacedRanges>[1], pageOf: ((pos: number) => number) | null = null, current: number | null = null) =>
+      textsOf(ed, findPlacedRanges(ed.state.doc, place, pageOf, current))
+    expect(pick({ category: 'paragraphs', index: 2, page: null, within: null })).toEqual(['Intro two.'])
+    expect(pick({ category: 'paragraphs', index: 2, page: null, within: 'scope' })).toEqual(['Scope two.'])
+    expect(pick({ category: 'paragraphs', index: -1, page: null, within: 'introduction' })).toEqual(['Intro two.'])
+    expect(pick({ category: 'tables', index: -1, page: null, within: null })).toEqual(['B'])
+    // A section's own heading is not one of its headings.
+    expect(pick({ category: 'headings', index: 1, page: null, within: 'scope' })).toEqual([])
+    expect(pick({ category: 'paragraphs', index: 9, page: null, within: null })).toEqual([])
+    // Pages: everything from "Scope" on is on page 2 in this stand-in layout.
+    const scopeAt = ed.state.doc.textContent.length > 0 ? findPlacedRanges(ed.state.doc, { category: 'headings', index: 2, page: null, within: null }, null, null)[0].from : 0
+    const pageOf = (pos: number): number => (pos >= scopeAt ? 2 : 1)
+    expect(pick({ category: 'paragraphs', index: 1, page: 2, within: null }, pageOf)).toEqual(['Scope one.'])
+    expect(pick({ category: 'headings', index: null, page: 'current', within: null }, pageOf, 1)).toEqual(['Introduction'])
+    // Without the layout a page cannot be resolved, so nothing matches.
+    expect(pick({ category: 'paragraphs', index: 1, page: 2, within: null })).toEqual([])
   })
 
   it('body paragraphs leave out a "CHAPTER n" line styled as a paragraph', () => {

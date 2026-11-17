@@ -3,7 +3,7 @@ import { aiClient } from '../ai/aiClient'
 import { buildAIChatSystemPrompt } from '../ai/prompts/systemPrompts'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 import { buildChatContext } from '../skills/buildChatContext'
-import { hasStyleChange, looksLikeQuestion, parseFormattingIntent, describeTargetCategory, type StyleChange, type TargetCategory, type TargetMode } from '../skills/parseFormattingIntent'
+import { hasStyleChange, looksLikeQuestion, parseFormattingIntent, describePosition, describeTargetCategory, type BlockCategory, type StyleChange, type TargetCategory, type TargetMode } from '../skills/parseFormattingIntent'
 import { buildFormattingReply, buildMultiFormattingReply, summarizeFormattingChange } from '../skills/buildFormattingReply'
 import { splitFormattingOperations } from '../skills/splitFormattingOperations'
 import { documentHasTarget, listOutlineSections } from '../skills/documentSections'
@@ -16,8 +16,12 @@ import { isUsualFormattingRequest } from '../skills/buildLearnedFormattingPlan'
 import { documentBody } from '../models/documentTabModel'
 import { detectWritingTask, type WritingTask } from '../skills/detectWritingTask'
 import { detectCaptionRequest } from '../skills/detectCaptionRequest'
-import { PRESET_NAMES, captionsCard } from '../skills/assistantCards'
+import { PRESET_NAMES, automationCard, captionsCard } from '../skills/assistantCards'
+import { detectAutomationRequest } from '../skills/detectAutomationRequest'
 import { usualFormattingCard } from '../skills/usualFormattingCard'
+import { runAssistantFallback } from '../mcp/assistantFallback'
+import { looksLikeCommand, namesUnknownGroup } from '../skills/routeAssistantRequest'
+import { recordRouteOutcome } from '../models/assistantRouteModel'
 import { orchestrateSectionDraft } from '../skills/orchestrateSectionDraft'
 import { groundLiteratureCitations } from '../skills/groundLiteratureCitations'
 import { refineAcademicTone } from '../skills/refineAcademicTone'
@@ -60,6 +64,8 @@ interface AIChatPreviewContext {
   targetMode?: TargetMode | null
   normalize?: boolean
   targetCategory?: TargetCategoryName | null
+  targetIndex?: number | null
+  targetPage?: number | 'current' | null
   style?: StyleChange | null
   /** Every change of a multi-change preview, so "yes" can show them all again. */
   operations?: PreviewOperation[]
@@ -76,6 +82,8 @@ interface PreviewOperation {
   target: string | null
   targetMode: TargetMode | null
   targetCategory: TargetCategoryName
+  targetIndex: number | null
+  targetPage: number | 'current' | null
   /** Line spacing, first-line indent, font family and letter case. */
   style: StyleChange
   /** The change in words, e.g. "Make every chapter heading bold and centered". */
@@ -104,6 +112,8 @@ interface FormattingPreview {
   targetMode?: TargetMode | null
   /** Block category a bulk request targets: headings, paragraphs, chapter headings, or all. */
   targetCategory?: TargetCategoryName | null
+  targetIndex?: number | null
+  targetPage?: number | 'current' | null
   /** True when the change clears existing formatting (revert to normal). */
   normalize?: boolean
   /** Deterministic reply when no provider call is needed (confirmations/follow-ups). */
@@ -299,7 +309,7 @@ function detectFormattingPreview(
   // previous change's place; one that names a place ("make the bullet points
   // not bold") is about that place. Only a bare "go back to normal" also undoes
   // the previous change's font size.
-  const namesOwnPlace = intent.target !== null || intent.targetCategory !== 'all'
+  const namesOwnPlace = intent.target !== null || intent.targetCategory !== 'all' || intent.targetPage !== null
   const followsLast = intent.normalize && !namesOwnPlace && lastPreview !== null && lastPreview !== undefined
   const undoesLast = followsLast && intent.formats.length === 0
 
@@ -321,7 +331,10 @@ function detectFormattingPreview(
     const step = intent.style.fontSizeStep
     reasonParts.push(`Each run of text gets ${Math.abs(step)}pt ${step > 0 ? 'larger' : 'smaller'} than it is now.`)
   }
-  if (intent.target && intent.targetMode === 'literal') {
+  if (intent.targetIndex !== null || intent.targetPage !== null) {
+    const where = describePosition({ category: intent.targetCategory as BlockCategory | 'all', index: intent.targetIndex, page: intent.targetPage, within: intent.target })
+    reasonParts.push(`Applies to ${where}.`)
+  } else if (intent.target && intent.targetMode === 'literal') {
     reasonParts.push(`Only the exact words "${intent.target}", wherever they appear.`)
   } else if (intent.target && intent.targetMode === 'title') {
     reasonParts.push('The document title.')
@@ -375,6 +388,8 @@ function detectFormattingPreview(
     target: resolvedTarget,
     targetMode: intent.target ? intent.targetMode : (followsLast ? (lastPreview?.targetMode ?? null) : null),
     targetCategory: resolvedCategory,
+    targetIndex: followsLast ? (lastPreview?.targetIndex ?? null) : intent.targetIndex,
+    targetPage: followsLast ? (lastPreview?.targetPage ?? null) : intent.targetPage,
     normalize: intent.normalize,
     style: intent.normalize ? null : intent.style,
     shortCircuitReply: null,
@@ -406,6 +421,8 @@ function detectMultiFormattingPreview(
       target: operation.target,
       targetMode: operation.targetMode,
       targetCategory: operation.targetCategory,
+      targetIndex: operation.targetIndex,
+      targetPage: operation.targetPage,
       style: operation.style,
     }
     return { ...change, summary: summarizeFormattingChange(change) }
@@ -427,6 +444,8 @@ function detectMultiFormattingPreview(
       target: first.target,
       targetMode: first.targetMode,
       targetCategory: first.targetCategory,
+      targetIndex: first.targetIndex,
+      targetPage: first.targetPage,
       normalize: first.normalize,
       style: first.style,
       shortCircuitReply: reply,
@@ -528,6 +547,26 @@ async function runWritingTask(
   }
 }
 
+/** The 429 for a user over their AI request quota. */
+function sendQuotaExceeded(res: Response, quota: { limit: number; remaining: number; resetInSeconds: number }): void {
+  res.status(429).json({
+    error: 'AI request quota exceeded',
+    quota: { limit: quota.limit, remaining: quota.remaining, resetInSeconds: quota.resetInSeconds },
+  })
+}
+
+/** Whether the user applied or rejected a change the AI chose, so the route is kept or asked afresh. */
+export async function logRouteFeedback(req: Request, res: Response): Promise<void> {
+  const userId = req.user?.id
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' })
+    return
+  }
+  const { routeId, applied } = req.body as { routeId: string; applied: boolean }
+  await recordRouteOutcome(userId, routeId, applied)
+  res.status(204).end()
+}
+
 /** Handle authenticated AI chatbot requests. */
 export async function chatWithAI(req: Request, res: Response): Promise<void> {
   try {
@@ -545,17 +584,13 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const quota = await consumeAIQuota(userId, 'chat')
-    if (!quota.allowed) {
-      res.status(429).json({
-        error: 'AI request quota exceeded',
-        quota: {
-          limit: quota.limit,
-          remaining: quota.remaining,
-          resetInSeconds: quota.resetInSeconds,
-        },
-      })
-      return
+    // Only requests that reach an AI model use quota: the fixed rules (formatting, presets,
+    // captions, learned habits) answer for free.
+    const chargeQuota = async (): Promise<boolean> => {
+      const quota = await consumeAIQuota(userId, 'chat')
+      if (quota.allowed) return true
+      sendQuotaExceeded(res, quota)
+      return false
     }
 
     // "Auto caption": the editor finds what has no caption and shows it as a preview card.
@@ -566,10 +601,19 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       return
     }
 
+    // Automations named plainly ("fix the figure numbering"): their card, without an AI call.
+    const automation = detectAutomationRequest(message)
+    if (automation) {
+      const providerSummary = getProviderSummary()
+      res.status(200).json({ ...automationCard(automation), provider: providerSummary.provider, model: providerSummary.model })
+      return
+    }
+
     // Organise notes, find citations, refine tone: each agent's result is a
     // preview card in the chat; nothing reaches the document without a click.
     const writingTask = detectWritingTask(message, body.selectionText ?? '')
     if (writingTask) {
+      if (!(await chargeQuota())) return
       res.status(200).json(await runWritingTask(writingTask, body, userId, req.user?.email))
       return
     }
@@ -598,7 +642,10 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const preview = asksQuestion ? null : (multi?.preview ?? detectFormattingPreview(message, body.lastPreview, knownTitles))
+    const detected = asksQuestion ? null : (multi?.preview ?? detectFormattingPreview(message, body.lastPreview, knownTitles))
+    // "Center every pic": a group the fixed rules do not know must not quietly become the
+    // selection. Leave it to the AI fallback, which can ask or pick the right tool.
+    const preview = detected && !multi && detected.scope === 'selection' && !detected.target && namesUnknownGroup(message) ? null : detected
 
     // A named section that is not in the document gets an honest answer instead
     // of a preview the editor cannot apply.
@@ -620,6 +667,38 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
       return
     }
 
+    // Nothing the fixed rules recognise and not a question: the AI picks one of the assistant's
+    // tools (or asks which one was meant). Its pick is still only a card the user applies.
+    if (!preview && !asksQuestion && !multi && looksLikeCommand(message)) {
+      const fallback = await runAssistantFallback({
+        userId,
+        email: req.user?.email,
+        message,
+        documentId: body.documentId,
+        documentContent: body.documentContent ?? '',
+        sectionTitles: knownTitles,
+        rejected: (body.rejectedFormattingPreviews ?? []).map((rejected) => rejected.format),
+      })
+      const providerSummary = getProviderSummary()
+      const meta = { provider: providerSummary.provider, model: providerSummary.model }
+      if (fallback.kind === 'quota') {
+        sendQuotaExceeded(res, fallback.quota)
+        return
+      }
+      if (fallback.kind === 'card') {
+        res.status(200).json({ ...fallback.card, ...meta, routedBy: 'ai', routeId: fallback.routeId })
+        return
+      }
+      if (fallback.kind === 'clarify') {
+        res.status(200).json({ reply: fallback.question, ...meta, mode: 'clarify', preview: null, routedBy: 'ai', routeId: fallback.routeId, clarify: { question: fallback.question, options: fallback.options } })
+        return
+      }
+      if (fallback.kind === 'answer') {
+        res.status(200).json({ reply: fallback.reply, ...meta, mode: 'chat', preview: null })
+        return
+      }
+    }
+
     // Formatting requests get a deterministic reply built from the preview the
     // editor will show, so the words can never contradict the Apply button.
     // Only open questions and writing help go to the AI model.
@@ -638,11 +717,14 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
           target: preview.target ?? null,
           targetMode: preview.targetMode ?? null,
           targetCategory: preview.targetCategory ?? null,
+          targetIndex: preview.targetIndex ?? null,
+          targetPage: preview.targetPage ?? null,
           style: preview.style ?? null,
         },
         message
       )
     } else {
+      if (!(await chargeQuota())) return
       // Ground the answer in the saved document: the parts that match the question,
       // not just the excerpt the browser sent. Falls back to that excerpt on any failure.
       let retrieved: DocumentSection[] = []
@@ -694,6 +776,8 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
             target: preview.target,
             targetMode: preview.targetMode ?? null,
             targetCategory: preview.targetCategory,
+            targetIndex: preview.targetIndex ?? null,
+            targetPage: preview.targetPage ?? null,
             normalize: preview.normalize,
             operations: preview.operations,
             style: preview.style ?? null,

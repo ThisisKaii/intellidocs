@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import type { AIAutomation, AIGroundedPaper, AIStructuredSection, AIToneCategory, AIToneRefinement } from '@/services/api'
+import type { AIAutomation, AIClarify, AIGroundedPaper, AIStructuredSection, AIToneCategory, AIToneRefinement } from '@/services/api'
 import type { AutoCaptionItem, CaptionTitleSource } from './autoCaption'
 
 /** Lifecycle of a card that changes the document once. */
@@ -404,6 +404,45 @@ export function AutomationCard({
       {status === 'pending' && lines.length > 0 && available && <ActionRow primary="Apply" onPrimary={onApply} onDismiss={onDismiss} />}
       {status === 'done' && <div style={doneStyle}>{result ?? '✓ Done'}</div>}
       {status === 'dismissed' && <div style={doneStyle}>Dismissed</div>}
+    </div>
+  )
+}
+
+/** "Which did you mean?": one tap shows the card for that reading. */
+export function ClarifyCard({
+  clarify,
+  choice,
+  onPick,
+}: {
+  clarify: AIClarify
+  /** The option picked, once one was. */
+  choice: string | null
+  onPick: (option: AIClarify['options'][number]) => void
+}): JSX.Element {
+  return (
+    <div style={cardStyle} data-testid="clarify-card">
+      <div style={eyebrowStyle}>Which did you mean?</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginTop: '0.25rem' }}>
+        {clarify.options.map((option) => (
+          <button
+            key={option.label}
+            type="button"
+            disabled={choice !== null}
+            onClick={() => onPick(option)}
+            style={{
+              ...secondaryButton,
+              flex: 'none',
+              textAlign: 'left',
+              color: choice === option.label ? 'var(--primary)' : 'var(--foreground)',
+              borderColor: choice === option.label ? 'var(--primary)' : 'var(--border)',
+              opacity: choice !== null && choice !== option.label ? 0.5 : 1,
+              cursor: choice !== null ? 'default' : 'pointer',
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

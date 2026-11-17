@@ -70,6 +70,23 @@ export const refineAcademicStyleSchema = z.object({
 
 export type MCPToolCallInput = z.infer<typeof mcpToolCallSchema>
 
+/** A position as models write it: 2, "2", "first", "last". */
+function readPosition(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const word = value.trim().toLowerCase()
+  if (word === 'last' || word === 'final') return -1
+  if (word === 'first') return 1
+  return /^-?\d+$/.test(word) ? Number(word) : value
+}
+
+/** A page as models write it: 3, "3", "current", "this". */
+function readPage(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const word = value.trim().toLowerCase()
+  if (word === 'current' || word === 'this' || word === 'this page') return 'current'
+  return /^\d+$/.test(word) ? Number(word) : value
+}
+
 /** Formats a formatting change can apply (the parser's FormattingIntent). */
 const FORMAT_NAMES = [
   'bold',
@@ -104,6 +121,12 @@ export const formatBlocksSchema = z
     targetCategory: targetCategorySchema.default('all'),
     target: z.string().trim().min(1).max(200).nullable().default(null),
     targetMode: z.enum(['literal', 'heading', 'section', 'title']).nullable().default(null),
+    /** Which one of targetCategory's blocks: 1-based, -1 for the last ("first" / "last" are read too). */
+    position: z
+      .preprocess(readPosition, z.number().int().min(-1).max(500).refine((value) => value !== 0, 'position starts at 1 (-1 is the last)').nullable())
+      .default(null),
+    /** Only blocks on this page of the document, or on the page the cursor is on ("this" is read too). */
+    page: z.preprocess(readPage, z.union([z.number().int().min(1).max(5000), z.literal('current')]).nullable()).default(null),
     scope: z.enum(['selection', 'all']).optional(),
   })
   .refine(

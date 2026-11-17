@@ -114,7 +114,7 @@ const TOOLS: RegisteredTool[] = [
       description:
         'Format text: marks, heading levels, lists, alignment, font size (absolute or bigger/smaller), line spacing, first-line indent, font, letter case, or removing formatting. Applies to a kind of block, everything except a kind, a named section, the document title, or the selection.',
       params:
-        'formats? [bold, italic, underline, heading1–3, blockquote, unordered_list, ordered_list, align_left/center/right/justify], fontSize?, fontSizeStep?, lineSpacing?, firstLineIndentIn?, fontFamily?, textCase? upper|title, removeFormatting?, targetCategory? (headings, h1Headings, h2Headings, h3Headings, sections, paragraphs, chapters, questions, lists, bulletLists, numberedLists, tables, captions, quotes, except:<any of these>, all), target? (a section title), targetMode? literal|heading|section|title, scope? selection|all',
+        'formats? [bold, italic, underline, heading1–3, blockquote, unordered_list, ordered_list, align_left/center/right/justify], fontSize?, fontSizeStep?, lineSpacing?, firstLineIndentIn?, fontFamily?, textCase? upper|title, removeFormatting?, targetCategory? (headings, h1Headings, h2Headings, h3Headings, sections, paragraphs, chapters, questions, lists, bulletLists, numberedLists, tables, captions, quotes, except:<any of these>, all), target? (a section title), targetMode? literal|heading|section|title, position? (which one of targetCategory: 1, 2, … or -1 for the last), page? (a page number, or "current" for the page the cursor is on), scope? selection|all',
     },
     formatBlocksSchema,
     async (_ctx, args) => {
@@ -125,10 +125,15 @@ const TOOLS: RegisteredTool[] = [
           formats: args.formats,
           fontSize: args.fontSize,
           normalize: args.removeFormatting,
-          scope: args.scope ?? (args.target !== null || targetCategory !== 'all' ? 'all' : 'selection'),
+          // A named place (a kind of block, a section, a page) is the whole document's; only a
+          // change with no place can be about the selection, whatever scope the caller passed.
+          scope: args.target !== null || targetCategory !== 'all' || args.page !== null || args.position !== null ? 'all' : (args.scope ?? 'selection'),
           target: args.target,
-          targetMode,
+          // A section a positional pick is in ("the 2nd paragraph of the Introduction").
+          targetMode: args.position !== null || args.page !== null ? (args.target ? 'section' : null) : targetMode,
           targetCategory,
+          targetIndex: args.position,
+          targetPage: args.page,
           style: {
             lineSpacing: args.lineSpacing,
             firstLineIndentIn: args.firstLineIndentIn,

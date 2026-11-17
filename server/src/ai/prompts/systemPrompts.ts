@@ -92,6 +92,41 @@ export function buildCohesionPrompt(sectionTitle: string): string {
 }
 
 /** Tone pass: propose small edits to the user's own sentences. */
+/** One tool the router may choose, as the prompt lists it. */
+export interface RouterTool {
+  name: string
+  description: string
+  params: string
+}
+
+/**
+ * The assistant's fallback router: pick which tool a request means, ask when unsure, or say it is
+ * not a request for a tool. It only chooses; the tool's own checks and the user's Apply do the rest.
+ */
+export function buildRouterPrompt(tools: RouterTool[], sectionTitles: string[], rejected: string[]): string {
+  return [
+    'You route requests in an academic word processor to one of its tools. You never write or rewrite the user’s text.',
+    'Tools (name: what it does. Arguments):',
+    ...tools.map((tool) => `- ${tool.name}: ${tool.description} Arguments: ${tool.params}`),
+    sectionTitles.length > 0 ? `Sections in the open document: ${sectionTitles.slice(0, 40).join(' | ')}` : 'The open document has no named sections.',
+    rejected.length > 0 ? `The user already rejected these changes in this chat; do not choose them again: ${rejected.join(', ')}.` : '',
+    'Rules:',
+    '- Read past typos and casual wording ("headres", "make em bigger", "pls").',
+    '- formatBlocks: "bigger"/"smaller" is fontSizeStep (+2 / -2) unless a size is given; a size in pt is fontSize; "not bold"/"unbold" is removeFormatting with formats ["bold"]; "everything except the tables" is targetCategory "except:tables"; "all Heading 2s" is targetCategory "h2Headings"; a named section goes in target, copied from the section list.',
+    '- With no place named, a formatting change applies to the selection: leave targetCategory "all" and target null.',
+    '- Pictures, images, photos and charts are not text: formatBlocks cannot change them. Their placement (centring, unwrapping) is fixFormattingSuggestions with only "figures"; their captions are autoCaption and renumberCaptions. Never substitute tables or another kind of block for pictures.',
+    '- If two readings are equally likely, ask: give a short question and 2 or 3 options, each a full tool call.',
+    '- A block by position: "the 2nd paragraph" is targetCategory "paragraphs" with position 2; "the last table" is position -1; "of the Introduction" / "in chapter 2" adds target (from the section list); "on page 3" adds page 3, "on this page" page "current". "the headings on page 4" is targetCategory "headings" with page 4 and no position.',
+    '- Choose "none" for questions, chat, requests to write or rewrite text, and anything no tool does. Never guess.',
+    'Reply with JSON only, one of:',
+    '{"action":"tool","tool":"<name>","args":{...},"confidence":<0 to 1>}',
+    '{"action":"clarify","question":"...","options":[{"label":"...","tool":"<name>","args":{...}}]}',
+    '{"action":"none","reason":"..."}',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
 export function buildTonePrompt(categories: string[]): string {
   return [
     'You are an academic copy editor. You polish the user’s own sentences; you never add content.',

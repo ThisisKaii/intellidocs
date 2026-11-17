@@ -63,6 +63,8 @@ const lastPreviewSchema = z.object({
   targetMode: z.enum(['literal', 'heading', 'section', 'title']).nullable().optional(),
   // Every TargetCategory the parser returns (a test keeps the two in step).
   targetCategory: targetCategorySchema.nullable().optional(),
+  targetIndex: z.number().int().min(-1).max(500).nullable().optional(),
+  targetPage: z.union([z.number().int().min(1).max(5000), z.literal('current')]).nullable().optional(),
   normalize: z.boolean().optional(),
 })
 
@@ -102,3 +104,8 @@ export const aiChatRequestSchema = z.object({
 })
 
 export type AIChatRequestInput = z.infer<typeof aiChatRequestSchema>
+/** Applied or rejected: a change the assistant's AI fallback chose (routeId from its reply). */
+export const routeFeedbackSchema = z.object({
+  routeId: z.string().regex(/^[0-9a-f]{32}$/),
+  applied: z.boolean(),
+})

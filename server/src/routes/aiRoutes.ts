@@ -4,11 +4,11 @@ import {
   predictFormatting,
   spellingCheck,
 } from '../controllers/predictionController'
-import { chatWithAI, getLearningStats, logAIFeedback, triggerUserFineTune } from '../controllers/aiController'
+import { chatWithAI, getLearningStats, logAIFeedback, logRouteFeedback, triggerUserFineTune } from '../controllers/aiController'
 import { aiArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
 import { predictFormatRequestSchema, predictionTextSchema } from '../../schemas/predictionSchemas'
-import { aiChatRequestSchema } from '../../schemas/aiSchemas'
+import { aiChatRequestSchema, routeFeedbackSchema } from '../../schemas/aiSchemas'
 import { logFeedbackSchema } from '../../schemas/feedbackSchemas'
 
 const router = Router()
@@ -49,6 +49,9 @@ router.post(
 )
 
 router.get('/feedback/stats', aiArcjet, getLearningStats)
+
+/** Applied or rejected: a change the assistant's AI fallback chose. */
+router.post('/route-feedback', aiArcjet, validateBody(routeFeedbackSchema), logRouteFeedback)
 
 router.post(
   '/fine-tune',

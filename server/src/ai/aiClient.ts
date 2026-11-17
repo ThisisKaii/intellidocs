@@ -197,7 +197,21 @@ async function chatWithProfile(
  * (400/422) is reported immediately.
  */
 async function chatWithMeta(messages: Message[], systemPrompt?: string): Promise<AIResponse> {
+  return chatInOrder(getAIProfiles(), messages, systemPrompt)
+}
+
+/**
+ * The same as chatWithMeta, but trying profile `first` (1-based, as in AI_PROVIDER_<n>) before the
+ * others, e.g. a small fast model for a short classification prompt. An unset or unknown profile
+ * number keeps the usual order.
+ */
+async function chatPreferring(first: number | undefined, messages: Message[], systemPrompt?: string): Promise<AIResponse> {
   const profiles = getAIProfiles()
+  const index = first !== undefined && Number.isInteger(first) && first >= 1 && first <= profiles.length ? first - 1 : 0
+  return chatInOrder([profiles[index], ...profiles.filter((_, i) => i !== index)], messages, systemPrompt)
+}
+
+async function chatInOrder(profiles: AIProfile[], messages: Message[], systemPrompt?: string): Promise<AIResponse> {
   let lastError: AIClientError | null = null
 
   for (const profile of profiles) {
@@ -240,7 +254,7 @@ function getProfileSummaries(): AIProviderSummary[] {
   return getAIProfiles().map(({ provider, model }) => ({ provider, model }))
 }
 
-export const aiClient = { chat, chatWithMeta, stream, getProviderSummary, getProfileSummaries }
+export const aiClient = { chat, chatWithMeta, chatPreferring, stream, getProviderSummary, getProfileSummaries }
 
 /** A chat call with the same shape as aiClient.chatWithMeta, injectable so skills can be tested offline. */
 export type ChatCompleter = (messages: Message[], systemPrompt?: string) => Promise<AIResponse>
