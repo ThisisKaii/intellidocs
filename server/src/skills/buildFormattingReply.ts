@@ -1,4 +1,4 @@
-import type { StyleChange, TargetCategory, TargetMode } from './parseFormattingIntent'
+import { describeTargetCategory, type StyleChange, type TargetCategory, type TargetMode } from './parseFormattingIntent'
 
 /** The facts of a formatting preview that the chat reply describes. */
 export interface FormattingReplyInput {
@@ -71,6 +71,7 @@ function changeWords(input: FormattingReplyInput): string[] {
     if (style.firstLineIndentIn !== null) words.push(`indented ${style.firstLineIndentIn}in on the first line`)
     if (style.textCase === 'upper') words.push('in capital letters')
     if (style.textCase === 'title') words.push('in title case')
+    if (style.fontSizeStep) words.push(`${Math.abs(style.fontSizeStep)}pt ${style.fontSizeStep > 0 ? 'larger' : 'smaller'}`)
   }
   return words
 }
@@ -86,11 +87,7 @@ function describeSubject(input: FormattingReplyInput): string {
       ? `${displayTarget(input.target)} and everything in it`
       : `the whole ${displayTarget(input.target)} section`
   }
-  if (input.targetCategory === 'headings') return 'every heading'
-  if (input.targetCategory === 'paragraphs') return 'every body paragraph'
-  if (input.targetCategory === 'chapters') return 'every chapter heading'
-  if (input.targetCategory === 'sections') return 'every section heading'
-  if (input.targetCategory === 'questions') return 'the research questions'
+  if (input.targetCategory && input.targetCategory !== 'all') return describeTargetCategory(input.targetCategory)
   if (input.scope === 'all') return 'the whole document'
   return 'the text you have selected (or the paragraph your cursor is in)'
 }

@@ -30,14 +30,35 @@ const rejectedFormattingPreviewSchema = z.object({
  * The client sends it back so follow-ups ("yes", "format the rest") resolve
  * against the previous change instead of the raw message text.
  */
+const BLOCK_CATEGORIES = [
+  'headings',
+  'h1Headings',
+  'h2Headings',
+  'h3Headings',
+  'sections',
+  'paragraphs',
+  'chapters',
+  'questions',
+  'lists',
+  'bulletLists',
+  'numberedLists',
+  'tables',
+  'captions',
+  'quotes',
+] as const
+
 const lastPreviewSchema = z.object({
   format: z.string().trim().max(80).optional(),
   formats: z.array(z.string().trim().max(80)).max(20).optional(),
   scope: z.enum(['selection', 'all']).optional(),
   fontSize: z.number().finite().positive().max(200).nullable().optional(),
   target: z.string().trim().max(200).nullable().optional(),
-  targetMode: z.enum(['literal', 'section', 'title']).nullable().optional(),
-  targetCategory: z.enum(['headings', 'paragraphs', 'chapters', 'all']).nullable().optional(),
+  targetMode: z.enum(['literal', 'heading', 'section', 'title']).nullable().optional(),
+  // Every TargetCategory the parser returns (a test keeps the two in step).
+  targetCategory: z
+    .union([z.enum([...BLOCK_CATEGORIES, 'all']), z.string().regex(new RegExp(`^except:(?:${BLOCK_CATEGORIES.join('|')})$`))])
+    .nullable()
+    .optional(),
   normalize: z.boolean().optional(),
 })
 

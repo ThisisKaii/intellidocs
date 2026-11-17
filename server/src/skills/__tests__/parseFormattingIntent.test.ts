@@ -1,4 +1,4 @@
-import { parseFormattingIntent } from '../parseFormattingIntent'
+import { looksLikeQuestion, parseFormattingIntent } from '../parseFormattingIntent'
 
 describe('parseFormattingIntent', () => {
   it('detects underline requests', () => {
@@ -154,6 +154,147 @@ describe('parseFormattingIntent', () => {
     expect(result.targetCategory).toBe('headings')
     expect(result.formats).toContain('bold')
     expect(result.formats).toContain('align_center')
+  })
+
+  it.each([
+    ['Make all headers 12pt', 12],
+    ['Make all the headers 12pt font size', 12],
+    ['change every header font size to 12', 12],
+    ['set the headers to size 14', 14],
+  ])('reads "headers" as the headings category: %s', (message, size) => {
+    const result = parseFormattingIntent(message)
+
+    expect(result.scope).toBe('all')
+    expect(result.targetCategory).toBe('headings')
+    expect(result.fontSize).toBe(size)
+    expect(result.formats).toEqual([])
+  })
+
+  it.each([
+    ['make all paras 12pt', 'paragraphs', []],
+    ['make the body text 12pt', 'paragraphs', []],
+    ['make all subheaders bold', 'sections', ['bold']],
+    ['make all titles bold', 'headings', ['bold']],
+    ['make all bullet lists 12pt', 'bulletLists', []],
+    ['make the bullet points italic', 'bulletLists', ['italic']],
+    ['make every bullet 12pt', 'bulletLists', []],
+    ['make all numbered lists bold', 'numberedLists', ['bold']],
+    ['make all lists 12pt', 'lists', []],
+    ['make the list items 12pt', 'lists', []],
+    ['make all the tables 10pt', 'tables', []],
+    ['make all table captions italic', 'captions', ['italic']],
+    ['make all captions italic', 'captions', ['italic']],
+    ['make all block quotes italic', 'quotes', ['italic']],
+  ])('names a block category without applying it as a format: %s', (message, category, formats) => {
+    const result = parseFormattingIntent(message)
+
+    expect(result.targetCategory).toBe(category)
+    expect(result.scope).toBe('all')
+    expect(result.formats).toEqual(formats)
+  })
+
+  describe('requests that used to do the opposite', () => {
+    it.each([
+      ['make the bullet points not bold', 'bulletLists'],
+      ['dont make the headings bold', 'headings'],
+      ["don't make the headings bold", 'headings'],
+      ['do not make the headings bold', 'headings'],
+      ['unbold all headers', 'headings'],
+    ])('a negated mark removes it: %s', (message, category) => {
+      expect(parseFormattingIntent(message)).toMatchObject({ formats: ['bold'], normalize: true, targetCategory: category })
+      expect(looksLikeQuestion(message)).toBe(false)
+    })
+
+    it('a negated mark next to another change is just left out', () => {
+      expect(parseFormattingIntent('make the headings bold but not italic')).toMatchObject({ formats: ['bold'], normalize: false })
+    })
+
+    it('"don\'t" with nothing to remove asks for no change', () => {
+      const result = parseFormattingIntent("don't center the headings")
+      expect(result.formats).toEqual([])
+      expect(result.normalize).toBe(false)
+      expect(parseFormattingIntent("don't forget to bold the headings")).toMatchObject({ formats: ['bold'], normalize: false })
+    })
+
+    it.each([
+      ['make everything except headings 12pt', 'except:headings'],
+      ['make all text 12pt except the tables', 'except:tables'],
+      ['italicize everything other than the bullet points', 'except:bulletLists'],
+    ])('"except" leaves that category alone: %s', (message, category) => {
+      const result = parseFormattingIntent(message)
+      expect(result.targetCategory).toBe(category)
+      expect(result.scope).toBe('all')
+      expect(result.formats).not.toContain('unordered_list')
+    })
+
+    it.each([
+      ['make all h2 12pt', 'h2Headings'],
+      ['make headings 1 12pt', 'h1Headings'],
+      ['make every heading 3 12pt', 'h3Headings'],
+      ['make the level 2 headings 12pt', 'h2Headings'],
+    ])('a heading level names those headings, not a level to apply: %s', (message, category) => {
+      expect(parseFormattingIntent(message)).toMatchObject({ targetCategory: category, formats: [], fontSize: 12 })
+    })
+
+    it('still applies a heading level when one is asked for', () => {
+      expect(parseFormattingIntent('make all headings h2')).toMatchObject({ targetCategory: 'headings', formats: ['heading2'] })
+      expect(parseFormattingIntent('make this heading 2')).toMatchObject({ targetCategory: 'all', formats: ['heading2'] })
+    })
+  })
+
+  describe('font sizes in everyday words', () => {
+    it.each([
+      ['headers should be 12', 12],
+      ['change the headings to 14', 14],
+      ['make all headings 12', 12],
+      ['make headers twelve point', 12],
+      ['make the headings twenty four pt', 24],
+      ['make all headings 12 px', 12],
+      ['set heading font size 12', 12],
+    ])('%s', (message, size) => {
+      const result = parseFormattingIntent(message)
+      expect(result.fontSize).toBe(size)
+      expect(result.targetCategory).toBe('headings')
+    })
+
+    it.each([
+      'make chapter 12 bold',
+      'set the line spacing to 2',
+      'number the questions 1 to 10',
+      'change heading 2 to bold',
+      'indent the paragraphs to 1',
+    ])('a number that is not a size: %s', (message) => {
+      expect(parseFormattingIntent(message).fontSize).toBeNull()
+    })
+
+    it.each([
+      ['can u make the headers bigger', 2],
+      ['make the headings smaller', -2],
+      ['increase the font size of all paragraphs by 4', 4],
+      ['make the captions smaller by 1pt', -1],
+    ])('relative sizes: %s', (message, step) => {
+      const result = parseFormattingIntent(message)
+      expect(result.style.fontSizeStep).toBe(step)
+      expect(result.fontSize).toBeNull()
+      expect(result.scope).toBe('all')
+    })
+
+    it('an absolute size wins over a relative word, and margins are not text', () => {
+      expect(parseFormattingIntent('increase the heading font size to 14')).toMatchObject({ fontSize: 14, style: { fontSizeStep: null } })
+      expect(parseFormattingIntent('make the margins bigger').style.fontSizeStep).toBeNull()
+    })
+  })
+
+  it('names captions and tables without "all" or "the"', () => {
+    expect(parseFormattingIntent('make figure captions italic')).toMatchObject({ targetCategory: 'captions', scope: 'all', formats: ['italic'] })
+    expect(parseFormattingIntent('center tables')).toMatchObject({ targetCategory: 'tables', scope: 'all', formats: ['align_center'] })
+  })
+
+  it('still converts lists when the request asks for it', () => {
+    expect(parseFormattingIntent('number the bullet points')).toMatchObject({ targetCategory: 'bulletLists', formats: ['ordered_list'] })
+    expect(parseFormattingIntent('turn all the paragraphs into bullet points')).toMatchObject({ targetCategory: 'paragraphs', formats: ['unordered_list'] })
+    expect(parseFormattingIntent('make this a bullet list')).toMatchObject({ targetCategory: 'all', scope: 'selection', formats: ['unordered_list'] })
+    expect(parseFormattingIntent('make the table of contents bold').targetCategory).not.toBe('tables')
   })
 
   it('detects paragraph category requests', () => {

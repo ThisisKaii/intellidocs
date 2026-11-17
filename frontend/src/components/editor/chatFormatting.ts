@@ -1,6 +1,8 @@
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { mergeStyleDecls } from '@/lib/inlineStyle'
+import type { AIChatBlockCategory, AIChatTargetCategory } from '@/services/api'
+import { findCaptions } from './captionNumbering'
 
 /** A document range (ProseMirror positions) a chat formatting request applies to. */
 export interface TextRange {
@@ -17,11 +19,66 @@ export interface StyleChange {
   firstLineIndentIn: number | null
   fontFamily: string | null
   textCase: 'upper' | 'title' | null
+  /** Relative font size change in points (+2 "bigger", -2 "smaller"). */
+  fontSizeStep?: number | null
 }
 
 /** True when a style change asks for anything. */
 export function hasStyle(style: StyleChange | null | undefined): style is StyleChange {
-  return Boolean(style && (style.lineSpacing !== null || style.firstLineIndentIn !== null || style.fontFamily !== null || style.textCase !== null))
+  return Boolean(
+    style &&
+      (style.lineSpacing !== null ||
+        style.firstLineIndentIn !== null ||
+        style.fontFamily !== null ||
+        style.textCase !== null ||
+        (style.fontSizeStep !== null && style.fontSizeStep !== undefined))
+  )
+}
+
+/** A CSS font size ("12pt", "16px", "11") in points. */
+function cssSizeInPoints(value: unknown): number | null {
+  const match = typeof value === 'string' ? /^([\d.]+)\s*(pt|px)?$/.exec(value.trim()) : null
+  if (!match) return null
+  const size = Number.parseFloat(match[1])
+  if (!Number.isFinite(size) || size <= 0) return null
+  return match[2] === 'px' ? size * 0.75 : size
+}
+
+/** The size a run of text shows at: its own font-size mark, else what the page renders, else 12pt. */
+function renderedPoints(editor: Editor, pos: number, markSize: unknown): number {
+  const own = cssSizeInPoints(markSize)
+  if (own !== null) return own
+  try {
+    const { node } = editor.view.domAtPos(pos)
+    const element = node instanceof Element ? node : node.parentElement
+    const shown = element ? cssSizeInPoints(window.getComputedStyle(element).fontSize) : null
+    if (shown !== null) return shown
+  } catch {
+    // No rendered view (tests, a destroyed editor): fall back to body size.
+  }
+  return 12
+}
+
+/**
+ * "Make the headings bigger": every run of text in the range gets `step` points
+ * larger (or smaller) than it is now, so a 16pt heading and a 12pt one both
+ * grow by the same amount. Font families and other text styles are kept.
+ */
+function stepFontSize(editor: Editor, range: TextRange, step: number): void {
+  const textStyle = editor.schema.marks.textStyle
+  if (!textStyle) return
+  const { tr } = editor.state
+  editor.state.doc.nodesBetween(range.from, range.to, (node, pos) => {
+    if (!node.isText) return true
+    const from = Math.max(pos, range.from)
+    const to = Math.min(pos + node.nodeSize, range.to)
+    if (to <= from) return false
+    const existing = node.marks.find((mark) => mark.type === textStyle)
+    const next = Math.min(Math.max(Math.round((renderedPoints(editor, from, existing?.attrs.fontSize) + step) * 2) / 2, 6), 96)
+    tr.addMark(from, to, textStyle.create({ ...(existing?.attrs ?? {}), fontSize: `${next}pt` }))
+    return false
+  })
+  if (tr.docChanged) editor.view.dispatch(tr)
 }
 
 /**
@@ -184,7 +241,34 @@ const WRAPPERS: Record<string, 'bulletList' | 'orderedList' | 'blockquote'> = {
 }
 
 /** Block categories a bulk chat request can target (mirrors the server's `targetCategory`). */
-export type BlockCategory = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'questions'
+export type BlockCategory = Exclude<AIChatTargetCategory, 'all'>
+
+/** Categories that are whole container blocks, by node type: the block is changed as one range. */
+const CONTAINER_TYPES: Partial<Record<AIChatBlockCategory, readonly string[]>> = {
+  lists: ['bulletList', 'orderedList'],
+  bulletLists: ['bulletList'],
+  numberedLists: ['orderedList'],
+  tables: ['table'],
+  quotes: ['blockquote'],
+}
+
+/** Every outermost block of the given types (a list nested in a list goes with its parent). */
+function containerRanges(doc: ProseMirrorNode, types: readonly string[]): TextRange[] {
+  const ranges: TextRange[] = []
+  doc.descendants((node, pos) => {
+    if (!types.includes(node.type.name)) return true
+    if (node.nodeSize > 2) ranges.push({ from: pos + 1, to: pos + node.nodeSize - 1 })
+    return false
+  })
+  return ranges
+}
+
+/** Figure and table captions: tagged by the editor or recognised from their "Figure 3"/"Table 2" label. */
+function captionRanges(doc: ProseMirrorNode): TextRange[] {
+  return findCaptions(doc)
+    .filter(({ node }) => node.content.size > 0)
+    .map(({ pos, node }) => ({ from: pos + 1, to: pos + node.nodeSize - 1 }))
+}
 
 /** The inside of a block as a range. */
 function inside(block: TopBlock): TextRange {
@@ -237,10 +321,45 @@ function questionRanges(doc: ProseMirrorNode): TextRange[] {
   return ranges
 }
 
+type ExceptCategory = `except:${AIChatBlockCategory}`
+
+function isExcept(category: BlockCategory): category is ExceptCategory {
+  return category.startsWith('except:')
+}
+
+/** "Everything except X": every text block that is not inside one of X's ranges. */
+function exceptRanges(doc: ProseMirrorNode, category: ExceptCategory): TextRange[] {
+  const excluded = findCategoryRanges(doc, category.slice('except:'.length) as AIChatBlockCategory)
+  const ranges: TextRange[] = []
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true
+    const range = { from: pos + 1, to: pos + node.nodeSize - 1 }
+    const inExcluded = excluded.some((other) => range.from >= other.from && range.to <= other.to)
+    if (range.to > range.from && !inExcluded) ranges.push(range)
+    return false
+  })
+  return ranges
+}
+
+const HEADING_LEVEL_CATEGORIES: Partial<Record<AIChatBlockCategory, number>> = { h1Headings: 1, h2Headings: 2, h3Headings: 3 }
+
 /** Every text block a category names, each as its own range (questions: one range per run). */
 export function findCategoryRanges(doc: ProseMirrorNode, category: BlockCategory): TextRange[] {
+  if (isExcept(category)) return exceptRanges(doc, category)
+  const level = HEADING_LEVEL_CATEGORIES[category]
+  if (level) {
+    const ranges: TextRange[] = []
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'heading' && node.attrs?.level === level && node.content.size > 0) ranges.push({ from: pos + 1, to: pos + node.nodeSize - 1 })
+      return !node.isTextblock
+    })
+    return ranges
+  }
   if (category === 'sections') return sectionHeadingRanges(doc)
   if (category === 'questions') return questionRanges(doc)
+  if (category === 'captions') return captionRanges(doc)
+  const containers = CONTAINER_TYPES[category]
+  if (containers) return containerRanges(doc, containers)
   // Body text starts at the first chapter: a thesis's title page and front matter are not body paragraphs.
   const firstChapter = category === 'paragraphs' ? topBlocks(doc).find(({ node }) => isChapterHeading(node)) : undefined
   const bodyStart = firstChapter ? firstChapter.pos : 0
@@ -249,7 +368,10 @@ export function findCategoryRanges(doc: ProseMirrorNode, category: BlockCategory
     if (pos < bodyStart) return true
     const matches =
       category === 'headings'
-        ? node.type.name === 'heading'
+        ? // Real headings, plus the bold heading lines and "CHAPTER n" lines imported documents use
+          // instead (top level only, so a bold table cell is not a heading).
+          node.type.name === 'heading' ||
+          (doc.resolve(pos).depth === 0 && (isChapterHeading(node) || isHeadingLikeParagraph(node)))
         : category === 'chapters'
           ? isChapterHeading(node)
           : // Body paragraphs: not a "CHAPTER n" line, a heading-like bold line, or the title.
@@ -309,6 +431,8 @@ function toTitleCase(text: string, startsBlock: boolean): string {
  * letters, keeping every mark.
  */
 export function applyStyle(editor: Editor, range: TextRange, style: StyleChange): void {
+  if (style.fontSizeStep) stepFontSize(editor, range, style.fontSizeStep)
+
   if (style.fontFamily) {
     editor.chain().setTextSelection(range).setMark('textStyle', { fontFamily: style.fontFamily }).run()
   }

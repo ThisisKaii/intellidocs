@@ -577,7 +577,25 @@ export interface RejectedFormattingPreview {
   rejectedAt?: string
 }
 
-export type AIChatTargetCategory = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'questions' | 'all'
+/** Kinds of block a bulk chat request can name (mirrors the server's BLOCK_CATEGORIES). */
+export type AIChatBlockCategory =
+  | 'headings'
+  | 'h1Headings'
+  | 'h2Headings'
+  | 'h3Headings'
+  | 'sections'
+  | 'paragraphs'
+  | 'chapters'
+  | 'questions'
+  | 'lists'
+  | 'bulletLists'
+  | 'numberedLists'
+  | 'tables'
+  | 'captions'
+  | 'quotes'
+
+/** One kind of block, everything except one kind (`except:headings`), or the whole document. */
+export type AIChatTargetCategory = AIChatBlockCategory | `except:${AIChatBlockCategory}` | 'all'
 
 /** How a chat target is meant; 'heading' is a section's title line only. */
 export type AIChatTargetMode = 'literal' | 'heading' | 'section' | 'title'
@@ -590,6 +608,8 @@ export interface AIChatStyleChange {
   firstLineIndentIn: number | null
   fontFamily: string | null
   textCase: 'upper' | 'title' | null
+  /** Relative font size change in points (+2 "bigger", -2 "smaller"). */
+  fontSizeStep?: number | null
 }
 
 /** One change of a multi-change chat preview (server: splitFormattingOperations). */

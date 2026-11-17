@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { editorUndoDepth, startNewUndoStep } from './undoDepth'
-import { api, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type AIGroundedPaper, type AIStructuredSection, type AIToneRefinement, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
+import { api, type AIChatBlockCategory, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type AIGroundedPaper, type AIStructuredSection, type AIToneRefinement, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
 import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, replaceTextsInRange, resolveTargetRanges, type BlockCategory, type TextRange } from './chatFormatting'
 import { CitationsCard, RefineCard, StructureCard, type CardStatus, type EditStatus } from './WritingAssistCards'
 import { buildStructuredSectionContent, headingLevelAt } from './structuredSection'
@@ -172,16 +172,51 @@ function styleLabels(style: AIChatStyleChange | null): string[] {
   if (style.firstLineIndentIn !== null) labels.push(`${style.firstLineIndentIn}in first-line indent`)
   if (style.textCase === 'upper') labels.push('ALL CAPITALS')
   if (style.textCase === 'title') labels.push('Title Case')
+  if (style.fontSizeStep) labels.push(`font size ${style.fontSizeStep > 0 ? '+' : '−'}${Math.abs(style.fontSizeStep)}pt`)
   return labels
 }
 
 /** How each block category reads in an "applied" note. */
-const CATEGORY_NOTES: Record<BlockCategory, string> = {
+const CATEGORY_NOTES: Record<AIChatBlockCategory, string> = {
   headings: 'all headings',
+  h1Headings: 'every Heading 1',
+  h2Headings: 'every Heading 2',
+  h3Headings: 'every Heading 3',
   sections: 'every section heading',
   chapters: 'every chapter heading',
   paragraphs: 'all body paragraphs',
   questions: 'the research questions',
+  lists: 'every list',
+  bulletLists: 'every bulleted list',
+  numberedLists: 'every numbered list',
+  tables: 'every table',
+  captions: 'every figure and table caption',
+  quotes: 'every block quote',
+}
+
+/** Each block category as a group noun, for "everything except the headings". */
+const CATEGORY_NOUNS: Record<AIChatBlockCategory, string> = {
+  headings: 'the headings',
+  h1Headings: 'the Heading 1 headings',
+  h2Headings: 'the Heading 2 headings',
+  h3Headings: 'the Heading 3 headings',
+  sections: 'the section headings',
+  chapters: 'the chapter headings',
+  paragraphs: 'the body paragraphs',
+  questions: 'the research questions',
+  lists: 'the lists',
+  bulletLists: 'the bulleted lists',
+  numberedLists: 'the numbered lists',
+  tables: 'the tables',
+  captions: 'the captions',
+  quotes: 'the block quotes',
+}
+
+/** A category as words: "all headings", "everything except the headings". */
+function categoryNote(category: BlockCategory): string {
+  const excepted = /^except:(.+)$/.exec(category)?.[1]
+  const base = (excepted ?? category) as AIChatBlockCategory
+  return excepted ? `everything except ${CATEGORY_NOUNS[base]}` : CATEGORY_NOTES[base]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -404,11 +439,7 @@ export default function AIChatbot({
           .join(' ')
         return `— ${capitalized}`
       }
-      if (msg.preview_target_category === 'headings') return '— all headings'
-      if (msg.preview_target_category === 'chapters') return '— every chapter heading'
-      if (msg.preview_target_category === 'sections') return '— every section heading'
-      if (msg.preview_target_category === 'questions') return '— the research questions'
-      if (msg.preview_target_category === 'paragraphs') return '— all body paragraphs'
+      if (msg.preview_target_category && msg.preview_target_category !== 'all') return `— ${categoryNote(msg.preview_target_category)}`
       return '— entire document'
     }
     return ''
@@ -540,7 +571,7 @@ export default function AIChatbot({
     if (!editor || editor.isDestroyed) return ''
     const { formats, scope, fontSize, target, targetCategory, normalize, style } = change
     const scopeNote =
-      scope === 'all' && targetCategory && targetCategory !== 'all' ? ` (${CATEGORY_NOTES[targetCategory]})` : ''
+      scope === 'all' && targetCategory && targetCategory !== 'all' ? ` (${categoryNote(targetCategory)})` : ''
 
     let targetWarning = ''
     if (target && scope === 'all') {

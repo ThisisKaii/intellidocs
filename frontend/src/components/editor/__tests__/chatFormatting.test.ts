@@ -108,6 +108,63 @@ describe('findCategoryRanges', () => {
     expect(texts).toEqual(['Background of the Study', 'Scope'])
   })
 
+  it('all headings include bold heading lines and "CHAPTER n" paragraphs, but not body text or bold table cells', () => {
+    const ed = open(
+      '<p>CHAPTER 1</p><h2>Introduction</h2><p><strong>Background of the Study</strong></p><p>Body text that runs on.</p>' +
+        '<table><tbody><tr><td><p><strong>Cell</strong></p></td></tr></tbody></table>'
+    )
+    expect(textsOf(ed, findCategoryRanges(ed.state.doc, 'headings'))).toEqual(['CHAPTER 1', 'Introduction', 'Background of the Study'])
+    applyFormatsToRanges(ed, findCategoryRanges(ed.state.doc, 'headings'), [], 12, false)
+    const html = ed.getHTML()
+    expect(html).toMatch(/<h2[^>]*><span style="font-size: 12pt[^"]*">Introduction/)
+    expect(html).toContain('<p>Body text that runs on.</p>')
+  })
+
+  it('list, table, quote and caption categories each find their own blocks', () => {
+    const ed = open(
+      '<p>Intro text.</p>' +
+        '<ul><li><p>Bullet one</p><ul><li><p>Nested</p></li></ul></li><li><p>Bullet two</p></li></ul>' +
+        '<ol><li><p>Step one</p></li></ol>' +
+        '<blockquote><p>A quoted line.</p></blockquote>' +
+        '<table><tbody><tr><td><p>Cell</p></td></tr></tbody></table>' +
+        '<p>Table 1: Results by group</p>'
+    )
+    const texts = (category: Parameters<typeof findCategoryRanges>[1]) => textsOf(ed, findCategoryRanges(ed.state.doc, category))
+    expect(texts('bulletLists')).toEqual(['Bullet one | Nested | Bullet two'])
+    expect(texts('numberedLists')).toEqual(['Step one'])
+    expect(texts('lists')).toEqual(['Bullet one | Nested | Bullet two', 'Step one'])
+    expect(texts('quotes')).toEqual(['A quoted line.'])
+    expect(texts('tables')).toEqual(['Cell'])
+    expect(texts('captions')).toEqual(['Table 1: Results by group'])
+
+    applyFormatsToRanges(ed, findCategoryRanges(ed.state.doc, 'bulletLists'), [], 12, false)
+    const html = ed.getHTML()
+    expect(html).toMatch(/<span style="font-size: 12pt[^"]*">Nested/)
+    expect(html).toContain('<li><p>Step one</p></li>')
+    expect(html).toContain('<p>Intro text.</p>')
+  })
+
+  it('a heading level names only the headings of that level', () => {
+    const ed = open('<h1>Title</h1><h2>Background</h2><p>Body</p><h2>Scope</h2><h3>Detail</h3>')
+    expect(textsOf(ed, findCategoryRanges(ed.state.doc, 'h2Headings'))).toEqual(['Background', 'Scope'])
+    expect(textsOf(ed, findCategoryRanges(ed.state.doc, 'h3Headings'))).toEqual(['Detail'])
+  })
+
+  it('"everything except" a category is every other text block', () => {
+    const ed = open('<h2>Background</h2><p>Body one.</p><ul><li><p>Point</p></li></ul><table><tbody><tr><td><p>Cell</p></td></tr></tbody></table>')
+    expect(textsOf(ed, findCategoryRanges(ed.state.doc, 'except:headings'))).toEqual(['Body one.', 'Point', 'Cell'])
+    expect(textsOf(ed, findCategoryRanges(ed.state.doc, 'except:tables'))).toEqual(['Background', 'Body one.', 'Point'])
+  })
+
+  it('a relative size grows each run from its own size, keeping its font', () => {
+    const ed = open('<h2><span style="font-size: 16pt; font-family: Arial">Big</span> plain</h2>')
+    applyFormatsToRanges(ed, findCategoryRanges(ed.state.doc, 'headings'), [], undefined, false, { ...NO_STYLE, fontSizeStep: 2 })
+    const html = ed.getHTML()
+    expect(html).toMatch(/font-size: 18pt[^"]*font-family: Arial|font-family: Arial[^"]*font-size: 18pt/)
+    // No size of its own and no rendered size (jsdom): body size 12pt, so 14pt.
+    expect(html).toMatch(/font-size: 14pt[^"]*">\s?plain/)
+  })
+
   it('body paragraphs leave out a "CHAPTER n" line styled as a paragraph', () => {
     const ed = open('<p>CHAPTER 1</p><p>Body one.</p><p>Body two.</p>')
     const texts = findCategoryRanges(ed.state.doc, 'paragraphs').map((range) => ed.state.doc.textBetween(range.from, range.to))

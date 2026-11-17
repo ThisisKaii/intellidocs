@@ -3,7 +3,7 @@ import { aiClient } from '../ai/aiClient'
 import { buildAIChatSystemPrompt } from '../ai/prompts/systemPrompts'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 import { buildChatContext } from '../skills/buildChatContext'
-import { hasStyleChange, looksLikeQuestion, parseFormattingIntent, type StyleChange, type TargetCategory, type TargetMode } from '../skills/parseFormattingIntent'
+import { hasStyleChange, looksLikeQuestion, parseFormattingIntent, describeTargetCategory, type StyleChange, type TargetCategory, type TargetMode } from '../skills/parseFormattingIntent'
 import { buildFormattingReply, buildMultiFormattingReply, summarizeFormattingChange } from '../skills/buildFormattingReply'
 import { splitFormattingOperations } from '../skills/splitFormattingOperations'
 import { documentHasTarget, listOutlineSections } from '../skills/documentSections'
@@ -305,17 +305,31 @@ function detectFormattingPreview(
   const primary = intent.formats[0]
   const reasonParts: string[] = []
 
+  // A clear request with no place of its own ("remove the bold") follows the
+  // previous change's place; one that names a place ("make the bullet points
+  // not bold") is about that place. Only a bare "go back to normal" also undoes
+  // the previous change's font size.
+  const namesOwnPlace = intent.target !== null || intent.targetCategory !== 'all'
+  const followsLast = intent.normalize && !namesOwnPlace && lastPreview !== null && lastPreview !== undefined
+  const undoesLast = followsLast && intent.formats.length === 0
+
   if (intent.normalize) {
-    if (lastPreview?.formats && lastPreview.formats.length > 0) {
+    if (undoesLast && lastPreview?.formats && lastPreview.formats.length > 0) {
       reasonParts.push(
         `Reverting your previous change (${lastPreview.formats.map((f) => labels[f] ?? f).join(', ')}).`
       )
+    } else if (intent.formats.length > 0) {
+      reasonParts.push(`Removing ${intent.formats.map((f) => (labels[f] ?? f).toLowerCase()).join(' and ')}.`)
     } else {
       reasonParts.push('Detected a request to clear existing formatting.')
     }
   }
   if (hasFontSize) {
     reasonParts.push(`Font size ${intent.fontSize}pt requested.`)
+  }
+  if (intent.style.fontSizeStep) {
+    const step = intent.style.fontSizeStep
+    reasonParts.push(`Each run of text gets ${Math.abs(step)}pt ${step > 0 ? 'larger' : 'smaller'} than it is now.`)
   }
   if (intent.target && intent.targetMode === 'literal') {
     reasonParts.push(`Only the exact words "${intent.target}", wherever they appear.`)
@@ -325,18 +339,12 @@ function detectFormattingPreview(
     reasonParts.push(`The "${intent.target.toUpperCase()}" heading line only, not the text under it.`)
   } else if (intent.target) {
     reasonParts.push(`The whole "${intent.target.toUpperCase()}" section: its heading and everything under it.`)
-  } else if (intent.normalize && lastPreview?.scope === 'all') {
+  } else if (followsLast && lastPreview?.scope === 'all') {
     reasonParts.push('Applies to the whole document (matching your last change).')
-  } else if (intent.targetCategory === 'headings') {
-    reasonParts.push('Applies to all headings.')
-  } else if (intent.targetCategory === 'chapters') {
-    reasonParts.push('Applies to every chapter heading.')
-  } else if (intent.targetCategory === 'paragraphs') {
-    reasonParts.push('Applies to all body paragraphs.')
-  } else if (intent.targetCategory === 'sections') {
-    reasonParts.push('Applies to every section heading.')
   } else if (intent.targetCategory === 'questions') {
     reasonParts.push('Applies to the research questions (the lines ending in a question mark).')
+  } else if (intent.targetCategory !== 'all') {
+    reasonParts.push(`Applies to ${describeTargetCategory(intent.targetCategory)}.`)
   } else if (intent.scope === 'all') {
     reasonParts.push('Applies to the whole document.')
   }
@@ -346,11 +354,11 @@ function detectFormattingPreview(
   const resolvedScope: 'selection' | 'all' =
     intent.target !== null
       ? 'all'
-      : intent.normalize && lastPreview?.scope
+      : followsLast && lastPreview?.scope
         ? lastPreview.scope
         : intent.scope
-  const resolvedTarget = intent.target ?? (intent.normalize ? (lastPreview?.target ?? null) : null)
-  const resolvedCategory = intent.normalize
+  const resolvedTarget = intent.target ?? (followsLast ? (lastPreview?.target ?? null) : null)
+  const resolvedCategory = followsLast
     ? (lastPreview?.targetCategory ?? intent.targetCategory)
     : intent.targetCategory
   // A new clear request ("remove bold") must carry the mark it names; only
@@ -358,7 +366,7 @@ function detectFormattingPreview(
   const revertFormats = intent.normalize
     ? (intent.formats.length > 0 ? intent.formats : (lastPreview?.formats ?? []))
     : intent.formats
-  const fontSize = intent.fontSize ?? (intent.normalize && lastPreview ? (lastPreview.fontSize ?? null) : null)
+  const fontSize = intent.fontSize ?? (undoesLast ? (lastPreview?.fontSize ?? null) : null)
 
   return {
     format: intent.normalize
@@ -366,14 +374,16 @@ function detectFormattingPreview(
       : (primary ?? 'body_text'),
     label: intent.normalize
       ? 'Clear formatting'
-      : primary ? (labels[primary] ?? primary) : hasStyleChange(intent.style) ? 'Text style' : 'Font size',
+      : primary
+        ? (labels[primary] ?? primary)
+        : hasStyleChange({ ...intent.style, fontSizeStep: null }) ? 'Text style' : 'Font size',
     confidence: intent.confidence,
     reason: reasonParts.length > 0 ? reasonParts.join(' ') : 'Detected a likely formatting request.',
     formats: revertFormats,
     scope: resolvedScope,
     fontSize,
     target: resolvedTarget,
-    targetMode: intent.target ? intent.targetMode : (intent.normalize ? (lastPreview?.targetMode ?? null) : null),
+    targetMode: intent.target ? intent.targetMode : (followsLast ? (lastPreview?.targetMode ?? null) : null),
     targetCategory: resolvedCategory,
     normalize: intent.normalize,
     style: intent.normalize ? null : intent.style,

@@ -42,7 +42,7 @@ const INSTRUCTION_VERB = /\b(?:format|apply|make|set|change|turn|align|style|use
 /** Clause separators; a section title containing one ("Scope and Delimitation") must not be split on it. */
 const SEPARATOR = /,|\s(?:and|then|also|plus)\s/i
 
-const EMPTY_STYLE: StyleChange = { lineSpacing: null, firstLineIndentIn: null, fontFamily: null, textCase: null }
+const EMPTY_STYLE: StyleChange = { lineSpacing: null, firstLineIndentIn: null, fontFamily: null, textCase: null, fontSizeStep: null }
 
 /**
  * Replace quoted phrases, and section titles that contain a separator word, with
@@ -102,6 +102,7 @@ function mergeStyle(base: StyleChange, next: StyleChange): StyleChange {
     firstLineIndentIn: next.firstLineIndentIn ?? base.firstLineIndentIn,
     fontFamily: next.fontFamily ?? base.fontFamily,
     textCase: next.textCase ?? base.textCase,
+    fontSizeStep: next.fontSizeStep ?? base.fontSizeStep,
   }
 }
 

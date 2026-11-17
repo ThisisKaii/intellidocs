@@ -49,7 +49,84 @@ export interface FormattingIntentResult {
 
 export type TargetMode = 'literal' | 'heading' | 'section' | 'title'
 
-export type TargetCategory = 'headings' | 'sections' | 'paragraphs' | 'chapters' | 'questions' | 'all'
+/** Kinds of block a bulk request can name ("all headings", "every table"). */
+export const BLOCK_CATEGORIES = [
+  'headings',
+  'h1Headings',
+  'h2Headings',
+  'h3Headings',
+  'sections',
+  'paragraphs',
+  'chapters',
+  'questions',
+  'lists',
+  'bulletLists',
+  'numberedLists',
+  'tables',
+  'captions',
+  'quotes',
+] as const
+
+export type BlockCategory = (typeof BLOCK_CATEGORIES)[number]
+
+/**
+ * Which blocks a request changes: one kind of block, everything except one kind
+ * ("everything except the headings" is `except:headings`), or the whole document.
+ */
+export type TargetCategory = BlockCategory | `except:${BlockCategory}` | 'all'
+
+export const TARGET_CATEGORIES: readonly TargetCategory[] = [
+  ...BLOCK_CATEGORIES,
+  ...BLOCK_CATEGORIES.map((category): TargetCategory => `except:${category}`),
+  'all',
+]
+
+/** Each kind of block as a group noun ("the headings"). */
+const BLOCK_CATEGORY_NOUNS: Record<BlockCategory, string> = {
+  headings: 'the headings',
+  h1Headings: 'the Heading 1 headings',
+  h2Headings: 'the Heading 2 headings',
+  h3Headings: 'the Heading 3 headings',
+  sections: 'the section headings',
+  paragraphs: 'the body paragraphs',
+  chapters: 'the chapter headings',
+  questions: 'the research questions',
+  lists: 'the lists',
+  bulletLists: 'the bulleted lists',
+  numberedLists: 'the numbered lists',
+  tables: 'the tables',
+  captions: 'the figure and table captions',
+  quotes: 'the block quotes',
+}
+
+/** Each kind of block as "every ..." ("Make every heading bold"). */
+const BLOCK_CATEGORY_LABELS: Record<BlockCategory, string> = {
+  headings: 'every heading',
+  h1Headings: 'every Heading 1',
+  h2Headings: 'every Heading 2',
+  h3Headings: 'every Heading 3',
+  sections: 'every section heading',
+  paragraphs: 'every body paragraph',
+  chapters: 'every chapter heading',
+  questions: 'the research questions',
+  lists: 'every list',
+  bulletLists: 'every bulleted list',
+  numberedLists: 'every numbered list',
+  tables: 'every table',
+  captions: 'every figure and table caption',
+  quotes: 'every block quote',
+}
+
+function isBlockCategory(value: string): value is BlockCategory {
+  return (BLOCK_CATEGORIES as readonly string[]).includes(value)
+}
+
+/** How a bulk request's blocks are named back to the user ("every heading", "everything except the headings"). */
+export function describeTargetCategory(category: Exclude<TargetCategory, 'all'>): string {
+  if (isBlockCategory(category)) return BLOCK_CATEGORY_LABELS[category]
+  const base = category.slice('except:'.length)
+  return isBlockCategory(base) ? `everything except ${BLOCK_CATEGORY_NOUNS[base]}` : 'the whole document'
+}
 
 /** Styling a chat request can set besides marks, headings, lists and alignment. */
 export interface StyleChange {
@@ -61,11 +138,19 @@ export interface StyleChange {
   fontFamily: string | null
   /** Letter case to convert the text to. */
   textCase: 'upper' | 'title' | null
+  /** A relative font size change in points: +2 for "bigger", -2 for "smaller", or "by N". */
+  fontSizeStep: number | null
 }
 
 /** True when a style change asks for anything. */
 export function hasStyleChange(style: StyleChange): boolean {
-  return style.lineSpacing !== null || style.firstLineIndentIn !== null || style.fontFamily !== null || style.textCase !== null
+  return (
+    style.lineSpacing !== null ||
+    style.firstLineIndentIn !== null ||
+    style.fontFamily !== null ||
+    style.textCase !== null ||
+    style.fontSizeStep !== null
+  )
 }
 
 /** Options that make target detection document-aware. */
@@ -116,7 +201,37 @@ const BULK_SCOPE_PHRASES = [
 
 /** Section headings named as a group: plural, or singular with "the/all/every/each". */
 const SECTION_CATEGORY_PATTERN =
-  /\b(?:section\s+(?:headings|titles|headers)|sub-?headings)\b|\b(?:all|every|each|the)\s+(?:the\s+)?(?:section\s+(?:heading|title|header)|sub-?heading)\b/
+  /\b(?:section\s+(?:headings|titles|headers)|sub-?(?:headings|headers))\b|\b(?:all|every|each|the)\s+(?:the\s+)?(?:section\s+(?:heading|title|header)|sub-?(?:heading|header))\b/
+
+/** "all the", "every", "the", "all of my"...: the words that make a noun name a group of blocks. */
+const GROUP = String.raw`\b(?:all|every|each|the|my|any)\s+(?:(?:of\s+)?(?:the|my)\s+)?`
+/** "all", "every", "each": these make a singular noun a group ("every bullet point"). */
+const EACH = String.raw`\b(?:all|every|each)\s+(?:(?:of\s+)?the\s+)?`
+
+/** A block category named by plural nouns after GROUP, or singular nouns after EACH. */
+function groupPattern(plural: string, singular: string): RegExp {
+  return new RegExp(`${GROUP}(?:${plural})\\b|${EACH}(?:${singular})\\b`)
+}
+
+const CAPTIONS_PATTERN = groupPattern(String.raw`(?:(?:figure|table|image)\s+)?captions`, String.raw`(?:(?:figure|table)\s+)?caption`)
+const TABLES_PATTERN = groupPattern('tables', String.raw`table(?!\s+of\s+contents)`)
+const QUOTES_PATTERN = groupPattern(String.raw`block\s*quotes|quotations|quotes`, String.raw`block\s*quote|quotation|quote`)
+const BULLET_LISTS_PATTERN = groupPattern(
+  String.raw`bullet(?:ed)?\s+(?:lists|points|items)|bullets|unordered\s+lists`,
+  String.raw`bullet(?:ed)?\s+(?:list|point|item)|bullet`
+)
+const NUMBERED_LISTS_PATTERN = groupPattern(String.raw`(?:numbered|ordered)\s+(?:lists|items|points)`, String.raw`(?:numbered|ordered)\s+(?:list|item|point)`)
+const LISTS_PATTERN = groupPattern(String.raw`lists|list\s+items`, String.raw`list(?:\s+item)?`)
+
+/**
+ * List and quote nouns that name WHICH blocks to change ("make all bullet lists
+ * 12pt"), not a list or quote to create. They become "them" before format
+ * matching, so "number the bullet points" still means "number them".
+ */
+const BLOCK_NOUN_PATTERN = new RegExp(
+  [BULLET_LISTS_PATTERN, NUMBERED_LISTS_PATTERN, LISTS_PATTERN, QUOTES_PATTERN].map((pattern) => pattern.source).join('|'),
+  'g'
+)
 
 /**
  * Heading nouns that name WHICH blocks to change ("bold the chapter headings",
@@ -124,17 +239,48 @@ const SECTION_CATEGORY_PATTERN =
  * format matching so "bold the section headings" does not also mean "make them
  * Heading 2". A singular "a section heading" stays a format request.
  */
+/**
+ * One heading level named as a group ("all h2", "every heading 2", "the level 2
+ * headings", "headings 1"). The level says which headings to change, not a level
+ * to apply, so "make all h2 12pt" resizes the H2s instead of making everything H2.
+ */
+const HEADING_LEVEL_PATTERN = new RegExp(
+  String.raw`${GROUP}(?:h([123])s?|head(?:ing|er)s?\s*([123])s?|level[\s-]*([123])\s+head(?:ing|er)s?)\b|\bh([123])s\b|\bhead(?:ing|er)s\s*([123])\b`
+)
+
 const CATEGORY_NOUN_PATTERN = new RegExp(
-  `${SECTION_CATEGORY_PATTERN.source}|\\b(?:chapter\\s+(?:headings?|titles?|headers?))\\b|\\b(?:all|every|each|the)\\s+(?:the\\s+)?headings\\b`,
+  `${SECTION_CATEGORY_PATTERN.source}|${HEADING_LEVEL_PATTERN.source}|\\b(?:chapter\\s+(?:headings?|titles?|headers?))\\b|\\b(?:all|every|each|the)\\s+(?:the\\s+)?(?:headings|headers)\\b`,
   'g'
 )
+
+/** "everything except the headings", "all text other than the tables": the words after it name what to leave alone. */
+const EXCEPT_PATTERN = /\b(?:except(?:\s+for)?|but\s+not|other\s+than|apart\s+from|aside\s+from|excluding|not\s+including|save\s+for)\s+(.+)$/
 
 /**
  * Detect whether a bulk request names a specific block category. Plural or
  * quantified forms ("all headings", "every paragraph") count; singular
  * references ("this heading") do not — those keep selection scope.
+ * "Everything except X" names everything but that category.
  */
 function detectTargetCategory(message: string): TargetCategory {
+  const except = EXCEPT_PATTERN.exec(message)
+  if (except) {
+    const left = detectBlockCategory(`the ${except[1]}`)
+    const named = detectBlockCategory(message.slice(0, except.index))
+    if (left !== 'all' && named === 'all') return `except:${left}`
+    if (named !== 'all') return named
+  }
+  return detectBlockCategory(message)
+}
+
+function detectBlockCategory(message: string): BlockCategory | 'all' {
+  const level = HEADING_LEVEL_PATTERN.exec(message)
+  if (level) {
+    const digit = level.slice(1).find((group) => group !== undefined)
+    if (digit === '1') return 'h1Headings'
+    if (digit === '2') return 'h2Headings'
+    if (digit === '3') return 'h3Headings'
+  }
   // "all the chapter headings" names chapters only, not every heading level.
   if (/\bchapter\s+(?:headings?|titles?|headers?)\b|\b(?:all|every|each)\s+(?:the\s+)?chapters?\b/.test(message)) {
     return 'chapters'
@@ -143,25 +289,93 @@ function detectTargetCategory(message: string): TargetCategory {
   if (/\b(?:research\s+|sub-?)?questions\b|\bsops?\b/.test(message)) return 'questions'
   // "the section headings" / "all subheadings": the headings under the chapters.
   if (SECTION_CATEGORY_PATTERN.test(message)) return 'sections'
+  // Captions before tables: "all table captions" names the captions. Plain plurals
+  // ("italicize figure captions", "center tables") name them too.
+  if (CAPTIONS_PATTERN.test(message) || /\bcaptions\b/.test(message)) return 'captions'
+  if (TABLES_PATTERN.test(message) || /\btables\b/.test(message)) return 'tables'
+  if (QUOTES_PATTERN.test(message)) return 'quotes'
+  if (BULLET_LISTS_PATTERN.test(message)) return 'bulletLists'
+  if (NUMBERED_LISTS_PATTERN.test(message)) return 'numberedLists'
+  if (LISTS_PATTERN.test(message)) return 'lists'
+  // "Headers" is the everyday word for headings ("make all headers 12pt").
   const headingsPattern =
-    /\bheadings\b|\b(?:all|every|each)\s+title\b|\b(?:all|every|each)\s+h[123]\b/
+    new RegExp(String.raw`\b(?:headings|headers)\b|${EACH}(?:heading|header|title|h[123])\b|${GROUP}titles\b`)
   if (headingsPattern.test(message)) return 'headings'
+  // "set heading font size 12": the heading font is every heading's, unless the request points at one.
+  const pointsAtOne = /\b(?:this|that|selected|selection|highlighted)\b/.test(message)
+  if (!pointsAtOne && /\b(?:heading|header)\s+(?:font|text|size)\b/.test(message)) return 'headings'
 
   const paragraphsPattern =
-    /\bparagraphs\b|\b(?:all|every|each)\s+paragraph\b|\b(?:all|every|each)\s+(?:body|normal)\s+text\b/
+    new RegExp(String.raw`\b(?:paragraphs|paras)\b|${EACH}(?:paragraph|para)\b|${GROUP}(?:body|normal)\s+text\b`)
   if (paragraphsPattern.test(message)) return 'paragraphs'
+  if (!pointsAtOne && /\b(?:paragraph|body)\s+(?:font|text\s+size|size)\b/.test(message)) return 'paragraphs'
 
   return 'all'
 }
 
-/** Detect a request like "font size 20" / "size of 20" / "12pt" and return points. */
+/** Sizes written as words ("twelve point"), keyed with hyphens ("twenty-four"). */
+const SIZE_WORDS: Record<string, number> = {
+  six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
+  fifteen: 15, sixteen: 16, eighteen: 18, twenty: 20, 'twenty-two': 22, 'twenty-four': 24,
+  'twenty-eight': 28, thirty: 30, 'thirty-six': 36, 'forty-eight': 48, 'seventy-two': 72,
+}
+
+const SIZE_WORD_ALTERNATION = Object.keys(SIZE_WORDS)
+  .sort((a, b) => b.length - a.length)
+  .map((word) => word.replace('-', String.raw`[\s-]`))
+  .join('|')
+
+/** A size word next to a size unit or after "size": "twelve point", "size twelve". */
+const SIZE_WORD_PATTERN = new RegExp(
+  String.raw`\b(${SIZE_WORD_ALTERNATION})\b(?=\s*(?:pt|pts|points?|px)\b)|(?<=\bsize\s+(?:of\s+|to\s+)?)(${SIZE_WORD_ALTERNATION})\b`,
+  'g'
+)
+
+/** Words before a bare number that make it something other than a font size ("chapter 12", "heading 2"). */
+const NOT_A_SIZE_BEFORE = /\b(?:chapter|section|part|page|pages|table|figure|appendix|heading|header|level|step|item|question|sop|h|no|number|line|lines|column|columns)\s*$/
+
+/** Requests about spacing, indents, margins or numbering, where a bare number is not a font size. */
+const NOT_A_SIZE_REQUEST = /\b(?:spac\w*|indent\w*|margins?|columns?|line\s*height|inch\w*|cm|mm|number(?:s|ing)?|percent)\b|%|\d\s+to\s+\d/
+
+/** Detect a request like "font size 20" / "size of 20" / "12pt" / "should be 12" and return points. */
 function detectFontSize(message: string): number | null {
-  const ptMatch = message.match(/([0-9]{1,3})\s*(?:pt|points?)\b/)
-  const sizeMatch = message.match(/(?:font\s*)?size\s*(?:of\s*)?([0-9]{1,3})/)
-  const raw = ptMatch?.[1] ?? sizeMatch?.[1]
+  // A relative change ("bigger by 4pt") is a step, not a size.
+  const text = message
+    .replace(/\bby\s+\d{1,2}\s*(?:pt|pts|points?|px)?\b/g, ' ')
+    .replace(SIZE_WORD_PATTERN, (word) => String(SIZE_WORDS[word.replace(/\s+/, '-')] ?? word))
+  // "px" is read as points: in a document, "12 px" is a 12pt request.
+  const ptMatch = text.match(/([0-9]{1,3})\s*(?:pt|pts|points?|px)\b/)
+  const sizeMatch = text.match(/(?:font\s*)?size\s*(?:of\s*|to\s*|=\s*|:\s*)?([0-9]{1,3})/)
+  const raw = ptMatch?.[1] ?? sizeMatch?.[1] ?? bareSize(text)
   if (!raw) return null
   const size = Number.parseInt(raw, 10)
   return size >= 6 && size <= 96 ? size : null
+}
+
+/**
+ * A bare number as a size: "headers should be 12", "change the headings to 14",
+ * "make all headings 12". Only after "be/to/at/in" or at the end of the request,
+ * and never in a request about spacing, indents, margins or numbering.
+ */
+function bareSize(text: string): string | null {
+  if (NOT_A_SIZE_REQUEST.test(text)) return null
+  const match = /\b(?:be|to|at|in|into)\s+(\d{1,2})\b(?!\s*(?:\.\d|st|nd|rd|th))/.exec(text) ?? /\s(\d{1,2})(?:\s*(?:font|size))?\s*$/.exec(text)
+  if (!match) return null
+  return NOT_A_SIZE_BEFORE.test(text.slice(0, match.index + match[0].indexOf(match[1]))) ? null : match[1]
+}
+
+/** Things that get bigger or smaller without their font changing ("make the margins bigger"). */
+const NOT_A_FONT_THING = /\b(?:margins?|spacing|indent\w*|images?|pictures?|photos?|columns?|gaps?|width|height|page|pages)\b/
+
+/** "bigger", "make the headings smaller", "increase the font size by 4": a relative size change in points. */
+function detectFontSizeStep(message: string): number | null {
+  if (NOT_A_FONT_THING.test(message)) return null
+  const up = /\b(?:bigger|larger)\b|\b(?:increase|enlarge|raise|bump(?:\s+up)?)\b[^.;]*?\b(?:font|size|text)\b/.test(message)
+  const down = /\b(?:smaller|tinier)\b|\b(?:decrease|reduce|shrink|lower)\b[^.;]*?\b(?:font|size|text)\b/.test(message)
+  if (up === down) return null
+  const amount = /\bby\s+(\d{1,2})(?!\d)/.exec(message)
+  const points = Math.min(Math.max(amount ? Number.parseInt(amount[1], 10) : 2, 1), 24)
+  return up ? points : -points
 }
 
 /**
@@ -552,7 +766,36 @@ function detectStyle(message: string): StyleChange {
     firstLineIndentIn: detectFirstLineIndent(message),
     fontFamily: detectFontFamily(message),
     textCase: detectTextCase(message),
+    fontSizeStep: null,
   }
+}
+
+const EMPTY_STYLE: StyleChange = { lineSpacing: null, firstLineIndentIn: null, fontFamily: null, textCase: null, fontSizeStep: null }
+
+/** "Don't make ...", "do not ...", "never ...": the whole request says what NOT to do. */
+const NEGATED_REQUEST = /^(?:please\s+|pls\s+)?(?:don'?t|do\s+not|never|stop)\b(?!\s+(?:forget|miss|skip|leave\s+out))/
+
+/** A mark word after "not/no/without", or with an "un-" prefix ("unbold"). */
+const NEGATED_MARK = /\b(?:not|no|non-?|without|never)\s+(?:be\s+|in\s+)?(bold|italics?|italici[sz]ed|underlined?)\b|\bun-?(bold|italici[sz]e|underline)\w*/g
+
+function markOf(word: string): FormattingIntent | null {
+  if (word.startsWith('bold')) return 'bold'
+  if (word.startsWith('italic')) return 'italic'
+  if (word.startsWith('underline')) return 'underline'
+  return null
+}
+
+/** Marks the request says the text should NOT have; a "don't ..." request negates every mark it names. */
+function negatedMarks(message: string, requested: readonly FormattingIntent[]): FormattingIntent[] {
+  const marks = new Set<FormattingIntent>()
+  for (const match of message.matchAll(NEGATED_MARK)) {
+    const mark = markOf(match[1] ?? match[2] ?? '')
+    if (mark) marks.add(mark)
+  }
+  if (NEGATED_REQUEST.test(message)) {
+    for (const format of requested) if (format === 'bold' || format === 'italic' || format === 'underline') marks.add(format)
+  }
+  return [...marks]
 }
 
 /**
@@ -577,6 +820,8 @@ function detectPreset(message: string): string | null {
 export function looksLikeQuestion(message: string): boolean {
   const normalized = normalizeMessage(message)
   if (/^(?:can|could|would|will) you\b|^(?:please|pls|kindly)\b/.test(normalized)) return false
+  // "Do not make the headings bold" / "don't ..." is an instruction, not a question.
+  if (/^(?:do\s+not|don'?t)\b/.test(normalized)) return false
   return /^(?:what|what's|whats|why|who|whom|whose|when|where|which|how|is|are|was|were|does|do|did|should|explain|summari[sz]e|describe|tell me|give me|list)\b/.test(normalized)
 }
 
@@ -656,7 +901,10 @@ export function parseFormattingIntent(
   ]
 
   // Heading nouns that only say which blocks to change are not formats.
-  const formatText = normalized.replace(CATEGORY_NOUN_PATTERN, ' ').replace(/\s+/g, ' ')
+  const formatText = normalized
+    .replace(CATEGORY_NOUN_PATTERN, ' ')
+    .replace(BLOCK_NOUN_PATTERN, ' them ')
+    .replace(/\s+/g, ' ')
   const matches: Array<{ format: FormattingIntent; phrase: string; confidence: number }> = []
 
   for (const entry of intentMap) {
@@ -671,21 +919,48 @@ export function parseFormattingIntent(
     ? matches.filter((match) => match.format !== 'heading1')
     : matches
 
-  const formats: FormattingIntent[] = kept.map((match) => match.format)
+  const requested: FormattingIntent[] = kept.map((match) => match.format)
   let firstPhrase: string | null = kept[0]?.phrase ?? null
   let firstConfidence = kept[0]?.confidence ?? 0
 
   // Alignment is detected separately so a message can ask for both a mark and
   // an alignment ("make this bold and center it").
   const alignment = detectAlignment(formatText)
-  if (alignment && !formats.includes(alignment.format)) {
-    formats.push(alignment.format)
+  if (alignment && !requested.includes(alignment.format)) {
+    requested.push(alignment.format)
     if (firstPhrase === null) firstPhrase = alignment.phrase
     if (firstConfidence === 0) firstConfidence = ALIGNMENT_CONFIDENCE
   }
 
   // Style words are read without quoted target text ("bold "Double Space Rules"").
-  const style = detectStyle(formatText.replace(/"[^"]*"/g, ' '))
+  const fontSize = detectFontSize(normalized)
+  let style: StyleChange = {
+    ...detectStyle(formatText.replace(/"[^"]*"/g, ' ')),
+    fontSizeStep: fontSize === null ? detectFontSizeStep(formatText) : null,
+  }
+  let formats = requested
+  let normalize = NORMALIZE_PHRASES.some((phrase) => normalized.includes(phrase))
+  let size = fontSize
+
+  // "not bold", "unbold", "don't make the headings bold": a mark the user does
+  // NOT want. Next to other changes it is simply left out ("bold but not
+  // italic"); on its own it means removing that mark. "Don't ..." with no mark
+  // to remove asks for no change at all.
+  const negated = negatedMarks(normalized, requested)
+  const wholeRequestNegated = NEGATED_REQUEST.test(normalized)
+  if (negated.length > 0 || wholeRequestNegated) {
+    const positive = wholeRequestNegated ? [] : requested.filter((format) => !negated.includes(format))
+    const otherChange = !wholeRequestNegated && (positive.length > 0 || fontSize !== null || hasStyleChange(style))
+    if (otherChange) {
+      formats = positive
+    } else {
+      formats = negated
+      normalize = negated.length > 0
+      size = null
+      style = EMPTY_STYLE
+    }
+  }
+
   const detected = detectTarget(normalized, options.knownTitles ?? [])
   const target = detected?.target ?? null
   const targetCategory = detectTargetCategory(normalized)
@@ -708,15 +983,14 @@ export function parseFormattingIntent(
     BULK_SCOPE_PHRASES.some((phrase) => normalized.includes(phrase))
       ? 'all'
       : 'selection'
-  const normalize = NORMALIZE_PHRASES.some((phrase) => normalized.includes(phrase))
 
   return {
     format: formats[0] ?? null,
     formats,
-    confidence: firstConfidence,
-    matchedPhrase: firstPhrase,
+    confidence: formats.length > 0 ? firstConfidence : 0,
+    matchedPhrase: formats.length > 0 ? firstPhrase : null,
     scope,
-    fontSize: detectFontSize(normalized),
+    fontSize: size,
     normalize,
     target,
     targetMode,
