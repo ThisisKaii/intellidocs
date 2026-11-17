@@ -674,16 +674,17 @@ export async function markVersionSnapshot(documentId: string): Promise<void> {
   await redis.set(`version:${documentId}:last`, String(Date.now()), { EX: 3600 })
 }
 
-/** Insert a new version snapshot, throttled to avoid a row per keystroke. */
+/** Insert a new version snapshot, throttled to avoid a row per keystroke unless `force`. */
 export async function snapshotDocumentVersion(
   doc: Document,
   reason = 'autosave',
+  force = false,
 ): Promise<void> {
   // A tabbed document's row holds only its skeleton: its versions are kept per tab
   // (documentTabModel), and a skeleton restored as a version would empty every tab.
   if (hasTabBreaks(doc.content)) return
   try {
-    if (!(await versionSnapshotDue(doc.id))) return
+    if (!force && !(await versionSnapshotDue(doc.id))) return
 
     const snapshot: Record<string, unknown> = {
       document_id: doc.id,
@@ -735,6 +736,18 @@ export async function getDocumentVersions(
 
   if (error) throw new Error(`Failed to list document versions: ${error.message}`)
   return (data as DocumentVersion[] | null) || []
+}
+
+/**
+ * Save the document as it is now as a named version ("Before the assistant: page setup"), however
+ * recently the last one was taken, so the history always has the moment before a big change.
+ * Owner only, like the history itself. A tabbed document is checkpointed one tab at a time
+ * (documentTabModel.checkpointTab); for it this returns the document without saving anything.
+ */
+export async function checkpointDocumentVersion(documentId: string, userId: string, reason: string): Promise<Document> {
+  const doc = await getDocumentById(documentId, userId)
+  if (!hasTabBreaks(doc.content)) await snapshotDocumentVersion(doc, reason, true)
+  return doc
 }
 
 /** Fetch a single version snapshot (owner only). */

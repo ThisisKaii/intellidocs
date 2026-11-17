@@ -17,7 +17,7 @@ import {
   HelpCircle,
   GraduationCap,
 } from 'lucide-react'
-import AIChatbot, { type WritingAssistWiring } from './AIChatbot'
+import AIChatbot, { type AutomationWiring, type WritingAssistWiring } from './AIChatbot'
 import HistoryPanel from './HistoryPanel'
 import type { DocumentFeedback, DocumentVersion } from '@/services/api'
 import { FeedbackPanel, hasFeedback } from './FeedbackPanel'
@@ -80,6 +80,8 @@ interface EditorSidePanelProps {
   locateInOtherTab?: (target: string) => string | null
   /** Note structuring, citation search and refinement wiring for the assistant. */
   writingAssist?: WritingAssistWiring
+  /** Page setup, formatting fixes and the reference list for the assistant's automation cards. */
+  automations?: AutomationWiring
   scannerSuggestions: ScannerSuggestion[]
   /** Key of the suggestion currently highlighted in the editor (drives the active card state). */
   activeScannerKey?: string | null
@@ -148,6 +150,7 @@ export default function EditorSidePanel({
   historyTabId,
   locateInOtherTab,
   writingAssist,
+  automations,
   scannerSuggestions,
   activeScannerKey = null,
   mlSuggestions,
@@ -333,6 +336,7 @@ export default function EditorSidePanel({
               onApplyPreset={onApplyPreset}
               locateInOtherTab={locateInOtherTab}
               writingAssist={writingAssist}
+              automations={automations}
               docked
             />
           </div>

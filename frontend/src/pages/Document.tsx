@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { api, type AIGroundedPaper, type DocumentFeedback, type DocumentRecord, type DocumentTabSummary, type EditorJson, type PageNumberFormat, type TabNumbering, type TierCheckResponse } from '@/services/api'
+import { api, type AIGroundedPaper, type AISuggestionGroup, type DocumentFeedback, type DocumentRecord, type DocumentTabSummary, type EditorJson, type PageNumberFormat, type TabNumbering, type TierCheckResponse } from '@/services/api'
 import { getHTMLFromFragment } from '@tiptap/core'
 import TabSidebar from '@/components/editor/TabSidebar'
 import SplitTabsDialog from '@/components/editor/SplitTabsDialog'
@@ -3118,6 +3118,83 @@ export default function Document(): JSX.Element {
     }
   }
 
+  /** Which group of the scanner's fixes a suggestion belongs to, for the assistant's "fix" automation. */
+  function fixGroupOf(format: string): Exclude<AISuggestionGroup, 'all'> | null {
+    if (format === UNWRAP_FIGURE || format === CENTER_FIGURE) return 'figures'
+    if (format === FIX_CAPTION_NUMBER) return 'captions'
+    if (format === REMOVE_BLANK_LINES) return 'blankLines'
+    if (/^heading[123]$/.test(format) || format === 'title') return 'headings'
+    return null
+  }
+
+  /** The scanner's open fixes of one group (all of them for 'all'). */
+  function pendingFixesFor(only: AISuggestionGroup): ScannerSuggestion[] {
+    if (readOnly) return []
+    return scannerSuggestions.filter((suggestion) => only === 'all' || fixGroupOf(suggestion.format) === only)
+  }
+
+  /**
+   * Apply the scanner's fixes with these keys, each over its own block and the blocks merged into
+   * its card, from the end of the document backwards so earlier positions stay valid.
+   */
+  function applyFixesFromAssistant(keys: string[]): number {
+    if (!editor || editor.isDestroyed || !editor.isEditable) return 0
+    const chosen = scannerSuggestions.filter((suggestion) => keys.includes(suggestion.key))
+    const places = chosen.flatMap((suggestion) =>
+      [{ from: suggestion.from, to: suggestion.to }, ...(suggestion.groupMembers ?? [])].map((range) => ({ suggestion, range }))
+    )
+    places.sort((a, b) => b.range.from - a.range.from)
+    const previous = editor.state.selection
+    for (const { suggestion, range } of places) {
+      const captures = suggestion.captures
+      if (captures && suggestion.suggestionSource === 'learned') {
+        applyLearnedFormat(
+          {
+            format: suggestion.format,
+            bold: captures.bold,
+            italic: captures.italic,
+            underline: captures.underline,
+            fontSize: captures.fontSize ?? undefined,
+            textAlign: captures.textAlign,
+            blockStyle: captures.blockStyle,
+          },
+          range
+        )
+      } else {
+        applyFormatToRange(suggestion.format, range.from, range.to)
+      }
+    }
+    const size = editor.state.doc.content.size
+    editor.chain().setTextSelection({ from: Math.min(previous.from, size), to: Math.min(previous.to, size) }).run()
+    for (const suggestion of chosen) acceptScannerSuggestion(suggestion.key)
+    return chosen.length
+  }
+
+  /** Page setup changes from the assistant, through the same handlers as the Page setup dialog. */
+  function applyPageSetupFromAssistant(change: { pageSize?: PageSizeKey; orientation?: PageOrientation; margins?: MarginValues }): void {
+    if (readOnly) return
+    if (change.pageSize) handlePageSizeChange(change.pageSize)
+    if (change.orientation) handleOrientationChange(change.orientation)
+    if (change.margins) handleMarginsChange(change.margins)
+  }
+
+  /**
+   * Before the assistant changes the document: save what is on screen, then keep it as a named
+   * History version ("Before the assistant: Page setup (…)"). Only the owner keeps a history.
+   */
+  async function checkpointBeforeAssistant(description: string): Promise<void> {
+    if (!id || readOnly) return
+    await flushSave(false)
+    await api.documents.checkpoint(id, `Before the assistant: ${description.charAt(0).toUpperCase()}${description.slice(1)}`.slice(0, 200), isTabbed ? contentTabRef.current : null)
+  }
+
+  /** Write the reference list from the cited sources; false when there are none. */
+  function insertBibliographyFromAssistant(): boolean {
+    if (readOnly || references.length === 0) return false
+    insertBibliography(orderForBibliography(references, citationStyle).map((ref, index) => formatBibliographyEntry(ref, citationStyle, index + 1)))
+    return true
+  }
+
   // The selection toolbar's "Find citations": open the assistant and ask it about the selection.
   useEffect(
     () =>
@@ -4651,6 +4728,16 @@ export default function Document(): JSX.Element {
             onPendingPromptConsumed: () => setAssistantPrompt(null),
             pendingAutoCaption: assistantAutoCaption,
             onPendingAutoCaptionConsumed: () => setAssistantAutoCaption(false),
+          }}
+          automations={{
+            pageSetup: { pageSize, orientation, margins },
+            applyPageSetup: applyPageSetupFromAssistant,
+            pendingFixes: (only) =>
+              pendingFixesFor(only).map((suggestion) => ({ key: suggestion.key, label: suggestion.label ?? formatSuggestionLabel(suggestion.format) })),
+            applyFixes: applyFixesFromAssistant,
+            references: () => ({ count: references.length, styleLabel: CITATION_STYLE_LABELS[citationStyle].split(/\s{2,}/).join(' ') }),
+            insertBibliography: insertBibliographyFromAssistant,
+            checkpoint: checkpointBeforeAssistant,
           }}
           scannerSuggestions={scannerSuggestions}
           activeScannerKey={scannerActive?.key ?? null}

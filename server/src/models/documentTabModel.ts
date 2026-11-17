@@ -546,6 +546,11 @@ export async function deleteTab(doc: Document, tabId: string): Promise<TabSummar
  * Restore a version of one tab (migration 049): its text replaces the tab's, or, when the tab was
  * deleted since, the tab comes back at its old place. The rest of the document is untouched.
  */
+/** Save one tab as it is now as a named version, however recently the last one was taken. */
+export async function checkpointTab(doc: Document, tabId: string, reason: string): Promise<void> {
+  await snapshotTab(doc, await getTab(doc.id, tabId), reason, true)
+}
+
 export async function restoreTabVersion(
   doc: Document,
   version: { tab_id: string; tab_title?: string | null; tab_position?: number | null; content: string; content_json?: EditorJson | null },

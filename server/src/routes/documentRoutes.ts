@@ -18,6 +18,7 @@ import {
   splitTabsSchema,
   updateDocumentSchema,
   updateTabSchema,
+  versionCheckpointSchema,
 } from '../../schemas/documentSchemas'
 import { importQuerySchema } from '../../schemas/importSchemas'
 import { detectGenreSchema, setGenreSchema } from '../../schemas/genreSchemas'
@@ -134,6 +135,7 @@ router.delete('/:id/tabs/:tabId', validateParams(documentTabParamsSchema), docum
 
 /** Undo-lock version history — owner can list and restore snapshots. */
 router.get('/:id/versions', documentController.getDocumentVersions)
+router.post('/:id/versions', validateParams(documentIdParamSchema), validateBody(versionCheckpointSchema), documentController.createDocumentCheckpoint)
 router.post('/:id/versions/:versionId/restore', documentController.restoreDocumentVersion)
 
 export default router

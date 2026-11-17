@@ -25,12 +25,8 @@ const rejectedFormattingPreviewSchema = z.object({
   rejectedAt: z.string().datetime('Rejected timestamp must be valid').optional(),
 })
 
-/**
- * Validate the snapshot of the last formatting preview shown to the user.
- * The client sends it back so follow-ups ("yes", "format the rest") resolve
- * against the previous change instead of the raw message text.
- */
-const BLOCK_CATEGORIES = [
+/** Kinds of block a bulk formatting change can name (the parser's BLOCK_CATEGORIES). */
+export const BLOCK_CATEGORIES = [
   'headings',
   'h1Headings',
   'h2Headings',
@@ -47,6 +43,17 @@ const BLOCK_CATEGORIES = [
   'quotes',
 ] as const
 
+/** A bulk change's target: one kind of block, everything except one kind, or the whole document. */
+export const targetCategorySchema = z.union([
+  z.enum([...BLOCK_CATEGORIES, 'all']),
+  z.string().regex(new RegExp(`^except:(?:${BLOCK_CATEGORIES.join('|')})$`)),
+])
+
+/**
+ * Validate the snapshot of the last formatting preview shown to the user.
+ * The client sends it back so follow-ups ("yes", "format the rest") resolve
+ * against the previous change instead of the raw message text.
+ */
 const lastPreviewSchema = z.object({
   format: z.string().trim().max(80).optional(),
   formats: z.array(z.string().trim().max(80)).max(20).optional(),
@@ -55,10 +62,7 @@ const lastPreviewSchema = z.object({
   target: z.string().trim().max(200).nullable().optional(),
   targetMode: z.enum(['literal', 'heading', 'section', 'title']).nullable().optional(),
   // Every TargetCategory the parser returns (a test keeps the two in step).
-  targetCategory: z
-    .union([z.enum([...BLOCK_CATEGORIES, 'all']), z.string().regex(new RegExp(`^except:(?:${BLOCK_CATEGORIES.join('|')})$`))])
-    .nullable()
-    .optional(),
+  targetCategory: targetCategorySchema.nullable().optional(),
   normalize: z.boolean().optional(),
 })
 

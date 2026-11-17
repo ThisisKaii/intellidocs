@@ -34,6 +34,28 @@ export async function getDocumentVersions(req: Request, res: Response): Promise<
   }
 }
 
+/**
+ * Save the document (or, for a tabbed document, the open tab) as a named version now: the
+ * assistant does this before a change it applies, so History can go back to just before it.
+ */
+export async function createDocumentCheckpoint(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id } = req.params
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    const { reason, tabId } = req.body as { reason: string; tabId?: string }
+    const doc = await documentModel.checkpointDocumentVersion(id, userId, reason)
+    if (hasTabBreaks(doc.content) && tabId) await documentTabModel.checkpointTab(doc, tabId, reason)
+    res.status(201).json({ ok: true })
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status
+    res.status(status ?? 500).json({ error: (error as Error).message })
+  }
+}
+
 /** Restore a specific version snapshot onto the document (owner only). */
 export async function restoreDocumentVersion(req: Request, res: Response): Promise<void> {
   try {

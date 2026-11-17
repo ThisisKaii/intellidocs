@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import type { AIGroundedPaper, AIStructuredSection, AIToneCategory, AIToneRefinement } from '@/services/api'
+import type { AIAutomation, AIGroundedPaper, AIStructuredSection, AIToneCategory, AIToneRefinement } from '@/services/api'
 import type { AutoCaptionItem, CaptionTitleSource } from './autoCaption'
 
 /** Lifecycle of a card that changes the document once. */
@@ -347,6 +347,62 @@ export function AutoCaptionCard({
           ) : null}
         </div>
       )}
+      {status === 'dismissed' && <div style={doneStyle}>Dismissed</div>}
+    </div>
+  )
+}
+
+const AUTOMATION_TITLES: Record<AIAutomation['action'], string> = {
+  renumberCaptions: 'Renumber captions',
+  fixSuggestions: 'Formatting fixes',
+  pageSetup: 'Page setup',
+  bibliography: 'Reference list',
+}
+
+const AUTOMATION_EMPTY: Record<AIAutomation['action'], string> = {
+  renumberCaptions: 'Every caption is already numbered in order.',
+  fixSuggestions: 'There are no open formatting fixes right now.',
+  pageSetup: 'The page is already set up that way.',
+  bibliography: 'This document cites no sources yet. Add citations first, then ask again.',
+}
+
+/** An automation the editor runs on Apply: what it will change, listed first. */
+export function AutomationCard({
+  automation,
+  lines,
+  status,
+  result,
+  available,
+  onApply,
+  onDismiss,
+}: {
+  automation: AIAutomation
+  /** What it would change, line by line, when the card was shown. */
+  lines: string[]
+  status: CardStatus
+  result: string | null
+  /** False where this editor cannot run it (e.g. no document page around the chat). */
+  available: boolean
+  onApply: () => void
+  onDismiss: () => void
+}): JSX.Element {
+  return (
+    <div style={cardStyle} data-testid="automation-card">
+      <div style={eyebrowStyle}>{AUTOMATION_TITLES[automation.action]}</div>
+      {lines.length === 0 ? (
+        <div style={noteStyle}>{available ? AUTOMATION_EMPTY[automation.action] : 'This can only run in an open document.'}</div>
+      ) : (
+        <>
+          <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.75rem', lineHeight: 1.45 }}>
+            {lines.slice(0, MAX_LISTED).map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
+          {lines.length > MAX_LISTED && <div style={{ ...noteStyle, marginTop: '0.25rem' }}>and {lines.length - MAX_LISTED} more</div>}
+        </>
+      )}
+      {status === 'pending' && lines.length > 0 && available && <ActionRow primary="Apply" onPrimary={onApply} onDismiss={onDismiss} />}
+      {status === 'done' && <div style={doneStyle}>{result ?? '✓ Done'}</div>}
       {status === 'dismissed' && <div style={doneStyle}>Dismissed</div>}
     </div>
   )

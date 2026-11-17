@@ -29,6 +29,16 @@ function formatStamp(iso: string): string {
   })
 }
 
+/** Why a version was saved, in words; null for an ordinary autosave (most of the list). */
+export function versionReasonLabel(reason: string | null | undefined): string | null {
+  if (!reason || reason === 'autosave') return null
+  if (reason === 'preset') return 'Saved when a formatting preset was applied'
+  if (reason === 'before_tab_deleted') return 'Saved before a tab was deleted'
+  // Named versions ("Before the assistant: Page setup (…)"): the change, as it was described.
+  const assistant = /^Before the assistant:\s*(.+)$/s.exec(reason)
+  return assistant ? `Before the assistant changed: ${assistant[1]}` : reason
+}
+
 /**
  * Undo-lock version history (plan points 22–23): lists autosave snapshots with
  * word counts and a "Show Changes" toggle that renders a green/red word diff
@@ -115,7 +125,7 @@ export default function HistoryPanel({
       >
         <History style={{ width: '14px', height: '14px', flexShrink: 0, color: 'var(--primary)' }} />
         <span>
-          Autosave snapshots capture the text plus the document formatting (page setup, headers/footers, formatting history). “Show Changes” compares a snapshot to the current text — additions in green, removals struck through red. Restore rolls back both text and formatting.
+          Autosave snapshots capture the text plus the document formatting (page setup, headers/footers, formatting history). Before the assistant makes a big change, the document is saved here with a note saying what the change was, so you can Restore to just before it. “Show Changes” compares a snapshot to the current text — additions in green, removals struck through red. Restore rolls back both text and formatting.
         </span>
       </div>
 
@@ -192,6 +202,24 @@ export default function HistoryPanel({
                       </span>
                     )}
                   </p>
+                  {versionReasonLabel(v.reason) && (
+                    <p
+                      title={versionReasonLabel(v.reason) ?? undefined}
+                      style={{
+                        margin: '0.125rem 0',
+                        fontSize: '0.6875rem',
+                        fontWeight: 600,
+                        lineHeight: 1.35,
+                        color: 'var(--primary)',
+                        overflow: 'hidden',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                      }}
+                    >
+                      {versionReasonLabel(v.reason)}
+                    </p>
+                  )}
                   <p style={{ margin: 0, fontSize: '0.65625rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {v.content.replace(/<[^>]+>/g, '').slice(0, 60) || '(empty)'}
                     {v.word_count != null && <> · {v.word_count} words</>}

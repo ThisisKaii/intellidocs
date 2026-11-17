@@ -700,10 +700,12 @@ export interface AIChatResponse {
   reply: string
   provider: string
   model: string
-  mode?: 'chat' | 'preview' | 'structure' | 'citations' | 'refine' | 'captions'
+  mode?: 'chat' | 'preview' | 'structure' | 'citations' | 'refine' | 'captions' | 'automation'
   preview?: AIChatPreview | null
   /** mode 'captions': which kinds to auto-caption; the editor finds what has no caption. */
   captionKinds?: Array<'figure' | 'table'>
+  /** mode 'automation': what the editor will run when the card is applied. */
+  automation?: AIAutomation
   /** Sections of the document an AI answer was based on; present only for AI answers. */
   sources?: Array<{ title: string }>
   /** mode 'structure': the user's notes organised into a section. */
@@ -774,6 +776,24 @@ export type MCPToolName =
   | 'structureUserSection'
   | 'searchLiteratureAndCite'
   | 'refineAcademicStyle'
+  | 'formatBlocks'
+  | 'applyPreset'
+  | 'applyUsualFormatting'
+  | 'fixFormattingSuggestions'
+  | 'setPageSetup'
+  | 'autoCaption'
+  | 'renumberCaptions'
+  | 'insertBibliography'
+
+/** Which of the automatic formatting suggestions an automation applies. */
+export type AISuggestionGroup = 'all' | 'figures' | 'captions' | 'blankLines' | 'headings'
+
+/** An automation the editor runs once the user applies its card. */
+export type AIAutomation =
+  | { action: 'renumberCaptions' }
+  | { action: 'fixSuggestions'; only: AISuggestionGroup }
+  | { action: 'pageSetup'; pageSize?: PageSizeKey; orientation?: PageOrientation; margins?: Partial<MarginValues> }
+  | { action: 'bibliography' }
 
 export interface MCPToolCall { 
   tool: MCPToolName
@@ -781,7 +801,7 @@ export interface MCPToolCall {
 }
 
 export interface MCPToolListResponse { 
-  tools: { name: MCPToolName }[]
+  tools: Array<{ name: MCPToolName; description: string; effect: 'reads' | 'suggests' | 'plans'; params: string }>
 }
 
 export interface DriveFile {
@@ -1484,6 +1504,14 @@ export const api = {
       return fetchAPI<DocumentVersion[]>(`documents/${id}/versions${tabId ? `?tab=${encodeURIComponent(tabId)}` : ''}`)
     },
     /** Restore a specific version snapshot, returning the restored document. */
+    /** Save the document (or one tab) as a named version now, e.g. before the assistant changes it. */
+    checkpoint: async (id: string, reason: string, tabId?: string | null): Promise<void> => {
+      await fetchAPI<{ ok: boolean }>(`documents/${id}/versions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tabId ? { reason, tabId } : { reason }),
+      })
+    },
     restoreVersion: async (id: string, versionId: string): Promise<DocumentRecord> => {
       return fetchAPI<DocumentRecord>(`documents/${id}/versions/${versionId}/restore`, {
         method: 'POST',

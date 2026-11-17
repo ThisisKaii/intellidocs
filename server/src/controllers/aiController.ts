@@ -11,17 +11,13 @@ import { retrieveSections, splitIntoSections, type DocumentSection } from '../sk
 import { getDocumentForUser } from '../models/documentModel'
 import { listFeedbackRows } from '../models/feedbackModel'
 import { summarizeLearning } from '../skills/summarizeLearning'
-import { getLearnedFormatPatterns } from '../models/behaviorModel'
 import { resolveDocumentGenre } from '../utils/documentGenre'
-import {
-  buildLearnedFormattingPlan,
-  genreLabel,
-  isUsualFormattingRequest,
-  learnedFormattingReply,
-} from '../skills/buildLearnedFormattingPlan'
+import { isUsualFormattingRequest } from '../skills/buildLearnedFormattingPlan'
 import { documentBody } from '../models/documentTabModel'
 import { detectWritingTask, type WritingTask } from '../skills/detectWritingTask'
 import { detectCaptionRequest } from '../skills/detectCaptionRequest'
+import { PRESET_NAMES, captionsCard } from '../skills/assistantCards'
+import { usualFormattingCard } from '../skills/usualFormattingCard'
 import { orchestrateSectionDraft } from '../skills/orchestrateSectionDraft'
 import { groundLiteratureCitations } from '../skills/groundLiteratureCitations'
 import { refineAcademicTone } from '../skills/refineAcademicTone'
@@ -118,13 +114,6 @@ interface FormattingPreview {
   style?: StyleChange | null
   /** For format `preset`: the academic preset to apply (e.g. "apa_7th"). */
   presetKey?: string | null
-}
-
-/** Display names of the academic presets a chat request can ask for. */
-const PRESET_NAMES: Record<string, string> = {
-  apa_7th: 'APA 7th Edition',
-  ieee: 'IEEE Conference',
-  uclm_capstone: 'UCLM Capstone (Thesis)',
 }
 
 /** Words that confirm a previously shown preview. */
@@ -573,15 +562,7 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
     const captionRequest = detectCaptionRequest(message)
     if (captionRequest) {
       const providerSummary = getProviderSummary()
-      const what = captionRequest.kinds.length === 2 ? 'figure and table' : captionRequest.kinds[0]
-      res.status(200).json({
-        reply: `I’ll look for every ${what} without a caption. Titles come only from your own words already in the document (a picture’s alt text, a table’s title row); the rest are left blank for you to write.`,
-        provider: providerSummary.provider,
-        model: providerSummary.model,
-        mode: 'captions',
-        captionKinds: captionRequest.kinds,
-        preview: null,
-      })
+      res.status(200).json({ ...captionsCard(captionRequest.kinds), provider: providerSummary.provider, model: providerSummary.model })
       return
     }
 
@@ -597,35 +578,8 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
     // preview the editor matches against its blocks and applies in one click.
     if (isUsualFormattingRequest(message)) {
       const providerSummary = getProviderSummary()
-      const answer = (reply: string, preview: Record<string, unknown> | null): void => {
-        res.status(200).json({ reply, provider: providerSummary.provider, model: providerSummary.model, mode: preview ? 'preview' : 'chat', preview })
-      }
-      if (!body.documentId) {
-        answer('Open a document first, then ask me to apply your usual formatting to it.', null)
-        return
-      }
-      const doc = await getDocumentForUser(body.documentId, userId, req.user?.email)
-      if (doc.is_isolated) {
-        answer('This document is isolated from learning, so I don’t apply learned habits to it. Turn isolation off in the document settings to use them.', null)
-        return
-      }
-      const genre = resolveDocumentGenre(doc)
-      const rules = buildLearnedFormattingPlan(await getLearnedFormatPatterns(userId, genre))
-      answer(
-        learnedFormattingReply(genre, rules),
-        rules.length === 0
-          ? null
-          : {
-              format: 'learned',
-              label: 'Your usual formatting',
-              confidence: Math.max(...rules.map((rule) => rule.confidence)),
-              reason: `Learned from your ${genreLabel(genre)} documents.`,
-              formats: [],
-              scope: 'all',
-              genre,
-              learned: rules,
-            }
-      )
+      const card = await usualFormattingCard(userId, req.user?.email, body.documentId)
+      res.status(200).json({ ...card, provider: providerSummary.provider, model: providerSummary.model })
       return
     }
 

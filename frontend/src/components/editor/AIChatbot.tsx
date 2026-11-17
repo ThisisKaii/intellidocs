@@ -3,11 +3,11 @@ import type { Editor } from '@tiptap/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { editorUndoDepth, startNewUndoStep } from './undoDepth'
-import { api, type AIChatBlockCategory, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type AIGroundedPaper, type AIStructuredSection, type AIToneRefinement, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
+import { api, type AIAutomation, type AISuggestionGroup, type MarginValues, type PageOrientation, type PageSizeKey, type AIChatBlockCategory, type AIChatResponse, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type AIGroundedPaper, type AIStructuredSection, type AIToneRefinement, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
 import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, replaceTextsInRange, resolveTargetRanges, type BlockCategory, type TextRange } from './chatFormatting'
-import { AutoCaptionCard, CitationsCard, RefineCard, StructureCard, type CardStatus, type EditStatus } from './WritingAssistCards'
+import { AutoCaptionCard, AutomationCard, CitationsCard, RefineCard, StructureCard, type CardStatus, type EditStatus } from './WritingAssistCards'
 import { captionsWithoutTitle, planAutoCaptions, type AutoCaptionItem } from './autoCaption'
-import { resolveCaptionConfig, type CaptionKind, type CaptionStyleSpec } from './captionNumbering'
+import { findCaptions, misnumberedCaptions, resolveCaptionConfig, type CaptionContext, type CaptionKind, type CaptionStyleSpec } from './captionNumbering'
 import { buildStructuredSectionContent, headingLevelAt } from './structuredSection'
 import { findAcademicPreset } from './academicPresets'
 import { getEditorPreferences, setEditorPreferences, subscribeEditorPreferences } from '@/lib/editorPreferences'
@@ -52,6 +52,10 @@ interface ChatMessage {
   caption_kinds?: CaptionKind[] | null
   /** After captions were added: how many still have no title. */
   captions_untitled?: number | null
+  /** An automation card: what it runs, what it will change (listed when shown), and its outcome. */
+  automation?: AIAutomation | null
+  automation_lines?: string[] | null
+  automation_result?: string | null
   /** State of a structure or citations card. */
   assist_status?: CardStatus | null
   /** State of each revision in `refinement.edits`. */
@@ -126,6 +130,43 @@ interface AIChatbotProps {
   locateInOtherTab?: (target: string) => string | null
   /** Note structuring, citation and refinement wiring from the document page. */
   writingAssist?: WritingAssistWiring
+  /** Page setup, formatting fixes and the reference list, from the document page. */
+  automations?: AutomationWiring
+}
+
+/** A formatting fix the document's scanner found, as an automation lists it. */
+export interface PendingFix {
+  key: string
+  label: string
+}
+
+/** What the document page provides for the automation cards. */
+export interface AutomationWiring {
+  pageSetup: { pageSize: PageSizeKey; orientation: PageOrientation; margins: MarginValues }
+  applyPageSetup: (change: { pageSize?: PageSizeKey; orientation?: PageOrientation; margins?: MarginValues }) => void
+  /** The scanner's open fixes of one group. */
+  pendingFixes: (only: AISuggestionGroup) => PendingFix[]
+  /** Apply these fixes; returns how many were applied. */
+  applyFixes: (keys: string[]) => number
+  /** How many sources the document cites, and the style its reference list is written in. */
+  references: () => { count: number; styleLabel: string }
+  /** Write (or rewrite) the reference list; false when there is nothing to write. */
+  insertBibliography: () => boolean
+  /**
+   * Save the document as a named History version ("Before the assistant: …") before a big
+   * change, so Restore can go back to just before it. Best-effort: never blocks the change.
+   */
+  checkpoint: (description: string) => Promise<void>
+}
+
+const PAGE_SIZE_NAMES: Record<PageSizeKey, string> = { short: 'Short', long: 'Long', a4: 'A4', letter: 'Letter', legal: 'Legal' }
+
+/** Each automation in words, for its History checkpoint. */
+const AUTOMATION_NAMES: Record<AIAutomation['action'], string> = {
+  renumberCaptions: 'Renumber captions',
+  fixSuggestions: 'Formatting fixes',
+  pageSetup: 'Page setup',
+  bibliography: 'Reference list',
 }
 
 /** What the document page provides for the writing-assist cards. */
@@ -233,6 +274,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+/** Arguments that are lists even when one value is given ("formats=bold"). */
+const MCP_LIST_ARGS = new Set(['formats', 'kinds'])
+/** Free-text arguments, kept exactly as typed. */
+const MCP_TEXT_ARGS = new Set(['text', 'query', 'claimText', 'userNotes', 'sectionTitle', 'target', 'fontFamily', 'reason', 'selection'])
+
+/**
+ * A typed /mcp value as the tool expects it: JSON for {…} and […], numbers, true/false, and
+ * comma lists for list arguments. Free text stays text. The server checks every value.
+ */
+export function mcpArgValue(key: string, value: string): unknown {
+  if (MCP_TEXT_ARGS.has(key)) return value
+  if (/^[[{]/.test(value)) {
+    try {
+      return JSON.parse(value) as unknown
+    } catch {
+      return value
+    }
+  }
+  if (MCP_LIST_ARGS.has(key)) return value.split(',').map((item) => item.trim()).filter(Boolean)
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value)
+  if (value === 'true' || value === 'false') return value === 'true'
+  if (value === 'null') return null
+  return value
+}
+
 /** A /mcp writing-assist tool's result as a chat card payload; null for every other tool. */
 function mcpWritingAssist(
   tool: string,
@@ -271,6 +337,7 @@ export default function AIChatbot({
   onFocusEditor,
   docked = false,
   onApplyPreset,
+  automations,
   locateInOtherTab,
   writingAssist,
 }: AIChatbotProps): JSX.Element {
@@ -323,7 +390,22 @@ export default function AIChatbot({
     if (!autoApply || !editor || editor.isDestroyed || !editor.isEditable) return
     const index = messages.length - 1
     const last = messages[index]
-    if (!last || last.role !== 'assistant' || last.preview_status !== 'pending') return
+    if (!last || last.role !== 'assistant') return
+    // Automations and Auto caption too: each is saved as a History version first, so Restore undoes it.
+    if (last.assist_status === 'pending' && !last.auto_applied) {
+      if (last.automation && (last.automation_lines?.length ?? 0) > 0) {
+        const automation = last.automation
+        setMessages((current) => current.map((message, i) => (i === index ? { ...message, auto_applied: true } : message)))
+        runAutomation(index, automation, last.automation_lines ?? [])
+        return
+      }
+      if (last.auto_captions && last.auto_captions.length > 0) {
+        setMessages((current) => current.map((message, i) => (i === index ? { ...message, auto_applied: true } : message)))
+        addAutoCaptions(index, last.caption_kinds ?? ['figure', 'table'])
+        return
+      }
+    }
+    if (last.preview_status !== 'pending') return
     // "Previously rejected" changes still wait: the user said no to them in this chat.
     if (last.preview_format && hasRejectedPreview(last.preview_format)) return
     setMessages((current) => current.map((message, i) => (i === index ? { ...message, auto_applied: true } : message)))
@@ -610,7 +692,40 @@ export default function AIChatbot({
   }
 
   /** Apply a confirmed formatting preview to the editor (selection or whole doc). */
+  /** Cards whose change is waiting for its History checkpoint, so a second click does nothing. */
+  const checkpointingRef = useRef(new Set<number>())
+
+  /**
+   * Run a big change after saving the document as a named History version, so Restore can go
+   * back to just before it. The change happens whether or not the checkpoint could be saved.
+   */
+  function afterCheckpoint(messageIndex: number, description: string, change: () => void): void {
+    if (!automations) {
+      change()
+      return
+    }
+    if (checkpointingRef.current.has(messageIndex)) return
+    checkpointingRef.current.add(messageIndex)
+    void automations
+      .checkpoint(description)
+      .catch(() => undefined)
+      .finally(() => {
+        checkpointingRef.current.delete(messageIndex)
+        change()
+      })
+  }
+
+  /** Apply a preview card; a change to the whole document is checkpointed in History first. */
   function handlePreviewApply(messageIndex: number, msg: ChatMessage): void {
+    const big = Boolean(msg.preview_learned || msg.preview_preset_key || msg.preview_operations?.length || msg.preview_scope === 'all')
+    if (!big) {
+      applyPreviewNow(messageIndex, msg)
+      return
+    }
+    afterCheckpoint(messageIndex, `${describePreview(msg)} ${previewScopeLabel(msg)}`.trim(), () => applyPreviewNow(messageIndex, msg))
+  }
+
+  function applyPreviewNow(messageIndex: number, msg: ChatMessage): void {
     if (!editor) return
     if (msg.preview_learned) {
       applyLearnedPlaces(messageIndex, msg.preview_learned)
@@ -847,6 +962,72 @@ export default function AIChatbot({
     if (inserted) patchMessage(messageIndex, { assist_status: 'done' })
   }
 
+  /** The caption numbering settings the editor is using now. */
+  function captionSettings(): { style: CaptionStyleSpec; context: CaptionContext | null } {
+    const storage = (editor?.storage as unknown as { captions?: { labelStyle?: CaptionStyleSpec; context?: CaptionContext | null } } | undefined)?.captions
+    return { style: storage?.labelStyle ?? 'default', context: storage?.context ?? null }
+  }
+
+  /** What an automation would change in the open document, line by line (empty: nothing to do). */
+  function automationLines(automation: AIAutomation): string[] {
+    if (!editor || editor.isDestroyed) return []
+    if (automation.action === 'renumberCaptions') {
+      const { style, context } = captionSettings()
+      return misnumberedCaptions(findCaptions(editor.state.doc), style, false, context).map(({ entry, expected }) => `${entry.label} becomes ${expected}`)
+    }
+    if (!automations) return []
+    if (automation.action === 'fixSuggestions') return automations.pendingFixes(automation.only).map((fix) => fix.label)
+    if (automation.action === 'bibliography') {
+      const { count, styleLabel } = automations.references()
+      return count > 0 ? [`${count} cited source${count === 1 ? '' : 's'}, written in ${styleLabel}`] : []
+    }
+    const current = automations.pageSetup
+    const lines: string[] = []
+    if (automation.pageSize && automation.pageSize !== current.pageSize) lines.push(`Page size: ${PAGE_SIZE_NAMES[current.pageSize]} to ${PAGE_SIZE_NAMES[automation.pageSize]}`)
+    if (automation.orientation && automation.orientation !== current.orientation) lines.push(`Orientation: ${current.orientation} to ${automation.orientation}`)
+    for (const side of ['top', 'bottom', 'left', 'right'] as const) {
+      const next = automation.margins?.[side]
+      if (next !== undefined && next !== current.margins[side]) lines.push(`${side[0].toUpperCase()}${side.slice(1)} margin: ${current.margins[side]}in to ${next}in`)
+    }
+    return lines
+  }
+
+  /** A card for an automation, listing what it would change right now. */
+  function automationMessage(reply: string, automation: AIAutomation): ChatMessage {
+    return { role: 'assistant', content: reply, automation, automation_lines: automationLines(automation), assist_status: 'pending' }
+  }
+
+  /** Run an automation the user applied, after saving a History checkpoint of the document. */
+  function runAutomation(messageIndex: number, automation: AIAutomation, lines: string[]): void {
+    const what = lines.length > 0 ? `${AUTOMATION_NAMES[automation.action]} (${lines.slice(0, 3).join('; ')}${lines.length > 3 ? '; …' : ''})` : AUTOMATION_NAMES[automation.action]
+    afterCheckpoint(messageIndex, what, () => runAutomationNow(messageIndex, automation))
+  }
+
+  /** Run an automation now, as one undo step where the editor allows it. */
+  function runAutomationNow(messageIndex: number, automation: AIAutomation): void {
+    if (!editor || editor.isDestroyed) return
+    let result: string | null = null
+    if (automation.action === 'renumberCaptions') {
+      const count = automationLines(automation).length
+      const changed = count > 0 && recordChange('the caption numbers', (target) => target.chain().focus().renumberCaptions().run())
+      result = changed ? `✓ Renumbered ${count} caption${count === 1 ? '' : 's'}` : 'Every caption was already numbered in order.'
+    } else if (automations && automation.action === 'fixSuggestions') {
+      const keys = automations.pendingFixes(automation.only).map((fix) => fix.key)
+      const applied = keys.length > 0 ? automations.applyFixes(keys) : 0
+      result = applied > 0 ? `✓ Applied ${applied} fix${applied === 1 ? '' : 'es'}` : 'There were no open fixes left to apply.'
+    } else if (automations && automation.action === 'bibliography') {
+      result = automations.insertBibliography() ? '✓ Reference list written' : 'This document cites no sources yet.'
+    } else if (automations && automation.action === 'pageSetup') {
+      automations.applyPageSetup({
+        pageSize: automation.pageSize,
+        orientation: automation.orientation,
+        margins: automation.margins ? { ...automations.pageSetup.margins, ...automation.margins } : undefined,
+      })
+      result = '✓ Page setup changed'
+    }
+    patchMessage(messageIndex, { assist_status: 'done', automation_result: result })
+  }
+
   /** The figures and tables of these kinds that have no caption, under the document's caption settings. */
   function planCaptions(kinds: CaptionKind[]): AutoCaptionItem[] {
     if (!editor || editor.isDestroyed) return []
@@ -859,8 +1040,13 @@ export default function AIChatbot({
     return { role: 'assistant', content: reply, auto_captions: planCaptions(kinds), caption_kinds: kinds, assist_status: 'pending' }
   }
 
-  /** Add every missing caption in one step (one undo), then count the ones still without a title. */
+  /** Add every missing caption in one step (one undo), after a History checkpoint. */
   function addAutoCaptions(messageIndex: number, kinds: CaptionKind[]): void {
+    const count = planCaptions(kinds).length
+    afterCheckpoint(messageIndex, `Auto caption (${count} caption${count === 1 ? '' : 's'})`, () => addAutoCaptionsNow(messageIndex, kinds))
+  }
+
+  function addAutoCaptionsNow(messageIndex: number, kinds: CaptionKind[]): void {
     const added = recordChange('the added captions', (target) => target.chain().focus().insertAutoCaptions(kinds).run())
     if (!added || !editor) {
       patchMessage(messageIndex, { auto_captions: planCaptions(kinds) })
@@ -947,6 +1133,120 @@ export default function AIChatbot({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writingAssist?.pendingAutoCaption])
 
+  /**
+   * Show a reply as a message: a chat answer, or the card for what it would change (formatting,
+   * preset, learned habits, captions, an automation, writing help). Typed requests and /mcp tool
+   * results both come through here, so the same change always gets the same card.
+   */
+  function showResponse(response: AIChatResponse, selection: { range: TextRange | null; text: string }): void {
+    if (response.mode === 'captions') {
+      setMessages((current) => [...current, autoCaptionMessage(response.reply, response.captionKinds ?? ['figure', 'table'])])
+      return
+    }
+
+    if (response.mode === 'automation' && response.automation) {
+      const automation = response.automation
+      setMessages((current) => [...current, automationMessage(response.reply, automation)])
+      return
+    }
+
+    if (response.mode === 'structure' || response.mode === 'citations' || response.mode === 'refine') {
+      setMessages((current) => [
+        ...current,
+        writingAssistMessage(response.reply, { structured: response.structured, papers: response.papers, refinement: response.refinement }, selection),
+      ])
+      return
+    }
+
+    const previewFormat =
+      response.preview && typeof response.preview.format === 'string'
+        ? response.preview.format
+        : null
+    const previewWasRejected =
+      previewFormat !== null && hasRejectedPreview(previewFormat)
+    const basePreviewReason =
+      response.preview && typeof response.preview.reason === 'string'
+        ? response.preview.reason
+        : null
+    const reconfirmationNote =
+      previewWasRejected && previewFormat
+        ? `\n\nYou previously rejected ${formatPreviewLabel(previewFormat)} in this chat. I’m showing it again because you asked for it; confirm only if you want to apply it now.`
+        : ''
+    const previewReason =
+      previewWasRejected && previewFormat
+        ? `${basePreviewReason ?? 'Detected a repeated formatting request.'} Previously rejected in this chat; confirm again before applying.`
+        : basePreviewReason
+
+    // "Apply my usual formatting": keep only the habits that match blocks of this document.
+    if (previewFormat === 'learned') {
+      const learned: LearnedPlace[] = editor && !editor.isDestroyed
+        ? (response.preview?.learned ?? [])
+            .map((rule) => ({ ...rule, places: findLearnedBlockRanges(editor.state.doc, rule.key).length }))
+            .filter((rule) => rule.places > 0)
+        : []
+      const learnedMsg: ChatMessage = learned.length > 0
+        ? {
+            role: 'assistant',
+            content: response.reply,
+            preview_format: 'learned',
+            preview_scope: 'all',
+            preview_learned: learned,
+            preview_reason: response.preview?.reason ?? null,
+            preview_status: 'pending',
+          }
+        : {
+            role: 'assistant',
+            content: 'None of the paragraphs or headings in this document match your learned habits for this genre yet, so there is nothing to change.',
+          }
+      setMessages((current) => [...current, learnedMsg])
+      return
+    }
+
+    const assistantMsg: ChatMessage = {
+      role: 'assistant',
+      content: `${response.reply}${reconfirmationNote}`,
+      preview_format: previewFormat,
+      preview_formats:
+        response.preview?.formats && response.preview.formats.length > 0
+          ? response.preview.formats
+          : null,
+      preview_scope: response.preview?.scope ?? null,
+      preview_target: response.preview?.target ?? null,
+      preview_target_mode: response.preview?.targetMode ?? null,
+      preview_target_category: response.preview?.targetCategory ?? null,
+      preview_normalize: response.preview?.normalize ?? false,
+      preview_font_size: response.preview?.fontSize ?? null,
+      preview_operations: response.preview?.operations && response.preview.operations.length > 0 ? response.preview.operations : null,
+      preview_style: response.preview?.style ?? null,
+      preview_preset_key: response.preview?.presetKey ?? null,
+      preview_reason: previewFormat ? previewReason : null,
+      preview_status: previewFormat ? 'pending' : null,
+      sources: previewFormat ? undefined : response.sources,
+    }
+
+    // Remember the last shown preview so follow-ups ("back to normal",
+    // "latter", "make it 12pt") resolve against the right change.
+    lastPreviewRef.current = response.preview
+      ? {
+          format: previewFormat ?? undefined,
+          formats:
+            response.preview.formats && response.preview.formats.length > 0
+              ? response.preview.formats
+              : previewFormat ? [previewFormat] : [],
+          scope: response.preview?.scope ?? 'selection',
+          fontSize: response.preview?.fontSize ?? null,
+          target: response.preview?.target ?? null,
+          targetMode: response.preview?.targetMode ?? null,
+          targetCategory: response.preview?.targetCategory ?? null,
+          normalize: response.preview?.normalize ?? false,
+          style: response.preview?.style ?? null,
+          operations: response.preview?.operations,
+        }
+      : lastPreviewRef.current
+
+    setMessages((current) => [...current, assistantMsg])
+  }
+
   /** Send a message to the backend AI chat endpoint (the typed input, or `text` when given). */
   async function send(text?: string): Promise<void> {
     const typed = text === undefined
@@ -994,16 +1294,35 @@ export default function AIChatbot({
       return
     }
 
+    // "/mcp" on its own: what the assistant's tools are and what they take.
+    if (/^\/mcp(?:\s+(?:tools|help))?$/i.test(userMsg)) {
+      try {
+        const { tools } = await api.mcp.listTools()
+        const lines = tools.map((tool) => `• ${tool.name} (${tool.effect}): ${tool.description}\n   ${tool.params}`)
+        setMessages((current) => [
+          ...current,
+          { role: 'assistant', content: `Tools (call one with /mcp <name> key=value …; changes always come back as a card to apply):\n${lines.join('\n')}` },
+        ])
+      } catch (error) {
+        setMessages((current) => [...current, { role: 'assistant', content: `I couldn't list the tools: ${error instanceof Error ? error.message : 'unknown error'}` }])
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
     const mcpCommand = parseMcpCommand(userMsg)
     if (mcpCommand) {
       try {
-        const toolArgs: Record<string, unknown> = { ...mcpCommand.args }
+        const toolArgs: Record<string, unknown> = Object.fromEntries(
+          Object.entries(mcpCommand.args).map(([key, value]) => [key, mcpArgValue(key, value)])
+        )
 
         if (mcpCommand.tool === 'getDocumentContent' && documentId) {
           toolArgs.documentId = documentId
         }
 
-        if (mcpCommand.tool === 'getBehaviorSummary' && documentId) {
+        if ((mcpCommand.tool === 'getBehaviorSummary' || mcpCommand.tool === 'applyUsualFormatting') && documentId) {
           toolArgs.documentId = documentId
         }
 
@@ -1028,6 +1347,12 @@ export default function AIChatbot({
         if (mcpCommand.tool === 'refineAcademicStyle') toolArgs.text ??= selectionText
 
         const result = await api.mcp.callTool<unknown>(mcpCommand.tool as never, toolArgs)
+        // A plan tool's card is shown exactly like a chat reply: the same preview, the same Apply.
+        const toolCard = isRecord(result) && isRecord(result.card) && typeof result.card.reply === 'string' ? result.card : null
+        if (toolCard) {
+          showResponse({ provider: 'mcp', model: mcpCommand.tool, ...(toolCard as unknown as Omit<AIChatResponse, 'provider' | 'model'>) }, { range: selectionRange, text: selectionText })
+          return
+        }
         // Their results become the same confirm-first cards as in chat, never a direct edit.
         const assist = mcpWritingAssist(mcpCommand.tool, result)
         if (assist) {
@@ -1106,106 +1431,7 @@ export default function AIChatbot({
         selectionText
       )
 
-      if (response.mode === 'captions') {
-        setMessages((current) => [...current, autoCaptionMessage(response.reply, response.captionKinds ?? ['figure', 'table'])])
-        return
-      }
-
-      if (response.mode === 'structure' || response.mode === 'citations' || response.mode === 'refine') {
-        setMessages((current) => [
-          ...current,
-          writingAssistMessage(response.reply, { structured: response.structured, papers: response.papers, refinement: response.refinement }, { range: selectionRange, text: selectionText }),
-        ])
-        return
-      }
-
-      const previewFormat =
-        response.preview && typeof response.preview.format === 'string'
-          ? response.preview.format
-          : null
-      const previewWasRejected =
-        previewFormat !== null && hasRejectedPreview(previewFormat)
-      const basePreviewReason =
-        response.preview && typeof response.preview.reason === 'string'
-          ? response.preview.reason
-          : null
-      const reconfirmationNote =
-        previewWasRejected && previewFormat
-          ? `\n\nYou previously rejected ${formatPreviewLabel(previewFormat)} in this chat. I’m showing it again because you asked for it; confirm only if you want to apply it now.`
-          : ''
-      const previewReason =
-        previewWasRejected && previewFormat
-          ? `${basePreviewReason ?? 'Detected a repeated formatting request.'} Previously rejected in this chat; confirm again before applying.`
-          : basePreviewReason
-
-      // "Apply my usual formatting": keep only the habits that match blocks of this document.
-      if (previewFormat === 'learned') {
-        const learned: LearnedPlace[] = editor && !editor.isDestroyed
-          ? (response.preview?.learned ?? [])
-              .map((rule) => ({ ...rule, places: findLearnedBlockRanges(editor.state.doc, rule.key).length }))
-              .filter((rule) => rule.places > 0)
-          : []
-        const learnedMsg: ChatMessage = learned.length > 0
-          ? {
-              role: 'assistant',
-              content: response.reply,
-              preview_format: 'learned',
-              preview_scope: 'all',
-              preview_learned: learned,
-              preview_reason: response.preview?.reason ?? null,
-              preview_status: 'pending',
-            }
-          : {
-              role: 'assistant',
-              content: 'None of the paragraphs or headings in this document match your learned habits for this genre yet, so there is nothing to change.',
-            }
-        setMessages((current) => [...current, learnedMsg])
-        return
-      }
-
-      const assistantMsg: ChatMessage = {
-        role: 'assistant',
-        content: `${response.reply}${reconfirmationNote}`,
-        preview_format: previewFormat,
-        preview_formats:
-          response.preview?.formats && response.preview.formats.length > 0
-            ? response.preview.formats
-            : null,
-        preview_scope: response.preview?.scope ?? null,
-        preview_target: response.preview?.target ?? null,
-        preview_target_mode: response.preview?.targetMode ?? null,
-        preview_target_category: response.preview?.targetCategory ?? null,
-        preview_normalize: response.preview?.normalize ?? false,
-        preview_font_size: response.preview?.fontSize ?? null,
-        preview_operations: response.preview?.operations && response.preview.operations.length > 0 ? response.preview.operations : null,
-        preview_style: response.preview?.style ?? null,
-        preview_preset_key: response.preview?.presetKey ?? null,
-        preview_reason: previewFormat ? previewReason : null,
-        preview_status: previewFormat ? 'pending' : null,
-        sources: previewFormat ? undefined : response.sources,
-      }
-
-      // Remember the last shown preview so follow-ups ("back to normal",
-      // "latter", "make it 12pt") resolve against the right change.
-      lastPreviewRef.current = response.preview
-        ? {
-            format: previewFormat ?? undefined,
-            formats:
-              response.preview.formats && response.preview.formats.length > 0
-                ? response.preview.formats
-                : previewFormat ? [previewFormat] : [],
-            scope: response.preview?.scope ?? 'selection',
-            fontSize: response.preview?.fontSize ?? null,
-            target: response.preview?.target ?? null,
-            targetMode: response.preview?.targetMode ?? null,
-            targetCategory: response.preview?.targetCategory ?? null,
-            normalize: response.preview?.normalize ?? false,
-            style: response.preview?.style ?? null,
-            operations: response.preview?.operations,
-          }
-        : lastPreviewRef.current
-
-      setMessages((current) => [...current, assistantMsg])
+      showResponse(response, { range: selectionRange, text: selectionText })
     } catch (error) {
       const assistantMsg: ChatMessage = {
         role: 'assistant',
@@ -1318,6 +1544,17 @@ export default function AIChatbot({
                         <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>AI answer · check important details</span>
                       </div>
                     ) : null}
+                    {m.automation && (
+                      <AutomationCard
+                        automation={m.automation}
+                        lines={m.automation_lines ?? []}
+                        status={m.assist_status ?? 'pending'}
+                        result={m.automation_result ?? null}
+                        available={m.automation.action === 'renumberCaptions' || Boolean(automations)}
+                        onApply={() => m.automation && runAutomation(i, m.automation, m.automation_lines ?? [])}
+                        onDismiss={() => patchMessage(i, { assist_status: 'dismissed' })}
+                      />
+                    )}
                     {m.auto_captions && (
                       <AutoCaptionCard
                         items={m.auto_captions}

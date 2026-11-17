@@ -267,3 +267,9 @@ export type SaveTabInput = z.infer<typeof saveTabSchema>
 export type SplitTabsInput = z.infer<typeof splitTabsSchema>
 export type AddTabInput = z.infer<typeof addTabSchema>
 export type UpdateTabInput = z.infer<typeof updateTabSchema>
+
+/** A named version saved now ("Before the assistant: page setup"); for a tabbed document, the open tab. */
+export const versionCheckpointSchema = z.object({
+  reason: z.string().trim().min(3).max(200),
+  tabId: z.string().uuid().optional(),
+})
