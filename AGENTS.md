@@ -89,9 +89,14 @@ behavior and predicts it automatically.
   `ml/duckdb_store.py`: lock errors are retried, then `DUCKDB_FALLBACK_PATH`
   (default `db/duckdb/behavior_fallback.duckdb`) is used, and its rows are copied
   back into `DUCKDB_PATH` by the aggregator once the primary is reachable.
-- Storage quotas (`userModel.STORAGE_QUOTA_BYTES`): student 25 MB, professor
-  50 MB, admin 100 MB of document content, enforced on create/update/import
-  (413 `storage_quota_exceeded`). Sized for the 500 MB Supabase free tier.
+- Storage quotas (`userModel.STORAGE_QUOTA_BYTES`): user 25 MB, student 100 MB,
+  professor 250 MB, admin 500 MB of document text **plus pictures** (migration 050,
+  `stored_images`), enforced on create/update/import (413 `storage_quota_exceeded`);
+  an import checks text and pictures before storing any picture. Pro has no cap.
+- Pictures: shrunk on import (`ml/src/converted_images.py`: ≤ 1,000 px wide, unused
+  transparency dropped, smallest of PNG/JPEG q85), stored by `imageStorageModel` in
+  Cloudflare R2 when `R2_*` is set (no download fees), else the Supabase
+  `document-images` bucket. Deleting a document for good deletes its pictures.
 
 ### AI / ML
 - Python 3 + FastAPI — ML prediction microservice

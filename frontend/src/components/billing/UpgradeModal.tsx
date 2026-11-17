@@ -10,7 +10,7 @@ const GATEWAY_DELAY_MS = 1500
 const PRICE_LABEL = '₱249 / month'
 
 const PERKS = [
-  { icon: InfinityIcon, title: 'Unlimited storage', detail: 'No more 10–50 MB cap on your documents.' },
+  { icon: InfinityIcon, title: 'Unlimited storage', detail: 'No more 25–250 MB cap on your documents and pictures.' },
   { icon: Gauge, title: 'Priority ML suggestions', detail: 'Formatting predictions served ahead of the free queue.' },
   { icon: ShieldCheck, title: 'Extended originality checks', detail: 'Longer documents and more sources per scan.' },
   { icon: HardDrive, title: 'Everything in your current tier', detail: 'Verified student and professor tools stay unlocked.' },

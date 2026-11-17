@@ -1,9 +1,10 @@
 import { useEditorState } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { NodeSelection } from '@tiptap/pm/state'
-import { AlignCenter, AlignLeft, AlignRight, RotateCcw, Trash2 } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, ClipboardPaste, FolderOpen, RotateCcw, Trash2 } from 'lucide-react'
 import type { ImageAlignment } from './behaviorListener'
+import { clipboardPicture, pickPictureFile, storeSlotPicture } from './pictureSlots'
 
 /** Text-wrap modes offered by the floating image toolbar (Word's 7-mode suite). */
 export type ImageWrapStyle =
@@ -20,6 +21,8 @@ interface ImageOptionsState {
   alignment: ImageAlignment
   widthPx: number | null
   contentWidth: number
+  /** The slot's label when the picture is an empty template slot (pictureSlots.ts). */
+  slot: string | null
 }
 
 /** Read the active wrap mode from an image wrapper style string. */
@@ -55,6 +58,7 @@ function readImageOptions(editor: Editor): ImageOptionsState | null {
     alignment: (attrs.alignment as ImageAlignment | null) ?? 'center',
     widthPx: readWidthPx(attrs, style),
     contentWidth: editor.view.dom.clientWidth,
+    slot: attrs.placeholderSlot ? String(attrs.slotLabel || 'Picture slot') : null,
   }
 }
 
@@ -82,10 +86,32 @@ export default function ImageOptionsToolbar({
         a.wrap === b.wrap &&
         a.alignment === b.alignment &&
         a.widthPx === b.widthPx &&
+        a.slot === b.slot &&
         Math.abs(a.contentWidth - b.contentWidth) < 1),
   })
+  const [slotMessage, setSlotMessage] = useState('')
 
   if (!info) return null
+
+  /** Put a picture in the selected slot, keeping its caption, alignment and width. */
+  async function fillSlot(source: 'file' | 'clipboard'): Promise<void> {
+    setSlotMessage('')
+    let file: File | null
+    try {
+      file = source === 'file' ? await pickPictureFile() : await clipboardPicture()
+    } catch {
+      setSlotMessage('The clipboard could not be read. Copy a picture, then allow clipboard access.')
+      return
+    }
+    if (!file) {
+      if (source === 'clipboard') setSlotMessage('There is no picture on the clipboard.')
+      return
+    }
+    setSlotMessage('Adding the picture…')
+    const src = await storeSlotPicture(file)
+    editor.chain().focus().fillPictureSlot(src).run()
+    setSlotMessage('')
+  }
 
   const contentWidth = info.contentWidth > 0 ? info.contentWidth : 640
   const wrapModes: Array<{ mode: ImageWrapStyle; label: string; tooltip: string }> = [
@@ -113,6 +139,22 @@ export default function ImageOptionsToolbar({
         userSelect: 'none',
       }}
     >
+      {info.slot !== null && (
+        <>
+          <ToolbarLabel>{info.slot}</ToolbarLabel>
+          <ToolbarButton title="Replace the slot with a picture from your computer" onClick={() => { void fillSlot('file') }}>
+            <FolderOpen style={{ width: '14px', height: '14px' }} /> Replace image
+          </ToolbarButton>
+          <ToolbarButton title="Put the picture on the clipboard in the slot" onClick={() => { void fillSlot('clipboard') }}>
+            <ClipboardPaste style={{ width: '14px', height: '14px' }} /> Paste image
+          </ToolbarButton>
+          <ToolbarButton title="Remove the slot and its caption" danger onClick={() => editor.chain().focus().removePictureSlot().run()}>
+            <Trash2 style={{ width: '14px', height: '14px' }} /> Remove slot
+          </ToolbarButton>
+          {slotMessage && <span role="status" style={{ fontSize: '11px', color: 'var(--muted-foreground)', padding: '0 6px' }}>{slotMessage}</span>}
+          <ToolbarDivider />
+        </>
+      )}
       <ToolbarLabel>Wrap</ToolbarLabel>
       {wrapModes.map(({ mode, label, tooltip }) => (
         <ToolbarButton

@@ -53,6 +53,8 @@ export const createUserPresetSchema = z.object({
   name: z.string().trim().max(120).optional(),
   description: z.string().trim().max(400).optional(),
   rules: z.array(formatRuleSchema).max(200).optional(),
+  /** Read the new version's look (headings, page setup) from this document of the user's. */
+  documentId: z.string().uuid().optional(),
 })
 
 /** One heading level's look in a preset read from a file. */

@@ -37,11 +37,11 @@ describe('storage quotas', () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined)
   })
 
-  it('keeps accounts small enough for a free-tier database', () => {
-    expect(STORAGE_QUOTA_BYTES.user).toBe(10 * MB)
-    expect(STORAGE_QUOTA_BYTES.student).toBe(25 * MB)
-    expect(STORAGE_QUOTA_BYTES.professor).toBe(50 * MB)
-    expect(STORAGE_QUOTA_BYTES.admin).toBe(100 * MB)
+  it('gives each role room for its documents and their pictures (a student holds a 1,400-page thesis)', () => {
+    expect(STORAGE_QUOTA_BYTES.user).toBe(25 * MB)
+    expect(STORAGE_QUOTA_BYTES.student).toBe(100 * MB)
+    expect(STORAGE_QUOTA_BYTES.professor).toBe(250 * MB)
+    expect(STORAGE_QUOTA_BYTES.admin).toBe(500 * MB)
   })
 
   it('allows a save that fits', async () => {
@@ -50,7 +50,7 @@ describe('storage quotas', () => {
   })
 
   it('refuses a save past the quota with a 413 and a code', async () => {
-    state.used = 24 * MB
+    state.used = 99 * MB
     await expect(assertWithinStorageQuota('u1', 2 * MB)).rejects.toMatchObject({ status: 413, code: 'storage_quota_exceeded' })
   })
 
@@ -66,9 +66,9 @@ describe('storage quotas', () => {
     await expect(assertWithinStorageQuota('u1', 5 * MB)).resolves.toBeUndefined()
   })
 
-  it('holds a baseline user to 10MB', async () => {
+  it('holds a baseline user to 25MB', async () => {
     state.role = 'user'
-    state.used = 9 * MB
+    state.used = 24 * MB
     await expect(assertWithinStorageQuota('u1', 2 * MB)).rejects.toMatchObject({ status: 413 })
   })
 
@@ -81,7 +81,7 @@ describe('storage quotas', () => {
 
   it('keeps Pro until the end of a cancelled period, then restores the role quota', async () => {
     state.role = 'user'
-    state.used = 9 * MB
+    state.used = 24 * MB
     state.plan = { plan: 'pro', plan_canceled_at: '2026-01-01T00:00:00Z', plan_renews_at: '2999-01-01T00:00:00Z' }
     await expect(assertWithinStorageQuota('u1', 5 * MB)).resolves.toBeUndefined()
 
@@ -92,15 +92,15 @@ describe('storage quotas', () => {
 
   it('uses the higher quota for a professor', async () => {
     state.role = 'professor'
-    state.used = 30 * MB
+    state.used = 120 * MB
     await expect(assertWithinStorageQuota('u1', 5 * MB)).resolves.toBeUndefined()
   })
 
   it('counts saves made since the last reading, so a quick burst cannot overshoot the quota', async () => {
-    state.used = 22 * MB
+    state.used = 97 * MB
     await assertWithinStorageQuota('u1', 1 * MB)
     await assertWithinStorageQuota('u1', 1 * MB)
-    await assertWithinStorageQuota('u1', 1 * MB) // now at 25 MB
+    await assertWithinStorageQuota('u1', 1 * MB) // now at 100 MB
     await expect(assertWithinStorageQuota('u1', 1 * MB)).rejects.toMatchObject({ code: 'storage_quota_exceeded' })
     expect(state.rpcCalls).toBe(1)
   })

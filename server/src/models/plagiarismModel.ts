@@ -148,6 +148,8 @@ export async function getClassSimilarity(
     .from('plagiarism_scans')
     .select('scan_id,document_id')
     .in('document_id', documentIds)
+    // A scan still running (or failed) has no verdict yet.
+    .eq('scan_status', 'completed')
 
   if (scanError) {
     throw new Error(`Failed to load plagiarism scans: ${scanError.message}`)
@@ -443,6 +445,29 @@ export async function createScan(input: {
   return data as PlagiarismScanRecord
 }
 
+/** Record a background scan's outcome (its scores and transcript, or that it failed). */
+export async function updateScan(
+  scanId: string,
+  changes: {
+    overallOriginalityScore?: number
+    peerSimilarityScore?: number
+    activeJudgesCount?: number
+    quorumReached?: boolean
+    councilTranscript?: unknown
+    status: 'completed' | 'failed'
+  },
+): Promise<PlagiarismScanRecord> {
+  const row: Record<string, unknown> = { scan_status: changes.status }
+  if (changes.overallOriginalityScore !== undefined) row.overall_originality_score = changes.overallOriginalityScore
+  if (changes.peerSimilarityScore !== undefined) row.peer_similarity_score = changes.peerSimilarityScore
+  if (changes.activeJudgesCount !== undefined) row.active_judges_count = changes.activeJudgesCount
+  if (changes.quorumReached !== undefined) row.quorum_reached = changes.quorumReached
+  if (changes.councilTranscript !== undefined) row.council_transcript = changes.councilTranscript
+  const { data, error } = await supabase.from('plagiarism_scans').update(row).eq('scan_id', scanId).select().single()
+  if (error) throw new Error(`Failed to update scan: ${error.message}`)
+  return data as PlagiarismScanRecord
+}
+
 /** Persist the flagged matches for a scan. */
 export async function createMatches(
   scanId: string,
@@ -522,6 +547,8 @@ export async function listScansForFolder(folderId: string): Promise<PlagiarismSc
     .from('plagiarism_scans')
     .select('*')
     .eq('folder_id', folderId)
+    // A scan still running (or failed) has no verdict yet.
+    .eq('scan_status', 'completed')
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(`Failed to list scans: ${error.message}`)

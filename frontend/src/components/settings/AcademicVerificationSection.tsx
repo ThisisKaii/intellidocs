@@ -9,12 +9,12 @@ type AcademicRole = 'student' | 'professor'
 
 /** What each verified role unlocks, shown on the picker. */
 const ROLE_PERKS: Record<AcademicRole, { title: string; quota: string; perk: string; icon: typeof BookOpen }> = {
-  student: { title: 'Student', quota: '25 MB storage', perk: 'Thesis presets (UCLM Capstone)', icon: BookOpen },
-  professor: { title: 'Professor', quota: '50 MB storage', perk: 'Review, grading and originality tools', icon: GraduationCap },
+  student: { title: 'Student', quota: '100 MB storage', perk: 'Thesis presets (UCLM Capstone)', icon: BookOpen },
+  professor: { title: 'Professor', quota: '250 MB storage', perk: 'Review, grading and originality tools', icon: GraduationCap },
 }
 
 /** Storage each role gets, mirroring the server's STORAGE_QUOTA_BYTES. */
-const ROLE_QUOTA: Record<RoleName, string> = { user: '10 MB', student: '25 MB', professor: '50 MB', admin: '100 MB' }
+const ROLE_QUOTA: Record<RoleName, string> = { user: '25 MB', student: '100 MB', professor: '250 MB', admin: '500 MB' }
 
 /** Student verification form: the applicant keeps the baseline role until an admin approves. */
 function StudentApplicationForm({ rejected }: { rejected: boolean }): JSX.Element {

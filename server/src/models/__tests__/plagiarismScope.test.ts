@@ -97,7 +97,7 @@ describe('getClassSimilarity scope', () => {
   beforeEach(() => {
     tables.folder_documents = [{ document_id: 'd1', folder_id: 'c1' }]
     tables.documents = [{ id: 'd1', user_id: 's1' }]
-    tables.plagiarism_scans = [{ scan_id: 'scan1', document_id: 'd1' }]
+    tables.plagiarism_scans = [{ scan_id: 'scan1', document_id: 'd1', scan_status: 'completed' }, { scan_id: 'scan-running', document_id: 'd1', scan_status: 'running' }]
     tables.plagiarism_matches = [
       { scan_id: 'scan1', matched_document_id: 'dx', matched_student_id: 's9', matched_folder_id: 'other', similarity_score: 91 },
     ]

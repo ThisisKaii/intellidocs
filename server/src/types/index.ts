@@ -96,6 +96,8 @@ export interface Document {
   genre_source: GenreSource
   /** Header/footer art, per-section headers and page numbering from an import (migration 032). */
   page_layout?: PageLayout | null
+  /** The document's own caption settings (migration 051); null follows its preset. */
+  caption_config?: CaptionConfig | null
   is_deleted: boolean
   deleted_at: string | null
   share_permission?: SharePermission
@@ -182,6 +184,7 @@ export interface UpdateDocumentRequest {
   is_isolated?: boolean
   formatting_preset?: string | null
   page_layout?: PageLayout | null
+  caption_config?: CaptionConfig | null
   citation_data?: CitationData
 }
 
@@ -738,3 +741,6 @@ export interface CitationLookupResult {
   url?: string
   publisher?: string
 }
+
+/** A document's own caption settings (validated by documentSchemas.captionConfigSchema). */
+export type CaptionConfig = import('zod').infer<typeof import('../../schemas/documentSchemas').captionConfigSchema>

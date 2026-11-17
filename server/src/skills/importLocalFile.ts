@@ -1,6 +1,7 @@
 import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
 import * as documentModel from '../models/documentModel'
 import { createTabbedDocument } from '../models/documentTabModel'
+import { assertWithinStorageQuota } from '../models/userModel'
 import { PageNumberFormat, Document, EditorJson } from '../types/index'
 import { uploadImportImages } from './uploadImportImages'
 import { importImageStore, resolveConvertedImages } from './resolveConvertedImages'
@@ -93,10 +94,11 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
     // Try Python microservice for high-fidelity conversion (tables, images, typography, layout)
     if (effectiveExt === '.docx' || effectiveExt === '.pdf') {
       try {
-        const pyResult = await resolveConvertedImages(
-          await requestDocumentConversion(file.buffer, file.originalname, { separateImages: true, splitTabs: true }),
-          pictures.store,
-        )
+        const converted = await requestDocumentConversion(file.buffer, file.originalname, { separateImages: true, splitTabs: true })
+        // Pictures and text are checked against the quota before a single picture is stored.
+        const pyResult = await resolveConvertedImages(converted, pictures.store, undefined, {
+          beforeStore: (pictureBytes) => assertWithinStorageQuota(userId, pictureBytes + Buffer.byteLength(converted.html)),
+        })
         if (pyResult && pyResult.html) {
           htmlContent = pyResult.html
           contentJson = pyResult.content_json
@@ -108,6 +110,8 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
           importedLayout = await buildImportedLayout(userId, pyResult)
         }
       } catch (pyError) {
+        // A full quota is the answer, not a reason to try the fallback converter.
+        if ((pyError as { code?: string }).code === 'storage_quota_exceeded') throw pyError
         console.warn('Python converter service unavailable, falling back to local converter:', pyError)
         // The converter's pictures are only kept when its HTML is still used (a layout step failed).
         if (!htmlContent) await pictures.discard()
@@ -258,6 +262,14 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
         // Header/footer art, per-section headers and numbering from the converter win over the plain fields.
         ...(importedLayout ?? {}),
       })
+      // Its pictures belong to it now: deleted with it, and not counted while it is in the trash.
+      await documentModel.linkDocumentImages(userId, document.id, [
+        stored.content,
+        JSON.stringify(stored.content_json ?? null),
+        storedHeader,
+        storedFooter,
+        JSON.stringify(importedLayout ?? {}),
+      ])
       return document
     } catch (error) {
       await pictures.discard()

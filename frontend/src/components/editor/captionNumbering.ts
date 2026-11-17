@@ -19,11 +19,72 @@ export type CaptionKind = 'figure' | 'table'
 /** How caption labels read: "Figure 1" / "Table 1", or IEEE's "Fig. 1" / "TABLE I". */
 export type CaptionLabelStyle = 'default' | 'ieee'
 
+/** How one kind of caption is written: where it goes, its label, and its typography. */
+export interface CaptionKindConfig {
+  /** Above or below the figure / table. */
+  placement: 'top' | 'bottom'
+  /** The label word: "Figure", "Fig.", "FIGURE"; "Table", "TABLE", "Tab.". */
+  label: string
+  /** Arabic (1, 2) or Roman (I, II) numbers; IEEE numbers tables in Roman. */
+  numerals: 'arabic' | 'roman'
+  /** What follows the label in a new caption; `line` puts the title on the next line (APA). */
+  separator: ': ' | '. ' | ' — ' | 'line'
+  fontFamily?: string
+  /** e.g. '10pt'; empty keeps the body size. */
+  fontSize: string
+  boldLabel: boolean
+  italicText: boolean
+  alignment: 'center' | 'left'
+}
+
+/** Caption settings of a document: from its preset, or customised in Page Setup → Captions. */
+export interface CaptionConfig {
+  figure: CaptionKindConfig
+  table: CaptionKindConfig
+}
+
+/** A caption style by name (older documents and presets) or a full configuration. */
+export type CaptionStyleSpec = CaptionLabelStyle | CaptionConfig
+
+/** What the editor always did: "Figure 1. " below a figure, "Table 1. " above a table, centred. */
+export const DEFAULT_CAPTIONS: CaptionConfig = {
+  figure: { placement: 'bottom', label: 'Figure', numerals: 'arabic', separator: '. ', fontSize: '', boldLabel: false, italicText: false, alignment: 'center' },
+  table: { placement: 'top', label: 'Table', numerals: 'arabic', separator: '. ', fontSize: '', boldLabel: false, italicText: false, alignment: 'center' },
+}
+
+/** IEEE: "Fig. 1." 8pt below the figure; "TABLE I" above the table with its title on the next line. */
+export const IEEE_CAPTIONS: CaptionConfig = {
+  figure: { placement: 'bottom', label: 'Fig.', numerals: 'arabic', separator: '. ', fontSize: '8pt', boldLabel: false, italicText: false, alignment: 'center' },
+  table: { placement: 'top', label: 'TABLE', numerals: 'roman', separator: 'line', fontSize: '8pt', boldLabel: false, italicText: false, alignment: 'center' },
+}
+
+/** APA 7th: "Figure 1" in bold above, the title in italics on the next line, flush left. */
+export const APA_CAPTIONS: CaptionConfig = {
+  figure: { placement: 'top', label: 'Figure', numerals: 'arabic', separator: 'line', fontSize: '', boldLabel: true, italicText: true, alignment: 'left' },
+  table: { placement: 'top', label: 'Table', numerals: 'arabic', separator: 'line', fontSize: '', boldLabel: true, italicText: true, alignment: 'left' },
+}
+
+/** The configuration a style stands for. */
+export function resolveCaptionConfig(spec: CaptionStyleSpec | null | undefined): CaptionConfig {
+  if (!spec || spec === 'default') return DEFAULT_CAPTIONS
+  if (spec === 'ieee') return IEEE_CAPTIONS
+  return spec
+}
+
+/**
+ * A caption block's text with each line break read as "\n" (a break is one position, so offsets in
+ * this text are still offsets in the block). Plain textContent ran "Figure 1" into the title on the
+ * next line ("Figure 1Title"), and the label was no longer recognised.
+ */
+export function captionText(node: ProseMirrorNode): string {
+  return node.textBetween(0, node.content.size, '\n', '\n')
+}
+
 /** Numbering schemes a document can use for one kind of caption. */
 export type CaptionScheme = 'sequence' | 'chapter' | 'restart'
 
 /** The label at the start of a caption: word, space, number (Arabic, chapter.number or Roman). */
-export const CAPTION_LABEL = /^(Figure|Fig\.|Table|TABLE)(\s+)(\d+(?:\.\d+)?|[IVXLCDM]+)(?![A-Za-z0-9])/
+export const CAPTION_LABEL = /^(Figure|FIGURE|Fig\.|Table|TABLE|Tab\.)(\s+)(\d+(?:\.\d+)?|[IVXLCDM]+)(?![A-Za-z0-9])/
 
 /** What may follow the number of an untagged caption: a separator, or nothing at all. */
 const PLAIN_SEPARATOR = /^\s*(?:[.:–—-]|$)/
@@ -98,7 +159,7 @@ function hasTab(node: ProseMirrorNode): boolean {
 function readCaption(node: ProseMirrorNode, pos: number, chapter: number | null): CaptionEntry | null {
   if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return null
   const tagKind = node.attrs.captionKind as CaptionKind | null | undefined
-  const text = node.textContent
+  const text = captionText(node)
   const match = CAPTION_LABEL.exec(text)
   if (!match) return null
   const kind = kindOfWord(match[1])
@@ -165,7 +226,7 @@ export interface CaptionContext {
  * Tagged captions take the label style's word ("Figure" / "Fig." / "TABLE"); captions that came
  * with the document keep their own word and spacing, only their number changes.
  */
-export function expectedLabels(entries: CaptionEntry[], style: CaptionLabelStyle, context: CaptionContext | null = null): Map<CaptionEntry, string> {
+export function expectedLabels(entries: CaptionEntry[], style: CaptionStyleSpec, context: CaptionContext | null = null): Map<CaptionEntry, string> {
   const result = new Map<CaptionEntry, string>()
   for (const kind of ['figure', 'table'] as const) {
     const ofKind = entries.filter((entry) => entry.kind === kind)
@@ -200,7 +261,7 @@ export function expectedLabels(entries: CaptionEntry[], style: CaptionLabelStyle
 /** Captions whose label is not what their place in the document gives them. */
 export function misnumberedCaptions(
   entries: CaptionEntry[],
-  style: CaptionLabelStyle,
+  style: CaptionStyleSpec,
   onlyPlain = false,
   context: CaptionContext | null = null,
 ): CaptionFix[] {
@@ -215,11 +276,9 @@ export function misnumberedCaptions(
 }
 
 /** The label text for caption number `number` of a kind, in the given style (without a trailing period). */
-export function captionLabel(kind: CaptionKind, number: number, style: CaptionLabelStyle): string {
-  if (style === 'ieee') {
-    return kind === 'figure' ? `Fig. ${number}` : `TABLE ${toRoman(number)}`
-  }
-  return kind === 'figure' ? `Figure ${number}` : `Table ${number}`
+export function captionLabel(kind: CaptionKind, number: number, style: CaptionStyleSpec): string {
+  const config = resolveCaptionConfig(style)[kind]
+  return `${config.label} ${config.numerals === 'roman' ? toRoman(number) : number}`
 }
 
 /** The label a new caption of `kind` inserted at `pos` gets, following the captions around it. */
@@ -227,7 +286,7 @@ export function labelForNewCaption(
   doc: ProseMirrorNode,
   kind: CaptionKind,
   pos: number,
-  style: CaptionLabelStyle,
+  style: CaptionStyleSpec,
   context: CaptionContext | null = null,
 ): string {
   const entries = findCaptions(doc).filter((entry) => entry.kind === kind)

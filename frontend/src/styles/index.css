@@ -715,6 +715,40 @@ html {
   width: 100%;
 }
 
+/* A picture slot from a template (pictureSlots.ts): a dashed frame and its label, so it reads as
+   "put a picture here". Selecting it shows Replace / Paste / Remove in the picture toolbar. */
+.ProseMirror .intellidocs-picture-slot {
+  position: relative;
+}
+.ProseMirror .intellidocs-picture-slot img {
+  outline: 2px dashed var(--primary);
+  outline-offset: 3px;
+  cursor: pointer;
+}
+.ProseMirror .intellidocs-picture-slot::after {
+  content: attr(data-slot-label);
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: 600 11px/1.6 system-ui, sans-serif;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms;
+}
+.ProseMirror .intellidocs-picture-slot:hover::after,
+.ProseMirror .intellidocs-picture-slot:has(.ProseMirror-selectednode, img.ProseMirror-selectednode)::after {
+  opacity: 1;
+}
+@media print {
+  .ProseMirror .intellidocs-picture-slot img { outline: none; }
+  .ProseMirror .intellidocs-picture-slot::after { display: none; }
+}
+
 /* An image taller than a page body fits on no page, and the paginator then adds pages forever
    (hundreds a second, freezing the tab). Cap it to the body height; contain keeps the aspect. */
 .ProseMirror .intellidocs-image-root img {

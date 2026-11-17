@@ -105,3 +105,19 @@ describe('importImageStore', () => {
     await expect(pictures.discard()).resolves.toBeUndefined()
   })
 })
+
+describe('checking the quota before storing', () => {
+  it('passes the pictures total size first, and stores nothing (but releases the set) when it throws', async () => {
+    const release = jest.fn(async () => undefined)
+    const fetchImage = jest.fn(async () => Buffer.from('abc'))
+    const store = jest.fn(async () => 'https://cdn/x')
+    const beforeStore = jest.fn(async (bytes: number) => {
+      expect(bytes).toBe(6)
+      throw Object.assign(new Error('Storage full'), { code: 'storage_quota_exceeded', status: 413 })
+    })
+    await expect(resolveConvertedImages(conversion(), store, { fetchImage, release }, { beforeStore })).rejects.toMatchObject({ code: 'storage_quota_exceeded' })
+    expect(store).not.toHaveBeenCalled()
+    expect(fetchImage).not.toHaveBeenCalled()
+    expect(release).toHaveBeenCalledTimes(1)
+  })
+})

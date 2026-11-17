@@ -6,6 +6,7 @@ import type { drive_v3 } from 'googleapis/build/src/apis/drive'
 import * as driveModel from '../models/driveModel'
 import * as documentModel from '../models/documentModel'
 import { createTabbedDocument } from '../models/documentTabModel'
+import { assertWithinStorageQuota } from '../models/userModel'
 import { prepareImportedContent } from './prepareImportedContent'
 import { buildImportedLayout } from './buildImportedLayout'
 import { importImageStore, resolveConvertedImages, type StoreImage } from './resolveConvertedImages'
@@ -65,6 +66,7 @@ function conversionFilename(title: string, mimeType: string): string {
  * streaming callers pass a path so a large document is never fully buffered.
  */
 async function convertToHtml(args: {
+  userId: string
   /** Stores the converter's pictures (and removes them when the result is not used). */
   pictures: { store: StoreImage; discard: () => Promise<void> }
   filePath: string
@@ -72,7 +74,7 @@ async function convertToHtml(args: {
   mimeType: string
   buffer: Buffer | null
 }): Promise<{ html: string; converterError: string | null; conversion: PythonConversionResponse | null }> {
-  const { pictures, filePath, title, mimeType, buffer } = args
+  const { userId, pictures, filePath, title, mimeType, buffer } = args
   const readBuffered = async (): Promise<Buffer> =>
     buffer ? buffer : await createReadStream(filePath).toArray().then((chunks) => Buffer.concat(chunks))
 
@@ -80,19 +82,22 @@ async function convertToHtml(args: {
   let html = ''
   let conversion: PythonConversionResponse | null = null
   try {
-    const pyResult = await resolveConvertedImages(
-      buffer
-        ? await requestDocumentConversion(buffer, conversionFilename(title, mimeType), { separateImages: true, splitTabs: true })
-        : await requestDocumentConversionFromPath(filePath, conversionFilename(title, mimeType), { separateImages: true, splitTabs: true }),
-      pictures.store,
-    )
+    const converted = buffer
+      ? await requestDocumentConversion(buffer, conversionFilename(title, mimeType), { separateImages: true, splitTabs: true })
+      : await requestDocumentConversionFromPath(filePath, conversionFilename(title, mimeType), { separateImages: true, splitTabs: true })
+    // Pictures and text are checked against the quota before a single picture is stored.
+    const pyResult = await resolveConvertedImages(converted, pictures.store, undefined, {
+      beforeStore: (pictureBytes) => assertWithinStorageQuota(userId, pictureBytes + Buffer.byteLength(converted.html)),
+    })
     if (pyResult?.html) {
       html = pyResult.html
       conversion = pyResult
     }
   } catch (error) {
-    converterError = error instanceof Error ? error.message : String(error)
     await pictures.discard()
+    // A full quota is the answer, not a reason to try the fallback converter.
+    if ((error as { code?: string }).code === 'storage_quota_exceeded') throw error
+    converterError = error instanceof Error ? error.message : String(error)
   }
 
   if (!html && (mimeType === DOCX_MIME || /\.docx$/i.test(title))) {
@@ -167,7 +172,7 @@ export async function processImportJob(job: ImportJob): Promise<void> {
     const wake = await waitForConverter(() => updateImportJob(job.id, { waking: true }))
     if (wake.wakeMs > 0) await updateImportJob(job.id, { waking: false })
     const convertStartedAt = Date.now()
-    const { html, conversion } = await convertToHtml({ pictures, filePath: tempPath, title, mimeType, buffer: null })
+    const { html, conversion } = await convertToHtml({ userId: job.userId, pictures, filePath: tempPath, title, mimeType, buffer: null })
     console.info(`[import] ${title}: converter wake ${Math.round(wake.wakeMs / 1000)}s, convert ${Math.round((Date.now() - convertStartedAt) / 1000)}s`)
 
     // The server owns document creation so the import finishes even when the
@@ -183,6 +188,8 @@ export async function processImportJob(job: ImportJob): Promise<void> {
       ...layout,
     })
     created = true
+    // Its pictures belong to it now: deleted with it, and not counted while it is in the trash.
+    await documentModel.linkDocumentImages(job.userId, document.id, [content, JSON.stringify(content_json ?? null), JSON.stringify(layout)])
     await updateImportJob(job.id, {
       state: 'done',
       progress: 100,

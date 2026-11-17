@@ -9,6 +9,7 @@ import {
   CAPTION_LABEL,
   captionCounts,
   captionLabel,
+  captionText,
   chapterNumber,
   findCaptions,
   labelForNewCaption,
@@ -17,20 +18,25 @@ import {
   type CaptionEntry,
   type CaptionKind,
   type CaptionLabelStyle,
+  type CaptionStyleSpec,
+  resolveCaptionConfig,
 } from './captionNumbering'
 
 export { captionLabel }
-export type { CaptionKind, CaptionLabelStyle }
+export type { CaptionKind, CaptionLabelStyle, CaptionStyleSpec }
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     captions: {
-      /** Insert a numbered caption under the selected image or above the table the caret is in. */
+      /**
+       * Insert a numbered caption for the selected image or the table the caret is in, where the
+       * document's caption settings put it (above or below), written in their label and typography.
+       */
       insertCaption: (kind: CaptionKind) => ReturnType
       /** Rewrite every caption label to the current label style and renumber in document order. */
       renumberCaptions: () => ReturnType
-      /** Choose the label style (set from the document's preset) and apply it. */
-      setCaptionLabelStyle: (style: CaptionLabelStyle) => ReturnType
+      /** Choose the caption style (from the preset, or Page Setup → Captions) and relabel to it. */
+      setCaptionLabelStyle: (style: CaptionStyleSpec) => ReturnType
       /** Give the caption block at `pos` the number its place in the document calls for. */
       fixCaptionNumber: (pos: number) => ReturnType
     }
@@ -38,7 +44,7 @@ declare module '@tiptap/core' {
 
   interface Storage {
     /** `context`: for one tab of a document split into tabs, the captions of the tabs before it. */
-    captions: { labelStyle: CaptionLabelStyle; context: CaptionContext | null }
+    captions: { labelStyle: CaptionStyleSpec; context: CaptionContext | null }
   }
 }
 
@@ -75,7 +81,7 @@ function countsOf(doc: ProseMirrorNode, entries?: CaptionEntry[]): Record<Captio
  */
 function planCaptionChanges(
   state: EditorState,
-  style: CaptionLabelStyle,
+  style: CaptionStyleSpec,
   includePlain: boolean,
   entries: CaptionEntry[] = findCaptions(state.doc),
   context: CaptionContext | null = null,
@@ -103,7 +109,7 @@ function planCaptionChanges(
 function affectsNumbering(node: ProseMirrorNode): boolean {
   if (!node.isTextblock) return false
   if (node.attrs.captionKind) return true
-  const text = node.textContent
+  const text = captionText(node)
   return CAPTION_LABEL.test(text) || chapterNumber(text) !== null
 }
 
@@ -153,7 +159,7 @@ export const CaptionExtension = Extension.create({
   name: 'captions',
 
   addStorage() {
-    return { labelStyle: 'default' as CaptionLabelStyle, context: null as CaptionContext | null }
+    return { labelStyle: 'default' as CaptionStyleSpec, context: null as CaptionContext | null }
   },
 
   addGlobalAttributes() {
@@ -178,33 +184,45 @@ export const CaptionExtension = Extension.create({
         (kind: CaptionKind) =>
         ({ state, tr, dispatch }) => {
           const { selection, schema } = state
+          const config = resolveCaptionConfig(this.storage.labelStyle)[kind]
           const $from = selection.$from
           let pos: number
           if (selection instanceof NodeSelection && $from.depth === 0) {
-            // A block-level image: caption goes right below it.
-            pos = kind === 'figure' ? selection.to : selection.from
+            // A block-level image (or a selected table): the caption goes above or below it.
+            pos = config.placement === 'bottom' ? selection.to : selection.from
           } else if (kind === 'table') {
             let tableStart = -1
+            let tableEnd = -1
             for (let depth = $from.depth; depth >= 1; depth -= 1) {
-              if ($from.node(depth).type.name === 'table') tableStart = $from.before(depth)
+              if ($from.node(depth).type.name === 'table') {
+                tableStart = $from.before(depth)
+                tableEnd = $from.after(depth)
+              }
             }
             if (tableStart < 0 && $from.depth < 1) return false
-            pos = tableStart >= 0 ? tableStart : $from.before(1)
+            pos = tableStart < 0 ? $from.before(1) : config.placement === 'top' ? tableStart : tableEnd
           } else {
             if ($from.depth < 1) return false
             pos = $from.after(1)
           }
 
+          // The caption's typography: its size and font on all of it, bold on the label only.
+          const textStyle = schema.marks.textStyle && (config.fontSize || config.fontFamily)
+            ? [schema.marks.textStyle.create({ fontSize: config.fontSize || null, fontFamily: config.fontFamily || null })]
+            : []
+          const labelMarks = config.boldLabel && schema.marks.bold ? [...textStyle, schema.marks.bold.create()] : textStyle
           // Numbered after the captions above it, whether the editor or the original file made them.
-          const label = `${labelForNewCaption(state.doc, kind, pos, this.storage.labelStyle, this.storage.context)}. `
-          const paragraph = schema.nodes.paragraph.create(
-            { captionKind: kind, textAlign: 'center' },
-            schema.text(label)
-          )
+          const label = labelForNewCaption(state.doc, kind, pos, this.storage.labelStyle, this.storage.context)
+          const content = [schema.text(label, labelMarks)]
+          if (config.separator === 'line' && schema.nodes.hardBreak) content.push(schema.nodes.hardBreak.create())
+          else content.push(schema.text(config.separator === 'line' ? '. ' : config.separator, textStyle))
+          const paragraph = schema.nodes.paragraph.create({ captionKind: kind, textAlign: config.alignment }, content)
           if (dispatch) {
             tr.insert(pos, paragraph)
             tr.setMeta(CAPTION_INSERTED, true)
             tr.setSelection(TextSelection.near(tr.doc.resolve(pos + paragraph.nodeSize - 1)))
+            // The title typed next: in the caption's size, and in italics where the style asks.
+            tr.setStoredMarks(config.italicText && schema.marks.italic ? [...textStyle, schema.marks.italic.create()] : textStyle)
             dispatch(tr.scrollIntoView())
           }
           return true
@@ -223,7 +241,7 @@ export const CaptionExtension = Extension.create({
         },
 
       setCaptionLabelStyle:
-        (style: CaptionLabelStyle) =>
+        (style: CaptionStyleSpec) =>
         ({ commands }) => {
           this.storage.labelStyle = style
           return commands.renumberCaptions()

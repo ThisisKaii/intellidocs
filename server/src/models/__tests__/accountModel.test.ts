@@ -136,6 +136,7 @@ describe('deleteAccount', () => {
     await deleteAccount('u1', 'A@B.c', ' a@b.C ')
     expect(state.calls).toEqual([
       'remove-images',
+      'delete:stored_images',
       'delete:documents',
       'delete:folders',
       'delete:personalization_settings',

@@ -21,6 +21,7 @@ import {
   ReportTimeseries,
 } from '../types/admin'
 import type { ClassRubric, ClassRubricInfo, RubricScores, StoredRubric } from '@/lib/rubric'
+import type { CaptionConfig } from '@/components/editor/captionNumbering'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
@@ -119,6 +120,8 @@ export interface DocumentRecord {
   citation_data?: CitationData | null
   /** Header/footer art, per-section headers and page numbering from an import (migration 032). */
   page_layout?: PageLayoutData | null
+  /** The document's own caption settings; null follows its preset (migration 051). */
+  caption_config?: CaptionConfig | null
   is_deleted: boolean
   deleted_at: string | null
   share_permission?: SharePermission
@@ -309,6 +312,8 @@ interface UpdateDocumentRequest {
   formatting_preset?: string | null
   citation_data?: CitationData
   page_layout?: PageLayoutData | null
+  /** The document's own caption settings; null follows its preset (migration 051). */
+  caption_config?: CaptionConfig | null
 }
 
 // ── Three-tier formatting control system types ──────────────────────────────
@@ -438,6 +443,8 @@ export interface CreateUserPresetRequest {
   name?: string
   description?: string
   rules?: FormatRule[]
+  /** Read the new version's look (headings, page setup) from this document. */
+  documentId?: string
 }
 
 export interface FormatBinding {
@@ -1960,7 +1967,10 @@ export const api = {
   },
 
   plagiarism: {
-    /** Run a council scan for one submission in a class folder. */
+    /**
+     * Start a council scan of one submission in a class folder. Answers at once with the scan
+     * `running`; the judges deliberate on the server: read it with getScan until it is done.
+     */
     runScan: async (
       folderId: string,
       documentId: string,

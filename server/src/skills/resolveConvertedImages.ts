@@ -58,16 +58,22 @@ function replaceTokens<T>(value: T, sources: Map<string, string>): T {
  * time, stored, and its token replaced by the stored URL everywhere in the result. A picture that
  * cannot be stored goes back inline (the later import steps move inline pictures as usual), and
  * one the converter no longer has is left out. A result without an image set is returned as is.
+ * The converter's copy of the pictures is released whatever happens, also when `beforeStore` throws.
  */
 export async function resolveConvertedImages(
   result: PythonConversionResponse,
   store: StoreImage,
   deps: Deps = defaultDeps,
+  options: {
+    /** Runs before any picture is stored, with their total size: throw to stop (a full quota). */
+    beforeStore?: (pictureBytes: number) => Promise<void>
+  } = {},
 ): Promise<PythonConversionResponse> {
   const { image_set: imageSet, images = [], ...rest } = result
   if (!imageSet) return result
   const sources = new Map<string, string>()
   try {
+    await options.beforeStore?.(images.reduce((sum, image) => sum + image.bytes, 0))
     let next = 0
     const worker = async (): Promise<void> => {
       while (next < images.length) {

@@ -10,6 +10,7 @@ import {
   SystemReport,
   VerificationStatus,
 } from '../types/index'
+import { removeDocumentImages } from './imageStorageModel'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
 
@@ -387,7 +388,7 @@ export async function getReportTimeseries(weeks: number): Promise<ReportTimeseri
   const [signups, documents, scans, statusRows] = await Promise.all([
     supabase.from('user_profiles').select('created_at').gte('created_at', since),
     supabase.from('documents').select('created_at').gte('created_at', since),
-    supabase.from('plagiarism_scans').select('created_at, overall_originality_score').gte('created_at', since),
+    supabase.from('plagiarism_scans').select('created_at, overall_originality_score').eq('scan_status', 'completed').gte('created_at', since),
     supabase.from('user_profiles').select('verification_status'),
   ])
 
@@ -416,6 +417,7 @@ export async function getReportTimeseries(weeks: number): Promise<ReportTimeseri
 
 /** Delete any document as an Admin moderator. */
 export async function deleteDocumentByAdmin(documentId: string): Promise<boolean> {
+  await removeDocumentImages(documentId)
   const { error } = await supabase
     .from('documents')
     .delete()

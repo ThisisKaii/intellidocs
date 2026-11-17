@@ -25,6 +25,7 @@ import { FORMAT_LABELS, formatLabel } from './SuggestionPanel'
 import type { ScannerSuggestion } from '@/hooks/useAutoFormatScanner'
 import type { GrammarIssue } from './GrammarPanel'
 import type { Suggestion } from './SuggestionPanel'
+import { inSuggestionScope, SCOPE_LABELS, type SuggestionScope } from '@/lib/suggestionScope'
 
 export type SidePanelTab = 'assistant' | 'suggestions' | 'tools' | 'history' | 'feedback'
 
@@ -87,6 +88,10 @@ interface EditorSidePanelProps {
   grammarCheckedAt: number | null
   /** Page each grammar issue is on, once the layout is known. */
   grammarPages?: Map<GrammarIssue, number>
+  /** Which suggestions the list shows (lib/suggestionScope), and the caret's page it follows. */
+  suggestionScope?: SuggestionScope
+  onSuggestionScopeChange?: (scope: SuggestionScope) => void
+  currentPage?: number | null
   onCheckGrammar: () => void
   /** Jump to a formatting suggestion in the document and open it for review. */
   onOpenScanner: (suggestion: ScannerSuggestion) => void
@@ -148,6 +153,9 @@ export default function EditorSidePanel({
   grammarError,
   grammarCheckedAt,
   grammarPages,
+  suggestionScope,
+  onSuggestionScopeChange,
+  currentPage,
   onCheckGrammar,
   onOpenScanner,
   onOpenMl,
@@ -349,6 +357,9 @@ export default function EditorSidePanel({
               grammarError={grammarError}
               grammarCheckedAt={grammarCheckedAt}
               grammarPages={grammarPages}
+              suggestionScope={suggestionScope}
+              onSuggestionScopeChange={onSuggestionScopeChange}
+              currentPage={currentPage}
               formattingEnabled={formattingEnabled}
               grammarEnabled={grammarEnabled}
               onFormattingEnabledChange={onFormattingEnabledChange}
@@ -430,6 +441,11 @@ interface SuggestionQueueProps {
   grammarError: string | null
   grammarCheckedAt: number | null
   grammarPages?: Map<GrammarIssue, number>
+  suggestionScope?: SuggestionScope
+  onSuggestionScopeChange?: (scope: SuggestionScope) => void
+  currentPage?: number | null
+  /** Every grammar issue, in scope or not: card keys are positions in this list (grammarCardKey). */
+  grammarKeyList?: GrammarIssue[]
   formattingEnabled: boolean
   grammarEnabled: boolean
   onFormattingEnabledChange: (value: boolean) => void
@@ -442,7 +458,16 @@ interface SuggestionQueueProps {
 }
 
 /** Suggestions tab: a switch between formatting suggestions and grammar/spelling issues. */
-function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
+function SuggestionQueue(allProps: SuggestionQueueProps): JSX.Element {
+  // Only the suggestions in scope are listed (current page, ±5 pages, or all); the counts follow.
+  const scope = allProps.suggestionScope ?? 'all'
+  const caretPage = allProps.currentPage ?? null
+  const props: SuggestionQueueProps = {
+    ...allProps,
+    scannerSuggestions: allProps.scannerSuggestions.filter((s) => inSuggestionScope(scope, s.pageNumber, caretPage)),
+    grammarIssues: allProps.grammarIssues.filter((issue) => inSuggestionScope(scope, allProps.grammarPages?.get(issue), caretPage)),
+    grammarKeyList: allProps.grammarIssues,
+  }
   const { scannerSuggestions, mlSuggestions, grammarIssues, formattingEnabled, grammarEnabled } = props
   const [view, setView] = useState<QueueView>(readStoredView)
 
@@ -517,6 +542,33 @@ function SuggestionQueue(props: SuggestionQueueProps): JSX.Element {
           onClick={() => chooseView('grammar')}
         />
       </div>
+
+      {props.onSuggestionScopeChange && (
+        <div role="group" aria-label="Which suggestions to show" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.25rem' }}>
+          {(['page', 'window', 'all'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={scope === option}
+              onClick={() => props.onSuggestionScopeChange?.(option)}
+              title={option === 'all' ? 'Every suggestion in the document' : `Suggestions near the caret${caretPage ? ` (page ${caretPage})` : ''}`}
+              style={{
+                padding: '0.3rem 0.25rem',
+                borderRadius: '0.5rem',
+                border: `1px solid ${scope === option ? 'var(--primary)' : 'var(--border)'}`,
+                backgroundColor: scope === option ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent',
+                color: scope === option ? 'var(--primary)' : 'var(--muted-foreground)',
+                fontFamily: 'inherit',
+                fontSize: '0.6875rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {SCOPE_LABELS[option]}
+            </button>
+          ))}
+        </div>
+      )}
 
       {view === 'all' ? (
         <>
@@ -661,6 +713,7 @@ function AllView({
   formattingEnabled,
   grammarEnabled,
   grammarPages,
+  grammarKeyList,
   onOpenScanner,
   onOpenMl,
   onOpenGrammar,
@@ -697,7 +750,7 @@ function AllView({
   if (grammarEnabled) {
     grammarIssues.forEach((issue) =>
       items.push({
-        key: grammarCardKey(grammarIssues, issue),
+        key: grammarCardKey(grammarKeyList ?? grammarIssues, issue),
         page: grammarPages?.get(issue) ?? null,
         category: issue.kind === 'spelling' ? 'Spelling' : 'Grammar',
         onOpen: () => onOpenGrammar(issue),
@@ -985,6 +1038,7 @@ function GrammarView({
   grammarError,
   grammarCheckedAt,
   grammarPages,
+  grammarKeyList,
   onCheckGrammar,
   onOpenGrammar,
   review,
@@ -1031,7 +1085,7 @@ function GrammarView({
         />
       ) : (
         shown.map((issue) => {
-          const key = grammarCardKey(grammarIssues, issue)
+          const key = grammarCardKey(grammarKeyList ?? grammarIssues, issue)
           return (
             <ReviewCard
               key={key}

@@ -150,7 +150,7 @@ export class MissingBlueprintColumnError extends Error {
  */
 export async function createBlueprintPreset(
   userId: string,
-  input: { name: string; description: string; baseKey: string; blueprint: PresetBlueprint }
+  input: { name?: string; description: string; baseKey: string; blueprint: PresetBlueprint }
 ): Promise<UserPreset> {
   const base = await getPresetByKey(input.baseKey)
   if (!base) throw new Error(`Unknown base preset "${input.baseKey}"`)
@@ -165,7 +165,8 @@ export async function createBlueprintPreset(
       user_id: userId,
       key: `${input.baseKey}__f${Date.now().toString(36)}`,
       base_key: input.baseKey,
-      name: input.name.trim(),
+      // Unnamed: "IEEE Conference (Custom v2)", as a plain fork is called.
+      name: input.name?.trim() || `${base.name} (Custom v${nextVersion})`,
       description: input.description.trim(),
       rules: base.rules,
       version: nextVersion,

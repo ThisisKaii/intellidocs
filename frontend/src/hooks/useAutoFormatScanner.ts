@@ -329,6 +329,12 @@ export type ScannerState =
   | 'Dismissed'
 
 /** How often the scanner runs (ms). */
+/**
+ * Confidence (percent) at which a suggestion is offered in the document at once (highlight and
+ * one-click chip). Below it, a suggestion waits in the side panel until it is opened there.
+ */
+export const INSTANT_CONFIDENCE = 80
+
 const SCAN_INTERVAL_MS = 10_000
 
 /** Idle time after an editor change before a fresh sweep is scheduled (ms). */
@@ -455,7 +461,11 @@ export function useAutoFormatScanner({
     memoryRef.current = loadSuggestionMemory(documentId)
   }, [documentId])
 
-  const activeSuggestion = activeIdx >= 0 && activeIdx < suggestions.length ? suggestions[activeIdx] : null
+  // A suggestion the person opened from the panel is shown whatever its confidence.
+  const [explicitKey, setExplicitKey] = useState<string | null>(null)
+  const candidate = activeIdx >= 0 && activeIdx < suggestions.length ? suggestions[activeIdx] : null
+  const activeSuggestion =
+    candidate && (candidate.confidence >= INSTANT_CONFIDENCE || candidate.key === explicitKey) ? candidate : null
 
   /** Estimate which page a ProseMirror position falls on. */
   const estimatePageNumber = useCallback(
@@ -1089,7 +1099,10 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
   const selectSuggestion = useCallback(
     (key: string): void => {
       const idx = suggestions.findIndex((s) => s.key === key)
-      if (idx >= 0) setActiveIdx(idx)
+      if (idx >= 0) {
+        setExplicitKey(key)
+        setActiveIdx(idx)
+      }
     },
     [suggestions]
   )

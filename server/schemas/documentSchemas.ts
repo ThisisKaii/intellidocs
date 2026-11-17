@@ -121,6 +121,24 @@ export const editorJsonSchema = editorJsonShapeSchema
 
 export type EditorJson = z.infer<typeof editorJsonSchema>
 
+/** How one kind of caption is written (frontend captionNumbering.CaptionKindConfig). */
+const captionKindConfigSchema = z
+  .object({
+    placement: z.enum(['top', 'bottom']),
+    label: z.enum(['Figure', 'Fig.', 'FIGURE', 'Table', 'TABLE', 'Tab.']),
+    numerals: z.enum(['arabic', 'roman']),
+    separator: z.enum([': ', '. ', ' — ', 'line']),
+    fontFamily: z.string().max(100).optional(),
+    fontSize: z.string().max(10).regex(/^(\d+(\.\d+)?pt)?$/),
+    boldLabel: z.boolean(),
+    italicText: z.boolean(),
+    alignment: z.enum(['center', 'left']),
+  })
+  .strict()
+
+/** A document's own caption settings (Page Setup → Captions, migration 051); null follows the preset. */
+export const captionConfigSchema = z.object({ figure: captionKindConfigSchema, table: captionKindConfigSchema }).strict()
+
 /** Validate document update requests from HTTP clients. */
 export const updateDocumentSchema = z
   .object({
@@ -148,6 +166,7 @@ export const updateDocumentSchema = z
     formatting_preset: z.string().max(100).nullable().optional(),
     citation_data: citationDataSchema.optional(),
     page_layout: pageLayoutSchema.nullable().optional(),
+    caption_config: captionConfigSchema.nullable().optional(),
   })
   .refine((data) => data.content_json === undefined || data.content !== undefined, {
     message: 'content_json must be sent together with content',
@@ -170,7 +189,8 @@ export const updateDocumentSchema = z
       data.is_isolated !== undefined ||
       data.formatting_preset !== undefined ||
       data.citation_data !== undefined ||
-      data.page_layout !== undefined,
+      data.page_layout !== undefined ||
+      data.caption_config !== undefined,
     {
       message: 'At least one field must be provided',
     }

@@ -92,6 +92,7 @@ import {
   Outdent,
   Table as TableIcon,
   Image as ImageIcon,
+  ImagePlus,
   FileUp,
   Minus as HRLine,
   SeparatorHorizontal,
@@ -124,6 +125,7 @@ import {
   type AcademicTableStyle,
 } from './behaviorListener'
 import { ImageResizeBehaviorExtension } from './ImageResizeBehaviorExtension'
+import { slotPlaceholderSrc } from './pictureSlots'
 import ImageOptionsToolbar, { type ImageWrapStyle } from './ImageOptionsToolbar'
 import TableBubbleMenu, { CellFillPicker } from './TableBubbleMenu'
 import { isRemoteYjsChange } from './collabTransactions'
@@ -714,7 +716,24 @@ const CenteredImageResize = ImageResize.extend({
     if (!createView) return null
     return (props) => {
       const view = createView(props)
-      if (view.dom instanceof HTMLElement) view.dom.classList.add('intellidocs-image-root')
+      const root = view.dom instanceof HTMLElement ? view.dom : null
+      // A picture slot is marked on its root so the stylesheet can frame it and show its label.
+      const markSlot = (attrs: Record<string, unknown>): void => {
+        if (!root) return
+        root.classList.toggle('intellidocs-picture-slot', Boolean(attrs.placeholderSlot))
+        if (attrs.placeholderSlot) root.setAttribute('data-slot-label', String(attrs.slotLabel || 'Picture slot'))
+        else root.removeAttribute('data-slot-label')
+      }
+      root?.classList.add('intellidocs-image-root')
+      markSlot(props.node.attrs)
+      const update = view.update?.bind(view)
+      if (update) {
+        view.update = (node, ...rest) => {
+          const kept = update(node, ...rest)
+          if (kept) markSlot(node.attrs)
+          return kept
+        }
+      }
       return view
     }
   },
@@ -739,6 +758,17 @@ const CenteredImageResize = ImageResize.extend({
         default: null,
         parseHTML: (element) => (element.dataset.caption === 'true' ? true : null),
         renderHTML: (attributes) => (attributes.caption ? { 'data-caption': 'true' } : {}),
+      },
+      // A picture slot from a template or preset (pictureSlots.ts): replaced in place, then cleared.
+      placeholderSlot: {
+        default: null,
+        parseHTML: (element) => (element.getAttribute('data-placeholder-slot') === 'true' ? true : null),
+        renderHTML: (attributes) => (attributes.placeholderSlot ? { 'data-placeholder-slot': 'true' } : {}),
+      },
+      slotLabel: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-slot-label'),
+        renderHTML: (attributes) => (attributes.slotLabel ? { 'data-slot-label': String(attributes.slotLabel) } : {}),
       },
       // Text-wrap mode tag. The resize library's style sanitizer strips
       // clear/position/z-index/opacity from containerStyle, so those modes
@@ -790,6 +820,14 @@ declare module '@tiptap/core' {
     imageCaption: {
       addImageCaption: () => ReturnType
     }
+    pictureSlot: {
+      /** Insert an empty picture slot (a framed placeholder) with a label. */
+      insertPictureSlot: (label: string) => ReturnType
+      /** Put a picture in the selected slot: only its source changes, then it is an ordinary picture. */
+      fillPictureSlot: (src: string) => ReturnType
+      /** Remove the selected slot and the figure caption attached to it. */
+      removePictureSlot: () => ReturnType
+    }
   }
 }
 
@@ -837,6 +875,42 @@ const AlignedImageResize = CenteredImageResize.extend({
           return commands.updateAttributes('imageResize', {
             containerStyle: withImageWidth(current, width),
           })
+        },
+      insertPictureSlot:
+        (label: string) =>
+        ({ commands }) =>
+          commands.insertContent({
+            type: 'imageResize',
+            attrs: {
+              src: slotPlaceholderSrc(label),
+              alt: label,
+              placeholderSlot: true,
+              slotLabel: label,
+              alignment: 'center',
+              containerStyle: imageContainerStyle('center', null),
+            },
+          }),
+      fillPictureSlot:
+        (src: string) =>
+        ({ state, commands }) => {
+          const node = selectedImageNode(state)
+          if (!node?.attrs.placeholderSlot) return false
+          return commands.updateAttributes('imageResize', { src, alt: node.attrs.slotLabel ?? null, placeholderSlot: null, slotLabel: null })
+        },
+      removePictureSlot:
+        () =>
+        ({ state, tr, dispatch }) => {
+          const { selection } = state
+          if (!(selection instanceof NodeSelection) || !selection.node.attrs.placeholderSlot) return false
+          let from = selection.from
+          let to = selection.to
+          // The figure caption written for it, right below (or above, for a caption placed on top).
+          const after = state.doc.resolve(to).nodeAfter
+          if (after?.type.name === 'paragraph' && after.attrs.captionKind === 'figure') to += after.nodeSize
+          const before = state.doc.resolve(from).nodeBefore
+          if (before?.type.name === 'paragraph' && before.attrs.captionKind === 'figure') from -= before.nodeSize
+          if (dispatch) dispatch(tr.delete(from, to).scrollIntoView())
+          return true
         },
       /**
        * Insert a caption paragraph directly below the selected image and mark
@@ -1578,6 +1652,8 @@ interface ToolbarProps {
   pageSetupFocusRequest?: 'header' | 'footer' | null
   /** Called after a focus request has been handled so the host can clear it. */
   onPageSetupFocusHandled?: () => void
+  /** Opens Page Setup → Captions (the document's caption placement and style). */
+  onOpenCaptionSettings?: () => void
   onOpenPersonalization?: () => void
   /**
    * A document split into tabs asks which tabs to export first: returning true means the host
@@ -1643,6 +1719,7 @@ export function TiptapToolbar({
   onShowGridlinesChange,
   pageSetupFocusRequest = null,
   onPageSetupFocusHandled,
+  onOpenCaptionSettings,
   onOpenPersonalization,
   onExportRequest,
   wholeBodyActionsBlocked = null,
@@ -2867,6 +2944,14 @@ export function TiptapToolbar({
           title="Insert Image"
           onClick={() => imageInputRef.current?.click()}
         />
+        <ToolButton
+          icon={ImagePlus}
+          title="Insert picture slot (a placeholder to fill later)"
+          onClick={() => {
+            const label = window.prompt('What goes in this picture slot?', 'Figure')
+            if (label !== null) editor?.chain().focus().insertPictureSlot(label.trim() || 'Figure').run()
+          }}
+        />
         <input
           ref={imageInputRef}
           type="file"
@@ -3544,6 +3629,27 @@ export function TiptapToolbar({
                   Different first page (no header/footer on the title page)
                 </label>
               </div>
+              {onOpenCaptionSettings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenPageSetup(false)
+                    onOpenCaptionSettings()
+                  }}
+                  style={{
+                    height: '30px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--foreground)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Captions…
+                </button>
+              )}
             </div>
           </Popover>
         )}

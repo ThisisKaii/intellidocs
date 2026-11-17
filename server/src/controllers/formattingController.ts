@@ -14,6 +14,7 @@ import { consumeAIQuota } from '../models/aiQuotaModel'
 import { GENRE_BASE_PRESET_KEY } from '../utils/documentGenre'
 import { canUsePreset, PRESET_LOCKED_CODE } from '../skills/canUsePreset'
 import { getOwnRoleStatus } from '../models/userModel'
+import { buildPresetFromDocument } from '../skills/buildPresetFromDocument'
 
 /** Read and validate the current user id from the authenticated request. */
 function getUserId(req: Request, res: Response): string | null {
@@ -68,7 +69,26 @@ export async function createUserPreset(req: Request, res: Response): Promise<voi
     const userId = getUserId(req, res)
     if (!userId) return
 
-    const body = req.body as CreateUserPresetRequest
+    const body = req.body as CreateUserPresetRequest & { documentId?: string }
+    // Saved from a document the user restyled: the version takes that document's look. Without
+    // editor JSON to read, or before migration 047, it is a plain copy of the base preset.
+    if (body.documentId) {
+      const blueprint = await buildPresetFromDocument(userId, body.documentId)
+      if (blueprint) {
+        try {
+          const preset = await formattingModel.createBlueprintPreset(userId, {
+            name: body.name,
+            description: body.description?.trim() || 'Saved from your document',
+            baseKey: body.baseKey,
+            blueprint,
+          })
+          res.status(201).json(preset)
+          return
+        } catch (error) {
+          if (!(error instanceof formattingModel.MissingBlueprintColumnError)) throw error
+        }
+      }
+    }
     const preset = await formattingModel.createUserPreset(userId, body.baseKey, {
       name: body.name,
       description: body.description,

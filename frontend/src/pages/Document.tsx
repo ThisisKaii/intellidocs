@@ -6,6 +6,10 @@ import { getHTMLFromFragment } from '@tiptap/core'
 import TabSidebar from '@/components/editor/TabSidebar'
 import SplitTabsDialog from '@/components/editor/SplitTabsDialog'
 import TabLayoutMeasurer, { type TabFacts } from '@/components/editor/TabLayoutMeasurer'
+import CaptionSettingsDialog from '@/components/editor/CaptionSettingsDialog'
+import { isTypographyOverride, OVERRIDE_FORK_THRESHOLD, structuralRole } from '@/lib/presetFormatting'
+import { DEFAULT_CAPTIONS, IEEE_CAPTIONS, type CaptionConfig } from '@/components/editor/captionNumbering'
+import { inSuggestionScope, readSuggestionScope, storeSuggestionScope, type SuggestionScope } from '@/lib/suggestionScope'
 import { dismissSplitPrompt, insertTabBreaks, proposalWordCounts, proposeChapterSplit, splitPromptDismissed, type ProposedTab } from '@/lib/documentTabs'
 import { defaultTabFormat, resolveTabNumbering, sectionTabNumbering, splitNumbering, tabPageLabel } from '@/lib/tabNumbering'
 import { readSectionProps } from '@/lib/sectionProps'
@@ -105,6 +109,12 @@ const AVATAR_COLORS = [
 ]
 
 /** Deterministic avatar color for a collaborator. */
+/** The caption settings a preset gives its documents (IEEE and APA have their own; the rest the default). */
+function captionsForPreset(key: string | null | undefined): CaptionConfig {
+  const base = basePresetKey(key)
+  return findAcademicPreset(base ?? key)?.captions ?? (base === 'ieee' ? IEEE_CAPTIONS : DEFAULT_CAPTIONS)
+}
+
 /** Where a document's unsaved local copy is kept: per tab for a document split into tabs. */
 function tabDraftKey(documentId: string, tabId: string | null): string {
   return tabId ? `${documentId}#${tabId}` : documentId
@@ -428,11 +438,34 @@ export default function Document(): JSX.Element {
   useEffect(() => {
     if (!isIeeePreset) setSpreadPreview(false)
   }, [isIeeePreset])
-  // Captions read "Fig. 1" / "TABLE I" in IEEE documents. Opening a document only sets the
-  // style; labels are rewritten when the user switches preset, never just by opening.
+  // Captions follow the document's own settings (Page Setup → Captions), else its preset's: IEEE
+  // "Fig. 1" / "TABLE I", APA bold "Figure 1" with the title below. Opening a document only sets
+  // them; labels are rewritten when the settings or the preset change, never just by opening.
+  const [captionConfig, setCaptionConfig] = useState<CaptionConfig | null>(null)
+  const effectiveCaptions = useMemo(() => captionConfig ?? captionsForPreset(formattingPreset), [captionConfig, formattingPreset])
   useEffect(() => {
-    if (editor && !editor.isDestroyed) editor.storage.captions.labelStyle = isIeeePreset ? 'ieee' : 'default'
-  }, [editor, isIeeePreset])
+    if (editor && !editor.isDestroyed) editor.storage.captions.labelStyle = effectiveCaptions
+  }, [editor, effectiveCaptions])
+  const [captionDialogOpen, setCaptionDialogOpen] = useState(false)
+  const [captionBusy, setCaptionBusy] = useState(false)
+  const [captionError, setCaptionError] = useState('')
+
+  /** Save this document's caption settings (null: follow the preset) and relabel its captions. */
+  async function saveCaptionSettings(next: CaptionConfig | null): Promise<void> {
+    if (!id) return
+    setCaptionBusy(true)
+    setCaptionError('')
+    try {
+      await api.documents.update(id, { caption_config: next }, shareToken)
+      setCaptionConfig(next)
+      if (editor && !editor.isDestroyed) editor.commands.setCaptionLabelStyle(next ?? captionsForPreset(formattingPreset))
+      setCaptionDialogOpen(false)
+    } catch (error) {
+      setCaptionError(error instanceof Error ? error.message : 'The caption settings could not be saved.')
+    } finally {
+      setCaptionBusy(false)
+    }
+  }
   /** Visual canvas zoom (1 = 100%). Layout and pagination are unaffected. */
   const [zoomLevel, setZoomLevel] = useState<number>(1)
   /** Latest zoom value for listeners bound with empty dependency lists. */
@@ -1068,6 +1101,7 @@ export default function Document(): JSX.Element {
     setFormattingPreset(doc.formatting_preset ?? null)
     setGenre(doc.genre ?? 'general')
     setGenreSource(doc.genre_source ?? 'auto')
+    setCaptionConfig(doc.caption_config ?? null)
     setDocOwnerId(doc.user_id ?? null)
     setPageLayout(doc.page_layout ?? null)
     setMissingDocFonts(fontNoticeDismissed(doc.id) ? [] : missingFonts(fontFamiliesIn(nextContent)))
@@ -1322,6 +1356,12 @@ export default function Document(): JSX.Element {
     if (!editor || !editor.isEditable) return
     if (isFormatAlreadyActive(format)) return
 
+    // A heading the model predicted takes the active preset's look (the preset governs style).
+    const presetRole = findAcademicPreset(formattingPreset) ? structuralRole(format) : null
+    if (presetRole) {
+      applyStyleCommand(editor, presetRole, undefined, undefined, formattingPreset)
+      return
+    }
     switch (format) {
       case 'bold':          editor.chain().focus().setBold().run(); break
       case 'italic':        editor.chain().focus().setItalic().run(); break
@@ -1386,6 +1426,12 @@ export default function Document(): JSX.Element {
     }
     if (format === 'title') {
       applyStyleCommand(editor, 'title', from, to, formattingPreset)
+      return
+    }
+    // A predicted heading takes the active preset's look, not a bare heading.
+    const rangeRole = findAcademicPreset(formattingPreset) ? structuralRole(format) : null
+    if (rangeRole && !markdownMarkerLength(format, from)) {
+      applyStyleCommand(editor, rangeRole, from, to, formattingPreset)
       return
     }
     // A markdown marker the author typed is replaced by the real format.
@@ -2666,6 +2712,7 @@ export default function Document(): JSX.Element {
    * as-is. Text-format actions still get the text + mark snapshot.
    */
   function handleFormat(formatType: string, payload?: BehaviorEventPayload): void {
+    notePresetOverride(formatType)
     const nextContent = latestContentRef.current
     latestContentRef.current = nextContent
     setContent(nextContent)
@@ -2748,7 +2795,14 @@ export default function Document(): JSX.Element {
       typeof format === 'object' &&
       !format.formatGroup &&
       (format.bold || format.italic || format.underline || format.fontSize || format.textAlign)
-    if (typeof format === 'object' && (format.suggestionSource === 'learned' || carriesStyle)) {
+    // With a preset active, a learned heading keeps its role but takes the preset's look: the
+    // habit's own size or font (Arial 14pt in an IEEE paper) would break the template.
+    const presetGoverns = Boolean(findAcademicPreset(formattingPreset)) && structuralRole(applied) !== null
+    if (presetGoverns && typeof format === 'object' && (format.suggestionSource === 'learned' || carriesStyle)) {
+      const learnedRange = format.range ?? (suggestionRange && scannerActive && suggestionRange.from === scannerActive.from ? suggestionRange : undefined)
+      if (learnedRange) applyFormatToRangePreservingSelection(applied, learnedRange.from, learnedRange.to)
+      else applyPromptFormat(applied)
+    } else if (typeof format === 'object' && (format.suggestionSource === 'learned' || carriesStyle)) {
       // Keep the applied block highlighted after accept so the user sees
       // exactly which text received the learned format.
       // A scanner suggestion formats its own block. Without this the live selection
@@ -2885,9 +2939,11 @@ export default function Document(): JSX.Element {
     const timer = window.setTimeout(() => {
       if (editor.isDestroyed) return
       const pages = new Map<GrammarIssue, number>()
-      for (const issue of grammarIssues.slice(0, 100)) {
+      // The page zones are measured once for every issue (the suggestion scope needs them all).
+      const pageOf = pageFinder(editor)
+      for (const issue of grammarIssues) {
         const range = locateIssue(issue)
-        if (range) pages.set(issue, pageNumberAt(editor, range.from))
+        if (range) pages.set(issue, pageOf(range.from))
       }
       setGrammarPages(pages)
     }, 800)
@@ -3163,6 +3219,29 @@ export default function Document(): JSX.Element {
   /** True once the user has dismissed the prompt for the current document. */
   const forkPromptDismissed = useRef(false)
   const [forkPromptOpen, setForkPromptOpen] = useState(false)
+  // What drifted from the preset, for the prompt: the page setup, or the headings' look.
+  const [forkDriftReason, setForkDriftReason] = useState('Your page setup')
+  // Manual restyles of headings and the title in this preset document (reset when the preset changes).
+  const headingOverrides = useRef(0)
+  useEffect(() => {
+    headingOverrides.current = 0
+  }, [formattingPreset])
+
+  /**
+   * Count a ribbon restyle of a heading or the title against the preset's look; after
+   * OVERRIDE_FORK_THRESHOLD of them, offer to save the document's look as the user's own version.
+   */
+  function notePresetOverride(action: string): void {
+    if (!editor || editor.isDestroyed || readOnly || forkPromptDismissed.current) return
+    if (!isTypographyOverride(action) || !ACADEMIC_PRESETS.some((preset) => preset.key === formattingPreset)) return
+    const block = editor.state.selection.$from.parent
+    if (block.type.name !== 'heading' && block.attrs.docRole !== 'title') return
+    headingOverrides.current += 1
+    if (headingOverrides.current >= OVERRIDE_FORK_THRESHOLD) {
+      setForkDriftReason('Your heading formatting')
+      setForkPromptOpen(true)
+    }
+  }
   const [forkBusy, setForkBusy] = useState(false)
   const [forkError, setForkError] = useState('')
 
@@ -3343,7 +3422,8 @@ export default function Document(): JSX.Element {
       margins: setup.margins,
     })
 
-    setForkPromptOpen(drifted)
+    if (drifted) setForkDriftReason('Your page setup')
+    setForkPromptOpen(drifted || headingOverrides.current >= OVERRIDE_FORK_THRESHOLD)
   }
 
   /**
@@ -3358,7 +3438,10 @@ export default function Document(): JSX.Element {
     setForkBusy(true)
     setForkError('')
     try {
-      const fork = await api.formatting.createUserPreset({ baseKey })
+      // The new version is read from this document (its headings and page setup), so what is on
+      // screen must be saved first.
+      await flushSave(false)
+      const fork = await api.formatting.createUserPreset({ baseKey, documentId: id })
       setFormattingPreset(fork.key)
       forkPromptDismissed.current = true
       setForkPromptOpen(false)
@@ -3427,7 +3510,7 @@ export default function Document(): JSX.Element {
     setPresetToast({ presetKey: key, summary: describePresetChanges(preset), result: null })
     schedulePresetToastHide()
     // Switching preset restyles the captions and, for IEEE, the citation style.
-    if (editor && !editor.isDestroyed) editor.commands.setCaptionLabelStyle(basePresetKey(key) === 'ieee' ? 'ieee' : 'default')
+    if (editor && !editor.isDestroyed) editor.commands.setCaptionLabelStyle(captionConfig ?? captionsForPreset(key))
     if (basePresetKey(key) === 'ieee') setCitationStyle('ieee')
     if (id) {
       try {
@@ -3483,11 +3566,51 @@ export default function Document(): JSX.Element {
   }
 
 
+  // Which suggestions are shown (lib/suggestionScope): the caret's page, ±5 pages around it, or all.
+  const [suggestionScope, setSuggestionScopeState] = useState<SuggestionScope>(readSuggestionScope)
+  const setSuggestionScope = useCallback((scope: SuggestionScope): void => {
+    setSuggestionScopeState(scope)
+    storeSuggestionScope(scope)
+  }, [])
+  // The page the caret is on, measured at most every 300 ms as it moves or the text changes.
+  const [caretPage, setCaretPage] = useState<number | null>(null)
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    let timer = 0
+    const measure = (): void => {
+      timer = 0
+      if (editor.isDestroyed) return
+      try {
+        const page = pageNumberAt(editor, editor.state.selection.anchor)
+        setCaretPage((current) => (current === page ? current : page))
+      } catch {
+        /* the layout is not ready: keep the last page */
+      }
+    }
+    const schedule = (): void => {
+      if (!timer) timer = window.setTimeout(measure, 300)
+    }
+    editor.on('selectionUpdate', schedule)
+    editor.on('update', schedule)
+    schedule()
+    return () => {
+      editor.off('selectionUpdate', schedule)
+      editor.off('update', schedule)
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [editor])
+  // Only the issues in scope are underlined: a long document's hundreds of underlines were what
+  // made typing lag. The list keeps every issue (the side panel filters what it shows).
+  const scopedGrammarIssues = useMemo(
+    () => (suggestionScope === 'all' ? grammarIssues : grammarIssues.filter((issue) => inSuggestionScope(suggestionScope, grammarPages.get(issue), caretPage))),
+    [grammarIssues, grammarPages, caretPage, suggestionScope],
+  )
+
   // Push grammar issues into the editor's wavy-underline decorations whenever they change.
   useEffect(() => {
     if (!editor || !editor.commands.setGrammarIssues) return
-    editor.commands.setGrammarIssues(grammarIssues)
-  }, [editor, grammarIssues])
+    editor.commands.setGrammarIssues(scopedGrammarIssues)
+  }, [editor, scopedGrammarIssues])
 
   // Open the click-anchored popover when the user clicks a wavy underline.
   // Grammar-underline clicks are forwarded from every page editor by the
@@ -3794,6 +3917,7 @@ export default function Document(): JSX.Element {
               onShowGridlinesChange={setShowGridlines}
               pageSetupFocusRequest={pageSetupFocusRequest}
               onPageSetupFocusHandled={handlePageSetupFocusHandled}
+              onOpenCaptionSettings={readOnly ? undefined : () => { setCaptionError(''); setCaptionDialogOpen(true) }}
               onOpenPersonalization={() => setProfileModalOpen(true)}
               onExportRequest={requestExport}
               wholeBodyActionsBlocked={isTabbed ? 'This document is split into tabs. Merge the tabs first (left panel) to import a file over it or restructure it.' : null}
@@ -4035,7 +4159,7 @@ export default function Document(): JSX.Element {
               onContentChange={handleContentChange}
               onActiveEditorChange={setEditor}
               onGrammarClick={handleGrammarClick}
-              grammarIssues={grammarIssues}
+              grammarIssues={scopedGrammarIssues}
               underlineStyle={prefs.underlineStyle}
               pageSize={pageSize}
               margins={margins}
@@ -4086,6 +4210,17 @@ export default function Document(): JSX.Element {
               onMeasured={recordTabFacts}
             />
           )}
+          <CaptionSettingsDialog
+            open={captionDialogOpen}
+            config={effectiveCaptions}
+            custom={captionConfig !== null}
+            presetName={findAcademicPreset(formattingPreset)?.name ?? 'standard'}
+            busy={captionBusy}
+            error={captionError}
+            onSave={(next) => void saveCaptionSettings(next)}
+            onUsePreset={() => void saveCaptionSettings(null)}
+            onClose={() => setCaptionDialogOpen(false)}
+          />
           <ExportTabsDialog
             format={exportFormat}
             tabs={docTabs ?? []}
@@ -4322,7 +4457,7 @@ export default function Document(): JSX.Element {
             >
               <PresetForkPrompt
                 baseName={activeAcademicPreset.name}
-                driftedOn="Your page setup"
+                driftedOn={forkDriftReason}
                 onFork={handleForkPreset}
                 onDismiss={handleDismissForkPrompt}
                 busy={forkBusy}
@@ -4411,6 +4546,9 @@ export default function Document(): JSX.Element {
           grammarError={grammarCheck.error}
           grammarCheckedAt={grammarCheck.lastCheckedAt}
           grammarPages={grammarPages}
+          suggestionScope={suggestionScope}
+          onSuggestionScopeChange={setSuggestionScope}
+          currentPage={caretPage}
           onCheckGrammar={() => void grammarCheck.runCheck()}
           onOpenScanner={openScannerInDocument}
           onOpenMl={openMlInDocument}

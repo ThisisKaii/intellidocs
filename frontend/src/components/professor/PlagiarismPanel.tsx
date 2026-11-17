@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { ClipboardCheck, Globe2, RefreshCw, Square, Users } from 'lucide-react'
+import { ClipboardCheck, Globe2, Loader2, RefreshCw, Square, Users, X } from 'lucide-react'
 import { api, type GlobalScopeFilters, type PlagiarismScanDetail, type PlagiarismScope } from '@/services/api'
 import { SimilarityMatrix } from '@/components/editor/SimilarityMatrix'
 import { CouncilInspectionModal } from '@/components/editor/CouncilInspectionModal'
@@ -10,6 +10,24 @@ interface ScanProgress {
   done: number
   total: number
   title: string
+}
+
+/** How often a running scan is checked, and how long one is waited for before moving on. */
+const SCAN_POLL_MS = 3000
+const SCAN_WAIT_MS = 180_000
+
+/**
+ * A started scan, once the council has finished it (or failed). Null when it is still running
+ * after SCAN_WAIT_MS: it carries on on the server, and the professor is notified when it is done.
+ */
+async function waitForScan(scanId: string): Promise<PlagiarismScanDetail | null> {
+  const started = Date.now()
+  while (Date.now() - started < SCAN_WAIT_MS) {
+    await new Promise((resolve) => setTimeout(resolve, SCAN_POLL_MS))
+    const detail = await api.plagiarism.getScan(scanId)
+    if (detail.scan.scan_status !== 'running') return detail
+  }
+  return null
 }
 
 /** Distinct non-empty values, sorted newest-looking first (terms like "2026-T1" sort by year). */
@@ -26,6 +44,8 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
   const [refreshKey, setRefreshKey] = useState(0)
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [detail, setDetail] = useState<PlagiarismScanDetail | null>(null)
+  // The toast shown when a batch of scans is done, with the last finished report.
+  const [finished, setFinished] = useState<{ text: string; report: PlagiarismScanDetail | null } | null>(null)
   const cancelRef = useRef(false)
   const [term, setTerm] = useState('')
   const [classCode, setClassCode] = useState('')
@@ -51,15 +71,28 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
     cancelRef.current = false
     setScanning(true)
     setNotice(null)
+    setFinished(null)
     let done = 0
+    let failed = 0
+    let stillRunning = 0
+    let report: PlagiarismScanDetail | null = null
     try {
+      // One scan at a time: each answers at once and the council works on the server, so the page
+      // stays usable; the next submission starts when the last one is done.
       for (const doc of docs) {
         if (cancelRef.current) break
         setProgress({ done, total: docs.length, title: doc.title || 'Untitled' })
-        await api.plagiarism.runScan(activeFolderId, doc.id, scope, filters)
+        const started = await api.plagiarism.runScan(activeFolderId, doc.id, scope, filters)
+        const result = started.scan.scan_status === 'running' ? await waitForScan(started.scan.scan_id) : started
+        if (!result) stillRunning += 1
+        else if (result.scan.scan_status === 'failed') failed += 1
+        else report = result
         done += 1
       }
-      setNotice({ tone: 'ok', text: `${cancelRef.current ? 'Stopped after' : 'Scanned'} ${done} of ${docs.length} submissions (${scope === 'global' ? 'all your classes' : 'this class'}).` })
+      const parts = [`${cancelRef.current ? 'Stopped after' : 'Scanned'} ${done} of ${docs.length} submissions (${scope === 'global' ? 'all your classes' : 'this class'}).`]
+      if (failed > 0) parts.push(`${failed} could not finish; run them again.`)
+      if (stillRunning > 0) parts.push(`${stillRunning} still running; you will be notified when done.`)
+      setFinished({ text: parts.join(' '), report })
       setRefreshKey((key) => key + 1)
       onScanned()
     } catch (err) {
@@ -151,6 +184,9 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
 
       {progress && (
         <div aria-live="polite">
+          <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+            <Loader2 className="size-3.5 animate-spin" /> Originality scan in progress… you can keep working
+          </p>
           <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
             <div className="h-full bg-primary transition-all" style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} />
           </div>
@@ -166,6 +202,31 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
       </div>
 
       <CouncilInspectionModal isOpen={detail !== null} onClose={() => setDetail(null)} detail={detail} classNames={classNames} />
+
+      {finished && (
+        <div role="status" aria-live="polite" className="fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-xl border border-border bg-card p-4 shadow-lg">
+          <ClipboardCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+          <div className="flex-1 text-sm">
+            <p className="font-semibold">Originality scan complete</p>
+            <p className="mt-0.5 text-muted-foreground">{finished.text}</p>
+            {finished.report && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDetail(finished.report)
+                  setFinished(null)
+                }}
+                className="mt-2 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                View Council Report
+              </button>
+            )}
+          </div>
+          <button type="button" aria-label="Dismiss" onClick={() => setFinished(null)} className="text-muted-foreground hover:text-foreground">
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

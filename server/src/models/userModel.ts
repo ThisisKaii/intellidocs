@@ -11,16 +11,16 @@ const supabase = createClient(
 )
 
 /**
- * Storage quota per role in bytes, sized so a class of free-tier testers fits in
- * the 500 MB database with room for versions and analytics. New accounts start as
- * `user`; academic verification (student, professor) and admin raise the cap.
- * Pro subscribers have no cap (see getUserStorageSummary).
+ * Storage quota per role in bytes: document text plus pictures (migration 050). A student's
+ * 100 MB holds a 1,400-page thesis with its pictures (about 85 MB once they are shrunk on import).
+ * New accounts start as `user`; academic verification (student, professor) and admin raise the
+ * cap. Pro subscribers have no cap (see getUserStorageSummary).
  */
 export const STORAGE_QUOTA_BYTES: Record<RoleName, number> = {
-  user: 10 * 1024 * 1024,
-  student: 25 * 1024 * 1024,
-  professor: 50 * 1024 * 1024,
-  admin: 100 * 1024 * 1024,
+  user: 25 * 1024 * 1024,
+  student: 100 * 1024 * 1024,
+  professor: 250 * 1024 * 1024,
+  admin: 500 * 1024 * 1024,
 }
 
 /**

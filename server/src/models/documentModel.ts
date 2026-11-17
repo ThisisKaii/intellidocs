@@ -14,6 +14,7 @@ import { hasTabBreaks } from '../utils/documentTabs'
 // Circular on purpose: the tab model builds on this one, and whole-body saves of a tabbed document
 // re-sync its tabs. Only used inside functions, so the cycle is safe.
 import { restoreTabVersion, syncTabsFromBody } from './documentTabModel'
+import { linkImagesToDocument, removeDocumentImages, removeImages, storeImage } from './imageStorageModel'
 
 export const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -65,40 +66,17 @@ export async function listDocuments<T>(
   return result
 }
 
-/** MIME types accepted for editor image uploads (matches the bucket policy). */
-const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
-  'image/svg+xml': 'svg',
-}
-
 /**
- * Upload an editor image into the public `document-images` bucket under the
- * owner's folder and return its public URL.
+ * Store an editor or imported picture under the owner's folder (Cloudflare R2 when configured,
+ * else the Supabase `document-images` bucket) and return its public URL. It counts toward the
+ * owner's storage (migration 050).
  */
 export async function uploadDocumentImage(
   userId: string,
   file: { buffer: Buffer; mimetype: string },
+  documentId?: string | null,
 ): Promise<string> {
-  const extension = IMAGE_MIME_EXTENSIONS[file.mimetype] ?? 'png'
-  const objectPath = `${userId}/${randomUUID()}.${extension}`
-  const { error } = await supabase.storage
-    .from('document-images')
-    .upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: false })
-  if (error) {
-    throw new Error(`Image upload failed: ${error.message}`)
-  }
-  const { data } = supabase.storage.from('document-images').getPublicUrl(objectPath)
-  return data.publicUrl
-}
-
-/** Where a stored picture lives in the document-images bucket, from its public URL (null for any other URL). */
-function documentImagePath(url: string): string | null {
-  const marker = '/object/public/document-images/'
-  const at = url.indexOf(marker)
-  return at < 0 ? null : decodeURIComponent(url.slice(at + marker.length).split('?')[0])
+  return storeImage(userId, file, documentId)
 }
 
 /**
@@ -106,11 +84,12 @@ function documentImagePath(url: string): string | null {
  * leaves nothing behind in storage. Best-effort: a picture that cannot be removed is left.
  */
 export async function deleteDocumentImages(urls: string[]): Promise<void> {
-  const paths = urls.map(documentImagePath).filter((path): path is string => Boolean(path))
-  for (let start = 0; start < paths.length; start += 100) {
-    const { error } = await supabase.storage.from('document-images').remove(paths.slice(start, start + 100))
-    if (error) console.warn('Could not remove pictures of a failed import:', error.message)
-  }
+  await removeImages(urls)
+}
+
+/** Tie the pictures a new document shows (in its body, JSON or layout) to it. */
+export async function linkDocumentImages(userId: string, documentId: string, texts: string[]): Promise<void> {
+  await linkImagesToDocument(userId, documentId, texts)
 }
 
 /** 1-hour TTL for cached document reads. */
@@ -393,8 +372,15 @@ export async function restoreDocument(id: string, userId: string): Promise<void>
   void invalidateDocumentCache(id)
 }
 
-/** Permanently delete a document (owner only, removes the row entirely). */
+/** Delete a document's pictures before it is deleted for good, when the user owns it. */
+async function removeOwnDocumentImages(id: string, userId: string): Promise<void> {
+  const { data } = await supabase.from('documents').select('id').eq('id', id).eq('user_id', userId).maybeSingle()
+  if (data) await removeDocumentImages(id)
+}
+
+/** Permanently delete a document (owner only, removes the row entirely), and its pictures. */
 export async function purgeDocument(id: string, userId: string): Promise<void> {
+  await removeOwnDocumentImages(id, userId)
   const { error } = await supabase
     .from('documents')
     .delete()
@@ -482,6 +468,7 @@ function withoutPreviewSnippet(payload: Record<string, unknown>): Record<string,
   delete clone.content_json
   delete clone.citation_data
   delete clone.page_layout
+  delete clone.caption_config
   return clone
 }
 
@@ -606,6 +593,7 @@ export async function deleteDocument(
   id: string,
   userId: string
 ): Promise<void> {
+  await removeOwnDocumentImages(id, userId)
   const { error } = await supabase
     .from('documents')
     .delete()

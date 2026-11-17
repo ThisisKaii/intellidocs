@@ -1,5 +1,6 @@
 import type { PageSizeKey, PageOrientation, MarginValues } from './TiptapEditor'
 import type { PresetBlueprint } from '@/services/api'
+import { APA_CAPTIONS, IEEE_CAPTIONS, type CaptionConfig } from './captionNumbering'
 
 /**
  * One-click academic formatting presets. Each preset drives:
@@ -49,6 +50,8 @@ export interface AcademicPreset {
   legacyMargins?: MarginValues[]
   /** Extra scoped rules appended to the generated stylesheet. */
   extraCss?: string
+  /** How captions are placed and written in documents using this preset (default: Figure 1 below, Table 1 above). */
+  captions?: CaptionConfig
   /** Scoped stylesheet applied while this preset is active. */
   css: string
 }
@@ -129,6 +132,7 @@ ${preset.extraCss ?? ''}`
 /** APA 7th Edition academic paper style. */
 const APA_7TH: PresetInput = {
   key: 'apa_7th',
+  captions: APA_CAPTIONS,
   name: 'APA 7th Edition',
   description:
     "APA 7 — 1\" margins, Times New Roman 12pt, double-spaced, hanging-style centered title, five-level headings.",
@@ -150,6 +154,7 @@ const APA_7TH: PresetInput = {
 /** IEEE conference paper style. */
 const IEEE: PresetInput = {
   key: 'ieee',
+  captions: IEEE_CAPTIONS,
   name: 'IEEE Conference',
   description:
     'IEEE — Letter, 0.75" top, 1" bottom and 0.625" side margins, Times New Roman 10pt justified, centered small-caps Roman-numeral sections (I. II. III.), italic alphabetised subsections.',

@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { getStringListSetting } from './personalizationModel'
+import { removeUserImages } from './imageStorageModel'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -135,12 +136,9 @@ export async function exportAccountData(userId: string, email: string): Promise<
   }
 }
 
-/** Remove every image the user uploaded to the document-images bucket. */
+/** Remove every picture the user stored (R2 or the document-images bucket). */
 async function deleteUserImages(userId: string): Promise<void> {
-  const bucket = supabase.storage.from('document-images')
-  const { data } = await bucket.list(userId, { limit: 1000 })
-  const paths = (data ?? []).map((object) => `${userId}/${object.name}`)
-  if (paths.length > 0) await bucket.remove(paths)
+  await removeUserImages(userId)
 }
 
 /**
