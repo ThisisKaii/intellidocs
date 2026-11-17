@@ -700,8 +700,10 @@ export interface AIChatResponse {
   reply: string
   provider: string
   model: string
-  mode?: 'chat' | 'preview' | 'structure' | 'citations' | 'refine'
+  mode?: 'chat' | 'preview' | 'structure' | 'citations' | 'refine' | 'captions'
   preview?: AIChatPreview | null
+  /** mode 'captions': which kinds to auto-caption; the editor finds what has no caption. */
+  captionKinds?: Array<'figure' | 'table'>
   /** Sections of the document an AI answer was based on; present only for AI answers. */
   sources?: Array<{ title: string }>
   /** mode 'structure': the user's notes organised into a section. */

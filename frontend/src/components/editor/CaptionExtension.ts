@@ -1,9 +1,10 @@
 import { Extension } from '@tiptap/core'
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import type { Mark, Node as ProseMirrorNode, Schema } from '@tiptap/pm/model'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 
 import { hasLocalDocChange } from './collabTransactions'
+import { planAutoCaptions } from './autoCaption'
 import { changedBlocks } from './changedRanges'
 import {
   CAPTION_LABEL,
@@ -17,6 +18,7 @@ import {
   type CaptionContext,
   type CaptionEntry,
   type CaptionKind,
+  type CaptionKindConfig,
   type CaptionLabelStyle,
   type CaptionStyleSpec,
   resolveCaptionConfig,
@@ -33,6 +35,12 @@ declare module '@tiptap/core' {
        * document's caption settings put it (above or below), written in their label and typography.
        */
       insertCaption: (kind: CaptionKind) => ReturnType
+      /**
+       * Caption every figure and table of these kinds that has none, in one step: numbered, in the
+       * caption style, with a title only where the document already has one (alt text, slot label,
+       * a table's title row). False when there is nothing to caption.
+       */
+      insertAutoCaptions: (kinds?: CaptionKind[]) => ReturnType
       /** Rewrite every caption label to the current label style and renumber in document order. */
       renumberCaptions: () => ReturnType
       /** Choose the caption style (from the preset, or Page Setup → Captions) and relabel to it. */
@@ -138,6 +146,30 @@ function touchesCaptions(transactions: readonly Transaction[], doc: ProseMirrorN
   )
 }
 
+/**
+ * A caption paragraph: its label (bold where the style asks), the separator, and the title if
+ * there is one, all in the caption's font and size. `titleMarks` are the marks a title typed
+ * after it should carry (italic where the style asks).
+ */
+function captionParagraph(
+  schema: Schema,
+  config: CaptionKindConfig,
+  kind: CaptionKind,
+  label: string,
+  title: string | null,
+): { paragraph: ProseMirrorNode; titleMarks: Mark[] } {
+  const textStyle = schema.marks.textStyle && (config.fontSize || config.fontFamily)
+    ? [schema.marks.textStyle.create({ fontSize: config.fontSize || null, fontFamily: config.fontFamily || null })]
+    : []
+  const labelMarks = config.boldLabel && schema.marks.bold ? [...textStyle, schema.marks.bold.create()] : textStyle
+  const titleMarks = config.italicText && schema.marks.italic ? [...textStyle, schema.marks.italic.create()] : textStyle
+  const content = [schema.text(label, labelMarks)]
+  if (config.separator === 'line' && schema.nodes.hardBreak) content.push(schema.nodes.hardBreak.create())
+  else content.push(schema.text(config.separator === 'line' ? '. ' : config.separator, textStyle))
+  if (title) content.push(schema.text(title, titleMarks))
+  return { paragraph: schema.nodes.paragraph.create({ captionKind: kind, textAlign: config.alignment }, content), titleMarks }
+}
+
 /** Apply planned caption changes to a transaction, last to first so positions stay valid. */
 function applyCaptionChanges(tr: Transaction, plan: { edits: CaptionEdit[]; unmark: number[] }): void {
   for (const pos of plan.unmark) {
@@ -206,24 +238,41 @@ export const CaptionExtension = Extension.create({
             pos = $from.after(1)
           }
 
-          // The caption's typography: its size and font on all of it, bold on the label only.
-          const textStyle = schema.marks.textStyle && (config.fontSize || config.fontFamily)
-            ? [schema.marks.textStyle.create({ fontSize: config.fontSize || null, fontFamily: config.fontFamily || null })]
-            : []
-          const labelMarks = config.boldLabel && schema.marks.bold ? [...textStyle, schema.marks.bold.create()] : textStyle
           // Numbered after the captions above it, whether the editor or the original file made them.
           const label = labelForNewCaption(state.doc, kind, pos, this.storage.labelStyle, this.storage.context)
-          const content = [schema.text(label, labelMarks)]
-          if (config.separator === 'line' && schema.nodes.hardBreak) content.push(schema.nodes.hardBreak.create())
-          else content.push(schema.text(config.separator === 'line' ? '. ' : config.separator, textStyle))
-          const paragraph = schema.nodes.paragraph.create({ captionKind: kind, textAlign: config.alignment }, content)
+          const { paragraph, titleMarks } = captionParagraph(schema, config, kind, label, null)
           if (dispatch) {
             tr.insert(pos, paragraph)
             tr.setMeta(CAPTION_INSERTED, true)
             tr.setSelection(TextSelection.near(tr.doc.resolve(pos + paragraph.nodeSize - 1)))
             // The title typed next: in the caption's size, and in italics where the style asks.
-            tr.setStoredMarks(config.italicText && schema.marks.italic ? [...textStyle, schema.marks.italic.create()] : textStyle)
+            tr.setStoredMarks(titleMarks)
             dispatch(tr.scrollIntoView())
+          }
+          return true
+        },
+
+      insertAutoCaptions:
+        (kinds: CaptionKind[] = ['figure', 'table']) =>
+        ({ state, tr, dispatch }) => {
+          const config = resolveCaptionConfig(this.storage.labelStyle)
+          const items = planAutoCaptions(state.doc, config, kinds)
+          if (items.length === 0) return false
+          if (dispatch) {
+            // Last to first, so earlier positions stay valid. Each gets a placeholder number: the
+            // numbering plugin renumbers every caption in document order once they are all in.
+            for (const item of [...items].reverse()) {
+              const label = captionLabel(item.kind, 1, this.storage.labelStyle)
+              const paragraph = captionParagraph(state.schema, config[item.kind], item.kind, label, item.title).paragraph
+              // A table's title row moves into its caption. Whichever change comes later in the
+              // document goes first, so the other's position still holds.
+              const moved = item.moveFrom
+              if (moved && moved.from >= item.insertAt) tr.delete(moved.from, moved.to)
+              tr.insert(item.insertAt, paragraph)
+              if (moved && moved.from < item.insertAt) tr.delete(moved.from, moved.to)
+            }
+            tr.setMeta(CAPTION_INSERTED, true)
+            dispatch(tr)
           }
           return true
         },

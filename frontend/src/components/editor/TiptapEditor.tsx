@@ -93,6 +93,7 @@ import {
   Table as TableIcon,
   Image as ImageIcon,
   ImagePlus,
+  Subtitles,
   FileUp,
   Minus as HRLine,
   SeparatorHorizontal,
@@ -110,6 +111,7 @@ import {
   BookOpen,
 } from 'lucide-react'
 import { requestFindCitations } from '@/lib/findCitationsRequest'
+import { requestAutoCaption } from '@/lib/autoCaptionRequest'
 import { api } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { LetterSpacingExtension } from './LetterSpacingExtension'
@@ -2953,6 +2955,11 @@ export function TiptapToolbar({
             const label = window.prompt('What goes in this picture slot?', 'Figure')
             if (label !== null) editor?.chain().focus().insertPictureSlot(label.trim() || 'Figure').run()
           }}
+        />
+        <ToolButton
+          icon={Subtitles}
+          title="Auto caption: add a numbered caption to every figure and table that has none"
+          onClick={() => requestAutoCaption()}
         />
         <input
           ref={imageInputRef}

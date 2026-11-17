@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 import type { AIGroundedPaper, AIStructuredSection, AIToneCategory, AIToneRefinement } from '@/services/api'
+import type { AutoCaptionItem, CaptionTitleSource } from './autoCaption'
 
 /** Lifecycle of a card that changes the document once. */
 export type CardStatus = 'pending' | 'done' | 'dismissed'
@@ -262,6 +263,91 @@ export function RefineCard({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+const SOURCE_NOTES: Record<NonNullable<CaptionTitleSource>, string> = {
+  'alt text': 'from its alt text',
+  'slot label': 'from its picture slot label',
+  'title row': 'from its title row',
+}
+
+/** At most this many items are listed; the rest are counted. */
+const MAX_LISTED = 8
+
+/**
+ * "Auto caption": every figure and table without a caption, with the title each will get (only
+ * from the user's own words) or a note that the user writes it. After adding, the captions still
+ * missing a title can be visited one by one.
+ */
+export function AutoCaptionCard({
+  items,
+  status,
+  untitled,
+  onApply,
+  onDismiss,
+  onNextUntitled,
+}: {
+  items: AutoCaptionItem[]
+  status: CardStatus
+  /** After adding: how many captions still have no title. */
+  untitled: number | null
+  onApply: () => void
+  onDismiss: () => void
+  onNextUntitled: () => void
+}): JSX.Element {
+  const figures = items.filter((item) => item.kind === 'figure').length
+  const tables = items.length - figures
+  const counts = [figures > 0 ? `${figures} figure${figures === 1 ? '' : 's'}` : '', tables > 0 ? `${tables} table${tables === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')
+  const blank = items.filter((item) => item.title === null).length
+  return (
+    <div style={cardStyle} data-testid="auto-caption-card">
+      <div style={eyebrowStyle}>Auto caption</div>
+      {items.length === 0 ? (
+        <div style={noteStyle}>Every figure and table already has a caption.</div>
+      ) : (
+        <>
+          <div style={{ fontSize: '0.8125rem', marginBottom: '0.375rem' }}>{counts} without a caption.</div>
+          <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.75rem', lineHeight: 1.45 }}>
+            {items.slice(0, MAX_LISTED).map((item) => (
+              <li key={`${item.kind}-${item.from}`}>
+                <span style={{ fontWeight: 600 }}>{item.kind === 'figure' ? 'Figure' : 'Table'}</span>
+                {item.title ? (
+                  <>
+                    {': '}
+                    {item.title}{' '}
+                    <span style={{ opacity: 0.7 }}>
+                      ({item.moveFrom ? 'moved from its title row into the caption' : item.titleSource ? SOURCE_NOTES[item.titleSource] : ''})
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ opacity: 0.7 }}>: no title yet, you write it</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {items.length > MAX_LISTED && <div style={{ ...noteStyle, marginTop: '0.25rem' }}>and {items.length - MAX_LISTED} more</div>}
+          <div style={{ ...noteStyle, marginTop: '0.375rem' }}>
+            Numbered and styled from your caption settings. Titles only come from your own words in the document
+            {blank > 0 ? `; ${blank} will be left for you to write.` : '.'}
+          </div>
+        </>
+      )}
+      {status === 'pending' && items.length > 0 && (
+        <ActionRow primary={`Add ${items.length} caption${items.length === 1 ? '' : 's'}`} onPrimary={onApply} onDismiss={onDismiss} />
+      )}
+      {status === 'done' && (
+        <div style={{ ...doneStyle, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span>✓ Captions added{untitled ? `. ${untitled} still need${untitled === 1 ? 's' : ''} a title.` : '.'}</span>
+          {untitled ? (
+            <button type="button" style={smallButton} onClick={onNextUntitled}>
+              Go to next untitled caption
+            </button>
+          ) : null}
+        </div>
+      )}
+      {status === 'dismissed' && <div style={doneStyle}>Dismissed</div>}
     </div>
   )
 }

@@ -21,6 +21,7 @@ import {
 } from '../skills/buildLearnedFormattingPlan'
 import { documentBody } from '../models/documentTabModel'
 import { detectWritingTask, type WritingTask } from '../skills/detectWritingTask'
+import { detectCaptionRequest } from '../skills/detectCaptionRequest'
 import { orchestrateSectionDraft } from '../skills/orchestrateSectionDraft'
 import { groundLiteratureCitations } from '../skills/groundLiteratureCitations'
 import { refineAcademicTone } from '../skills/refineAcademicTone'
@@ -564,6 +565,22 @@ export async function chatWithAI(req: Request, res: Response): Promise<void> {
           remaining: quota.remaining,
           resetInSeconds: quota.resetInSeconds,
         },
+      })
+      return
+    }
+
+    // "Auto caption": the editor finds what has no caption and shows it as a preview card.
+    const captionRequest = detectCaptionRequest(message)
+    if (captionRequest) {
+      const providerSummary = getProviderSummary()
+      const what = captionRequest.kinds.length === 2 ? 'figure and table' : captionRequest.kinds[0]
+      res.status(200).json({
+        reply: `I’ll look for every ${what} without a caption. Titles come only from your own words already in the document (a picture’s alt text, a table’s title row); the rest are left blank for you to write.`,
+        provider: providerSummary.provider,
+        model: providerSummary.model,
+        mode: 'captions',
+        captionKinds: captionRequest.kinds,
+        preview: null,
       })
       return
     }

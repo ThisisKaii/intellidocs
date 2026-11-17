@@ -83,6 +83,7 @@ import { CitationAssistant } from '@/components/editor/CitationAssistant'
 import HelpSheet from '@/components/editor/HelpSheet'
 import { CITATION_STYLE_LABELS, citeReferences, formatBibliographyEntry, generateCitationKey, orderForBibliography, type CitationData, type CitationNumberMap, type CitationReference, type CitationStyle } from '@/lib/citationFormats'
 import { onFindCitationsRequest } from '@/lib/findCitationsRequest'
+import { onAutoCaptionRequest } from '@/lib/autoCaptionRequest'
 import type { TextRange } from '@/components/editor/chatFormatting'
 import DocumentPartsPanel from '@/components/editor/DocumentPartsPanel'
 import { buildReferenceNodes, insertOrUpdateGenerated, pageNumberAt, referencesHeadingEnd } from '@/components/editor/DocumentParts'
@@ -481,6 +482,7 @@ export default function Document(): JSX.Element {
   const [references, setReferences] = useState<CitationReference[]>([])
   /** A message for the assistant to send, set by the selection toolbar's "Find citations". */
   const [assistantPrompt, setAssistantPrompt] = useState<string | null>(null)
+  const [assistantAutoCaption, setAssistantAutoCaption] = useState(false)
   /** The citation data last loaded from or saved to the server, as JSON; edits are compared against it. */
   const savedCitationsRef = useRef<string | null>(null)
   const referencesKey = id ? `intellidocs.references.${id}` : null
@@ -3127,6 +3129,17 @@ export default function Document(): JSX.Element {
     []
   )
 
+  // The ribbon's "Auto caption": open the assistant on the caption card.
+  useEffect(
+    () =>
+      onAutoCaptionRequest(() => {
+        setRightPanelOpen(true)
+        setSidePanelTab('assistant')
+        setAssistantAutoCaption(true)
+      }),
+    []
+  )
+
   /** Panel card opened on a grammar/spelling issue: select the words, scroll to them and spotlight the line. */
   function openGrammarInDocument(issue: GrammarIssue): void {
     const range = locateIssue(issue)
@@ -4636,6 +4649,8 @@ export default function Document(): JSX.Element {
             onAddCitations: addCitationsFromAssistant,
             pendingPrompt: assistantPrompt,
             onPendingPromptConsumed: () => setAssistantPrompt(null),
+            pendingAutoCaption: assistantAutoCaption,
+            onPendingAutoCaptionConsumed: () => setAssistantAutoCaption(false),
           }}
           scannerSuggestions={scannerSuggestions}
           activeScannerKey={scannerActive?.key ?? null}

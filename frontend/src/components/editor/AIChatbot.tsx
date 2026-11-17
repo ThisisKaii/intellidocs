@@ -5,7 +5,9 @@ import { MessageSquare, X, Send, Loader2, Sparkles } from 'lucide-react'
 import { editorUndoDepth, startNewUndoStep } from './undoDepth'
 import { api, type AIChatBlockCategory, type AIChatFormattingOperation, type AIChatPreviewMeta, type AIChatStyleChange, type AIChatTargetCategory, type AIChatTargetMode, type AIGroundedPaper, type AIStructuredSection, type AIToneRefinement, type LearnedFormattingRule, type RejectedFormattingPreview } from '@/services/api'
 import { applyFormatsToRanges, applyFormatsToSelection, applyStyle, findCategoryRanges, findLearnedBlockRanges, hasStyle, preferWholeBlocks, replaceTextsInRange, resolveTargetRanges, type BlockCategory, type TextRange } from './chatFormatting'
-import { CitationsCard, RefineCard, StructureCard, type CardStatus, type EditStatus } from './WritingAssistCards'
+import { AutoCaptionCard, CitationsCard, RefineCard, StructureCard, type CardStatus, type EditStatus } from './WritingAssistCards'
+import { captionsWithoutTitle, planAutoCaptions, type AutoCaptionItem } from './autoCaption'
+import { resolveCaptionConfig, type CaptionKind, type CaptionStyleSpec } from './captionNumbering'
 import { buildStructuredSectionContent, headingLevelAt } from './structuredSection'
 import { findAcademicPreset } from './academicPresets'
 import { getEditorPreferences, setEditorPreferences, subscribeEditorPreferences } from '@/lib/editorPreferences'
@@ -45,6 +47,11 @@ interface ChatMessage {
   papers?: AIGroundedPaper[] | null
   /** "Refine this…": revisions of the user's own text, applied one by one. */
   refinement?: AIToneRefinement | null
+  /** "Auto caption": the figures and tables without a caption when the request came in. */
+  auto_captions?: AutoCaptionItem[] | null
+  caption_kinds?: CaptionKind[] | null
+  /** After captions were added: how many still have no title. */
+  captions_untitled?: number | null
   /** State of a structure or citations card. */
   assist_status?: CardStatus | null
   /** State of each revision in `refinement.edits`. */
@@ -132,6 +139,9 @@ export interface WritingAssistWiring {
   /** A message to send as if typed (the bubble menu's "Find citations"). */
   pendingPrompt: string | null
   onPendingPromptConsumed: () => void
+  /** The ribbon's "Auto caption": show the caption card without a round trip to the server. */
+  pendingAutoCaption?: boolean
+  onPendingAutoCaptionConsumed?: () => void
 }
 
 /** Text-align values for the align_* formats, keyed by format name. */
@@ -837,6 +847,41 @@ export default function AIChatbot({
     if (inserted) patchMessage(messageIndex, { assist_status: 'done' })
   }
 
+  /** The figures and tables of these kinds that have no caption, under the document's caption settings. */
+  function planCaptions(kinds: CaptionKind[]): AutoCaptionItem[] {
+    if (!editor || editor.isDestroyed) return []
+    const style = (editor.storage as unknown as { captions?: { labelStyle?: CaptionStyleSpec } }).captions?.labelStyle ?? 'default'
+    return planAutoCaptions(editor.state.doc, resolveCaptionConfig(style), kinds)
+  }
+
+  /** A card listing what "Auto caption" would caption. */
+  function autoCaptionMessage(reply: string, kinds: CaptionKind[]): ChatMessage {
+    return { role: 'assistant', content: reply, auto_captions: planCaptions(kinds), caption_kinds: kinds, assist_status: 'pending' }
+  }
+
+  /** Add every missing caption in one step (one undo), then count the ones still without a title. */
+  function addAutoCaptions(messageIndex: number, kinds: CaptionKind[]): void {
+    const added = recordChange('the added captions', (target) => target.chain().focus().insertAutoCaptions(kinds).run())
+    if (!added || !editor) {
+      patchMessage(messageIndex, { auto_captions: planCaptions(kinds) })
+      return
+    }
+    patchMessage(messageIndex, { assist_status: 'done', captions_untitled: captionsWithoutTitle(editor.state.doc).length })
+    goToNextUntitledCaption()
+  }
+
+  /** Put the cursor at the end of the next caption (after the cursor, wrapping round) that has no title. */
+  function goToNextUntitledCaption(): void {
+    if (!editor || editor.isDestroyed) return
+    const untitled = captionsWithoutTitle(editor.state.doc)
+    if (untitled.length === 0) return
+    const cursor = editor.state.selection.from
+    const pos = untitled.find((at) => at + 1 > cursor) ?? untitled[0]
+    const node = editor.state.doc.nodeAt(pos)
+    if (!node) return
+    editor.chain().focus().setTextSelection(pos + node.nodeSize - 1).scrollIntoView().run()
+  }
+
   /** Cite the ticked papers where the selection was when the user asked, if that text is still there. */
   function citePapers(messageIndex: number, message: ChatMessage, papers: AIGroundedPaper[]): void {
     if (!writingAssist || papers.length === 0 || !editor || editor.isDestroyed) return
@@ -888,6 +933,19 @@ export default function AIChatbot({
     // send reads current state; it is not a dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writingAssist?.pendingPrompt, loading])
+
+  // The ribbon's "Auto caption": the card is built here, from the open document.
+  useEffect(() => {
+    if (!writingAssist?.pendingAutoCaption) return
+    writingAssist.onPendingAutoCaptionConsumed?.()
+    setMessages((current) => [
+      ...current,
+      { role: 'user', content: 'Auto caption the figures and tables' },
+      autoCaptionMessage('Here is every figure and table without a caption. Titles come only from your own words in the document; the rest are left for you to write.', ['figure', 'table']),
+    ])
+    // autoCaptionMessage reads the current document; it is not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writingAssist?.pendingAutoCaption])
 
   /** Send a message to the backend AI chat endpoint (the typed input, or `text` when given). */
   async function send(text?: string): Promise<void> {
@@ -1047,6 +1105,11 @@ export default function AIChatbot({
         lastPreviewRef.current,
         selectionText
       )
+
+      if (response.mode === 'captions') {
+        setMessages((current) => [...current, autoCaptionMessage(response.reply, response.captionKinds ?? ['figure', 'table'])])
+        return
+      }
 
       if (response.mode === 'structure' || response.mode === 'citations' || response.mode === 'refine') {
         setMessages((current) => [
@@ -1255,6 +1318,16 @@ export default function AIChatbot({
                         <span style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>AI answer · check important details</span>
                       </div>
                     ) : null}
+                    {m.auto_captions && (
+                      <AutoCaptionCard
+                        items={m.auto_captions}
+                        status={m.assist_status ?? 'pending'}
+                        untitled={m.captions_untitled ?? null}
+                        onApply={() => addAutoCaptions(i, m.caption_kinds ?? ['figure', 'table'])}
+                        onDismiss={() => patchMessage(i, { assist_status: 'dismissed' })}
+                        onNextUntitled={goToNextUntitledCaption}
+                      />
+                    )}
                     {m.structured && (
                       <StructureCard
                         section={m.structured}
