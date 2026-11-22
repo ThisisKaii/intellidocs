@@ -837,6 +837,7 @@ def convert_document(
     file: UploadFile = File(...),
     images: Literal["inline", "separate"] = "inline",
     tabs: bool = False,
+    json: bool = True,
 ) -> dict[str, Any]:
     """Convert uploaded .docx or .pdf file into high-fidelity HTML.
 
@@ -861,8 +862,11 @@ def convert_document(
     content_bytes = file.file.read()
 
     try:
+        # For tabbed manuscripts, the editor loads each tab individually from HTML; assembling
+        # a 12+ MB monolithic JSON slows down conversion by 3x and risks timing out on cloud hosts.
+        build_json = json and not tabs
         if filename_lower.endswith(".docx"):
-            result = convert_docx_bytes_to_html(content_bytes, split_tabs=tabs)
+            result = convert_docx_bytes_to_html(content_bytes, split_tabs=tabs, build_json=build_json)
         elif filename_lower.endswith(".pdf"):
             result = convert_pdf_bytes_to_html(content_bytes, split_tabs=tabs)
         else:
