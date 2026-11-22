@@ -305,7 +305,10 @@ export async function requestDocumentConversion(
   const response = await axios
     .post<PythonConversionResponse>(`${mlApiUrl}/convert/document`, formData, {
       headers: formData.getHeaders(),
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
       params: conversionParams(options),
+      timeout: 180_000,
     })
     .catch(rejectedConversion)
 

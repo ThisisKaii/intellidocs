@@ -70,6 +70,18 @@ def _warm_up_heavy_modules() -> None:
     it needs itself (Python's import lock makes that safe). Each step is best
     effort, so a missing artifact never blocks the rest.
     """
+    # In cloud environments or memory-constrained containers (such as Render free tier with 512MB RAM),
+    # eagerly loading torch (480MB), DistilBERT (220MB), and pandas at startup consumes ~980MB RSS,
+    # causing the container to be killed by the Linux OOM killer when converting large documents.
+    # Keep startup lightweight so file conversion and core predictions have full memory headroom.
+    if os.getenv("RENDER") or os.getenv("LOW_MEMORY", "true").lower() in ("1", "true", "yes"):
+        print("ℹ️ Lightweight startup mode active: keeping memory low for document conversion.")
+        try:
+            load_model_payload()
+        except Exception as exc:  # noqa: BLE001
+            print(f"⚠️ Base model load skipped: {exc}")
+        return
+
     import importlib
 
     for module_name in ("pandas", "torch", "grammar.grammar_checker"):

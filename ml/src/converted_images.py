@@ -88,7 +88,9 @@ def shrink_picture(data: bytes, mime: str) -> Tuple[bytes, str]:
             candidates.append((buffer.getvalue(), "image/webp"))
         if not resized:
             candidates.append((data, mime))
-        return min(candidates, key=lambda candidate: len(candidate[0]))
+        result = min(candidates, key=lambda candidate: len(candidate[0]))
+        del pix
+        return result
     except Exception:
         return data, mime
 
@@ -141,6 +143,8 @@ def externalise(result: Dict[str, Any]) -> Dict[str, Any]:
         data, new_mime = shrink_picture((folder / key).read_bytes(), mime)
         (folder / key).write_bytes(data)
         images[key] = (new_mime, len(data))
+    import gc
+    gc.collect()
     manifest: List[Dict[str, Any]] = [{"key": k, "mime": m, "bytes": n} for k, (m, n) in images.items()]
     if manifest:
         (folder / "manifest.json").write_text(json.dumps({k: m for k, (m, _) in images.items()}))
