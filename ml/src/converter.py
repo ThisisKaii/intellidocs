@@ -18,10 +18,23 @@ from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
+from docx.parts.document import DocumentPart
 from docx.shared import Emu
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
+
+# python-docx's DocumentPart._styles_part scans all package relationships on every access
+# without caching, leading to millions of relationship iterations in large documents.
+_orig_styles_part_getter = DocumentPart._styles_part.fget
+def _cached_styles_part(self):
+    val = getattr(self, "_cached_styles_part_val", None)
+    if val is not None:
+        return val
+    val = _orig_styles_part_getter(self)
+    self._cached_styles_part_val = val
+    return val
+DocumentPart._styles_part = property(_cached_styles_part)
 
 import omml
 import tab_plan
@@ -1949,6 +1962,8 @@ class _ConversionState(threading.local):
         # Body elements that start a document tab, with the tab's title (see tab_plan); empty when
         # the document is not split.
         self.tab_starts: Dict[Any, str] = {}
+        # Style attribute cache for _resolve_pPr_attr: (part_id, style_id, tag, attr) -> resolved value
+        self.style_attr_cache: Dict[Tuple[int, Optional[str], str, str], Optional[str]] = {}
 
 
 _STATE = _ConversionState()
@@ -2119,29 +2134,42 @@ def _resolve_pPr_attr(p: Paragraph, tag: str, attr: str) -> Optional[str]:
 
     try:
         style = p.style
+        style_id = style.style_id if style else None
     except Exception:
         style = None
+        style_id = None
+
+    cache_key = (id(p.part), style_id, tag, attr)
+    if cache_key in _STATE.style_attr_cache:
+        return _STATE.style_attr_cache[cache_key]
+
+    res: Optional[str] = None
     seen: Set[str] = set()
-    while style is not None and style.style_id not in seen:
-        seen.add(style.style_id)
-        style_pPr = style.element.find(qn("w:pPr"))
+    cur_style = style
+    while cur_style is not None and cur_style.style_id not in seen:
+        seen.add(cur_style.style_id)
+        style_pPr = cur_style.element.find(qn("w:pPr"))
         el = style_pPr.find(qn(f"w:{tag}")) if style_pPr is not None else None
         if el is not None and el.get(qn(f"w:{attr}")) is not None:
-            return el.get(qn(f"w:{attr}"))
-        style = style.base_style
+            res = el.get(qn(f"w:{attr}"))
+            break
+        cur_style = cur_style.base_style
 
-    try:
-        defaults = p.part.styles.element.find(qn("w:docDefaults"))
-        if defaults is not None:
-            pPr_default = defaults.find(qn("w:pPrDefault"))
-            if pPr_default is not None:
-                default_pPr = pPr_default.find(qn("w:pPr"))
-                el = default_pPr.find(qn(f"w:{tag}")) if default_pPr is not None else None
-                if el is not None:
-                    return el.get(qn(f"w:{attr}"))
-    except Exception:
-        pass
-    return None
+    if res is None:
+        try:
+            defaults = p.part.styles.element.find(qn("w:docDefaults"))
+            if defaults is not None:
+                pPr_default = defaults.find(qn("w:pPrDefault"))
+                if pPr_default is not None:
+                    default_pPr = pPr_default.find(qn("w:pPr"))
+                    el = default_pPr.find(qn(f"w:{tag}")) if default_pPr is not None else None
+                    if el is not None:
+                        res = el.get(qn(f"w:{attr}"))
+        except Exception:
+            pass
+
+    _STATE.style_attr_cache[cache_key] = res
+    return res
 
 
 def _resolve_pPr_flag(p: Paragraph, tag: str) -> bool:
@@ -2291,7 +2319,12 @@ def _read_indent(p: Paragraph) -> ParagraphIndent:
     """A paragraph's indents, resolved through the style chain like spacing is."""
 
     def twips(value: Optional[str]) -> Optional[int]:
-        return int(value) if value and value != "0" else None
+        if not value or value == "0":
+            return None
+        try:
+            return int(round(float(value)))
+        except (ValueError, TypeError):
+            return None
 
     left = _resolve_pPr_attr(p, "ind", "left") or _resolve_pPr_attr(p, "ind", "start")
     # firstLine and hanging are mutually exclusive: a direct value of either
@@ -2548,16 +2581,22 @@ def _read_spacing(p: Paragraph) -> ParagraphSpacing:
     after_lines = _resolve_spacing_attr(p, "afterLines")
     line = _resolve_spacing_attr(p, "line")
 
-    def lines(value: Optional[str]) -> Optional[int]:
-        # w:beforeLines / w:afterLines count hundredths of a line (100 = one line).
-        return int(value) if value and value != "0" and value.isdigit() else None
+    def parse_twips(value: Optional[str], allow_zero: bool = True) -> Optional[int]:
+        if value is None:
+            return None
+        if not allow_zero and value == "0":
+            return None
+        try:
+            return int(round(float(value)))
+        except (ValueError, TypeError):
+            return None
 
     return ParagraphSpacing(
-        before_twips=int(before) if before is not None else None,
-        after_twips=int(after) if after is not None else None,
-        before_lines=lines(before_lines),
-        after_lines=lines(after_lines),
-        line=int(line) if line and line != "0" else None,
+        before_twips=parse_twips(before, allow_zero=True),
+        after_twips=parse_twips(after, allow_zero=True),
+        before_lines=parse_twips(before_lines, allow_zero=False),
+        after_lines=parse_twips(after_lines, allow_zero=False),
+        line=parse_twips(line, allow_zero=False),
         line_rule=_resolve_spacing_attr(p, "lineRule") or "auto",
         unset=before is None and before_lines is None and after is None and after_lines is None and line is None,
     )
@@ -4465,20 +4504,33 @@ def _extract_sections(doc: docx.Document) -> Dict[str, Any]:
     keys: Dict[int, str] = {}
     parts: Dict[str, Dict[str, str]] = {}
 
-    def effective(index: int, kind: str, first: bool) -> Optional[str]:
+    def resolve_chain(kind: str, first: bool) -> List[Optional[str]]:
         attribute = ("first_page_" if first else "") + kind
-        for back in range(index, -1, -1):
-            holder = getattr(sections[back], attribute)
-            if holder.is_linked_to_previous:
-                continue
-            part = holder.part
-            if id(part) not in keys:
-                converted = _hf_part_html(part, text_width, header_origin if kind == "header" else footer_origin)
-                keys[id(part)] = f"p{len(keys)}"
-                if converted is not None:
-                    parts[keys[id(part)]] = converted
-            return keys[id(part)] if keys[id(part)] in parts else None
-        return None
+        origin = header_origin if kind == "header" else footer_origin
+        result: List[Optional[str]] = []
+        last_key: Optional[str] = None
+        for section in sections:
+            try:
+                holder = getattr(section, attribute)
+                if not holder.is_linked_to_previous:
+                    part = holder.part
+                    part_id = id(part)
+                    if part_id not in keys:
+                        converted = _hf_part_html(part, text_width, origin)
+                        key = f"p{len(keys)}"
+                        keys[part_id] = key
+                        if converted is not None:
+                            parts[key] = converted
+                    last_key = keys[part_id] if keys[part_id] in parts else None
+            except Exception:
+                pass
+            result.append(last_key)
+        return result
+
+    headers = resolve_chain("header", False)
+    footers = resolve_chain("footer", False)
+    first_headers = resolve_chain("header", True)
+    first_footers = resolve_chain("footer", True)
 
     described: List[Dict[str, Any]] = []
     for index, section in enumerate(sections):
@@ -4487,10 +4539,10 @@ def _extract_sections(doc: docx.Document) -> Dict[str, Any]:
         fmt = number.get(qn("w:fmt")) if number is not None else None
         described.append({
             "index": index,
-            "header": effective(index, "header", False),
-            "footer": effective(index, "footer", False),
-            "first_header": effective(index, "header", True),
-            "first_footer": effective(index, "footer", True),
+            "header": headers[index],
+            "footer": footers[index],
+            "first_header": first_headers[index],
+            "first_footer": first_footers[index],
             "title_pg": bool(section.different_first_page_header_footer),
             "number_start": int(start) if start and start.lstrip("-").isdigit() else None,
             "number_format": fmt or "decimal",

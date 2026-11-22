@@ -69,6 +69,9 @@ def shrink_picture(data: bytes, mime: str) -> Tuple[bytes, str]:
         import pymupdf
 
         pix = pymupdf.Pixmap(data)
+        if pix.width <= MAX_PICTURE_WIDTH and len(data) <= 50_000:
+            del pix
+            return data, mime
         if pix.alpha:
             alpha = pix.samples[pix.n - 1 :: pix.n]
             if min(alpha) == 255:

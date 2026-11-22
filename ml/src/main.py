@@ -872,6 +872,10 @@ def convert_document(
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format for high-fidelity conversion.")
 
+        del content_bytes
+        import gc
+        gc.collect()
+
         return converted_images.externalise(result) if images == "separate" else result
     except HTTPException:
         raise
