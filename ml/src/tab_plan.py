@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-SPLIT_MIN_PAGES = 150
+SPLIT_MIN_PAGES = 100
 MAX_TAB_PAGES = 60
 # A piece smaller than this (a chapter's title line before its first heading) joins a neighbour.
 MIN_TAB_PAGES = 3

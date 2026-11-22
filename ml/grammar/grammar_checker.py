@@ -509,6 +509,61 @@ def detect_sentence_boundary_issues(text: str) -> list[dict[str, str]]:
     return issues
 
 
+_PHRASE_PREPOSITIONS = {"of", "in", "for", "from", "on", "with", "among", "about", "at", "by", "under", "within"}
+# Tags allowed inside the prepositional phrase between the head noun and its verb.
+_PHRASE_TAGS = {"DT", "JJ", "JJR", "JJS", "NN", "NNS", "NNP", "NNPS", "CD", "PRP$", "POS"}
+
+
+def _object_of_preposition(tagged: list[tuple[str, str]], index: int) -> bool:
+    """True when the noun at `index` ends a prepositional phrase ("of the treatments")."""
+    position = index - 1
+    while position >= 0 and tagged[position][1] in _PHRASE_TAGS:
+        position -= 1
+    return 0 <= position < index and tagged[position][0].lower() in _PHRASE_PREPOSITIONS
+
+
+def _agreement_across_phrase(
+    text: str, tagged: list[tuple[str, str]], to_singular: dict[str, str], to_plural: dict[str, str]
+) -> list[dict[str, str]]:
+    """Head noun + prepositional phrase + verb that disagrees with the head noun."""
+    issues: list[dict[str, str]] = []
+    for head in range(len(tagged) - 3):
+        word, tag = tagged[head]
+        if tag not in {"NN", "NNS", "NNP", "NNPS"}:
+            continue
+        before = tagged[head - 1][1] if head > 0 else None
+        before_that = tagged[head - 2][0].lower() if head > 1 else None
+        subject_position = head == 0 or (before in {"DT", "JJ", "PRP$", "CD"} and before_that not in _PHRASE_PREPOSITIONS)
+        if not subject_position or tagged[head + 1][0].lower() not in _PHRASE_PREPOSITIONS:
+            continue
+        end = head + 2
+        while end < len(tagged) and tagged[end][1] in _PHRASE_TAGS:
+            end += 1
+        if end >= len(tagged) or end == head + 2:
+            continue
+        verb, verb_tag = tagged[end]
+        lowered = verb.lower()
+        plural_head = tag in {"NNS", "NNPS"}
+        past_be = verb_tag == "VBD" and lowered in {"was", "were"}
+        if plural_head and (verb_tag == "VBZ" or past_be) and lowered in to_plural:
+            fixed, message = to_plural[lowered], f"Subject '{word}' is plural; verb '{verb}' should be plural."
+        elif not plural_head and (verb_tag in {"VBP", "VB"} or past_be) and lowered in to_singular:
+            fixed, message = to_singular[lowered], f"Subject '{word}' is singular; verb '{verb}' should be singular."
+        else:
+            continue
+        # The span as written in the text, from the head noun to the verb.
+        pattern = r"\b" + r"\s+".join(re.escape(token) for token, _ in tagged[head:end + 1]) + r"\b"
+        found = re.search(pattern, text)
+        if not found:
+            continue
+        original = found.group(0)
+        suggestion = original[: len(original) - len(verb)] + (fixed.capitalize() if verb.istitle() else fixed)
+        issue = build_issue("grammar", original, suggestion, message)
+        issue["source"] = "pos"
+        issues.append(issue)
+    return issues
+
+
 def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
     """Detect subject-verb mismatch and tense shifts using NLTK POS tagging."""
     issues: list[dict[str, str]] = []
@@ -555,6 +610,8 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
         w2, t2 = tagged[i+1]
         w1_lower = w1.lower()
         w2_lower = w2.lower()
+        if _object_of_preposition(tagged, i):
+            continue  # "the effect of the treatments is": the verb agrees with "effect" (rule 1b)
 
         # Singular subject + Plural/Base Verb
         # NLTK tags a lowercase "i" as a noun; "i think" is not a singular subject.
@@ -587,7 +644,11 @@ def detect_pos_syntax_issues(text: str) -> list[dict[str, str]]:
                 issue["source"] = "pos"
                 issues.append(issue)
 
-    # 2. Coordinate structures tense shifts (e.g. "he ran and plays")
+    # 1b. Agreement across a prepositional phrase: "The results of the test shows" (the verb agrees
+    # with "results", not with "test"). Only a noun in subject position (sentence start or after a
+    # determiner/adjective that does not itself follow a preposition) is taken as the head.
+    issues.extend(_agreement_across_phrase(text, tagged, VERB_TO_SINGULAR, VERB_TO_PLURAL))
+
     # 2. Coordinate structures tense shifts (e.g. "he ran and plays")
     is_verb = lambda t: t in {"VBD", "VBZ", "VBP"}
     for cc_idx in range(len(tagged)):

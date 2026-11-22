@@ -28,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import converted_images
-from converter import convert_docx_bytes_to_html, convert_pdf_bytes_to_html
+from converter import UnreadableDocumentError, convert_docx_bytes_to_html, convert_pdf_bytes_to_html
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -541,7 +541,8 @@ async def predict_format_core(request: PredictRequest) -> PredictResponse:
         if word_count <= 14 and "\n" not in text:
             heading1_match = (
                 lower.startswith("chapter")
-                or bool(re.match(r"^(chapter\s+\d+|[ivx]+\.|\d+\.)\s+", lower))
+                # "1." and "1.0" both number a top-level section ("1.0 Introduction", then "1.1 ...").
+                or bool(re.match(r"^(chapter\s+\d+|[ivx]+\.|\d+\.(?:0\.?)?)\s+", lower))
                 or lower in [
                     "abstract", "introduction", "methodology", "literature review",
                     "results", "discussion", "conclusion", "references",
@@ -856,8 +857,14 @@ def convert_document(
             raise HTTPException(status_code=400, detail="Unsupported file format for high-fidelity conversion.")
 
         return converted_images.externalise(result) if images == "separate" else result
+    except HTTPException:
+        raise
+    except UnreadableDocumentError as error:
+        # The file itself is the problem (password-protected, damaged): say so plainly.
+        raise HTTPException(status_code=400, detail=str(error)) from error
     except Exception as error:
-        raise HTTPException(status_code=500, detail=f"Document conversion failed: {error}") from error
+        print(f"[convert] {file.filename}: {error}")
+        raise HTTPException(status_code=500, detail="Document conversion failed. Try saving the file again, or as .docx.") from error
 
 
 @app.get("/convert/images/{set_id}/{key}")
@@ -878,7 +885,7 @@ def release_converted_images(set_id: str) -> dict[str, str]:
 
 
 @app.post("/pipeline/aggregate")
-async def trigger_aggregation() -> dict[str, str | int]:
+def trigger_aggregation() -> dict[str, str | int]:
     """Flush Redis behavior events into DuckDB (one-shot)."""
     try:
         from aggregator import run_once
@@ -893,7 +900,7 @@ async def trigger_aggregation() -> dict[str, str | int]:
 
 
 @app.post("/pipeline/extract-features")
-async def trigger_feature_extraction() -> dict[str, str | int]:
+def trigger_feature_extraction() -> dict[str, str | int]:
     """Run feature extraction on DuckDB behavior_events table."""
     try:
         import duckdb_store
@@ -983,12 +990,14 @@ async def trigger_fine_tune(request: FineTuneRequest) -> FineTuneResponse:
             subprocess.run(
                 [python_exec, str(fine_tuner_path), "--user-id", request.user_id, "--genre", genre],
                 cwd=str(ROOT_DIR),
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
                 capture_output=True,
                 text=True,
             )
             subprocess.run(
                 [python_exec, str(lstm_trainer_path), "--user-id", request.user_id, "--genre", genre, "--epochs", "8"],
                 cwd=str(ROOT_DIR),
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
                 capture_output=True,
                 text=True,
             )

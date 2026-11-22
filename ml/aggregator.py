@@ -45,6 +45,9 @@ def ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
 # Keys removed per DEL call once their events are stored.
 DELETE_BATCH_SIZE = 100
 
+# Commands sent per Upstash /pipeline request.
+PIPELINE_CHUNK = 100
+
 
 class UpstashRedis:
     """Just the commands the aggregator needs, over Upstash's REST API."""
@@ -53,11 +56,27 @@ class UpstashRedis:
         host = url.split("://", 1)[-1].split(":")[0]
         self._endpoint = f"https://{host}"
         self._headers = {"Authorization": f"Bearer {token}"}
+        # One kept-alive connection: a new TLS handshake per command made a flush of a few
+        # hundred keys take minutes.
+        self._session = requests.Session()
 
     def _call(self, *command: Any) -> Any:
-        response = requests.post(self._endpoint, headers=self._headers, json=list(command), timeout=30)
+        response = self._session.post(self._endpoint, headers=self._headers, json=list(command), timeout=30)
         response.raise_for_status()
         return response.json().get("result")
+
+    def batch(self, commands: List[tuple]) -> List[Any]:
+        """Run many commands in a few round trips through Upstash's /pipeline endpoint."""
+        results: List[Any] = []
+        for start in range(0, len(commands), PIPELINE_CHUNK):
+            chunk = [list(command) for command in commands[start:start + PIPELINE_CHUNK]]
+            response = self._session.post(f"{self._endpoint}/pipeline", headers=self._headers, json=chunk, timeout=60)
+            response.raise_for_status()
+            for item in response.json():
+                if "error" in item:
+                    raise RuntimeError(f"Upstash command failed: {item['error']}")
+                results.append(item.get("result"))
+        return results
 
     def keys(self, pattern: str) -> List[str]:
         return self._call("KEYS", pattern) or []
@@ -142,18 +161,51 @@ def read_event_list(r: redis.Redis, key: str) -> tuple:
     return len(raw_items), events
 
 
+def run_batch(r: Any, commands: List[tuple]) -> List[Any]:
+    """Run Redis commands in as few round trips as the client allows: Upstash's pipeline
+    endpoint, a redis-py pipeline, or (simple clients) one call per command."""
+    if not commands:
+        return []
+    if hasattr(r, "batch"):
+        return r.batch(commands)
+    if hasattr(r, "pipeline"):
+        pipe = r.pipeline(transaction=False)
+        for command in commands:
+            pipe.execute_command(*command)
+        return pipe.execute()
+    return [getattr(r, command[0].lower())(*command[1:]) for command in commands]
+
+
+def _as_text(row: Any) -> str:
+    return row if isinstance(row, str) else json.dumps(row)
+
+
 def drain_redis(r: Any, conn: Any) -> int:
-    """Move every behavior event from one Redis into DuckDB; returns how many rows were stored."""
-    keys = [key for key in r.keys("behavior:*") if is_event_list_key(r, key)]
+    """Move every behavior event from one Redis into DuckDB; returns how many rows were stored.
+
+    Batched: one KEYS, then the TYPE, LRANGE and LTRIM of all keys in a few pipelined round
+    trips each, however many keys there are.
+    """
+    keys = [key for key in r.keys("behavior:*") if not key.startswith("behavior:formats:")]
+    types = run_batch(r, [("TYPE", key) for key in keys])
+    list_keys = [key for key, kind in zip(keys, types) if kind == "list"]
+    contents = run_batch(r, [("LRANGE", key, 0, -1) for key in list_keys])
+
     rows: List[tuple] = []
     read_counts: Dict[str, int] = {}
-
-    for key in keys:
-        raw_count, events = read_event_list(r, key)
-        if not raw_count:
+    for key, raw_items in zip(list_keys, contents):
+        raw_items = raw_items or []
+        if not raw_items:
             continue
-        read_counts[key] = raw_count
-        rows.extend(row for row in (event_row(e, key) for e in events) if row is not None)
+        read_counts[key] = len(raw_items)
+        for raw in raw_items:
+            try:
+                event = json.loads(_as_text(raw))
+            except Exception:
+                continue
+            row = event_row(event, key) if isinstance(event, dict) else None
+            if row is not None:
+                rows.append(row)
 
     # One batched insert; then each list is trimmed by exactly the events that
     # were read, so events pushed while this ran stay for the next run.
@@ -167,8 +219,7 @@ def drain_redis(r: Any, conn: Any) -> int:
             """,
             rows,
         )
-    for key, count in read_counts.items():
-        r.ltrim(key, count, -1)
+    run_batch(r, [("LTRIM", key, count, -1) for key, count in read_counts.items()])
     return len(rows)
 
 

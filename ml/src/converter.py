@@ -3,6 +3,7 @@ import collections
 import copy
 import hashlib
 import io
+import zipfile
 import json
 import logging
 import math
@@ -4647,6 +4648,38 @@ def _widow_control_on(doc: docx.Document) -> bool:
     return True
 
 
+class UnreadableDocumentError(ValueError):
+    """A file that cannot be imported as given; the message is written for the user."""
+
+
+# A password-protected Office file is an encrypted OLE container, not the ZIP package a .docx is.
+_OLE_SIGNATURE = bytes.fromhex("d0cf11e0a1b11ae1")
+
+
+def _check_docx_bytes(file_bytes: bytes) -> None:
+    """Refuse, with a clear reason, a .docx that is password-protected or not a Word file at all."""
+    if file_bytes.startswith(_OLE_SIGNATURE):
+        raise UnreadableDocumentError(
+            "This Word document is password-protected. Save a copy without the password, then import it again."
+        )
+    if not zipfile.is_zipfile(io.BytesIO(file_bytes)):
+        raise UnreadableDocumentError("This file is not a readable Word document (.docx). It may be damaged or saved in another format.")
+
+
+def _check_pdf_bytes(file_bytes: bytes) -> None:
+    """Refuse, with a clear reason, a PDF that is password-protected or cannot be opened."""
+    pdf = _open_pdf(file_bytes)
+    if pdf is None:
+        raise UnreadableDocumentError("This file is not a readable PDF. It may be damaged or saved in another format.")
+    try:
+        if pdf.needs_pass:
+            raise UnreadableDocumentError(
+                "This PDF is password-protected. Save a copy without the password, then import it again."
+            )
+    finally:
+        pdf.close()
+
+
 def convert_docx_bytes_to_html(file_bytes: bytes, split_tabs: bool = False) -> Dict[str, Any]:
     """High-fidelity DOCX to HTML converter using python-docx XML traversal.
 
@@ -4654,6 +4687,7 @@ def convert_docx_bytes_to_html(file_bytes: bytes, split_tabs: bool = False) -> D
     persist page size/margins and reuse the editor's header/footer features.
     With split_tabs, a long manuscript comes back with document-tab markers (see tab_plan).
     """
+    _check_docx_bytes(file_bytes)
     doc = docx.Document(io.BytesIO(file_bytes))
     _round_fractional_measures(doc)
     return _docx_document_to_result(doc, split_tabs=split_tabs)
@@ -4699,13 +4733,9 @@ def _tab_blocks(doc: docx.Document) -> Tuple[List[Any], List[tab_plan.Block]]:
 
 
 def _plan_tab_starts(doc: docx.Document) -> Dict[Any, str]:
-    """{body element: tab title} for a long manuscript; {} for one opened whole. Documents with
-    several text columns are never split (a marker must not land inside a column layout)."""
-    if any(
-        int(cols.get(qn("w:num")) or 1) > 1
-        for cols in doc.element.body.iter(qn("w:cols"))
-        if (cols.get(qn("w:num")) or "1").isdigit()
-    ):
+    """{body element: tab title} for a long manuscript; {} for one opened whole. Documents whose
+    main body is in several columns (such as IEEE papers) are never split."""
+    if _is_two_column_body(doc):
         return {}
     elements, blocks = _tab_blocks(doc)
     return {elements[index]: title for index, title in tab_plan.plan_tabs(blocks).items()}
@@ -4856,6 +4886,111 @@ def _split_pages(doc: docx.Document, page_break_after: Set[Any]) -> List[List[An
         if element in page_break_after:
             pages.append([])
     return [page for page in pages if page]
+
+
+def _hard_breaks_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Set[Any]) -> int:
+    """Keep a PDF line that ended early as a real line break instead of a wrap.
+
+    pdf2docx joins the lines of a text block into one paragraph and narrows the paragraph to
+    its longest line, so a line the author ended early (a question, then its "[1] [2] [3]"
+    rating row) only breaks while the editor's fonts happen to be as wide as the PDF's. Where
+    the next line is set in another type size it cannot be a wrap of this one, so the break is
+    kept as a real <w:br/>. (Judging by the room left at the line's end was tried and broke
+    wrapped prose in multi-column papers, whose column edge is not the page margin.)
+    Returns how many breaks were added.
+    """
+    pdf = _open_pdf(pdf_bytes)
+    if pdf is None:
+        return 0
+
+    def squash(text: str) -> str:
+        return re.sub(r"[\s\-]+", "", text).lower()
+
+    # Every page's lines in reading order: (text, x0, x1, font size).
+    pages: List[Tuple[float, List[Tuple[str, float, float, float]]]] = []
+    for page in pdf:
+        lines: List[Tuple[str, float, float, float]] = []
+        for block in page.get_text("dict").get("blocks", []):
+            for line in block.get("lines", []):
+                spans = line.get("spans", [])
+                text = "".join(span.get("text", "") for span in spans).strip()
+                if text:
+                    # The line's dominant type size (by characters): a superscript or a symbol
+                    # in another size does not make it a different line style.
+                    weights: Dict[float, int] = {}
+                    for span in spans:
+                        size_key = round(float(span.get("size", 0.0)), 1)
+                        weights[size_key] = weights.get(size_key, 0) + len(span.get("text", "").strip())
+                    size = max(weights, key=weights.get) if weights else 0.0
+                    lines.append((text, line["bbox"][0], line["bbox"][2], size))
+        pages.append((page.rect.width, lines))
+    pdf.close()
+
+    def line_run(target: str, lines: List[Tuple[str, float, float, float]]) -> Optional[List[Tuple[str, float, float, float]]]:
+        """The consecutive PDF lines whose text makes up the paragraph's text exactly."""
+        for start in range(len(lines)):
+            joined = squash(lines[start][0])
+            if not joined or not target.startswith(joined):
+                continue
+            end = start
+            while len(joined) < len(target) and end + 1 < len(lines):
+                end += 1
+                joined += squash(lines[end][0])
+                if not target.startswith(joined):
+                    break
+            if joined == target and end > start:
+                return lines[start:end + 1]
+        return None
+
+    def break_after(element: Any, squashed_offset: int) -> bool:
+        """Insert a <w:br/> after the paragraph's `squashed_offset`-th visible character."""
+        seen = 0
+        for text_node in list(element.iter(qn("w:t"))):
+            run = text_node.getparent()
+            text = text_node.text or ""
+            for index, char in enumerate(text):
+                if not re.match(r"[\s\-]", char):
+                    seen += 1
+                if seen == squashed_offset:
+                    if run is None or run.tag != qn("w:r") or len(run.findall(qn("w:t"))) != 1:
+                        return False
+                    head, tail = text[: index + 1].rstrip(), text[index + 1:].lstrip()
+                    text_node.text = head
+                    text_node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                    breaker = copy.deepcopy(run)
+                    for child in list(breaker):
+                        if child.tag != qn("w:rPr"):
+                            breaker.remove(child)
+                    breaker.append(breaker.makeelement(qn("w:br"), {}))
+                    run.addnext(breaker)
+                    if tail:
+                        rest = copy.deepcopy(run)
+                        rest.find(qn("w:t")).text = tail
+                        breaker.addnext(rest)
+                    return True
+        return False
+
+    added, page_index = 0, 0
+    for element in doc.element.body:
+        if element.tag == qn("w:p") and page_index < len(pages) and not any(True for _ in element.iter(qn("w:br"))):
+            target = squash("".join(node.text or "" for node in element.iter(qn("w:t"))))
+            if target and not any(True for _ in element.iter(qn("w:tab"))):
+                width, lines = pages[page_index]
+                run_of_lines = line_run(target, lines)
+                if run_of_lines:
+                    offsets, total = [], 0
+                    for (text, _x0, _x1, size), following in zip(run_of_lines, run_of_lines[1:]):
+                        total += len(squash(text))
+                        # A wrapped line continues in the same type size; a line in another size
+                        # (a rating row under a question, a note under a heading) was its own line.
+                        if size and following[3] and abs(size - following[3]) >= 0.5:
+                            offsets.append(total)
+                    # Later offsets first, so earlier ones still count the same characters.
+                    for offset in reversed(offsets):
+                        added += break_after(element, offset)
+        if element in page_break_after:
+            page_index += 1
+    return added
 
 
 def _paragraph_side_indents(element: Any) -> Tuple[float, float]:
@@ -5878,6 +6013,7 @@ def convert_pdf_bytes_to_html(file_bytes: bytes, split_tabs: bool = False) -> Di
     in exactly one place."""
     from pdf2docx import Converter  # heavy import; only needed for PDF imports
 
+    _check_pdf_bytes(file_bytes)
     with tempfile.TemporaryDirectory(prefix="intellidocs-pdf-") as workdir:
         pdf_path = os.path.join(workdir, "source.pdf")
         docx_path = os.path.join(workdir, "source.docx")
@@ -5916,6 +6052,7 @@ def convert_pdf_bytes_to_html(file_bytes: bytes, split_tabs: bool = False) -> Di
     _realign_from_pdf(doc, file_bytes, page_break_after)
     _reflow_centred_blocks_from_pdf(doc, file_bytes, page_break_after)
     _rejoin_side_lines_from_pdf(doc, file_bytes, page_break_after)
+    _hard_breaks_from_pdf(doc, file_bytes, page_break_after)
     _restore_column_rows_from_pdf(doc, file_bytes, page_break_after)
     _float_pictures_beside_text(doc, file_bytes, page_break_after)
     _mark_superscripts_from_pdf(doc, file_bytes, page_break_after)

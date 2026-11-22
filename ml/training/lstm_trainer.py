@@ -38,6 +38,8 @@ ACTION_VOCAB = [
 ]
 
 ACTION_TO_IDX = {action: idx for idx, action in enumerate(ACTION_VOCAB)}
+
+DEFAULT_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "lstm")
 IDX_TO_ACTION = {idx: action for idx, action in enumerate(ACTION_VOCAB)}
 
 
@@ -128,9 +130,14 @@ def train_lstm_model(
 
 
 def save_lstm_model(
-    model: FormattingLSTM, user_id: str, genre: str, output_dir: str = "ml/models/lstm"
+    model: FormattingLSTM, user_id: str, genre: str, output_dir: str | None = None
 ) -> str:
-    """Save a user's per-genre PyTorch LSTM model weights and metadata to disk."""
+    """Save a user's per-genre PyTorch LSTM model weights and metadata to disk.
+
+    The default folder is the one the prediction service reads (ml/models/lstm, or LSTM_MODEL_DIR),
+    wherever the trainer is started from.
+    """
+    output_dir = output_dir or os.getenv("LSTM_MODEL_DIR") or DEFAULT_OUTPUT_DIR
     os.makedirs(output_dir, exist_ok=True)
     file_path = os.path.join(output_dir, f"user_{user_id}__{genre}.pt")
 
@@ -148,13 +155,13 @@ def save_lstm_model(
 def main() -> None:
     """Main CLI entrypoint for LSTM model training."""
     args = parse_args()
-    duckdb_path = os.getenv("DUCKDB_PATH", "db/duckdb/behavior.duckdb")
-
-    if not os.path.exists(duckdb_path):
-        print(f"❌ DuckDB database not found at {duckdb_path}")
+    # The behavior store may be a local file or MotherDuck ("md:..."); connect_duckdb opens either
+    # (and the local fallback) and raises when none can be opened.
+    try:
+        conn = duckdb_store.connect_duckdb(read_only=True).conn
+    except Exception as error:
+        print(f"❌ The behavior database could not be opened ({duckdb_store.primary_path()}): {error}")
         return
-
-    conn = duckdb_store.connect_duckdb(read_only=True).conn
     x_data, y_data = load_user_action_sequences(conn, args.user_id, args.genre, args.seq_len)
     conn.close()
 

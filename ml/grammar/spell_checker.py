@@ -193,6 +193,15 @@ ACADEMIC_WHITELIST: frozenset[str] = frozenset({
     "woolf", "logit", "probit", "cloglog", "loglog", "cauchit",
     "identity", "inverse", "sqrt", "log", "logit", "probit", "cloglog",
     "loglog", "cauchit", "identity", "inverse", "sqrt", "log",
+
+    # Statistical assumptions and diagnostics
+    "heteroscedasticity", "homoscedasticity", "heteroskedasticity", "homoskedasticity",
+    "heteroscedastic", "homoscedastic", "multicollinearity", "collinearity", "autocorrelation",
+    "autocorrelated", "kurtosis", "leptokurtic", "platykurtic", "mesokurtic", "skewness",
+    "stationarity", "endogeneity", "exogeneity", "endogenous", "exogenous", "dichotomous",
+    "polytomous", "covariate", "covariates", "unidimensional", "multidimensional",
+    "psychometric", "psychometrics", "operationalize", "operationalized", "operationalization",
+    "triangulation", "quasi", "nonparametric", "parametric", "posttest", "pretest",
 })
 
 
