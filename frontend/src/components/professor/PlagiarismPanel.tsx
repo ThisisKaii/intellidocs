@@ -76,13 +76,22 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
     let failed = 0
     let stillRunning = 0
     let report: PlagiarismScanDetail | null = null
+    const refused: string[] = []
     try {
       // One scan at a time: each answers at once and the council works on the server, so the page
       // stays usable; the next submission starts when the last one is done.
       for (const doc of docs) {
         if (cancelRef.current) break
         setProgress({ done, total: docs.length, title: doc.title || 'Untitled' })
-        const started = await api.plagiarism.runScan(activeFolderId, doc.id, scope, filters)
+        let started: PlagiarismScanDetail
+        try {
+          started = await api.plagiarism.runScan(activeFolderId, doc.id, scope, filters)
+        } catch (err) {
+          // A submission the server refuses (too short to scan) is skipped, not the whole batch.
+          refused.push(`${doc.title || 'Untitled'}: ${err instanceof Error ? err.message : 'could not be scanned'}`)
+          done += 1
+          continue
+        }
         const result = started.scan.scan_status === 'running' ? await waitForScan(started.scan.scan_id) : started
         if (!result) stillRunning += 1
         else if (result.scan.scan_status === 'failed') failed += 1
@@ -92,6 +101,7 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
       const parts = [`${cancelRef.current ? 'Stopped after' : 'Scanned'} ${done} of ${docs.length} submissions (${scope === 'global' ? 'all your classes' : 'this class'}).`]
       if (failed > 0) parts.push(`${failed} could not finish; run them again.`)
       if (stillRunning > 0) parts.push(`${stillRunning} still running; you will be notified when done.`)
+      if (refused.length > 0) parts.push(`Not scanned: ${refused.join('; ')}`)
       setFinished({ text: parts.join(' '), report })
       setRefreshKey((key) => key + 1)
       onScanned()

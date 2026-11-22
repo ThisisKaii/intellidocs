@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { setActiveDocumentId } from '@/lib/activeDocument'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { api, type AIGroundedPaper, type AISuggestionGroup, type DocumentFeedback, type DocumentRecord, type DocumentTabSummary, type EditorJson, type PageNumberFormat, type TabNumbering, type TierCheckResponse } from '@/services/api'
 import { getHTMLFromFragment } from '@tiptap/core'
@@ -290,6 +291,8 @@ export default function Document(): JSX.Element {
    */
   const documentLoadedRef = useRef<boolean>(false)
   const latestTitleRef = useRef<string>('Untitled Document')
+  /** The last title that was not blank: what a cleared title field goes back to (the server keeps it). */
+  const keptTitleRef = useRef<string>('Untitled Document')
   const latestContentRef = useRef<string>('')
   /**
    * The editor's JSON of latestContentRef, saved with it. Null when the content came from somewhere
@@ -324,6 +327,12 @@ export default function Document(): JSX.Element {
   const [headerNumberFormat, setHeaderNumberFormat] = useState<PageNumberFormat>('none')
   const [footerNumberFormat, setFooterNumberFormat] = useState<PageNumberFormat>('none')
   // The user's presets made from their own documents: a document bound to one gets its look.
+  // Pictures inserted in the editor are stored as this document's.
+  useEffect(() => {
+    setActiveDocumentId(id ?? null)
+    return () => setActiveDocumentId(null)
+  }, [id])
+
   // Reloaded when the Styles panel makes or imports one.
   const [, setUserPresetsVersion] = useState(0)
   useEffect(() => {
@@ -1023,6 +1032,7 @@ export default function Document(): JSX.Element {
           }
           if (doc.title) {
             latestTitleRef.current = doc.title
+            keptTitleRef.current = doc.title
             setTitle(doc.title)
           }
           latestHeaderRef.current = doc.header_content ?? ''
@@ -2594,8 +2604,16 @@ export default function Document(): JSX.Element {
   function handleTitleChange(event: ChangeEvent<HTMLInputElement>): void {
     const nextTitle = event.target.value
     latestTitleRef.current = nextTitle
+    if (nextTitle.trim()) keptTitleRef.current = nextTitle
     setTitle(nextTitle)
     scheduleSave()
+  }
+
+  /** Leaving the title field blank keeps the previous title, as the server does. */
+  function handleTitleBlur(): void {
+    if (title.trim()) return
+    latestTitleRef.current = keptTitleRef.current
+    setTitle(keptTitleRef.current)
   }
 
   /**
@@ -3684,6 +3702,9 @@ export default function Document(): JSX.Element {
       setPresetLocked(true)
       return
     }
+    // The save reads the page setup from this ref: without it the preset's margins and page size
+    // were shown but never saved, and a reload brought the old ones back.
+    latestPageSetupRef.current = { pageSize: preset.pageSize, margins: { ...preset.margins }, orientation: preset.orientation }
     setPageSize(preset.pageSize)
     setMargins({ ...preset.margins })
     setOrientation(preset.orientation)
@@ -3884,6 +3905,7 @@ export default function Document(): JSX.Element {
             <input
               value={title}
               onChange={handleTitleChange}
+              onBlur={handleTitleBlur}
               readOnly={readOnly}
               placeholder="Untitled Document"
               aria-label="Document title"

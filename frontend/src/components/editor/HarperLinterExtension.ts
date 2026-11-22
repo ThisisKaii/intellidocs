@@ -5,6 +5,7 @@ import type { EditorView } from '@tiptap/pm/view'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Dialect, WorkerLinter } from 'harper.js'
 import { binary } from 'harper.js/binary'
+import { academicDictionary } from './academicVocabulary'
 
 const harperKey = new PluginKey<HarperPluginState>('harperLinter')
 
@@ -16,6 +17,9 @@ const MAX_BLOCK_LINT_CHARS = 50_000
 
 /** Abort linter startup if the worker does not become ready in this window. */
 const SETUP_TIMEOUT_MS = 10_000
+
+/** How long a destroyed plugin view waits for its replacement before shutting the worker down. */
+const VIEW_HANDOVER_MS = 2_000
 
 interface HarperLintEntry {
   /** Absolute ProseMirror doc position of the span start. */
@@ -147,6 +151,7 @@ export const HarperLinterExtension = Extension.create({
     let lintTimer: ReturnType<typeof setTimeout> | null = null
     let requestVersion = 0
     let disposed = false
+    let pendingDispose: ReturnType<typeof setTimeout> | null = null
 
     /**
      * Lazily boot the shared worker linter. A missing or unreachable WASM
@@ -176,6 +181,8 @@ export const HarperLinterExtension = Extension.create({
               void instance.dispose().catch(() => {})
               return null
             }
+            // Statistical and academic terms (ANOVA, heteroscedasticity, ...) are not typos.
+            await instance.importWords(academicDictionary()).catch(() => {})
             linter = instance
             return instance
           } catch (error) {
@@ -290,6 +297,12 @@ export const HarperLinterExtension = Extension.create({
           },
         },
         view(view) {
+          // ProseMirror rebuilds every plugin view whenever the plugin list changes (another
+          // extension registering a plugin, collaboration starting). Keep the linter across
+          // that rebuild instead of losing it to the previous view's destroy().
+          if (pendingDispose) clearTimeout(pendingDispose)
+          pendingDispose = null
+          disposed = false
           scheduleLint(view)
           let lastBlock = blockKey(view.state)
           return {
@@ -300,9 +313,15 @@ export const HarperLinterExtension = Extension.create({
               scheduleLint(currentView)
             },
             destroy() {
-              disposed = true
               if (lintTimer) clearTimeout(lintTimer)
-              void linter?.dispose().catch(() => {})
+              // Dispose only if no new view takes over (a plugin-list change creates one at once).
+              pendingDispose = setTimeout(() => {
+                pendingDispose = null
+                disposed = true
+                void linter?.dispose().catch(() => {})
+                linter = null
+                setupPromise = null
+              }, VIEW_HANDOVER_MS)
             },
           }
         },

@@ -1,3 +1,4 @@
+import { getActiveDocumentId } from '@/lib/activeDocument'
 import { api } from '@/services/api'
 
 /**
@@ -34,13 +35,36 @@ function readAsDataUrl(file: Blob): Promise<string> {
   })
 }
 
-/** Store a picture for a slot and return where it is; embedded when the upload fails. */
-export async function storeSlotPicture(file: File): Promise<string> {
+/** The picture types the editor stores (the same list the file dialogs offer). */
+export const PICTURE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+
+/** A picture the app refused (not a picture, storage full): its message is for the user. */
+export class PictureRefusedError extends Error {}
+
+/**
+ * Store a picture for the open document and return where it is. A file that is not a picture,
+ * or an upload the server refuses (storage full, unsupported type), is refused with a message;
+ * only an upload that could not be sent (offline, server failure) falls back to embedding the
+ * picture, so it is never lost.
+ */
+export async function storePicture(file: File): Promise<string> {
+  if (!PICTURE_TYPES.includes(file.type)) {
+    throw new PictureRefusedError('That file is not a picture. Choose a PNG, JPEG, GIF, WebP or SVG image.')
+  }
   try {
-    return await api.documents.uploadImage(file)
-  } catch {
+    return await api.documents.uploadImage(file, getActiveDocumentId())
+  } catch (error) {
+    const status = (error as { status?: number }).status
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      throw new PictureRefusedError(error instanceof Error && error.message ? error.message : 'The picture could not be added.')
+    }
     return readAsDataUrl(file)
   }
+}
+
+/** Store a picture for a slot and return where it is (see storePicture). */
+export async function storeSlotPicture(file: File): Promise<string> {
+  return storePicture(file)
 }
 
 /** Ask the person for a picture file; resolves null when they cancel. */
@@ -48,7 +72,7 @@ export function pickPictureFile(): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml'
+    input.accept = PICTURE_TYPES.join(',')
     input.onchange = () => resolve(input.files?.[0] ?? null)
     // A dialog closed without a choice fires no change event; window focus comes back instead.
     window.addEventListener('focus', () => window.setTimeout(() => resolve(input.files?.[0] ?? null), 400), { once: true })

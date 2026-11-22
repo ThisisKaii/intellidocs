@@ -1631,9 +1631,11 @@ export const api = {
       return res.jobs
     },
     /** Upload an editor image to storage and return its public URL. */
-    uploadImage: async (file: File): Promise<string> => {
+    uploadImage: async (file: File, documentId?: string | null): Promise<string> => {
       const formData = new FormData()
       formData.append('image', file)
+      // The open document: the picture is stored as its (counted toward storage, removed with it).
+      if (documentId) formData.append('documentId', documentId)
       // Do NOT set Content-Type — browser sets the multipart boundary automatically
       const response = await fetchAPI<{ url: string }>('documents/images', {
         method: 'POST',

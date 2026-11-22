@@ -129,7 +129,7 @@ import {
   type AcademicTableStyle,
 } from './behaviorListener'
 import { ImageResizeBehaviorExtension } from './ImageResizeBehaviorExtension'
-import { slotPlaceholderSrc } from './pictureSlots'
+import { PictureRefusedError, slotPlaceholderSrc, storePicture } from './pictureSlots'
 import ImageOptionsToolbar, { type ImageWrapStyle } from './ImageOptionsToolbar'
 import TableBubbleMenu, { CellFillPicker } from './TableBubbleMenu'
 import { isRemoteYjsChange } from './collabTransactions'
@@ -1984,22 +1984,11 @@ export function TiptapToolbar({
     event.target.value = ''
     if (!file) return
     try {
-      const url = await api.documents.uploadImage(file)
-      insertImageFromUrl(url)
-      return
-    } catch {
-      /* fall through to the local data-URL fallback */
-    }
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
-        reader.onerror = () => reject(new Error('Image read failed'))
-        reader.readAsDataURL(file)
-      })
-      if (dataUrl) insertImageFromUrl(dataUrl)
-    } catch {
-      window.alert('Could not read or upload this image. Please try another file.')
+      // Uploaded as the open document's picture; embedded only when the upload could not be sent.
+      const url = await storePicture(file)
+      if (url) insertImageFromUrl(url)
+    } catch (error) {
+      window.alert(error instanceof PictureRefusedError ? error.message : 'Could not read or upload this image. Please try another file.')
     }
   }
 

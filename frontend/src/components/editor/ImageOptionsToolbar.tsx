@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { NodeSelection } from '@tiptap/pm/state'
 import { AlignCenter, AlignLeft, AlignRight, ClipboardPaste, FolderOpen, RotateCcw, Trash2 } from 'lucide-react'
 import type { ImageAlignment } from './behaviorListener'
-import { clipboardPicture, pickPictureFile, storeSlotPicture } from './pictureSlots'
+import { PictureRefusedError, clipboardPicture, pickPictureFile, storeSlotPicture } from './pictureSlots'
 
 /** Text-wrap modes offered by the floating image toolbar (Word's 7-mode suite). */
 export type ImageWrapStyle =
@@ -108,7 +108,14 @@ export default function ImageOptionsToolbar({
       return
     }
     setSlotMessage('Adding the picture…')
-    const src = await storeSlotPicture(file)
+    let src: string
+    try {
+      src = await storeSlotPicture(file)
+    } catch (error) {
+      // Not a picture, or refused by the server (storage full): the slot stays a slot.
+      setSlotMessage(error instanceof PictureRefusedError ? error.message : 'The picture could not be added.')
+      return
+    }
     editor.chain().focus().fillPictureSlot(src).run()
     setSlotMessage('')
   }
