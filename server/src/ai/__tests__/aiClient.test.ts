@@ -155,3 +155,32 @@ describe('aiClient profile failover', () => {
     await expect(aiClient.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow('AI request failed: 500')
   })
 })
+
+describe('aiClient Gemini replies', () => {
+  const originalFetch = global.fetch
+  const originalEnv = { ...process.env }
+
+  afterEach(() => {
+    global.fetch = originalFetch
+    process.env = { ...originalEnv }
+  })
+
+  it('joins an answer Gemini split over several parts and leaves out thought parts', async () => {
+    process.env.AI_PROVIDER = 'gemini'
+    process.env.AI_MODEL = 'gemini-3.5-flash-lite'
+    process.env.AI_API_KEY = 'key'
+    global.fetch = jest.fn(async () =>
+      fakeResponse(200, {
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Planning the answer', thought: true }, { text: '{"action":"tool","tool":"formatBlocks","args":{"target' }, { text: 'Category":"headings"}}' }],
+            },
+          },
+        ],
+      })
+    ) as unknown as typeof fetch
+
+    expect(await aiClient.chat([{ role: 'user', content: 'hi' }])).toBe('{"action":"tool","tool":"formatBlocks","args":{"targetCategory":"headings"}}')
+  })
+})

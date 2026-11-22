@@ -112,9 +112,9 @@ const TOOLS: RegisteredTool[] = [
       name: 'formatBlocks',
       effect: 'plans',
       description:
-        'Format text: marks, heading levels, lists, alignment, font size (absolute or bigger/smaller), line spacing, first-line indent, font, letter case, or removing formatting. Applies to a kind of block, everything except a kind, a named section, the document title, or the selection.',
+        'Format text: marks, heading levels, lists, alignment, font size (absolute or bigger/smaller), line spacing, first-line indent, font, letter case, or removing formatting. Applies to a kind of block (tables, captions, lists and quotes can be aligned and styled too), everything except a kind, a named section, the document title, or the selection. For the whole document with no kind of block, set scope "all".',
       params:
-        'formats? [bold, italic, underline, heading1–3, blockquote, unordered_list, ordered_list, align_left/center/right/justify], fontSize?, fontSizeStep?, lineSpacing?, firstLineIndentIn?, fontFamily?, textCase? upper|title, removeFormatting?, targetCategory? (headings, h1Headings, h2Headings, h3Headings, sections, paragraphs, chapters, questions, lists, bulletLists, numberedLists, tables, captions, quotes, except:<any of these>, all), target? (a section title), targetMode? literal|heading|section|title, position? (which one of targetCategory: 1, 2, … or -1 for the last), page? (a page number, or "current" for the page the cursor is on), scope? selection|all',
+        'formats? [bold, italic, underline, heading1–3, blockquote, unordered_list, ordered_list, align_left/center/right/justify], fontSize?, fontSizeStep?, lineSpacing?, firstLineIndentIn?, fontFamily?, textCase? upper|title, removeFormatting?, targetCategory? (headings = every heading; h1Headings / h2Headings / h3Headings = one level; sections = subheadings, the headings under a chapter ("subheaders", "section titles"); chapters = the CHAPTER n lines and chapter titles; paragraphs = body text; questions = research questions; lists; bulletLists; numberedLists; tables; captions; quotes; except:<any of these>; all), target? (a section title), targetMode? literal|heading|section|title, position? (which one of targetCategory: 1, 2, … or -1 for the last), page? (a page number, or "current" for the page the cursor is on), scope? selection|all',
     },
     formatBlocksSchema,
     async (_ctx, args) => {
@@ -151,7 +151,7 @@ const TOOLS: RegisteredTool[] = [
     async (_ctx, args) => card(presetCard(args.preset))
   ),
   defineTool(
-    { name: 'applyUsualFormatting', effect: 'plans', description: 'Apply the formatting habits learned from the user’s other documents of the same genre.', params: 'documentId' },
+    { name: 'applyUsualFormatting', effect: 'plans', description: 'Apply the formatting habits learned from the user’s other documents of the same genre.', params: '(none from you: the open document is used) documentId' },
     applyUsualFormattingSchema,
     async (ctx, args) => card(await usualFormattingCard(ctx.userId, ctx.email, args.documentId))
   ),
@@ -183,7 +183,7 @@ const TOOLS: RegisteredTool[] = [
     async () => card(automationCard({ action: 'renumberCaptions' }))
   ),
   defineTool(
-    { name: 'insertBibliography', effect: 'plans', description: 'Write the reference list from the sources cited in the document, in its citation style.', params: '(none)' },
+    { name: 'insertBibliography', effect: 'plans', description: 'Build the reference list (bibliography) from the sources already cited in the document, in its citation style. It formats existing citations; it never writes new text, so "generate", "make" or "add the references" all mean this tool.', params: '(none)' },
     insertBibliographySchema,
     async () => card(automationCard({ action: 'bibliography' }))
   ),

@@ -13,6 +13,10 @@ import { consumeAIQuota } from '../models/aiQuotaModel'
 import { sliceDocumentContent } from '../utils/webText'
 import type { WebCheckPayload } from '../../schemas/plagiarismSchemas'
 import { documentBody } from '../models/documentTabModel'
+import { htmlWordCount } from '../utils/documentGuards'
+
+/** Fewest words a submission needs for a council scan. */
+const MIN_SCAN_WORDS = 50
 
 /** True when the user owns the folder (folderModel throws otherwise). */
 async function ownsFolder(userId: string, folderId: string): Promise<boolean> {
@@ -59,6 +63,11 @@ export async function runScan(req: AuthenticatedRequest, res: Response): Promise
     }
 
     const document = await plagiarismModel.getFolderDocument(folderId, documentId)
+    // The council compares passages; with almost no text there is nothing to judge.
+    if (htmlWordCount(document.content) < MIN_SCAN_WORDS) {
+      res.status(400).json({ error: `The document must contain at least ${MIN_SCAN_WORDS} words to scan.`, code: 'document_too_short' })
+      return
+    }
     const scan = await plagiarismModel.createScan({
       documentId,
       userId: document.user_id,

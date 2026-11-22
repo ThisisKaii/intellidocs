@@ -6,10 +6,15 @@ import { resolvePendingSharesByUser } from '../models/shareModel'
 import { CreateDocumentRequest, UpdateDocumentRequest } from '../types/index'
 import { importLocalFile } from '../skills/importLocalFile'
 import { canUsePreset, PRESET_LOCKED_CODE } from '../skills/canUsePreset'
-import { getOwnRoleStatus } from '../models/userModel'
+import { assertWithinStorageQuota, getOwnRoleStatus } from '../models/userModel'
+import { getOwnerOfDocument } from '../models/formattingModel'
+
 import { enqueueLocalImport } from '../skills/processLocalImportJob'
 import { validateImportUpload } from '../skills/validateImportUpload'
 import { getImportJob, listUserImportJobs, settleStaleJob } from '../models/importJobModel'
+
+/** A document id as the client sends it with an upload. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Return the version history for a document (owner only, newest first). */
 export async function getDocumentVersions(req: Request, res: Response): Promise<void> {
@@ -367,7 +372,13 @@ export async function uploadImage(req: Request, res: Response): Promise<void> {
       res.status(400).json({ error: 'No image file provided' })
       return
     }
-    const url = await documentModel.uploadDocumentImage(userId, req.file)
+    // Pictures count toward storage like text does: refuse one that would pass the cap.
+    await assertWithinStorageQuota(userId, req.file.buffer.length)
+    // Stored as the open document's picture when the uploader owns it, so deleting the document
+    // frees it; otherwise (a shared document, no document) it stays the uploader's own picture.
+    const documentId = typeof req.body?.documentId === 'string' && UUID.test(req.body.documentId) ? req.body.documentId : null
+    const ownDocument = documentId && (await getOwnerOfDocument(documentId)) === userId ? documentId : null
+    const url = await documentModel.uploadDocumentImage(userId, req.file, ownDocument)
     res.status(201).json({ url })
   } catch (error) {
     const status = (error as Error & { status?: number }).status

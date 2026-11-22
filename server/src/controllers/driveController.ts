@@ -8,7 +8,7 @@ import { Readable } from 'stream'
 import { rm, readFile, stat } from 'fs/promises'
 import * as driveModel from '../models/driveModel'
 import { getImportJob, isStaleJob, listUserImportJobs } from '../models/importJobModel'
-import { requestDocumentConversion, requestDocumentConversionFromPath, parseDocument } from '../ai/bridge/pythonBridge'
+import { DocumentRejectedError, requestDocumentConversion, requestDocumentConversionFromPath, parseDocument } from '../ai/bridge/pythonBridge'
 import { enqueueImportJob, LARGE_FILE_BYTES } from '../skills/processImportJob'
 import { sanitizeImportedHtml } from '../skills/sanitizeImportedHtml'
 import { streamToFileWithProgress, type DownloadStream } from '../skills/streamDownload'
@@ -404,6 +404,8 @@ export async function exportFile(req: Request, res: Response): Promise<void> {
           : await requestDocumentConversionFromPath(tempPath, conversionFilename)
         if (pyResult?.html) html = pyResult.html
       } catch (pyError) {
+        // A file the converter refused (password-protected, damaged) is refused, not retried elsewhere.
+        if (pyError instanceof DocumentRejectedError) throw pyError
         converterError = pyError instanceof Error ? pyError.message : String(pyError)
         console.warn('Python converter unavailable for Drive file:', pyError)
       }

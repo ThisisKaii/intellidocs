@@ -102,12 +102,18 @@ function buildBody(profile: AIProfile, messages: Message[], systemPrompt?: strin
 /** Extract plain text from the provider response payload. */
 function readText(provider: AIProvider, payload: unknown): string {
   const data = payload as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[]
+    candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[]
     choices?: { message?: { content?: string } }[]
   }
 
   if (provider === 'gemini') {
-    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    // Gemini can split one answer over several parts (and add "thought" parts): reading only the
+    // first cut answers off mid-sentence, or mid-JSON for the router.
+    const parts = data.candidates?.[0]?.content?.parts ?? []
+    return parts
+      .filter((part) => !part.thought)
+      .map((part) => part.text ?? '')
+      .join('')
   }
 
   return data.choices?.[0]?.message?.content ?? ''
@@ -211,6 +217,14 @@ async function chatPreferring(first: number | undefined, messages: Message[], sy
   return chatInOrder([profiles[index], ...profiles.filter((_, i) => i !== index)], messages, systemPrompt)
 }
 
+/** One profile only (1-based), no failover: for comparing models side by side. */
+async function chatOnly(profile: number, messages: Message[], systemPrompt?: string): Promise<AIResponse> {
+  const profiles = getAIProfiles()
+  const chosen = profiles[profile - 1]
+  if (!chosen) throw new AIClientError(`No AI profile ${profile}`, 400, 'unknown profile')
+  return chatInOrder([chosen], messages, systemPrompt)
+}
+
 async function chatInOrder(profiles: AIProfile[], messages: Message[], systemPrompt?: string): Promise<AIResponse> {
   let lastError: AIClientError | null = null
 
@@ -254,7 +268,7 @@ function getProfileSummaries(): AIProviderSummary[] {
   return getAIProfiles().map(({ provider, model }) => ({ provider, model }))
 }
 
-export const aiClient = { chat, chatWithMeta, chatPreferring, stream, getProviderSummary, getProfileSummaries }
+export const aiClient = { chat, chatWithMeta, chatPreferring, chatOnly, stream, getProviderSummary, getProfileSummaries }
 
 /** A chat call with the same shape as aiClient.chatWithMeta, injectable so skills can be tested offline. */
 export type ChatCompleter = (messages: Message[], systemPrompt?: string) => Promise<AIResponse>

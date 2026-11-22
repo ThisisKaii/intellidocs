@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, isAuthRetryableFetchError, type User } from '@supabase/supabase-js'
 import { isMissingSecondFactor } from '../utils/tokenClaims'
 import type { RoleName } from '../types/index'
 
@@ -19,20 +19,54 @@ function profileRoleName(profile: ProfileRoleJoin): RoleName | undefined {
 /** Outcome of checking a Supabase access token. */
 export type AccessTokenCheck =
   | { ok: true; user: { id: string; email: string } }
-  | { ok: false; error: string; code?: 'mfa_required' }
+  | { ok: false; error: string; code?: 'mfa_required' | 'auth_unavailable' }
+
+const AUTH_UNAVAILABLE: AccessTokenCheck = {
+  ok: false,
+  error: '503 Service Unavailable: Could not verify your session right now. Try again.',
+  code: 'auth_unavailable',
+}
+
+/** Wait before the one retry of a session check that could not reach Supabase. */
+const AUTH_RETRY_DELAY_MS = 400
+
+/** True when the check never got an answer (network, timeout, Supabase 5xx), not a refusal. */
+function unreachable(error: unknown): boolean {
+  if (isAuthRetryableFetchError(error)) return true
+  const status = (error as { status?: unknown } | null)?.status
+  return typeof status !== 'number' || status === 0 || status >= 500
+}
+
+async function getUserOnce(token: string): Promise<{ user: User | null; unreachable: boolean }> {
+  try {
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error) return { user: null, unreachable: unreachable(error) }
+    return { user: data.user, unreachable: false }
+  } catch {
+    return { user: null, unreachable: true } // fetch itself failed
+  }
+}
 
 /**
  * Verify a Supabase access token, including the 2FA rule. Shared by the HTTP middleware and the
- * collaboration WebSocket, which cannot send headers and passes the token another way.
+ * collaboration WebSocket, which cannot send headers and passes the token another way. A check
+ * that cannot reach Supabase is retried once and then reported as `auth_unavailable` (503), never
+ * as an invalid session: signing the user out over a network blip loses their place.
  */
 export async function verifyAccessToken(token: string): Promise<AccessTokenCheck> {
-  const { data, error } = await supabase.auth.getUser(token)
-  if (error || !data.user) return { ok: false, error: '401 Unauthorized: Invalid or expired session token' }
+  let result = await getUserOnce(token)
+  if (result.unreachable) {
+    await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAY_MS))
+    result = await getUserOnce(token)
+  }
+  if (result.unreachable) return AUTH_UNAVAILABLE
+  const user = result.user
+  if (!user) return { ok: false, error: '401 Unauthorized: Invalid or expired session token' }
   // An account with 2FA on must present a token that passed the code step.
-  if (isMissingSecondFactor(data.user, token)) {
+  if (isMissingSecondFactor(user, token)) {
     return { ok: false, error: '401 Unauthorized: Two-factor code required', code: 'mfa_required' }
   }
-  return { ok: true, user: { id: data.user.id, email: data.user.email ?? '' } }
+  return { ok: true, user: { id: user.id, email: user.email ?? '' } }
 }
 
 /** Basic authentication middleware: verifies Supabase Bearer JWT token. */
@@ -50,7 +84,7 @@ export async function authMiddleware(
 
     const check = await verifyAccessToken(authHeader.replace('Bearer ', ''))
     if (!check.ok) {
-      res.status(401).json(check.code ? { error: check.error, code: check.code } : { error: check.error })
+      res.status(check.code === 'auth_unavailable' ? 503 : 401).json(check.code ? { error: check.error, code: check.code } : { error: check.error })
       return
     }
 

@@ -43,6 +43,11 @@ function isUndefinedColumnError(error: { code?: string } | null): boolean {
   return Boolean(error?.code && UNDEFINED_COLUMN_CODES.includes(error.code))
 }
 
+/** Postgres "canceling statement due to statement timeout". */
+function isStatementTimeout(error: { code?: string; message?: string } | null): boolean {
+  return Boolean(error) && (error?.code === '57014' || /statement timeout/i.test(error?.message ?? ''))
+}
+
 /** Subset of a Supabase list response the preview fallback inspects. */
 export interface ListResponse<T> {
   data: T[] | null
@@ -442,6 +447,19 @@ export async function createDocument(
   // statement's time and ran it past Supabase's statement timeout. The content is what was just sent.
   let sent: Record<string, unknown> = full
   let { data, error } = await supabase.from('documents').insert(full).select(LIST_BASE_COLUMNS).single()
+
+  if (isStatementTimeout(error) && full.content_json) {
+    console.warn('createDocument: statement timeout with content_json; retrying with HTML only')
+    const withoutJson = { ...full, content_json: null }
+    sent = withoutJson
+    ;({ data, error } = await supabase.from('documents').insert(withoutJson).select(LIST_BASE_COLUMNS).single())
+  }
+
+  if (isStatementTimeout(error)) {
+    console.warn('createDocument: statement timeout with full document; retrying with minimal row')
+    sent = row
+    ;({ data, error } = await supabase.from('documents').insert(row).select(LIST_BASE_COLUMNS).single())
+  }
 
   if (isUndefinedColumnError(error)) {
     // A migration (026 snippet, 032 page layout, 037 content JSON) is missing: retry without those columns.

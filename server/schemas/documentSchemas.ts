@@ -142,12 +142,12 @@ export const captionConfigSchema = z.object({ figure: captionKindConfigSchema, t
 /** Validate document update requests from HTTP clients. */
 export const updateDocumentSchema = z
   .object({
-    title: z
-      .string()
-      .trim()
-      .min(1, 'Title cannot be empty')
-      .max(200, 'Title must be 200 characters or fewer')
-      .optional(),
+    // A cleared title field keeps the current title: refusing it would refuse the whole save,
+    // text included, every time the editor autosaves while the field is empty.
+    title: z.preprocess(
+      (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+      z.string().trim().max(200, 'Title must be 200 characters or fewer').optional(),
+    ),
     content: z.string().max(8000000, 'Content is too large').optional(),
     // The editor's JSON of the same content. Sent only together with `content`, so the two cannot
     // disagree; an update of `content` without it clears the stored JSON (see documentModel).

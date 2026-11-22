@@ -7,12 +7,16 @@ import { joinBody, splitBody, stripTabBreaks } from '../../utils/documentTabs'
  */
 
 type Row = Record<string, unknown>
-const db: { documents: Row[]; document_tabs: Row[]; document_versions: Row[]; tabsMissing: boolean } = {
+const db: { documents: Row[]; document_tabs: Row[]; document_versions: Row[]; tabsMissing: boolean; tabWriteLimit: number | null } = {
   documents: [],
   document_tabs: [],
   document_versions: [],
   tabsMissing: false,
+  // When set, a tab write carrying more characters than this runs past the statement timeout.
+  tabWriteLimit: null,
 }
+const TIMEOUT = { code: '57014', message: 'canceling statement due to statement timeout' }
+const rowChars = (row: Row): number => String(row.content ?? '').length + (row.content_json ? JSON.stringify(row.content_json).length : 0)
 const insertCalls: Array<{ table: string; rows: number }> = []
 const MISSING = { code: 'PGRST205', message: "Could not find the table 'public.document_tabs'" }
 
@@ -45,6 +49,9 @@ function query(table: 'documents' | 'document_tabs' | 'document_versions') {
     if (op.kind === 'insert') {
       // One row or a batch; a new document gets an id as the database would give it.
       const incoming = Array.isArray(op.payload) ? (op.payload as Row[]) : [op.payload as Row]
+      if (table === 'document_tabs' && db.tabWriteLimit !== null && incoming.reduce((sum, row) => sum + rowChars(row), 0) > db.tabWriteLimit) {
+        return { data: null, error: TIMEOUT }
+      }
       const added = incoming.map((payload) => {
         const row: Row = { tab_id: `33333333-3333-4333-8333-33333333333${db[table].length}`, created_at: new Date().toISOString(), page_count: 0, word_count: 0, ...payload }
         if (table === 'documents') row.id = row.id ?? `doc-${db.documents.length + 1}`
@@ -169,6 +176,7 @@ beforeEach(() => {
   db.document_tabs = []
   db.document_versions = []
   db.tabsMissing = false
+  db.tabWriteLimit = null
   insertCalls.length = 0
 })
 
@@ -314,6 +322,21 @@ describe('importing a manuscript the converter split into tabs', () => {
     await createTabbedDocument(OWNER, { title: 'Huge', content: [1, 2, 3, 4].map(chapter).join(''), content_json: null })
     const tabInserts = insertCalls.filter((call) => call.table === 'document_tabs')
     expect(tabInserts.map((call) => call.rows)).toEqual([1, 1, 1, 1])
+  })
+
+  it('splits a batch that runs past the statement timeout, and saves a huge tab without its editor JSON', async () => {
+    const chapter = (n: number) => `${markerHtml(`Chapter ${n}`)}<p>${'word '.repeat(50_000)}</p>`
+    const content = [1, 2, 3].map(chapter).join('')
+    const json = { type: 'doc', content: [1, 2, 3].flatMap((n) => [{ type: 'tabBreak', attrs: { title: `Chapter ${n}` } }, para('x'.repeat(n === 3 ? 400_000 : 10))]) } as unknown as EditorJson
+    db.tabWriteLimit = 300_000 // fits one ordinary tab, not two, and not tab 3 with its JSON
+    const doc = await createTabbedDocument(OWNER, { title: 'Timeout', content, content_json: json })
+    db.tabWriteLimit = null
+    const tabs = await listTabs(doc.id)
+    expect(tabs.map((tab) => tab.title)).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3'])
+    const third = await getTab(doc.id, tabs[2].tab_id)
+    expect(third.content).toContain('word word')
+    expect(third.content_json).toBeNull()
+    expect((await getTab(doc.id, tabs[0].tab_id)).content_json).not.toBeNull()
   })
 
   it('creates a body without markers as an ordinary document', async () => {

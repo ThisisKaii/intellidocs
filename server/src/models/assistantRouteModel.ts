@@ -18,7 +18,7 @@ const OUTCOME_LOG_TTL_SECONDS = 30 * 24 * 60 * 60
  * Bump when the router's instructions or tools change: routes cached under the old ones are then
  * routed afresh instead of repeating an old pick for a week.
  */
-const ROUTE_CACHE_VERSION = 3
+const ROUTE_CACHE_VERSION = 5
 
 /** Same request, same document sections, same router: same route. */
 export function routeId(message: string, sectionTitles: readonly string[]): string {

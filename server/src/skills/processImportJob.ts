@@ -18,6 +18,7 @@ import {
   type ImportJob,
 } from '../models/importJobModel'
 import {
+  DocumentRejectedError,
   requestDocumentConversion,
   requestDocumentConversionFromPath,
   parseDocument,
@@ -97,6 +98,8 @@ async function convertToHtml(args: {
     await pictures.discard()
     // A full quota is the answer, not a reason to try the fallback converter.
     if ((error as { code?: string }).code === 'storage_quota_exceeded') throw error
+    // A file the converter refused (password-protected, damaged) is refused, not retried elsewhere.
+    if (error instanceof DocumentRejectedError) throw error
     converterError = error instanceof Error ? error.message : String(error)
   }
 

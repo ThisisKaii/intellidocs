@@ -1,4 +1,4 @@
-import { requestDocumentConversion } from '../ai/bridge/pythonBridge'
+import { DocumentRejectedError, requestDocumentConversion } from '../ai/bridge/pythonBridge'
 import * as documentModel from '../models/documentModel'
 import { createTabbedDocument } from '../models/documentTabModel'
 import { assertWithinStorageQuota } from '../models/userModel'
@@ -112,6 +112,8 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
       } catch (pyError) {
         // A full quota is the answer, not a reason to try the fallback converter.
         if ((pyError as { code?: string }).code === 'storage_quota_exceeded') throw pyError
+        // A file the converter refused (password-protected, damaged) is refused, not retried elsewhere.
+        if (pyError instanceof DocumentRejectedError) throw pyError
         console.warn('Python converter service unavailable, falling back to local converter:', pyError)
         // The converter's pictures are only kept when its HTML is still used (a layout step failed).
         if (!htmlContent) await pictures.discard()

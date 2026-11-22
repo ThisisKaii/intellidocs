@@ -2,6 +2,13 @@
 export const DEFAULT_DOCUMENT_TITLE = 'Untitled Document'
 
 /** Whether editor HTML holds no visible text and no embedded media/tables. */
+/** Words of text in an HTML body (tags and entities left out). */
+export function htmlWordCount(html: string | null | undefined): number {
+  if (!html) return 0
+  const text = html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/&[a-z]+;|&#\d+;/gi, '')
+  return text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length
+}
+
 export function isBlankHtml(html: string | null | undefined): boolean {
   if (!html) return true
   const text = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()

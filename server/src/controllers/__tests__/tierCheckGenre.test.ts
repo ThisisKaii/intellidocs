@@ -108,6 +108,27 @@ describe('tierCheck genre isolation', () => {
     expect(body).toMatchObject({ tier: 'ml', format: 'paragraph', genre: 'memo' })
   })
 
+  it('answers from the genre preset when the ML service is down', async () => {
+    useGenre('thesis')
+    predict.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:8001'))
+    model.getPresetByKey.mockResolvedValue({
+      key: 'thesis',
+      rules: [{ condition: { startsWith: 'Chapter' }, format: 'heading1', priority: 20 }],
+    } as unknown as FormatPreset)
+    const { status, body } = await call('Chapter 3 Methodology')
+    expect(status).toBe(200)
+    expect(body).toMatchObject({ tier: 'genre_preset', format: 'heading1' })
+  })
+
+  it('suggests nothing, without failing, when the ML service is down and no rule matches', async () => {
+    useGenre('thesis')
+    predict.mockRejectedValue(new Error('timeout of 10000ms exceeded'))
+    const { status, body } = await call('Statement of the Problem')
+    expect(status).toBe(200)
+    expect(body).toMatchObject({ tier: 'none' })
+    expect(body.format).toBeUndefined()
+  })
+
   it('still lets bindings win before any genre data', async () => {
     useGenre('ieee')
     model.getBindings.mockResolvedValue([

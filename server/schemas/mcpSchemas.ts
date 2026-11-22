@@ -108,12 +108,32 @@ const FORMAT_NAMES = [
  * formatBlocks: one formatting change by its parts. Where: a block category ("headings",
  * "except:tables"), a named section or the document title, or the selection. At least one change.
  */
-export const formatBlocksSchema = z
+/** Line spacing as models write it: 2, "2", "double", "single", "1.5". */
+function readLineSpacing(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const word = value.trim().toLowerCase()
+  if (word === 'double') return 2
+  if (word === 'single') return 1
+  return /^\d+(?:\.\d+)?$/.test(word) ? Number(word) : value
+}
+
+/** "removeFormatting": ["bold"] (a list of what to remove) means removing those formats. */
+function readRemoval(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const args = value as Record<string, unknown>
+  if (!Array.isArray(args.removeFormatting)) return value
+  const formats = Array.isArray(args.formats) ? args.formats : []
+  return { ...args, formats: [...new Set([...formats, ...args.removeFormatting])], removeFormatting: true }
+}
+
+export const formatBlocksSchema = z.preprocess(
+  readRemoval,
+  z
   .object({
     formats: z.array(z.enum(FORMAT_NAMES)).max(6).default([]),
     fontSize: z.number().int().min(6).max(96).nullable().default(null),
     fontSizeStep: z.number().int().min(-24).max(24).refine((step) => step !== 0, 'fontSizeStep cannot be 0').nullable().default(null),
-    lineSpacing: z.number().min(1).max(3).nullable().default(null),
+    lineSpacing: z.preprocess(readLineSpacing, z.number().min(1).max(3).nullable()).default(null),
     firstLineIndentIn: z.number().min(0).max(2).nullable().default(null),
     fontFamily: z.string().trim().min(2).max(60).nullable().default(null),
     textCase: z.enum(['upper', 'title']).nullable().default(null),
@@ -141,6 +161,7 @@ export const formatBlocksSchema = z
       args.removeFormatting,
     'Name at least one change: formats, fontSize, fontSizeStep, lineSpacing, firstLineIndentIn, fontFamily, textCase or removeFormatting'
   )
+)
 
 export const applyPresetSchema = z.object({
   preset: z.enum(['apa_7th', 'ieee', 'uclm_capstone']),

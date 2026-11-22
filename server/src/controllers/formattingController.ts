@@ -365,10 +365,15 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
         return
       }
 
-      const prediction = await predictFormat({ text, userId: effectiveUserId, genre })
+      // The ML service may be down or slow: then answer from the genre's base preset (below)
+      // instead of failing the suggestion check.
+      const prediction = await predictFormat({ text, userId: effectiveUserId, genre }).catch((error: unknown) => {
+        console.warn('Formatting prediction unavailable; using the genre preset:', error instanceof Error ? error.message : error)
+        return null
+      })
 
       // Learned text→format match from the user's documents of the same genre.
-      if (prediction.learned) {
+      if (prediction?.learned) {
         res.status(200).json({
           tier: 'learned',
           format: prediction.learned.format,
@@ -386,7 +391,7 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
       }
 
       // The user's own model for this genre contributed.
-      if (prediction.genrePartitionHit) {
+      if (prediction?.genrePartitionHit) {
         res.status(200).json({
           tier: 'ml',
           format: prediction.predictedFormat,
@@ -409,6 +414,12 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
           reason: baseResult.reason,
           genre,
         })
+        return
+      }
+
+      // No prediction (the ML service is unreachable) and no preset rule: nothing to suggest.
+      if (!prediction) {
+        res.status(200).json({ tier: 'none', reason: 'Suggestions are unavailable right now', genre })
         return
       }
 

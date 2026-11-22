@@ -34,6 +34,8 @@ export const COLLAB_PATH = '/ws/collab/'
  */
 export const CLOSE_NO_SAVED_JSON = 4409
 export const CLOSE_UNAUTHORIZED = 4401
+/** WebSocket "Try Again Later": the session could not be checked right now. */
+export const CLOSE_TRY_AGAIN = 1013
 export const CLOSE_FORBIDDEN = 4403
 export const CLOSE_NOT_FOUND = 4404
 
@@ -187,6 +189,11 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
   const roomKey = tabId ? `${documentId}:${tabId}` : documentId
 
   const auth = await verifyAccessToken(token).catch(() => null)
+  if (auth && !auth.ok && auth.code === 'auth_unavailable') {
+    // Supabase could not be reached: the client reconnects on its own (any code but 4401).
+    ws.close(CLOSE_TRY_AGAIN, 'Try again shortly')
+    return
+  }
   if (!auth?.ok) {
     ws.close(CLOSE_UNAUTHORIZED, 'Sign in again')
     return

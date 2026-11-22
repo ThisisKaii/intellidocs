@@ -94,7 +94,41 @@ function fail(error: { code?: string; message: string }, action: string): never 
 }
 
 /** Most characters of tab rows sent in one write: a request well inside the statement timeout. */
-const TAB_WRITE_BATCH_CHARS = 3_000_000
+const TAB_WRITE_BATCH_CHARS = 1_500_000
+
+/** Postgres "canceling statement due to statement timeout". */
+function isStatementTimeout(error: { code?: string; message?: string } | null): boolean {
+  return Boolean(error) && (error?.code === '57014' || /statement timeout/i.test(error?.message ?? ''))
+}
+
+type TabRow = { tab_id: string; content: string; content_json?: EditorJson | null }
+
+/**
+ * Write tab rows in batches. A batch that runs past the statement timeout is split in half and
+ * written again; a single row that still does is written without its editor JSON (the editor
+ * rebuilds that from the HTML, as for a tab over EDITOR_JSON_MAX_CHARS).
+ */
+async function writeTabRows<T extends TabRow>(rows: T[], mode: 'insert' | 'upsert'): Promise<void> {
+  const write = async (batch: T[]): Promise<void> => {
+    const query = supabase.from('document_tabs')
+    const { error } = mode === 'insert' ? await query.insert(batch) : await query.upsert(batch, { onConflict: 'tab_id' })
+    if (!error) return
+    if (!isStatementTimeout(error)) fail(error, 'save the tabs')
+    if (batch.length > 1) {
+      const half = Math.ceil(batch.length / 2)
+      await write(batch.slice(0, half))
+      await write(batch.slice(half))
+      return
+    }
+    if (batch[0].content_json) {
+      console.warn(`Tab ${batch[0].tab_id}: saving without its editor JSON (the write ran past the statement timeout)`)
+      await write([{ ...batch[0], content_json: null }])
+      return
+    }
+    fail(error, 'save the tabs')
+  }
+  for (const batch of byBatch(rows)) await write(batch)
+}
 
 /** Tab rows grouped so each write carries at most TAB_WRITE_BATCH_CHARS (at least one row). */
 function byBatch<T extends { content: string; content_json?: EditorJson | null }>(rows: T[]): T[][] {
@@ -351,10 +385,7 @@ export async function syncTabsFromBody(
     }
   })
 
-  for (const batch of byBatch(rows)) {
-    const { error } = await supabase.from('document_tabs').upsert(batch, { onConflict: 'tab_id' })
-    if (error) fail(error, 'save the tabs')
-  }
+  await writeTabRows(rows, 'upsert')
   const removed = current.filter((tab) => !used.has(tab.tab_id)).map((tab) => tab.tab_id)
   if (removed.length > 0) {
     const { error: deleteError } = await supabase.from('document_tabs').delete().eq('document_id', doc.id).in('tab_id', removed)
@@ -407,10 +438,7 @@ export async function createTabbedDocument(userId: string, req: CreateDocumentRe
   try {
     const now = new Date().toISOString()
     const rows = tabs.map((tab) => ({ ...tab, document_id: doc.id, word_count: countBodyWords(tab.content), updated_at: now }))
-    for (const batch of byBatch(rows)) {
-      const { error } = await supabase.from('document_tabs').insert(batch)
-      if (error) fail(error, 'save the tabs')
-    }
+    await writeTabRows(rows, 'insert')
     await assemble(doc.id)
     await refreshPreview(doc.id, tabs[0].content)
   } catch (error) {

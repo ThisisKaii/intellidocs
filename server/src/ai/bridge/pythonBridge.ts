@@ -117,6 +117,9 @@ export async function probeMlHealth(timeoutMs = 2000): Promise<{
   }
 }
 
+/** Longest wait for a formatting prediction (a cold service loads its models in ~15 s). */
+export const PREDICT_TIMEOUT_MS = 10_000
+
 /** Send a formatting prediction request to the FastAPI service, scoped to one genre partition. */
 export async function requestFormatPrediction(
   text: string,
@@ -143,7 +146,9 @@ export async function requestFormatPrediction(
       x_position: options.xPosition,
       isolation_mode: options.isolationMode,
       genre: options.genre,
-    }
+    },
+    // A suggestion that comes late is useless, and a stalled service must not stall the editor.
+    { timeout: PREDICT_TIMEOUT_MS }
   )
   const data = pythonPredictionResponseSchema.parse(response.data)
 
@@ -271,6 +276,21 @@ function conversionParams(options: ConversionOptions): Record<string, string> | 
   return Object.keys(params).length > 0 ? params : undefined
 }
 
+/** A file the converter refused as given (password-protected, damaged): a 400 with its reason. */
+export class DocumentRejectedError extends Error {
+  readonly status = 400
+  readonly code = 'document_unreadable'
+}
+
+/** Turn the converter's 4xx answer into DocumentRejectedError; other failures pass unchanged. */
+function rejectedConversion(error: unknown): never {
+  if (axios.isAxiosError(error) && error.response && error.response.status >= 400 && error.response.status < 500) {
+    const detail = (error.response.data as { detail?: unknown } | undefined)?.detail
+    throw new DocumentRejectedError(typeof detail === 'string' && detail ? detail : 'This file could not be imported.')
+  }
+  throw error
+}
+
 /** Send a file buffer to Python ML FastAPI service for high-fidelity conversion. */
 export async function requestDocumentConversion(
   fileBuffer: Buffer,
@@ -282,14 +302,12 @@ export async function requestDocumentConversion(
   const formData = new FormData()
   formData.append('file', fileBuffer, filename)
 
-  const response = await axios.post<PythonConversionResponse>(
-    `${mlApiUrl}/convert/document`,
-    formData,
-    {
+  const response = await axios
+    .post<PythonConversionResponse>(`${mlApiUrl}/convert/document`, formData, {
       headers: formData.getHeaders(),
       params: conversionParams(options),
-    }
-  )
+    })
+    .catch(rejectedConversion)
 
   return pythonConversionResponseSchema.parse(response.data)
 }
@@ -309,16 +327,14 @@ export async function requestDocumentConversionFromPath(
   const formData = new FormData()
   formData.append('file', createReadStream(filePath), filename)
 
-  const response = await axios.post<PythonConversionResponse>(
-    `${mlApiUrl}/convert/document`,
-    formData,
-    {
+  const response = await axios
+    .post<PythonConversionResponse>(`${mlApiUrl}/convert/document`, formData, {
       headers: formData.getHeaders(),
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
       params: conversionParams(options),
-    }
-  )
+    })
+    .catch(rejectedConversion)
 
   return pythonConversionResponseSchema.parse(response.data)
 }
