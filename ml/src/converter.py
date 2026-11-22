@@ -36,6 +36,42 @@ def _cached_styles_part(self):
     return val
 DocumentPart._styles_part = property(_cached_styles_part)
 
+# Cache Paragraph.style and Run.font on instances to eliminate tens of thousands of duplicate XML queries
+_orig_p_style_getter = Paragraph.style.fget
+_orig_p_style_setter = Paragraph.style.fset
+def _cached_p_style(self):
+    val = getattr(self, "_cached_p_style", None)
+    if val is not None:
+        return val
+    try:
+        val = _orig_p_style_getter(self)
+    except Exception:
+        val = None
+    self._cached_p_style = val
+    return val
+def _set_p_style(self, value):
+    if hasattr(self, "_cached_p_style"):
+        del self._cached_p_style
+    return _orig_p_style_setter(self, value)
+Paragraph.style = property(_cached_p_style, _set_p_style)
+
+_orig_r_font = Run.font.fget
+def _cached_r_font(self):
+    val = getattr(self, "_cached_font", None)
+    if val is not None:
+        return val
+    val = _orig_r_font(self)
+    self._cached_font = val
+    return val
+Run.font = property(_cached_r_font)
+
+# Prevent PyMuPDF from eagerly initializing heavy ONNX layout models and background processes
+try:
+    import fitz
+    fitz._get_layout = lambda *args, **kwargs: None
+except Exception:
+    pass
+
 import omml
 import tab_plan
 from html import unescape as _html_unescape
@@ -1964,6 +2000,8 @@ class _ConversionState(threading.local):
         self.tab_starts: Dict[Any, str] = {}
         # Style attribute cache for _resolve_pPr_attr: (part_id, style_id, tag, attr) -> resolved value
         self.style_attr_cache: Dict[Tuple[int, Optional[str], str, str], Optional[str]] = {}
+        # Whether to assemble editor JSON during conversion (can be disabled for tabbed manuscripts)
+        self.build_json = True
 
 
 _STATE = _ConversionState()
@@ -2989,7 +3027,7 @@ def _paragraph_to_html(
     if list_info is None:
         equation = _equation_paragraph_html(p)
         if equation is not None:
-            if _BUILD_JSON:
+            if _STATE.build_json:
                 _STATE.last_paragraph_nodes = [
                     {"type": "blockMath", "attrs": {"latex": m.group(1), "number": m.group(3), "span": None}}
                     for m in re.finditer(r'<div data-type="block-math" data-latex="([^"]*)"( data-number="([^"]*)")?></div>', equation)
@@ -3001,7 +3039,7 @@ def _paragraph_to_html(
             return equation
     items = _read_inline(p, doc_parts)
     inner = _write_inline_html(items)
-    if list_info is None and _BUILD_JSON:
+    if list_info is None and _STATE.build_json:
         _STATE.last_paragraph_nodes = _paragraph_json(p, items)[1]
     if list_info is None and _JSON_SINK is not None and _STATE.in_body:
         html = _paragraph_to_html_from_items(p, inner)
@@ -3997,7 +4035,7 @@ def _write_body_html(
                 close_list()
                 ordinal = 1
 
-            measuring = (_JSON_LIST_SINK is not None and _STATE.in_body) or _BUILD_JSON
+            measuring = (_JSON_LIST_SINK is not None and _STATE.in_body) or _STATE.build_json
             if len(stack) == target_depth and stack:
                 # Continuing an existing list at this depth -> new sibling item.
                 if open_li_depth == target_depth:
@@ -4760,7 +4798,7 @@ def _round_fractional_measures(doc: docx.Document) -> None:
             continue
         for node in element.iter():
             for name, value in node.attrib.items():
-                if name.startswith(_WORD_NAMESPACE) and _FRACTIONAL_NUMBER.fullmatch(value):
+                if "." in value and name.startswith(_WORD_NAMESPACE) and _FRACTIONAL_NUMBER.fullmatch(value):
                     node.set(name, str(round(float(value))))
 
 
@@ -4817,10 +4855,12 @@ def _docx_document_to_result(
     _set_page_geometry(doc)
     doc.part._intellidocs_notes = {"footnote": {}, "endnote": {}}
     _STATE.tab_starts = _plan_tab_starts(doc) if split_tabs else {}
+    _STATE.build_json = _BUILD_JSON and build_json
     try:
         html = _body_to_html(doc, doc_parts, page_break_after)
     finally:
         _STATE.tab_starts = {}
+        _STATE.build_json = True
     html, body_art = _extract_page_art(html)
     html += _notes_html(doc, doc_parts)
     header, footer, header_number_format, footer_number_format = _extract_header_footer(doc)

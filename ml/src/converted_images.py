@@ -81,6 +81,10 @@ def shrink_picture(data: bytes, mime: str) -> Tuple[bytes, str]:
         resized = pix.width > MAX_PICTURE_WIDTH
         if resized:
             pix = pymupdf.Pixmap(pix, MAX_PICTURE_WIDTH, max(1, round(pix.height * MAX_PICTURE_WIDTH / pix.width)))
+        if mime.lower() in ("image/jpeg", "image/jpg") and not pix.alpha:
+            res_data = pix.tobytes("jpeg", jpg_quality=JPEG_QUALITY)
+            del pix
+            return (res_data, "image/jpeg") if len(res_data) < len(data) else (data, mime)
         candidates = [(pix.tobytes("png"), "image/png")]
         if not pix.alpha:
             candidates.append((pix.tobytes("jpeg", jpg_quality=JPEG_QUALITY), "image/jpeg"))
@@ -118,16 +122,14 @@ def externalise(result: Dict[str, Any]) -> Dict[str, Any]:
     _sweep(time.time())
     set_id = uuid.uuid4().hex
     folder = ROOT / set_id
-    images: Dict[str, Tuple[str, int]] = {}
+    raw_images: Dict[str, Tuple[bytes, str]] = {}
 
     def swap(match: re.Match) -> str:
         mime, data = match.group(1), match.group(2)
         key = hashlib.sha256(f"{mime}:{data}".encode("ascii")).hexdigest()[:32]
-        if key not in images:
+        if key not in raw_images:
             raw = base64.b64decode(data)
-            folder.mkdir(parents=True, exist_ok=True)
-            (folder / key).write_bytes(raw)
-            images[key] = (mime, len(raw))
+            raw_images[key] = (raw, mime)
         return TOKEN_PREFIX + key
 
     def visit(value: Any) -> Any:
@@ -141,11 +143,14 @@ def externalise(result: Dict[str, Any]) -> Dict[str, Any]:
 
     out = visit(result)
 
-    # Shrink the stored copies (PyMuPDF holds the interpreter lock, so threads would not help).
-    for key, (mime, _) in list(images.items()):
-        data, new_mime = shrink_picture((folder / key).read_bytes(), mime)
-        (folder / key).write_bytes(data)
-        images[key] = (new_mime, len(data))
+    images: Dict[str, Tuple[str, int]] = {}
+    if raw_images:
+        folder.mkdir(parents=True, exist_ok=True)
+    for key, (raw, mime) in list(raw_images.items()):
+        shrunk_data, new_mime = shrink_picture(raw, mime)
+        (folder / key).write_bytes(shrunk_data)
+        images[key] = (new_mime, len(shrunk_data))
+    del raw_images
     import gc
     gc.collect()
     manifest: List[Dict[str, Any]] = [{"key": k, "mime": m, "bytes": n} for k, (m, n) in images.items()]
