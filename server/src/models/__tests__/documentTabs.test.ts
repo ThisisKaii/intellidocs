@@ -7,13 +7,15 @@ import { joinBody, splitBody, stripTabBreaks } from '../../utils/documentTabs'
  */
 
 type Row = Record<string, unknown>
-const db: { documents: Row[]; document_tabs: Row[]; document_versions: Row[]; tabsMissing: boolean; tabWriteLimit: number | null } = {
+const db: { documents: Row[]; document_tabs: Row[]; document_versions: Row[]; tabsMissing: boolean; tabWriteLimit: number | null; dropTabWrites: number } = {
   documents: [],
   document_tabs: [],
   document_versions: [],
   tabsMissing: false,
   // When set, a tab write carrying more characters than this runs past the statement timeout.
   tabWriteLimit: null,
+  // How many tab writes to drop (the connection fails before an answer).
+  dropTabWrites: 0,
 }
 const TIMEOUT = { code: '57014', message: 'canceling statement due to statement timeout' }
 const rowChars = (row: Row): number => String(row.content ?? '').length + (row.content_json ? JSON.stringify(row.content_json).length : 0)
@@ -49,6 +51,10 @@ function query(table: 'documents' | 'document_tabs' | 'document_versions') {
     if (op.kind === 'insert') {
       // One row or a batch; a new document gets an id as the database would give it.
       const incoming = Array.isArray(op.payload) ? (op.payload as Row[]) : [op.payload as Row]
+      if (table === 'document_tabs' && db.dropTabWrites > 0) {
+        db.dropTabWrites -= 1
+        return { data: null, error: { message: 'TypeError: fetch failed', code: '' } }
+      }
       if (table === 'document_tabs' && db.tabWriteLimit !== null && incoming.reduce((sum, row) => sum + rowChars(row), 0) > db.tabWriteLimit) {
         return { data: null, error: TIMEOUT }
       }
@@ -177,6 +183,7 @@ beforeEach(() => {
   db.document_versions = []
   db.tabsMissing = false
   db.tabWriteLimit = null
+  db.dropTabWrites = 0
   insertCalls.length = 0
 })
 
@@ -337,6 +344,12 @@ describe('importing a manuscript the converter split into tabs', () => {
     expect(third.content).toContain('word word')
     expect(third.content_json).toBeNull()
     expect((await getTab(doc.id, tabs[0].tab_id)).content_json).not.toBeNull()
+  })
+
+  it('writes a tab batch again when its request was dropped', async () => {
+    db.dropTabWrites = 1
+    const doc = await createTabbedDocument(OWNER, request)
+    expect((await listTabs(doc.id)).map((tab) => tab.title)).toEqual(['Front matter', 'Chapter 1', 'Chapter 2'])
   })
 
   it('creates a body without markers as an ordinary document', async () => {

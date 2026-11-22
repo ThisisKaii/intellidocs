@@ -308,11 +308,25 @@ export async function requestDocumentConversion(
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
       params: conversionParams(options),
-      timeout: 180_000,
+      timeout: conversionTimeoutMs(fileBuffer.length),
     })
     .catch(rejectedConversion)
 
   return pythonConversionResponseSchema.parse(response.data)
+}
+
+/**
+ * How long a conversion may take: three minutes, plus three seconds per megabyte. A 190 MB
+ * manuscript takes about three minutes of converting and picture shrinking on its own; a fixed
+ * limit timed it out and sent the import to the slow fallback converter.
+ */
+export function conversionTimeoutMs(bytes: number): number {
+  return 180_000 + Math.ceil(bytes / 1_000_000) * 3_000
+}
+
+/** True for a conversion that ran out of time (the converter is busy, not broken). */
+export function isConversionTimeout(error: unknown): boolean {
+  return axios.isAxiosError(error) && (error.code === 'ECONNABORTED' || /timeout of \d+ms exceeded/.test(error.message))
 }
 
 /**

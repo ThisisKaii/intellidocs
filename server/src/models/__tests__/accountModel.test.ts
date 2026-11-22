@@ -15,7 +15,7 @@ const state: {
 function makeQuery(table: string): Record<string, unknown> {
   const query: Record<string, unknown> = {}
   const self = (): Record<string, unknown> => query
-  for (const name of ['select', 'eq']) query[name] = jest.fn(self)
+  for (const name of ['select', 'eq', 'in']) query[name] = jest.fn(self)
   query.maybeSingle = jest.fn(async () => ({
     data: table === 'user_profiles' ? { roles: { role_name: state.role } } : { value: state.settingsValue },
     error: null,

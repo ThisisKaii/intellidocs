@@ -15,16 +15,24 @@ import time
 import pytest
 from selenium.webdriver.common.by import By
 
-from selenium_helpers import DOCUMENTS, FIGURES, STUDENT, choose_import_file, click, document_id_from_url, show_evidence, sign_in, visible, wait_for
+from selenium_helpers import DOCUMENTS, FIGURES, PROFESSOR, choose_import_file, click, document_id_from_url, show_evidence, sign_in, visible, wait_for
 
 SOURCE = DOCUMENTS / "DATASENSEI (REVISION WEEK) (1).docx"
 MAX_TAB_PAGES = 60
 OPEN_LIMIT_S = 3.0
+# Stored size of the import: about 90 MB of shrunk pictures and about 15 MB of text, with headroom.
+NEEDED_BYTES = 130_000_000
 
 
 @pytest.mark.skipif(not SOURCE.exists(), reason="the 180 MB DATASENSEI fixture is not committed; place it in tests/fixtures/import_baselines/documents")
-def test_import_conversion_tcase_056(driver, student_api):
-    sign_in(driver, STUDENT)
+def test_import_conversion_tcase_056(driver, professor_api):
+    # About 90 MB of pictures after shrinking plus the text: more than a student's 100 MB allows,
+    # so the case runs as the professor (250 MB), with room checked first.
+    storage = professor_api.call("GET", "/auth/storage").json()
+    free = (storage.get("quotaBytes") or 0) - storage.get("usedBytes", 0)
+    if storage.get("quotaBytes") is not None and free < NEEDED_BYTES:
+        pytest.skip(f"the professor test account has {free / 1e6:.0f} MB free; the import needs about {NEEDED_BYTES / 1e6:.0f} MB")
+    sign_in(driver, PROFESSOR)
     dialog = choose_import_file(driver, SOURCE)
     started = time.time()
     click(driver, dialog.find_element(By.XPATH, ".//button[starts-with(normalize-space(), 'Import')]"))
@@ -45,10 +53,10 @@ def test_import_conversion_tcase_056(driver, student_api):
     wait_for(driver, lambda d: len(d.find_element(By.CSS_SELECTOR, ".ProseMirror").text.strip()) > 200, timeout=120, message="the first tab never showed its text")
     open_s = time.time() - opened
     doc_id = document_id_from_url(driver)
-    student_api.created_documents.append(doc_id)
+    professor_api.created_documents.append(doc_id)
     driver.save_screenshot(str(FIGURES / "test_import_conversion_tcase_056_first_tab.png"))
 
-    tabs = student_api.call("GET", f"/documents/{doc_id}/tabs").json()
+    tabs = professor_api.call("GET", f"/documents/{doc_id}/tabs").json()
     tabs = tabs.get("tabs", tabs) if isinstance(tabs, dict) else tabs
     pages = [int(t.get("page_count") or 0) for t in tabs]
     show_evidence(driver, "TCASE-056 Long manuscript split into tabs", [

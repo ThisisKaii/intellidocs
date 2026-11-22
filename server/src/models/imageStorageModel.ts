@@ -134,23 +134,55 @@ export async function storeImage(
 async function removeLocated(pictures: Array<{ path: string; backend: Backend }>): Promise<void> {
   const byBackend = { supabase: [] as string[], r2: [] as string[] }
   for (const picture of pictures) byBackend[picture.backend].push(picture.path)
+  // Files that could not be removed keep their records, so they stay counted and visible (a later
+  // removal can find them) instead of becoming files nothing tracks.
+  const kept = new Set<string>()
   for (let start = 0; start < byBackend.supabase.length; start += 100) {
-    const { error } = await supabase.storage.from(IMAGE_BUCKET).remove(byBackend.supabase.slice(start, start + 100))
-    if (error) console.warn('Could not remove pictures:', error.message)
+    const batch = byBackend.supabase.slice(start, start + 100)
+    const removed = await twice(async () => {
+      const result = await supabase.storage.from(IMAGE_BUCKET).remove(batch)
+      if (result?.error) throw new Error(result.error.message)
+    })
+    if (!removed) {
+      console.warn(`Could not remove ${batch.length} pictures; their records are kept`)
+      batch.forEach((path) => kept.add(path))
+    }
   }
   const config = r2Config()
   if (config && byBackend.r2.length > 0) {
     for (let start = 0; start < byBackend.r2.length; start += 1000) {
-      const keys = byBackend.r2.slice(start, start + 1000).map((Key) => ({ Key }))
-      await r2Client(config)
-        .send(new DeleteObjectsCommand({ Bucket: config.bucket, Delete: { Objects: keys, Quiet: true } }))
-        .catch((error: unknown) => console.warn('Could not remove pictures from R2:', error))
+      const batch = byBackend.r2.slice(start, start + 1000)
+      const removed = await twice(async () => {
+        await r2Client(config).send(new DeleteObjectsCommand({ Bucket: config.bucket, Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true } }))
+      })
+      if (!removed) {
+        console.warn(`Could not remove ${batch.length} pictures from R2; their records are kept`)
+        batch.forEach((path) => kept.add(path))
+      }
     }
   }
-  const paths = pictures.map((picture) => picture.path)
+  const paths = pictures.map((picture) => picture.path).filter((path) => !kept.has(path))
   for (let start = 0; start < paths.length; start += 200) {
-    await supabase.from('stored_images').delete().in('path', paths.slice(start, start + 200))
+    const batch = paths.slice(start, start + 200)
+    const removed = await twice(async () => {
+      const result = await supabase.from('stored_images').delete().in('path', batch)
+      if (result?.error) throw new Error(result.error.message)
+    })
+    if (!removed) console.warn(`Could not delete the records of ${batch.length} removed pictures`)
   }
+}
+
+/** Run a step, and once more after a short pause if it fails (a dropped request); true when it succeeded. */
+async function twice(step: () => Promise<void>): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await step()
+      return true
+    } catch {
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 800))
+    }
+  }
+  return false
 }
 
 /** Delete pictures by their URLs (an import that did not create its document). */

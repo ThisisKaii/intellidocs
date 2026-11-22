@@ -103,16 +103,30 @@ function isStatementTimeout(error: { code?: string; message?: string } | null): 
 
 type TabRow = { tab_id: string; content: string; content_json?: EditorJson | null }
 
+/** Pause before writing a batch again after its request was dropped. */
+const DROPPED_RETRY_MS = 1_000
+
+/** A request that never got an answer (the connection dropped), as supabase-js reports it. */
+function isDroppedRequest(error: { code?: string; message?: string } | null): boolean {
+  return Boolean(error) && /fetch failed|ECONNRESET|socket hang up|other side closed|network/i.test(error?.message ?? '')
+}
+
 /**
  * Write tab rows in batches. A batch that runs past the statement timeout is split in half and
  * written again; a single row that still does is written without its editor JSON (the editor
  * rebuilds that from the HTML, as for a tab over EDITOR_JSON_MAX_CHARS).
  */
 async function writeTabRows<T extends TabRow>(rows: T[], mode: 'insert' | 'upsert'): Promise<void> {
-  const write = async (batch: T[]): Promise<void> => {
+  const write = async (batch: T[], retried = false): Promise<void> => {
     const query = supabase.from('document_tabs')
-    const { error } = mode === 'insert' ? await query.insert(batch) : await query.upsert(batch, { onConflict: 'tab_id' })
+    // A retry is an upsert: the first attempt may have landed with only its reply lost.
+    const { error } = mode === 'insert' && !retried ? await query.insert(batch) : await query.upsert(batch, { onConflict: 'tab_id' })
     if (!error) return
+    if (isDroppedRequest(error) && !retried) {
+      await new Promise((resolve) => setTimeout(resolve, DROPPED_RETRY_MS))
+      await write(batch, true)
+      return
+    }
     if (!isStatementTimeout(error)) fail(error, 'save the tabs')
     if (batch.length > 1) {
       const half = Math.ceil(batch.length / 2)

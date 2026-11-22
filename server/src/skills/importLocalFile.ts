@@ -1,4 +1,4 @@
-import { DocumentRejectedError, requestDocumentConversion } from '../ai/bridge/pythonBridge'
+import { DocumentRejectedError, isConversionTimeout, requestDocumentConversion } from '../ai/bridge/pythonBridge'
 import * as documentModel from '../models/documentModel'
 import { createTabbedDocument } from '../models/documentTabModel'
 import { assertWithinStorageQuota } from '../models/userModel'
@@ -77,6 +77,8 @@ export async function importLocalFile(
   options: { onPicture?: (done: number, total: number) => void } = {},
 ): Promise<Document> {
   const { effectiveExt, title } = validateImportUpload(file)
+  // An account already at its cap cannot take the import: say so now, not after converting it.
+  await assertWithinStorageQuota(userId, 1)
 
     let htmlContent = ''
     // The editor's JSON of htmlContent, when the Python converter wrote it (the other converters do not).
@@ -123,6 +125,12 @@ export async function importLocalFile(
         if ((pyError as { code?: string }).code === 'storage_quota_exceeded') throw pyError
         // A file the converter refused (password-protected, damaged) is refused, not retried elsewhere.
         if (pyError instanceof DocumentRejectedError) throw pyError
+        // A converter that ran out of time is busy, not broken: the fallback converter would spend far
+        // longer on the same file (a 190 MB manuscript took 20 minutes) and lose its layout.
+        if (isConversionTimeout(pyError)) {
+          await pictures.discard()
+          throw Object.assign(new Error('Converting this file took too long. Try again in a few minutes.'), { status: 503 })
+        }
         console.warn('Python converter service unavailable, falling back to local converter:', pyError)
         // The converter's pictures are only kept when its HTML is still used (a layout step failed).
         if (!htmlContent) await pictures.discard()
