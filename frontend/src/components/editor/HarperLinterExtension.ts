@@ -88,7 +88,8 @@ function isBinaryAvailable(): Promise<boolean> {
 
 /**
  * Concatenate a node's text with '\n' separators, tracking where each segment
- * maps in absolute doc positions (`basePos` is the node's own start).
+ * maps in absolute doc positions (`basePos` is where the node's content starts: one past the node itself, since
+ * `descendants` counts from inside the node).
  */
 function buildTextLayout(node: ProseMirrorNode, basePos = 0): TextLayout {
   const segments: TextLayoutSegment[] = []
@@ -207,7 +208,7 @@ export const HarperLinterExtension = Extension.create({
       if (!block) return
 
       const version = ++requestVersion
-      const layout = buildTextLayout(block.node, block.from)
+      const layout = buildTextLayout(block.node, block.from + 1)
       if (layout.text.length === 0) {
         view.dispatch(
           view.state.tr.setMeta(harperKey, { entries: [], blockFrom: block.from, blockTo: block.to })

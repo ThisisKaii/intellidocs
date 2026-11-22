@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
-import { updateOwnProfile, registerUser, getOwnNames, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow } from '../models/userModel'
+import { updateOwnProfile, registerUser, getOwnNames, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow, signInWithPassword } from '../models/userModel'
 import { effectivePlan } from '../utils/plan'
 import { resolvePendingShares } from '../models/shareModel'
 import * as accountModel from '../models/accountModel'
@@ -59,7 +59,8 @@ export async function login(req: Request, res: Response): Promise<void> {
       return
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    // A fresh client: the shared one below must never hold a user's session (see sessionClient).
+    const { data, error } = await signInWithPassword(email, password)
 
     if (error) {
       res.status(400).json({ error: error.message })

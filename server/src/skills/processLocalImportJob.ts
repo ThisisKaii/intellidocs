@@ -16,6 +16,9 @@ const userChains = new Map<string, Promise<void>>()
 /** Progress shown while the converter and document save run. */
 const CONVERTING_PROGRESS = 20
 const SAVING_PROGRESS = 90
+/** Storing the converted pictures fills this span of the bar (it is most of a large import). */
+const PICTURES_START = 30
+const PICTURES_END = 80
 
 /**
  * Convert one stored upload into a document and record the outcome on the job.
@@ -34,7 +37,17 @@ export async function processLocalImportJob(job: ImportJob): Promise<void> {
       : { reachable: true, wakeMs: 0 }
     if (wake.wakeMs > 0) await updateImportJob(job.id, { waking: false })
     const convertStartedAt = Date.now()
-    const document = await importLocalFile(job.userId, { buffer, originalname: job.fileName })
+    // Report the picture uploads as they finish, about every tenth, so a long import visibly moves.
+    let reported = -1
+    const document = await importLocalFile(job.userId, { buffer, originalname: job.fileName }, {
+      onPicture: (done, total) => {
+        const tenth = Math.floor((done / total) * 10)
+        if (tenth === reported) return
+        reported = tenth
+        const progress = PICTURES_START + Math.round(((PICTURES_END - PICTURES_START) * done) / total)
+        void updateImportJob(job.id, { state: 'converting', progress }).catch(() => undefined)
+      },
+    })
     console.info(
       `[import] ${job.fileName}: queued ${Math.round((startedAt - job.createdAt) / 1000)}s, ` +
         `converter wake ${Math.round(wake.wakeMs / 1000)}s${wake.reachable ? '' : ' (not reachable)'}, ` +

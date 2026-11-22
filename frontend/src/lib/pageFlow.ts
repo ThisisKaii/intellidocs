@@ -9,10 +9,18 @@ export interface PageGrid {
 
 /** A text block as measured on screen. */
 export interface FlowBlock {
-  kind: 'paragraph' | 'heading'
-  /** Top of each line box, in order. */
+  /** `whole`: a block the paginator cannot split (side-by-side columns): it goes to the next page entire. */
+  kind: 'paragraph' | 'heading' | 'whole'
+  /** Top of each line box, in order (a `whole` block gives its own top only). */
   lineTops: number[]
   lineHeight: number
+  /** Height of a `whole` block. */
+  height?: number
+  /**
+   * A `whole` block narrower than the text column: it overlaps a page break, which is a float that
+   * a grid cannot overlap, so the browser squeezed it beside the break (its height is then not its own).
+   */
+  squeezed?: boolean
   /** A blank line follows: a heading is then kept with that line, not with the text after it. */
   blankAfter?: boolean
 }
@@ -24,7 +32,12 @@ export interface FlowPush {
   line: number
   /** Height of the spacer that moves that line to the top of the next page. */
   height: number
-  reason: 'orphan' | 'widow' | 'keep-with-next'
+  reason: 'orphan' | 'widow' | 'keep-with-next' | 'keep-whole'
+  /**
+   * The push is a spacer placed before the block, reaching the next page's text area. A grid cannot
+   * take padding to clear the page break (its box would still overlap the break's float).
+   */
+  spacerBefore?: boolean
 }
 
 /**
@@ -66,6 +79,22 @@ export function decidePushes(grid: PageGrid, blocks: FlowBlock[]): FlowPush[] {
     const first = pages[0]
     const atPageTop = block.lineTops[0] - bodyTop(grid, first) < block.lineHeight * 1.5
 
+    if (block.kind === 'whole') {
+      // Side-by-side columns cannot be split at a page: one that runs into the bottom margin (or
+      // already sits squeezed beside a page break) goes to the top of the next page's text, if it
+      // fits on a page at all (a taller one is left where it is).
+      const top = block.lineTops[0]
+      const page = pageOf(grid, top)
+      const textBottom = page * grid.pitch + grid.pageHeight - grid.marginBottom
+      const nextText = bodyTop(grid, page + 1)
+      const fits = block.squeezed || (block.height ?? 0) <= grid.pageHeight - grid.marginTop - grid.marginBottom
+      const crosses = block.squeezed || top + (block.height ?? 0) > textBottom + 1
+      if (crosses && fits && !atPageTop && nextText - top > 1) {
+        pushes.push({ block: index, line: 0, height: nextText - top, reason: 'keep-whole', spacerBefore: true })
+      }
+      return
+    }
+
     if (block.kind === 'heading') {
       const next = blocks[index + 1]
       if (next && next.lineTops.length > 0 && !atPageTop && !block.blankAfter) {
@@ -89,5 +118,5 @@ export function decidePushes(grid: PageGrid, blocks: FlowBlock[]): FlowPush[] {
       pushes.push({ block: index, line: lines - 2, height: toPageEnd(grid, pages[lines - 2], block.lineTops[lines - 2]), reason: 'widow' })
     }
   })
-  return pushes.filter((push) => push.height > 1 && push.height < grid.pageHeight)
+  return pushes.filter((push) => push.height > 1 && push.height < (push.spacerBefore ? grid.pitch : grid.pageHeight))
 }

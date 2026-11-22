@@ -17,10 +17,11 @@ describe('academic vocabulary', () => {
     expect([...ACADEMIC_WORDS].sort()).toEqual(serverWhitelist())
   })
 
-  it('accepts the forms writers use', () => {
+  it('gives Harper lowercase words and capitalised acronyms, never capitalised words', () => {
     const words = academicDictionary()
     expect(words).toContain('ANOVA')
     expect(words).toContain('heteroscedasticity')
-    expect(words).toContain('Heteroscedasticity')
+    // A capitalised entry reads as a proper noun to Harper and flags the lowercase spelling.
+    expect(words).not.toContain('Heteroscedasticity')
   })
 })

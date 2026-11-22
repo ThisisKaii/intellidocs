@@ -14,6 +14,9 @@ const SETTLE_MS = 1500
 /** Size of an empty document: a change from this is a document arriving, not an edit. */
 const EMPTY_DOC_SIZE = 2
 
+/** Side-by-side column blocks: the paginator cannot split them, so they are kept on one page. */
+const COLUMN_BLOCKS = 'div.intellidocs-columns'
+
 /** A block pushed down by padding added above its first line (a decoration, never a document change). */
 interface FlowPush {
   from: number
@@ -21,6 +24,8 @@ interface FlowPush {
   height: number
   /** A widow: a spacer inside the paragraph, at the start of its second-to-last line. */
   inline?: boolean
+  /** A spacer block in front of the node (for column blocks, which padding cannot move off a page break). */
+  before?: boolean
 }
 
 /** An inline spacer as wide as the line: it takes a line of its own and moves the text after it down. */
@@ -29,6 +34,15 @@ function inlineSpacer(height: number): HTMLElement {
   el.className = 'intellidocs-flow-spacer'
   el.setAttribute('contenteditable', 'false')
   el.style.cssText = `display:inline-block;width:100%;height:${Math.round(height)}px;vertical-align:top;pointer-events:none`
+  return el
+}
+
+/** A block spacer in front of a column block: moves it below the page break, to the next page's text. */
+function blockSpacer(height: number): HTMLElement {
+  const el = document.createElement('div')
+  el.className = 'intellidocs-flow-spacer'
+  el.setAttribute('contenteditable', 'false')
+  el.style.cssText = `display:block;height:${Math.round(height)}px;pointer-events:none`
   return el
 }
 
@@ -98,7 +112,9 @@ export const PageFlowExtension = Extension.create<{ enabled: boolean }>({
             if (meta?.clear) return DecorationSet.empty
             if (meta?.pushes) {
               const added = meta.pushes.map((push) =>
-                push.inline
+                push.before
+                  ? Decoration.widget(push.from, () => blockSpacer(push.height), { side: -1, key: `flow-before-${push.from}` })
+                  : push.inline
                   ? Decoration.widget(push.from, () => inlineSpacer(push.height), { side: -1, key: `flow-${push.from}` })
                   : Decoration.node(push.from, push.to, {
                       class: 'intellidocs-flow-push',
@@ -136,20 +152,41 @@ function watchPageFlow(view: EditorView, isEnabled: () => boolean): { update: (v
     if (!grid) return null
     const rect = dom.getBoundingClientRect()
     const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
-    const elements = Array.from(dom.children).filter((child): child is HTMLElement => child.matches('p, h1, h2, h3, h4, h5, h6') && !!child.textContent?.trim())
-    const lines = elements.map((el) => measureLines(el, rect.top, scale))
-    const blocks: FlowBlock[] = elements.map((el, index) => ({
-      kind: el.tagName === 'P' ? 'paragraph' : 'heading',
-      lineTops: lines[index].map((line) => line.top),
-      lineHeight: parseFloat(getComputedStyle(el).lineHeight) / scale || 20,
-      blankAfter: el.nextElementSibling?.matches('p') === true && !el.nextElementSibling.textContent?.trim(),
-    }))
+    // Word's line rules only when the document asks for them; unsplittable column blocks always.
+    const wordRules = isEnabled()
+    const elements = Array.from(dom.children).filter(
+      (child): child is HTMLElement =>
+        child.matches(COLUMN_BLOCKS) || (wordRules && child.matches('p, h1, h2, h3, h4, h5, h6') && !!child.textContent?.trim()),
+    )
+    const lines = elements.map((el) => (el.matches(COLUMN_BLOCKS) ? [] : measureLines(el, rect.top, scale)))
+    const blocks: FlowBlock[] = elements.map((el, index) => {
+      if (el.matches(COLUMN_BLOCKS)) {
+        const box = el.getBoundingClientRect()
+        const domStyle = getComputedStyle(dom)
+        const textWidth = dom.clientWidth - parseFloat(domStyle.paddingLeft) - parseFloat(domStyle.paddingRight)
+        return {
+          kind: 'whole',
+          lineTops: [Math.round((box.top - rect.top) / scale)],
+          lineHeight: 20,
+          height: box.height / scale,
+          // Narrower than the text column: squeezed beside a page break's float.
+          squeezed: box.width / scale < textWidth - 4,
+        }
+      }
+      return {
+        kind: el.tagName === 'P' ? 'paragraph' : 'heading',
+        lineTops: lines[index].map((line) => line.top),
+        lineHeight: parseFloat(getComputedStyle(el).lineHeight) / scale || 20,
+        blankAfter: el.nextElementSibling?.matches('p') === true && !el.nextElementSibling.textContent?.trim(),
+      }
+    })
     return { grid, blocks, elements, lines }
   }
 
   const run = (): void => {
     frame = 0
-    if (destroyed || working || view.composing || !isEnabled()) return
+    if (destroyed || working || view.composing) return
+    if (!isEnabled() && !(view.dom as HTMLElement).querySelector(COLUMN_BLOCKS)) return
     const measured = measure()
     if (!measured) return
     const pushes = decidePushes(measured.grid, measured.blocks)
@@ -175,7 +212,7 @@ function watchPageFlow(view: EditorView, isEnabled: () => boolean): { update: (v
       if (!node) continue
       // A push already stands on this block: a second one would only move it a page further.
       const present = pageFlowKey.getState(view.state)?.find(from, from + node.nodeSize).length ?? 0
-      if (present === 0) added.push({ from, to: from + node.nodeSize, height: push.height })
+      if (present === 0) added.push({ from, to: from + node.nodeSize, height: push.height, before: push.spacerBefore === true })
     }
     if (added.length === 0) return
     working = true

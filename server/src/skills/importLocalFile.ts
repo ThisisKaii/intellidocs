@@ -71,7 +71,11 @@ function classifyPdfHeading(line: string): 'h1' | 'h2' | null {
  * fallbacks), move embedded images to storage, and create the document.
  * Throws a status-tagged error for unsupported files or an exceeded quota.
  */
-export async function importLocalFile(userId: string, file: ImportUpload): Promise<Document> {
+export async function importLocalFile(
+  userId: string,
+  file: ImportUpload,
+  options: { onPicture?: (done: number, total: number) => void } = {},
+): Promise<Document> {
   const { effectiveExt, title } = validateImportUpload(file)
 
     let htmlContent = ''
@@ -90,15 +94,19 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
 
     // The converter's pictures, removed again if this import does not create its document.
     const pictures = importImageStore(userId)
+    const phases = phaseClock()
 
     // Try Python microservice for high-fidelity conversion (tables, images, typography, layout)
     if (effectiveExt === '.docx' || effectiveExt === '.pdf') {
       try {
         const converted = await requestDocumentConversion(file.buffer, file.originalname, { separateImages: true, splitTabs: true })
+        phases.mark('convert')
         // Pictures and text are checked against the quota before a single picture is stored.
         const pyResult = await resolveConvertedImages(converted, pictures.store, undefined, {
           beforeStore: (pictureBytes) => assertWithinStorageQuota(userId, pictureBytes + Buffer.byteLength(converted.html)),
+          onPicture: options.onPicture,
         })
+        phases.mark('pictures')
         if (pyResult && pyResult.html) {
           htmlContent = pyResult.html
           contentJson = pyResult.content_json
@@ -108,6 +116,7 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
           footerNumberFormat = pyResult.footer_number_format ?? 'none'
           pageSetup = pyResult.page_setup
           importedLayout = await buildImportedLayout(userId, pyResult)
+          phases.mark('layout')
         }
       } catch (pyError) {
         // A full quota is the answer, not a reason to try the fallback converter.
@@ -241,6 +250,7 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
         uploadImportImages(userId, headerContent),
         uploadImportImages(userId, footerContent),
       ])
+      phases.mark('prepare')
 
       // Create the document with the converted content, page setup, and header/footer
       // A long manuscript arrives split into chapter tabs (the converter places the markers).
@@ -272,9 +282,26 @@ export async function importLocalFile(userId: string, file: ImportUpload): Promi
         storedFooter,
         JSON.stringify(importedLayout ?? {}),
       ])
+      phases.mark('save')
+      console.info(`[import] ${file.originalname}: ${phases.summary()}`)
       return document
     } catch (error) {
       await pictures.discard()
       throw error
     }
+}
+
+/** Elapsed time of each step of an import, for the server log (finding where a slow import waits). */
+function phaseClock(): { mark: (name: string) => void; summary: () => string } {
+  const started = Date.now()
+  let last = started
+  const parts: string[] = []
+  return {
+    mark(name) {
+      const now = Date.now()
+      parts.push(`${name} ${((now - last) / 1000).toFixed(1)}s`)
+      last = now
+    },
+    summary: () => `${parts.join(' · ')} (total ${((Date.now() - started) / 1000).toFixed(1)}s)`,
+  }
 }

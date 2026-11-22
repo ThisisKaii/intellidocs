@@ -45,6 +45,9 @@ def ensure_schema(conn: duckdb.DuckDBPyConnection) -> None:
 # Keys removed per DEL call once their events are stored.
 DELETE_BATCH_SIZE = 100
 
+# The columns of an event row as event_row builds it.
+EVENT_INSERT_COLUMNS = ["user_id", "document_id", "action", "event_ts", "event_ts_raw", "source_key", "payload", "block_id", "genre"]
+
 # Commands sent per Upstash /pipeline request.
 PIPELINE_CHUNK = 100
 
@@ -209,16 +212,7 @@ def drain_redis(r: Any, conn: Any) -> int:
 
     # One batched insert; then each list is trimmed by exactly the events that
     # were read, so events pushed while this ran stay for the next run.
-    if rows:
-        conn.executemany(
-            """
-            INSERT INTO behavior_events
-              (user_id, document_id, action, event_ts, event_ts_raw, source_key,
-               payload, block_id, genre)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
+    duckdb_store.insert_rows(conn, "behavior_events", EVENT_INSERT_COLUMNS, rows)
     run_batch(r, [("LTRIM", key, count, -1) for key, count in read_counts.items()])
     return len(rows)
 

@@ -4301,6 +4301,10 @@ def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int], jo
             continue
         widths = _column_widths(sections[index]._sectPr)
         begin, end = starts[index], starts[index + 1]
+        # A "next page" section opens with its page break: that break belongs before the columns,
+        # not inside them (only a break in the middle makes the section too long to wrap).
+        while begin < end and re.fullmatch(r"\s*(<hr class=\"page-break\"[^>]*/?>\s*)+", out[begin] or ""):
+            begin += 1
         segment = out[begin:end]
         text = re.sub(r"<[^>]+>", "", "".join(segment))
         if not widths or not segment or len(segment) > _MAX_COLUMN_ENTRIES or len(text) > _MAX_COLUMN_TEXT:

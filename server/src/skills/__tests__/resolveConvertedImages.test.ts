@@ -50,6 +50,16 @@ describe('resolveConvertedImages', () => {
     expect(release).toHaveBeenCalledWith('f'.repeat(32))
   })
 
+  it('reports each finished picture, also one that failed or was lost', async () => {
+    const fetchImage = jest.fn(async (_set: string, key: string) => {
+      if (key === KEY_B) throw new Error('gone')
+      return Buffer.from('abc')
+    })
+    const onPicture = jest.fn()
+    await resolveConvertedImages(conversion(), async () => 'https://cdn/x', { fetchImage, release: async () => undefined }, { onPicture })
+    expect(onPicture.mock.calls.map(([done, total]) => `${done}/${total}`).sort()).toEqual(['1/2', '2/2'])
+  })
+
   it('keeps a picture inline when storing it fails, and leaves out one the converter lost', async () => {
     const fetchImage = jest.fn(async (_set: string, key: string) => {
       if (key === KEY_B) throw new Error('gone')

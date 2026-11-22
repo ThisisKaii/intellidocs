@@ -149,13 +149,7 @@ def overwrite_features(conn: duckdb.DuckDBPyConnection, rows: List[Tuple]) -> in
     if not rows:
         return 0
 
-    columns = feature_column_order()
-    placeholders = ", ".join("?" for _ in columns)
-    conn.executemany(
-        f"INSERT INTO {FEATURE_TABLE} ({', '.join(columns)}) VALUES ({placeholders})",
-        rows,
-    )
-    return len(rows)
+    return duckdb_store.insert_rows(conn, FEATURE_TABLE, list(feature_column_order()), rows)
 
 
 def main() -> None:

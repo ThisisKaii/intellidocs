@@ -8,6 +8,8 @@ const L = 20
 /** A paragraph whose lines start at the given tops. */
 const paragraph = (...tops: number[]): FlowBlock => ({ kind: 'paragraph', lineTops: tops, lineHeight: L })
 const heading = (top: number): FlowBlock => ({ kind: 'heading', lineTops: [top], lineHeight: L })
+/** Side-by-side columns starting at `top`, `height` tall. */
+const columns = (top: number, height: number): FlowBlock => ({ kind: 'whole', lineTops: [top], lineHeight: L, height })
 
 describe('decidePushes', () => {
   it('moves a paragraph whose first line is alone at the bottom of a page (orphan)', () => {
@@ -37,5 +39,21 @@ describe('decidePushes', () => {
 
   it('does not push a block that already starts a page', () => {
     expect(decidePushes(grid, [paragraph(1192, 1212, 1232)])).toEqual([])
+  })
+
+  it('moves a column block that would cross into the bottom margin to the text of the next page', () => {
+    // Text area ends at 960: a 120px block starting at 900 would run to 1020. Page 2's text starts at 1096 + 96.
+    expect(decidePushes(grid, [columns(900, 120)])).toEqual([{ block: 0, line: 0, height: 1192 - 900, reason: 'keep-whole', spacerBefore: true }])
+  })
+
+  it('moves a column block squeezed beside a page break, whatever its (squeezed) height', () => {
+    const squeezed: FlowBlock = { ...columns(970, 3781), squeezed: true }
+    expect(decidePushes(grid, [squeezed])).toEqual([{ block: 0, line: 0, height: 1192 - 970, reason: 'keep-whole', spacerBefore: true }])
+  })
+
+  it('leaves a column block that fits, one already at a page top, and one taller than a page', () => {
+    expect(decidePushes(grid, [columns(700, 120)])).toEqual([])
+    expect(decidePushes(grid, [columns(1096 + 96, 900)])).toEqual([])
+    expect(decidePushes(grid, [columns(500, 2000)])).toEqual([])
   })
 })

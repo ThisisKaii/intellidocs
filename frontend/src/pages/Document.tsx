@@ -315,6 +315,11 @@ export default function Document(): JSX.Element {
   const compositionFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [title, setTitle] = useState<string>('Untitled Document')
+  // Whatever set the title (loading, a rename, an import, a recovered draft), remember the last
+  // non-blank one for handleTitleBlur.
+  useEffect(() => {
+    if (title.trim()) keptTitleRef.current = title
+  }, [title])
   const [content, setContent] = useState<string>('')
   /** Saved editor JSON handed to the editor with each external `content` load (it loads in preference). */
   const [contentJson, setContentJson] = useState<EditorJson | null>(null)
@@ -1032,7 +1037,6 @@ export default function Document(): JSX.Element {
           }
           if (doc.title) {
             latestTitleRef.current = doc.title
-            keptTitleRef.current = doc.title
             setTitle(doc.title)
           }
           latestHeaderRef.current = doc.header_content ?? ''
@@ -2604,7 +2608,6 @@ export default function Document(): JSX.Element {
   function handleTitleChange(event: ChangeEvent<HTMLInputElement>): void {
     const nextTitle = event.target.value
     latestTitleRef.current = nextTitle
-    if (nextTitle.trim()) keptTitleRef.current = nextTitle
     setTitle(nextTitle)
     scheduleSave()
   }

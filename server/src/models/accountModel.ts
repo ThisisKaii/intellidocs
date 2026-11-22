@@ -2,6 +2,7 @@ import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { getStringListSetting } from './personalizationModel'
 import { removeUserImages } from './imageStorageModel'
+import { signInWithPassword } from './userModel'
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -50,7 +51,8 @@ export async function changePassword(
   if (hasPasswordLogin(found.user.app_metadata?.providers)) {
     if (!currentPassword) throw failure(400, 'Enter your current password')
     if (currentPassword === newPassword) throw failure(400, 'Choose a new password that is different from the current one')
-    const { error } = await supabase.auth.signInWithPassword({ email, password: currentPassword })
+    // Checked on a fresh client: this module's client must keep acting as the service role.
+    const { error } = await signInWithPassword(email, currentPassword)
     if (error) throw failure(400, 'Your current password is not correct')
   }
 

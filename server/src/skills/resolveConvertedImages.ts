@@ -67,6 +67,8 @@ export async function resolveConvertedImages(
   options: {
     /** Runs before any picture is stored, with their total size: throw to stop (a full quota). */
     beforeStore?: (pictureBytes: number) => Promise<void>
+    /** After each picture is done (stored, kept inline or left out): how many of how many. */
+    onPicture?: (done: number, total: number) => void
   } = {},
 ): Promise<PythonConversionResponse> {
   const { image_set: imageSet, images = [], ...rest } = result
@@ -75,23 +77,32 @@ export async function resolveConvertedImages(
   try {
     await options.beforeStore?.(images.reduce((sum, image) => sum + image.bytes, 0))
     let next = 0
+    let finished = 0
     const worker = async (): Promise<void> => {
       while (next < images.length) {
         const { key, mime } = images[next++]
-        let buffer: Buffer
         try {
-          buffer = await deps.fetchImage(imageSet, key)
-        } catch (error) {
-          console.warn(`Converted picture ${key} could not be fetched, leaving it out:`, error)
-          sources.set(key, '')
-          continue
+          await storeOne(key, mime)
+        } finally {
+          finished += 1
+          options.onPicture?.(finished, images.length)
         }
-        try {
-          sources.set(key, await store({ buffer, mimetype: mime }))
-        } catch (error) {
-          console.warn('Imported image upload failed, keeping it inline:', error)
-          sources.set(key, `data:${mime};base64,${buffer.toString('base64')}`)
-        }
+      }
+    }
+    const storeOne = async (key: string, mime: string): Promise<void> => {
+      let buffer: Buffer
+      try {
+        buffer = await deps.fetchImage(imageSet, key)
+      } catch (error) {
+        console.warn(`Converted picture ${key} could not be fetched, leaving it out:`, error)
+        sources.set(key, '')
+        return
+      }
+      try {
+        sources.set(key, await store({ buffer, mimetype: mime }))
+      } catch (error) {
+        console.warn('Imported image upload failed, keeping it inline:', error)
+        sources.set(key, `data:${mime};base64,${buffer.toString('base64')}`)
       }
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, images.length) }, worker))

@@ -45,6 +45,26 @@ def require_genre(genre: str) -> str:
     return genre
 
 
+def insert_rows(conn: Any, table: str, columns: list[str], rows: list[tuple]) -> int:
+    """Insert many rows in one statement. `executemany` sends one statement per row, which against
+    MotherDuck is a network round trip each (~0.25 s): 2,600 behavior events took over ten
+    minutes. The rows go in as one local DataFrame copied over by a single INSERT ... SELECT.
+    """
+    if not rows:
+        return 0
+    import pandas as pd
+
+    frame = pd.DataFrame(rows, columns=columns, dtype=object)
+    name = f"incoming_{abs(hash((table, len(rows), time.time()))) % 10**9}"
+    conn.register(name, frame)
+    try:
+        listed = ", ".join(columns)
+        conn.execute(f"INSERT INTO {table} ({listed}) SELECT {listed} FROM {name}")
+    finally:
+        conn.unregister(name)
+    return len(rows)
+
+
 def fetch_genre_actions(conn: Any, user_id: str, genre: str, limit: int | None = None, newest_first: bool = False) -> list:
     """The single read path for a user's behavior actions: always scoped to ONE genre partition.
 

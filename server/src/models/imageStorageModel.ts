@@ -114,12 +114,19 @@ export async function storeImage(
     url = supabase.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl
     backend = 'supabase'
   }
-  await supabase
-    .from('stored_images')
-    .insert({ path, user_id: userId, document_id: documentId ?? null, bytes: file.buffer.length, backend })
-    .then(({ error }) => {
-      if (error && !/stored_images/.test(error.message)) console.warn('Could not record a stored picture:', error.message)
-    })
+  // The record is what counts the picture toward storage and removes it with its document: retry it
+  // once, since a dropped request would otherwise leave a stored picture nobody accounts for.
+  const record = { path, user_id: userId, document_id: documentId ?? null, bytes: file.buffer.length, backend }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { error } = await supabase
+      .from('stored_images')
+      .insert(record)
+      .then((result) => result, (thrown: unknown) => ({ error: { message: thrown instanceof Error ? thrown.message : String(thrown), code: '' } }))
+    if (!error || error.code === '23505') break // recorded (a retried insert may find its own row)
+    if (/stored_images/.test(error.message)) break // migration 050 not applied: nothing to record into
+    if (attempt === 1) console.warn('Could not record a stored picture:', error.message)
+    else await new Promise((resolve) => setTimeout(resolve, 500))
+  }
   return url
 }
 

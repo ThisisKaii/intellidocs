@@ -57,7 +57,7 @@ describe('enqueueLocalImport', () => {
     expect(done.state).toBe('done')
     expect(done.progress).toBe(100)
     expect(done.documentId).toBe('doc-9')
-    expect(importLocalFile).toHaveBeenCalledWith('u1', expect.objectContaining({ originalname: 'Thesis.docx' }))
+    expect(importLocalFile).toHaveBeenCalledWith('u1', expect.objectContaining({ originalname: 'Thesis.docx' }), expect.objectContaining({ onPicture: expect.any(Function) }))
     expect(existsSync(localUploadPath(job.id))).toBe(false)
   })
 

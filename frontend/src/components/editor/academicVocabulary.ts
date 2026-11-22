@@ -81,8 +81,11 @@ export const ACADEMIC_ACRONYMS: readonly string[] = [
   'HPD', 'DOI', 'ISBN', 'ISSN', 'PMID', 'PMC', 'ORCID', 'SSRN', 'NBER', 'LaTeX', 'BibTeX',
 ]
 
-/** Everything Harper should accept, in the forms writers use. */
+/**
+ * Everything Harper should accept. Words go in lowercase only: Harper already accepts a lowercase
+ * word capitalised at the start of a sentence, while a capitalised entry ("Heteroscedasticity")
+ * reads as a proper noun and makes the lowercase spelling an error.
+ */
 export function academicDictionary(): string[] {
-  const capitalised = ACADEMIC_WORDS.map((word) => word[0].toUpperCase() + word.slice(1))
-  return [...ACADEMIC_WORDS, ...capitalised, ...ACADEMIC_ACRONYMS]
+  return [...ACADEMIC_WORDS, ...ACADEMIC_ACRONYMS]
 }

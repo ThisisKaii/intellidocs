@@ -1,0 +1,72 @@
+{
+  "sectionTitles": [
+    "Introduction",
+    "Background of the Study",
+    "Statement of the Problem",
+    "Scope and Delimitation",
+    "Review of Related Literature",
+    "Methodology",
+    "Results and Discussion",
+    "Conclusion"
+  ],
+  "cases": [
+    { "group": "casual", "message": "make the headres biger", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "headings", "fontSizeStep": 2 } } },
+    { "group": "casual", "message": "pls make evry heading smaler", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "headings", "fontSizeStep": -2 } } },
+    { "group": "casual", "message": "can u bold all the subheaders", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "sections", "formats": ["bold"] } } },
+    { "group": "casual", "message": "itallicize the captions", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "captions", "formats": ["italic"] } } },
+    { "group": "casual", "message": "centre all teh tables", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "tables", "formats": ["align_center"] } } },
+    { "group": "casual", "message": "everything except the tables should be 11pt", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "except:tables", "fontSize": 11 } } },
+    { "group": "casual", "message": "make heading 2s underlined pls", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "h2Headings", "formats": ["underline"] } } },
+    { "group": "casual", "message": "turn off the bold on the bullet lists", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "bulletLists", "removeFormatting": true, "formats": ["bold"] } } },
+    { "group": "casual", "message": "body text in times new roman", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "paragraphs", "fontFamily": "times new roman" } } },
+    { "group": "casual", "message": "double space the whole paper", "expect": { "oneOf": [
+      { "tool": "formatBlocks", "args": { "targetCategory": "all", "lineSpacing": 2, "scope": "all" } },
+      { "tool": "formatBlocks", "args": { "targetCategory": "paragraphs", "lineSpacing": 2 } }
+    ] } },
+    { "group": "casual", "message": "indent the first line of every paragraph half an inch", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "paragraphs", "firstLineIndentIn": 0.5 } } },
+    { "group": "casual", "message": "all caps for the chapter titles", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "chapters", "textCase": "upper" } } },
+
+    { "group": "position", "message": "bold the 2nd paragraph", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "paragraphs", "position": 2, "formats": ["bold"] } } },
+    { "group": "position", "message": "make the last table centered", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "tables", "position": -1, "formats": ["align_center"] } } },
+    { "group": "position", "message": "italicize the opening paragraph of the methodology", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "paragraphs", "position": 1, "target": "methodology", "formats": ["italic"] } } },
+    { "group": "position", "message": "underline the third para under statement of the problem", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "paragraphs", "position": 3, "target": "statement of the problem", "formats": ["underline"] } } },
+    { "group": "position", "message": "the paragraph at the top of page 3 should be italic", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "paragraphs", "position": 1, "page": 3, "formats": ["italic"] } } },
+    { "group": "position", "message": "bold the last paragraph on page 1", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "paragraphs", "position": -1, "page": 1, "formats": ["bold"] } } },
+    { "group": "position", "message": "make the headings on this page bold", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "headings", "page": "current", "formats": ["bold"] } } },
+    { "group": "position", "message": "make page 4 single spaced", "expect": { "tool": "formatBlocks", "args": { "page": 4, "lineSpacing": 1 } } },
+    { "group": "position", "message": "the first bullet list in the review of related literature should be italic", "expect": { "tool": "formatBlocks", "args": { "targetCategory": "bulletLists", "position": 1, "target": "review of related literature", "formats": ["italic"] } } },
+
+    { "group": "automation", "message": "flip the page to landscape", "expect": { "tool": "setPageSetup", "args": { "orientation": "landscape" } } },
+    { "group": "automation", "message": "use a4 paper", "expect": { "tool": "setPageSetup", "args": { "pageSize": "a4" } } },
+    { "group": "automation", "message": "set the left margin to 1.5 inches", "expect": { "tool": "setPageSetup", "args": { "margins": { "left": 1.5 } } } },
+    { "group": "automation", "message": "margins 1 inch all around", "expect": { "tool": "setPageSetup", "args": { "margins": { "top": 1, "bottom": 1, "left": 1, "right": 1 } } } },
+    { "group": "automation", "message": "switch to apa format", "expect": { "tool": "applyPreset", "args": { "preset": "apa_7th" } } },
+    { "group": "automation", "message": "format this like an ieee paper", "expect": { "tool": "applyPreset", "args": { "preset": "ieee" } } },
+    { "group": "automation", "message": "use my usual formatting on this", "expect": { "tool": "applyUsualFormatting", "args": {} } },
+    { "group": "automation", "message": "the figure numbers are all messed up", "expect": { "tool": "renumberCaptions", "args": {} } },
+    { "group": "automation", "message": "caption every table", "expect": { "tool": "autoCaption", "args": { "kinds": ["table"] } } },
+    { "group": "automation", "message": "add captions to the pictures that dont have one", "expect": { "tool": "autoCaption", "args": { "kinds": ["figure"] } } },
+    { "group": "automation", "message": "generate the reference list", "expect": { "tool": "insertBibliography", "args": {} } },
+    { "group": "automation", "message": "apply the formatting fixes intellidocs found", "expect": { "tool": "fixFormattingSuggestions", "args": { "only": "all" } } },
+    { "group": "automation", "message": "get rid of the extra blank lines", "expect": { "tool": "fixFormattingSuggestions", "args": { "only": "blankLines" } } },
+
+    { "group": "pictures", "message": "center all the pictures", "expect": { "tool": "fixFormattingSuggestions", "args": { "only": "figures" } } },
+    { "group": "pictures", "message": "make every image bigger", "expect": { "kind": ["none", "clarify"] } },
+
+    { "group": "ambiguous", "message": "make the headings 2", "expect": { "kind": ["clarify"] } },
+    { "group": "ambiguous", "message": "fix the numbering", "expect": { "kind": ["clarify"] } },
+    { "group": "ambiguous", "message": "change the size", "expect": { "kind": ["clarify", "none"] } },
+    { "group": "ambiguous", "message": "format the tables", "expect": { "kind": ["clarify", "none"] } },
+    { "group": "ambiguous", "message": "make the titles look better", "expect": { "kind": ["clarify", "none"] } },
+
+    { "group": "none", "message": "write me an introduction about climate change", "expect": { "kind": ["none"] } },
+    { "group": "none", "message": "rewrite this paragraph to sound smarter", "expect": { "kind": ["none"] } },
+    { "group": "none", "message": "what font should a thesis use", "expect": { "kind": ["none"] } },
+    { "group": "none", "message": "summarize chapter 2", "expect": { "kind": ["none"] } },
+    { "group": "none", "message": "delete the second paragraph", "expect": { "kind": ["none"] } },
+    { "group": "none", "message": "translate the abstract to filipino", "expect": { "kind": ["none"] } },
+    { "group": "none", "message": "make the 2nd paragraph longer", "expect": { "kind": ["none"] } },
+    { "group": "none", "message": "add a table of contents", "expect": { "kind": ["none"] } },
+    { "group": "none", "message": "share this doc with my adviser", "expect": { "kind": ["none"] } }
+  ]
+}

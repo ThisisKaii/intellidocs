@@ -33,12 +33,29 @@ export async function registerUser(
   firstName: string,
   lastName: string,
 ): Promise<{ user: User | null; error: string | null }> {
-  const { data, error } = await supabase.auth.signUp({
+  const { data, error } = await sessionClient().auth.signUp({
     email,
     password,
     options: { data: namesMetadata(firstName, lastName) },
   })
   return { user: data.user ?? null, error: error?.message ?? null }
+}
+
+/**
+ * A short-lived client for one sign-up or sign-in. supabase-js keeps the session those calls
+ * return and sends that user's token on the client's later requests, so doing them on a shared
+ * service-role client made every later query (profiles, storage totals, ...) run as whoever
+ * signed in last, under row-level security. The service clients never sign anyone in.
+ */
+export function sessionClient(): ReturnType<typeof createClient> {
+  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  })
+}
+
+/** Check an email and password with Supabase Auth; returns the session it opens. */
+export async function signInWithPassword(email: string, password: string) {
+  return sessionClient().auth.signInWithPassword({ email, password })
 }
 
 /** A user's names as stored in Auth metadata (Google's fields as fallback). */
