@@ -28,6 +28,12 @@ export interface BlueprintSection {
    * to format the rest of the group to match.
    */
   group?: string
+  /** A title-page line: centered with no first-line indent, whatever the body paragraphs do. */
+  centered?: boolean
+  /** Written in bold (an adviser's name on a title page). */
+  bold?: boolean
+  /** Starts on a new page (a thesis's front-matter parts and chapters). */
+  newPage?: boolean
 }
 
 export interface DocumentBlueprint {
@@ -56,8 +62,8 @@ const APA_7TH: DocumentBlueprint = {
   presetKey: 'apa_7th',
   sections: [
     { block: 'title', placeholder: 'Your Paper Title', hint: 'Title: 12pt Bold, Centered' },
-    { block: 'paragraph', placeholder: 'Author Name', hint: 'Author names and affiliations', group: 'author_block' },
-    { block: 'paragraph', placeholder: 'University and Course', group: 'author_block' },
+    { block: 'paragraph', placeholder: 'Author Name', hint: 'Author names and affiliations', group: 'author_block', centered: true },
+    { block: 'paragraph', placeholder: 'University and Course', group: 'author_block', centered: true },
     {
       block: 'heading',
       level: 1,
@@ -73,7 +79,7 @@ const APA_7TH: DocumentBlueprint = {
     { block: 'heading', level: 2, placeholder: 'Objectives' },
     { block: 'paragraph', placeholder: 'List what this study sets out to do.' },
     { block: 'heading', level: 1, placeholder: 'Literature Review' },
-    { block: 'paragraph', placeholder: 'Summarise the prior work you build on.' },
+    { block: 'paragraph', placeholder: 'Summarize the prior work you build on.' },
     { block: 'heading', level: 1, placeholder: 'Methodology' },
     { block: 'paragraph', placeholder: 'Describe participants, data, and procedure.' },
     { block: 'heading', level: 1, placeholder: 'Results' },
@@ -95,9 +101,9 @@ const IEEE: DocumentBlueprint = {
   presetKey: 'ieee',
   sections: [
     { block: 'title', placeholder: 'Paper Title', hint: 'Title: 24pt Roman, Centered' },
-    { block: 'paragraph', placeholder: 'Author Name', group: 'author_block' },
-    { block: 'paragraph', placeholder: 'Affiliation, City, Country', group: 'author_block' },
-    { block: 'paragraph', placeholder: 'email@affiliation.edu', group: 'author_block' },
+    { block: 'paragraph', placeholder: 'Author Name', group: 'author_block', centered: true },
+    { block: 'paragraph', placeholder: 'Affiliation, City, Country', group: 'author_block', centered: true },
+    { block: 'paragraph', placeholder: 'email@affiliation.edu', group: 'author_block', centered: true },
     { block: 'paragraph', placeholder: 'Abstract—A concise summary of the paper, no citations here.', hint: 'Bold italic run-in: Abstract—' },
     { block: 'paragraph', placeholder: 'Index Terms—keyword one, keyword two, keyword three.', hint: 'Bold italic run-in: Index Terms—' },
     { block: 'heading', level: 1, placeholder: 'I. Introduction', hint: 'Level 1: Roman numeral, centered, uppercase' },
@@ -123,55 +129,93 @@ const IEEE: DocumentBlueprint = {
   ],
 }
 
-/** University capstone / thesis: full front matter and chapter structure. */
+/**
+ * University capstone / thesis, laid out as a UCLM College of Computer Studies capstone manuscript:
+ * the title page, the front matter in its usual order, Chapters I to III with their standard sections,
+ * then the references, curriculum vitae and appendices.
+ */
+const TITLE_LINE = { block: 'paragraph', centered: true, group: 'title_page' } as const
+
+const UCLM_SECTIONS: BlueprintSection[] = [
+  { block: 'title', placeholder: 'TITLE OF THE CAPSTONE PROJECT', hint: 'Title: 11pt bold, all caps, centered' },
+  { ...TITLE_LINE, placeholder: 'A Capstone Project', hint: 'Title page lines: 11pt, centered' },
+  { ...TITLE_LINE, placeholder: 'Presented to the Faculty of the College of Computer Studies' },
+  { ...TITLE_LINE, placeholder: 'University of Cebu - Lapu-Lapu and Mandaue' },
+  { ...TITLE_LINE, placeholder: 'Mandaue City, Cebu' },
+  { ...TITLE_LINE, placeholder: 'In Partial Fulfillment of the Requirements' },
+  { ...TITLE_LINE, placeholder: 'for the Degree of Bachelor of Science in Information Technology' },
+  { ...TITLE_LINE, placeholder: 'By:' },
+  { ...TITLE_LINE, placeholder: 'Surname, Given Name M.', hint: 'One line per researcher' },
+  { ...TITLE_LINE, placeholder: 'Adviser Name', hint: 'Adviser: bold', bold: true },
+  { ...TITLE_LINE, placeholder: 'Adviser' },
+  { ...TITLE_LINE, placeholder: 'Month Year' },
+  { block: 'heading', level: 1, placeholder: 'APPROVAL SHEET', hint: 'Front matter label: bold, centered' },
+  { block: 'paragraph', placeholder: 'This Capstone Project study titled ... prepared and submitted by ... has been examined and is recommended for approval and acceptance.' },
+  { block: 'heading', level: 1, placeholder: 'ABSTRACT' },
+  { block: 'paragraph', placeholder: 'Summarize the purpose, method, findings and conclusion of the study.' },
+  { block: 'heading', level: 1, placeholder: 'ACKNOWLEDGEMENT' },
+  { block: 'paragraph', placeholder: 'Thank your adviser, panel, and supporters.' },
+  { block: 'heading', level: 1, placeholder: 'DEDICATION' },
+  { block: 'paragraph', placeholder: 'Dedicate the study.' },
+  { block: 'heading', level: 1, placeholder: 'TABLE OF CONTENTS' },
+  { block: 'paragraph', placeholder: 'Generate this from Tools, Document parts, once the chapters are written.' },
+  { block: 'heading', level: 1, placeholder: 'LIST OF TABLES' },
+  { block: 'paragraph', placeholder: 'Generate this from Tools, Document parts, after captioning your tables.' },
+  { block: 'heading', level: 1, placeholder: 'LIST OF FIGURES' },
+  { block: 'paragraph', placeholder: 'Generate this from Tools, Document parts, after captioning your figures.' },
+  { block: 'heading', level: 1, placeholder: 'CHAPTER I: INTRODUCTION', hint: 'Chapter: 12pt bold, all caps, centered' },
+  { block: 'heading', level: 2, placeholder: 'Rationale of the Study', hint: 'Section: 11pt bold, left' },
+  { block: 'paragraph', placeholder: 'Background of the problem and why the study is needed.' },
+  { block: 'heading', level: 2, placeholder: 'Objectives of the Study' },
+  { block: 'paragraph', placeholder: 'The general objective, then the specific objectives.' },
+  { block: 'heading', level: 2, placeholder: 'Scope and Limitations' },
+  { block: 'paragraph', placeholder: 'What the study covers and what it does not.' },
+  { block: 'heading', level: 2, placeholder: 'Significance of the Study' },
+  { block: 'paragraph', placeholder: 'Who benefits from the study and how.' },
+  { block: 'heading', level: 2, placeholder: 'Definition of Terms' },
+  { block: 'paragraph', placeholder: 'Terms used in the study, defined as they are used here.' },
+  { block: 'heading', level: 1, placeholder: 'CHAPTER II: REVIEW OF RELATED LITERATURE AND STUDIES' },
+  { block: 'heading', level: 2, placeholder: 'Related Literature' },
+  { block: 'paragraph', placeholder: 'Theories and published works the study builds on.' },
+  { block: 'heading', level: 2, placeholder: 'Conceptual Framework' },
+  { block: 'paragraph', placeholder: 'The framework of the study and how its parts relate.' },
+  { block: 'heading', level: 2, placeholder: 'Related Studies' },
+  { block: 'paragraph', placeholder: 'Prior studies and systems similar to this one.' },
+  { block: 'heading', level: 2, placeholder: 'Comparative Matrix' },
+  { block: 'paragraph', placeholder: 'Compare the related studies with this study.' },
+  { block: 'heading', level: 1, placeholder: 'CHAPTER III: RESEARCH METHODOLOGY' },
+  { block: 'heading', level: 2, placeholder: 'Research Design' },
+  { block: 'paragraph', placeholder: 'The research design and method used.' },
+  { block: 'heading', level: 2, placeholder: 'Research Environment' },
+  { block: 'paragraph', placeholder: 'Where the study is conducted.' },
+  { block: 'heading', level: 2, placeholder: 'Respondents' },
+  { block: 'paragraph', placeholder: 'Who the respondents are and how they are chosen.' },
+  { block: 'heading', level: 2, placeholder: 'Research Instrument' },
+  { block: 'paragraph', placeholder: 'The questionnaire or tool used to gather data.' },
+  { block: 'heading', level: 2, placeholder: 'Research Procedure' },
+  { block: 'heading', level: 3, placeholder: 'Data Gathering', hint: 'Subsection: 11pt italic' },
+  { block: 'paragraph', placeholder: 'How the data is gathered.' },
+  { block: 'heading', level: 3, placeholder: 'Statistical Treatment of Data' },
+  { block: 'paragraph', placeholder: 'The statistical tools used to analyze the data.' },
+  { block: 'heading', level: 2, placeholder: 'Ethical Considerations' },
+  { block: 'paragraph', placeholder: 'Consent, privacy and data protection.' },
+  { block: 'heading', level: 2, placeholder: 'Software Engineering Methodology' },
+  { block: 'paragraph', placeholder: 'The development methodology and its phases.' },
+  { block: 'heading', level: 1, placeholder: 'REFERENCES' },
+  { block: 'paragraph', placeholder: 'Build this from Tools, Citations, Bibliography.' },
+  { block: 'heading', level: 1, placeholder: 'CURRICULUM VITAE' },
+  { block: 'paragraph', placeholder: 'One for each researcher.' },
+  { block: 'heading', level: 1, placeholder: 'APPENDICES' },
+  { block: 'paragraph', placeholder: 'Transmittal letter, questionnaire, and other supporting documents.' },
+]
+
 const UCLM_CAPSTONE: DocumentBlueprint = {
   key: 'uclm_capstone',
   name: 'University Capstone / Thesis',
-  description: 'UCLM spec: 1.5" left margin, double-spaced, uppercase chapter headings, roman front matter.',
+  description: 'UCLM spec: 1.5" left margin, 11pt justified at 1.5 spacing, CHAPTER I to III, roman front matter.',
   presetKey: 'uclm_capstone',
-  sections: [
-    { block: 'title', placeholder: 'Thesis Title', hint: 'Title: 24pt Bold, Centered' },
-    { block: 'paragraph', placeholder: 'Your Name', group: 'author_block' },
-    { block: 'paragraph', placeholder: 'Supervisor: Dr. Supervisor Name', group: 'author_block' },
-    { block: 'paragraph', placeholder: 'Department and University', group: 'author_block' },
-    { block: 'paragraph', placeholder: 'Month Year', group: 'author_block' },
-    { block: 'heading', level: 1, placeholder: 'Acknowledgments' },
-    { block: 'paragraph', placeholder: 'Thank your adviser, panel, and supporters.' },
-    { block: 'heading', level: 1, placeholder: 'Abstract' },
-    { block: 'paragraph', placeholder: 'One paragraph summarising the whole thesis.' },
-    { block: 'heading', level: 1, placeholder: 'Table of Contents' },
-    { block: 'paragraph', placeholder: 'Update this page after your chapters are written.' },
-    { block: 'heading', level: 1, placeholder: 'Chapter 1: Introduction' },
-    { block: 'paragraph', placeholder: 'Background and motivation for the study.' },
-    { block: 'heading', level: 2, placeholder: '1.1 Problem Statement' },
-    { block: 'paragraph', placeholder: 'What is not yet solved.' },
-    { block: 'heading', level: 2, placeholder: '1.2 Objectives' },
-    { block: 'paragraph', placeholder: 'Aim and objectives of the capstone.' },
-    { block: 'heading', level: 2, placeholder: '1.3 Scope and Limitations' },
-    { block: 'paragraph', placeholder: 'Boundaries of the project and what is out of scope.' },
-    { block: 'heading', level: 1, placeholder: 'Chapter 2: Literature Review' },
-    { block: 'paragraph', placeholder: 'Review the theory and prior studies you build on.' },
-    { block: 'heading', level: 2, placeholder: '2.1 Theoretical Framework' },
-    { block: 'paragraph', placeholder: 'Key theories and models.' },
-    { block: 'heading', level: 2, placeholder: '2.2 Related Studies' },
-    { block: 'paragraph', placeholder: 'Prior theses and publications.' },
-    { block: 'heading', level: 1, placeholder: 'Chapter 3: Methodology' },
-    { block: 'paragraph', placeholder: 'Research design, data collection, and analysis plan.' },
-    { block: 'heading', level: 2, placeholder: '3.1 Research Design' },
-    { block: 'paragraph', placeholder: 'Quantitative, qualitative, or mixed method.' },
-    { block: 'heading', level: 2, placeholder: '3.2 Data Collection' },
-    { block: 'paragraph', placeholder: 'Instruments, sources, and sampling.' },
-    { block: 'heading', level: 1, placeholder: 'Chapter 4: Results' },
-    { block: 'paragraph', placeholder: 'Present findings per research question.' },
-    { block: 'heading', level: 1, placeholder: 'Chapter 5: Discussion and Conclusion' },
-    { block: 'paragraph', placeholder: 'Interpret the results against the literature.' },
-    { block: 'heading', level: 2, placeholder: '5.1 Recommendations' },
-    { block: 'paragraph', placeholder: 'Practical implications of the findings.' },
-    { block: 'heading', level: 2, placeholder: '5.2 Future Work' },
-    { block: 'paragraph', placeholder: 'What this project makes possible next.' },
-    { block: 'heading', level: 1, placeholder: 'References' },
-    { block: 'blockquote', placeholder: 'Full reference list, alphabetical.' },
-  ],
+  // Each front-matter part and chapter starts on a new page, as in the printed manuscript.
+  sections: UCLM_SECTIONS.map((section) => (section.block === 'heading' && section.level === 1 ? { ...section, newPage: true } : section)),
 }
 
 /** Every blueprint offered by the new-document modal, blank first. */
@@ -226,25 +270,33 @@ export function buildBlueprintHtml(blueprint: DocumentBlueprint): string {
   }
 
   const blocks = blueprint.sections.map((section) => {
-    const text = escapeHtml(section.placeholder)
-    const group = section.group ? ` data-guide-group="${escapeHtml(section.group)}"` : ''
-    const guide = ` data-guide="${escapeHtml(section.hint ?? section.placeholder)}" data-guide-text="${text}"${group}`
-
-    if (section.block === 'title') {
-      // `data-doc-role` keeps the blueprint title matching the real Title command,
-      // so IEEE numbering leaves it unnumbered and it renders at title typography.
-      return `<h1 data-doc-role="title"${guide}>${text}</h1>`
-    }
-    if (section.block === 'heading') {
-      return `<h${section.level ?? 2}${guide}>${text}</h${section.level ?? 2}>`
-    }
-    if (section.block === 'blockquote') {
-      return `<blockquote${guide}><p>${text}</p></blockquote>`
-    }
-    return `<p${guide}>${text}</p>`
+    const pageBreak = section.newPage ? '<div class="intellidocs-page-break"></div>' : ''
+    return pageBreak + sectionHtml(section)
   })
 
   return blocks.join('')
+}
+
+/** One blueprint section as its placeholder block. */
+function sectionHtml(section: BlueprintSection): string {
+  const text = escapeHtml(section.placeholder)
+  const group = section.group ? ` data-guide-group="${escapeHtml(section.group)}"` : ''
+  const guide = ` data-guide="${escapeHtml(section.hint ?? section.placeholder)}" data-guide-text="${text}"${group}`
+
+  if (section.block === 'title') {
+    // `data-doc-role` keeps the blueprint title matching the real Title command,
+    // so IEEE numbering leaves it unnumbered and it renders at title typography.
+    return `<h1 data-doc-role="title"${guide}>${text}</h1>`
+  }
+  if (section.block === 'heading') {
+    return `<h${section.level ?? 2}${guide}>${text}</h${section.level ?? 2}>`
+  }
+  if (section.block === 'blockquote') {
+    return `<blockquote${guide}><p>${text}</p></blockquote>`
+  }
+  const body = section.bold ? `<strong>${text}</strong>` : text
+  const line = section.centered ? ' style="text-align: center; text-indent: 0"' : ''
+  return `<p${line}${guide}>${body}</p>`
 }
 
 /**

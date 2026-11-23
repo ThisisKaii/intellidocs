@@ -63,7 +63,8 @@ function headingRule(tag: 'h1' | 'h2' | 'h3', style: HeadingStyle): string {
   const textTransform = style.textTransform === 'none' ? 'none' : style.textTransform
   const fontStyle = style.fontStyle ?? 'normal'
   const fontVariant = style.smallCaps ? 'small-caps' : 'normal'
-  return `${tag} {
+  // Scoped like the editor's own heading rule (.ProseMirror h1 sets 18pt), which a bare `h1` lost to.
+  return `.intellidocs-page-editor .ProseMirror ${tag} {
     text-align: ${style.textAlign};
     font-weight: ${style.fontWeight};
     font-style: ${fontStyle};
@@ -71,6 +72,7 @@ function headingRule(tag: 'h1' | 'h2' | 'h3', style: HeadingStyle): string {
     font-size: ${style.fontSize};
     text-transform: ${textTransform};
     margin: 0.5em 0 0.4em;
+    letter-spacing: normal;
     text-indent: 0;
   }`
 }
@@ -87,10 +89,11 @@ function headingRule(tag: 'h1' | 'h2' | 'h3', style: HeadingStyle): string {
 function titleRule(style: HeadingStyle): string {
   const textTransform = style.textTransform === 'none' ? 'none' : style.textTransform
   const fontStyle = style.fontStyle ?? 'normal'
-  return `h1[data-doc-role='title'] {
+  return `.intellidocs-page-editor .ProseMirror h1[data-doc-role='title'] {
     text-align: ${style.textAlign};
     font-weight: ${style.fontWeight};
     font-style: ${fontStyle};
+    font-variant: ${style.smallCaps ? 'small-caps' : 'normal'};
     font-size: ${style.fontSize};
     text-transform: ${textTransform};
   }`
@@ -147,7 +150,7 @@ const APA_7TH: PresetInput = {
   headings: {
     level1: { textAlign: 'center', fontSize: '12pt', fontWeight: 700, textTransform: 'capitalize' },
     level2: { textAlign: 'left', fontSize: '12pt', fontWeight: 700, textTransform: 'capitalize' },
-    level3: { textAlign: 'left', fontSize: '12pt', fontWeight: 700, textTransform: 'none', note: 'Bold italic' },
+    level3: { textAlign: 'left', fontSize: '12pt', fontWeight: 700, fontStyle: 'italic', textTransform: 'none', note: 'Bold italic' },
   },
 }
 
@@ -157,7 +160,7 @@ const IEEE: PresetInput = {
   captions: IEEE_CAPTIONS,
   name: 'IEEE Conference',
   description:
-    'IEEE — Letter, 0.75" top, 1" bottom and 0.625" side margins, Times New Roman 10pt justified, centered small-caps Roman-numeral sections (I. II. III.), italic alphabetised subsections.',
+    'IEEE — Letter, 0.75" top, 1" bottom and 0.625" side margins, Times New Roman 10pt justified, centered small-caps Roman-numeral sections (I. II. III.), italic alphabetized subsections.',
   pageSize: 'letter',
   orientation: 'portrait',
   margins: { top: 0.75, bottom: 1, left: 0.625, right: 0.625 },
@@ -171,7 +174,7 @@ const IEEE: PresetInput = {
   firstLineIndent: '0.25in',
   headings: {
     level1: { textAlign: 'center', fontSize: '10pt', fontWeight: 400, textTransform: 'none', smallCaps: true },
-    level2: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, alphabetised (A. Speech and Speech Disorders)' },
+    level2: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, alphabetized (A. Speech and Speech Disorders)' },
     level3: { textAlign: 'left', fontSize: '10pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italic, run-in (1) Background:)' },
   },
   title: {
@@ -183,26 +186,33 @@ const IEEE: PresetInput = {
   },
 }
 
-/** UCLM capstone / thesis style: 1.5" binding margin, uppercase chapter headings. */
+/**
+ * UCLM capstone / thesis style, measured from a UCLM capstone manuscript: 1.5" binding margin,
+ * 11pt Times New Roman body justified at 1.5 line spacing with a 0.5" first-line indent, 12pt bold
+ * uppercase centered chapter headings, 11pt bold section headings, an 11pt bold all-caps title.
+ */
 const UCLM_CAPSTONE: PresetInput = {
   key: 'uclm_capstone',
   name: 'UCLM Capstone (Thesis)',
   description:
-    'UCLM spec — 1.5" left binding margin, double-spaced Times New Roman: 11pt body and section headings, 12pt chapter headings (CHAPTER I, INTRODUCTION); uppercase centered chapter headings, roman preliminary page numbers.',
+    'UCLM spec — 1.5" left binding margin, Times New Roman 11pt justified at 1.5 spacing; 12pt bold uppercase centered chapter headings (CHAPTER I: INTRODUCTION), 11pt bold section headings, roman preliminary page numbers.',
   pageSize: 'letter',
   orientation: 'portrait',
   margins: { top: 1, bottom: 1, left: 1.5, right: 1 },
   fontFamily: "'Times New Roman', Times, serif",
   // Body paragraphs and section headings are 11pt; only chapter headings (CHAPTER I, INTRODUCTION) are 12pt.
   baseFontSize: '11pt',
-  lineHeight: 2,
+  lineHeight: 1.5,
   firstLineIndent: '0.5in',
   titlePageAlign: 'center',
+  extraCss: `
+.intellidocs-page-editor .ProseMirror p { text-align: justify; }`,
   headings: {
     level1: { textAlign: 'center', fontSize: '12pt', fontWeight: 700, textTransform: 'uppercase' },
     level2: { textAlign: 'left', fontSize: '11pt', fontWeight: 700, textTransform: 'none' },
-    level3: { textAlign: 'left', fontSize: '11pt', fontWeight: 400, textTransform: 'none', note: 'Italicized' },
+    level3: { textAlign: 'left', fontSize: '11pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italicized' },
   },
+  title: { textAlign: 'center', fontSize: '11pt', fontWeight: 700, textTransform: 'uppercase', note: '11pt bold, all caps' },
 }
 
 export const ACADEMIC_PRESETS: AcademicPreset[] = [APA_7TH, IEEE, UCLM_CAPSTONE].map(

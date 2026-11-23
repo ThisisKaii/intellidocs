@@ -1245,6 +1245,10 @@ html {
  */
 .doc-guide {
   position: relative;
+  /* Its own layout context: the first block on a page starts where the previous page ends and its
+     text is pushed past the page-break floats, so a plain box stretched back across the gap. A
+     flow-root box moves below the floats whole. */
+  display: flow-root;
   border: 1.5px dashed color-mix(in srgb, var(--accent-strong) 45%, transparent);
   border-radius: 6px;
   padding: 14px 12px;
@@ -1254,6 +1258,9 @@ html {
 .doc-guide::before {
   content: attr(data-guide);
   position: absolute;
+  /* The label sits on the box edge; it must not take the paragraph's first-line indent. */
+  text-indent: 0;
+  text-align: left;
   top: -7px;
   left: 12px;
   padding: 0 6px;
