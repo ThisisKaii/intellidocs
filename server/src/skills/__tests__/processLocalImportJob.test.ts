@@ -4,6 +4,8 @@ const jobs = new Map<string, ImportJob>()
 const importLocalFile = jest.fn()
 
 jest.mock('../../models/importJobModel', () => ({
+  // The heartbeat timer is not part of what these tests check.
+  keepJobAlive: () => () => undefined,
   createImportJob: async (userId: string, fileId: string, fileName: string, source: string) => {
     const job = {
       id: `job-${jobs.size + 1}`, userId, source, fileId, fileName, progress: 0, state: 'queued',

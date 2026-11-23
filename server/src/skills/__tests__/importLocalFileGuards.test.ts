@@ -44,6 +44,14 @@ it('reports a conversion that ran out of time instead of falling back to the slo
   expect(discard).toHaveBeenCalled()
 })
 
+it('does not hand a large file to the fallback converter when the converter drops the connection', async () => {
+  requestDocumentConversion.mockRejectedValue(new AxiosError('socket hang up', 'ECONNRESET'))
+  const large = { buffer: Buffer.alloc(2_500_000, 1), originalname: 'Manuscript.docx' }
+  await expect(importLocalFile('u1', large)).rejects.toMatchObject({ status: 503, message: expect.stringContaining('busy or restarting') })
+  expect(createTabbedDocument).not.toHaveBeenCalled()
+  expect(discard).toHaveBeenCalled()
+})
+
 it('gives larger files more time to convert', () => {
   expect(conversionTimeoutMs(5_000_000)).toBe(195_000)
   expect(conversionTimeoutMs(192_000_000)).toBe(180_000 + 192 * 3_000)

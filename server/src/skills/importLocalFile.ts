@@ -66,6 +66,9 @@ function classifyPdfHeading(line: string): 'h1' | 'h2' | null {
   return null
 }
 
+/** Largest file the local fallback converter is given when the converter service fails. */
+const FALLBACK_MAX_BYTES = 2_000_000
+
 /**
  * Convert an uploaded file to HTML (Python converter, then Mammoth / pdf-parse
  * fallbacks), move embedded images to storage, and create the document.
@@ -130,6 +133,12 @@ export async function importLocalFile(
         if (isConversionTimeout(pyError)) {
           await pictures.discard()
           throw Object.assign(new Error('Converting this file took too long. Try again in a few minutes.'), { status: 503 })
+        }
+        // A large file is not handed to the fallback either: it embeds every picture in one HTML
+        // string inside this process, which on a small host takes the server down with the import.
+        if (!htmlContent && file.buffer.length > FALLBACK_MAX_BYTES) {
+          await pictures.discard()
+          throw Object.assign(new Error('The document converter is busy or restarting. Try again in a minute.'), { status: 503 })
         }
         console.warn('Python converter service unavailable, falling back to local converter:', pyError)
         // The converter's pictures are only kept when its HTML is still used (a layout step failed).

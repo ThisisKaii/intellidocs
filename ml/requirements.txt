@@ -5,7 +5,9 @@ scikit-learn>=1.4.0
 torch>=2.2.0
 numpy>=1.26.0
 pandas>=2.1.4
-PyMuPDF>=1.24.3
+# Below 2.0: PyMuPDF 2.x requires and imports pymupdf4llm, onnxruntime and layout models on every
+# import (~100 MB), too much for the 512 MB host that also converts documents.
+PyMuPDF>=1.24.3,<2.0
 pdf2docx>=0.5.13
 redis>=5.0.1
 supabase>=2.0.3
@@ -18,6 +20,8 @@ duckdb>=1.0.0
 python-docx>=1.1.0
 beautifulsoup4>=4.12.0
 transformers>=4.38.0
+# The service tokenizes for Tier 3 with this alone (transformers imports torch, ~570 MB).
+tokenizers>=0.15
 onnxruntime>=1.17.0
 optimum[onnxruntime]>=1.17.0
 accelerate>=0.26.0

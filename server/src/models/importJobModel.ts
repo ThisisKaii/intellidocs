@@ -184,12 +184,34 @@ export async function listUserImportJobs(userId: string): Promise<ImportJob[]> {
     .sort((a, b) => b.createdAt - a.createdAt)
 }
 
+/** How often a working import job reports that its worker is still alive. */
+export const JOB_HEARTBEAT_SECONDS = 30
+
 /**
- * A job is stale when it has been sitting unfinished past the TTL, which means
- * the worker died (replica restart, OOM kill) mid-import. The client treats a
- * stale job as failed instead of polling forever.
+ * A job with no update for this long has lost its worker: a running import updates its job at least
+ * every JOB_HEARTBEAT_SECONDS (see keepJobAlive), even while it waits on the converter.
  */
-export function isStaleJob(job: ImportJob, ttlSeconds = JOB_TTL_SECONDS): boolean {
+export const JOB_STALE_SECONDS = 180
+
+/**
+ * Refresh a job's updatedAt while its worker is alive. Returns the function that stops it.
+ * Without it a job only looked dead after the hour-long TTL, so a server restart mid-import left
+ * the client showing "converting" for an hour.
+ */
+export function keepJobAlive(jobId: string, everySeconds = JOB_HEARTBEAT_SECONDS): () => void {
+  const timer = setInterval(() => {
+    void updateImportJob(jobId, {}).catch(() => undefined)
+  }, everySeconds * 1000)
+  timer.unref?.()
+  return () => clearInterval(timer)
+}
+
+/**
+ * A job is stale when it has gone without an update for JOB_STALE_SECONDS while unfinished, which
+ * means its worker died (replica restart, OOM kill) mid-import. The client treats a stale job as
+ * failed instead of polling forever.
+ */
+export function isStaleJob(job: ImportJob, ttlSeconds = JOB_STALE_SECONDS): boolean {
   if (job.state === 'done' || job.state === 'failed') return false
   return Date.now() - job.updatedAt > ttlSeconds * 1000
 }

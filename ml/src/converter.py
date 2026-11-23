@@ -65,12 +65,9 @@ def _cached_r_font(self):
     return val
 Run.font = property(_cached_r_font)
 
-# Prevent PyMuPDF from eagerly initializing heavy ONNX layout models and background processes
-try:
-    import fitz
-    fitz._get_layout = lambda *args, **kwargs: None
-except Exception:
-    pass
+# PyMuPDF is imported where it is used, not here. PyMuPDF 2.x loads pymupdf4llm, onnxruntime and
+# its layout models on import (~100 MB), which is why requirements.txt keeps it below 2.0; importing
+# it at module load made every ML process pay for it before any PDF was opened.
 
 import omml
 import tab_plan

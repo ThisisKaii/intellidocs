@@ -390,17 +390,48 @@ def load_tokenizer() -> Any:
     if cached is not None:
         return cached
 
-    from transformers import AutoTokenizer
-
     tokenizer_dir = os.getenv(
         "DISTILBERT_TOKENIZER_DIR",
         str(ROOT_DIR / "models" / "distilbert_tokenizer"),
     )
-    tokenizer = AutoTokenizer.from_pretrained(
-        tokenizer_dir if os.path.isdir(tokenizer_dir) else "distilbert-base-uncased"
-    )
+    tokenizer_file = os.path.join(tokenizer_dir, "tokenizer.json")
+    if os.path.isfile(tokenizer_file):
+        # The `tokenizers` library reads the same tokenizer.json in ~2 MB; `transformers` pulled in
+        # torch for it (~570 MB), which on a 512 MB host got the service killed on the first
+        # Tier-3 prediction.
+        tokenizer: Any = LightTokenizer(tokenizer_file)
+    else:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_dir if os.path.isdir(tokenizer_dir) else "distilbert-base-uncased"
+        )
     _TOKENIZER_CACHE["tokenizer"] = tokenizer
     return tokenizer
+
+
+class LightTokenizer:
+    """A DistilBERT tokenizer from tokenizer.json, called like a transformers tokenizer for what
+    Tier 3 needs: `tokenizer(text, return_tensors="np", truncation=True, max_length=128)`."""
+
+    def __init__(self, path: str) -> None:
+        from tokenizers import Tokenizer
+
+        self._tokenizer = Tokenizer.from_file(path)
+        self._tokenizer.no_padding()
+
+    def __call__(self, text: str, return_tensors: str = "np", truncation: bool = True, max_length: int = 512) -> dict[str, Any]:
+        import numpy as np
+
+        if truncation:
+            self._tokenizer.enable_truncation(max_length=max_length)
+        else:
+            self._tokenizer.no_truncation()
+        encoding = self._tokenizer.encode(text)
+        return {
+            "input_ids": np.array([encoding.ids], dtype=np.int64),
+            "attention_mask": np.array([encoding.attention_mask], dtype=np.int64),
+        }
 
 
 def predict_with_onnx(text: str) -> Optional[tuple[str, float]]:
@@ -832,6 +863,43 @@ async def audit_compliance(request: ComplianceAuditRequest) -> dict[str, Any]:
         ) from error
 
 
+_CONVERT_LOCK = threading.Lock()
+
+
+def _low_memory_host() -> bool:
+    """A small host (Render's free plan, 512 MB): the same switch as the lightweight startup."""
+    return bool(os.getenv("RENDER")) or os.getenv("LOW_MEMORY", "true").lower() in ("1", "true", "yes")
+
+
+def release_prediction_models() -> None:
+    """Drop the loaded prediction models (RandomForest, Tier-3 ONNX session and tokenizer, grammar
+    model) so a document conversion can use their memory. Each reloads on its next request, in a few
+    seconds; a request already running keeps its own references and finishes normally."""
+    _MODEL_CACHE.clear()
+    _ONNX_RUNTIME.clear()
+    _TOKENIZER_CACHE.clear()
+    grammar_module = sys.modules.get("grammar.grammar_checker")
+    if grammar_module is not None and hasattr(grammar_module, "_CACHED_GRAMMAR_MODEL"):
+        grammar_module._CACHED_GRAMMAR_MODEL.clear()
+    _return_freed_memory()
+
+
+def _return_freed_memory() -> None:
+    """Hand memory a finished conversion freed back to the system. Python's allocator keeps freed
+    blocks for reuse, so without this the process stays at its peak after every import and the next
+    one starts from there (on Linux, glibc's malloc_trim releases them; elsewhere it is a no-op)."""
+    import gc
+
+    gc.collect()
+    if sys.platform.startswith("linux"):
+        try:
+            import ctypes
+
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except (OSError, AttributeError):
+            pass
+
+
 @app.post("/convert/document")
 def convert_document(
     file: UploadFile = File(...),
@@ -861,6 +929,12 @@ def convert_document(
     filename_lower = file.filename.lower()
     content_bytes = file.file.read()
 
+    # One conversion at a time: each can take a few hundred MB, and two at once on a 512 MB host
+    # get the process killed mid-import. A second request waits for the first to finish.
+    _CONVERT_LOCK.acquire()
+    if _low_memory_host():
+        # Models and a conversion do not both fit in 512 MB: the models reload on demand afterwards.
+        release_prediction_models()
     try:
         # For tabbed manuscripts, the editor loads each tab individually from HTML; assembling
         # a 12+ MB monolithic JSON slows down conversion by 3x and risks timing out on cloud hosts.
@@ -885,6 +959,9 @@ def convert_document(
     except Exception as error:
         print(f"[convert] {file.filename}: {error}")
         raise HTTPException(status_code=500, detail="Document conversion failed. Try saving the file again, or as .docx.") from error
+    finally:
+        _CONVERT_LOCK.release()
+        _return_freed_memory()
 
 
 @app.get("/convert/images/{set_id}/{key}")

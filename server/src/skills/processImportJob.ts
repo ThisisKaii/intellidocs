@@ -14,6 +14,7 @@ import type { PythonConversionResponse } from '../../schemas/predictionSchemas'
 import {
   createImportJob,
   failImportJob,
+  keepJobAlive,
   updateImportJob,
   type ImportJob,
 } from '../models/importJobModel'
@@ -150,6 +151,7 @@ export async function processImportJob(job: ImportJob): Promise<void> {
   // The converter's pictures, removed again if the import fails before its document exists.
   const pictures = importImageStore(job.userId)
   let created = false
+  const stopHeartbeat = keepJobAlive(job.id)
 
   try {
     await updateImportJob(job.id, { state: 'downloading', progress: 0 })
@@ -206,6 +208,7 @@ export async function processImportJob(job: ImportJob): Promise<void> {
       error instanceof Error ? error.message : String(error)
     )
   } finally {
+    stopHeartbeat()
     await rm(tempPath, { force: true }).catch(() => undefined)
   }
 }

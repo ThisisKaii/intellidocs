@@ -1,7 +1,7 @@
 import { readFile, rm, writeFile } from 'fs/promises'
 import os from 'os'
 import path from 'path'
-import { createImportJob, failImportJob, updateImportJob, type ImportJob } from '../models/importJobModel'
+import { createImportJob, failImportJob, keepJobAlive, updateImportJob, type ImportJob } from '../models/importJobModel'
 import { importLocalFile } from './importLocalFile'
 import { waitForConverter } from './waitForConverter'
 
@@ -27,6 +27,7 @@ const PICTURES_END = 80
 export async function processLocalImportJob(job: ImportJob): Promise<void> {
   const filePath = localUploadPath(job.id)
   const startedAt = Date.now()
+  const stopHeartbeat = keepJobAlive(job.id)
   try {
     await updateImportJob(job.id, { state: 'converting', progress: CONVERTING_PROGRESS })
     const buffer = await readFile(filePath)
@@ -66,6 +67,7 @@ export async function processLocalImportJob(job: ImportJob): Promise<void> {
   } catch (error) {
     await failImportJob(job.id, error instanceof Error ? error.message : String(error))
   } finally {
+    stopHeartbeat()
     await rm(filePath, { force: true }).catch(() => undefined)
   }
 }
