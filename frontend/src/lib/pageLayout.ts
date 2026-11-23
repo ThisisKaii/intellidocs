@@ -123,8 +123,10 @@ function zoneHtml(
   // A footer part's art is drawn from the header zone (see pageZones), never from its own zone.
   const art = `${extraArt}${kind === 'header' ? (part?.art ?? '') : ''}`
   const distance = kind === 'header' ? section.header_distance : section.footer_distance
+  // The box steps back to the page corner from where the zone starts: the text column for the first
+  // page's header, the page edge for every other page's (PagedEditor sets --intellidocs-zone-left).
   const artBox = art
-    ? `<div style="position:absolute;left:calc(var(--rm-margin-left) * -1);top:calc(var(--rm-margin-top) * -0.5);width:var(--rm-page-width);height:var(--rm-page-height);pointer-events:none">${art}</div>`
+    ? `<div style="position:absolute;left:calc(var(--intellidocs-zone-left, var(--rm-margin-left)) * -1);top:calc(var(--rm-margin-top) * -0.5);width:var(--rm-page-width);height:var(--rm-page-height);pointer-events:none">${art}</div>`
     : ''
   if (!part?.flow) return artBox
   const place =

@@ -52,3 +52,20 @@ def test_a_next_page_column_section_becomes_side_by_side_columns() -> None:
     assert block.count('class="intellidocs-column"') == 2
     assert "page-break" not in block, "the section's opening page break went inside the columns"
     assert html.find('class="page-break"') < start, "the page break must stay in front of the columns"
+
+
+def test_every_tab_of_a_split_manuscript_opens_on_whole_blocks() -> None:
+    """A two-column section straddling a tab boundary (IntelliDocs (2): "Rationale of the Study" and
+    the "CHAPTER I" title) stays one column: wrapped, it put the tab marker inside a column, and the
+    Chapter 1 tab opened on a stray "</div>" that the editor read as an empty document."""
+    import re
+
+    fixture = ROOT / "tests" / "fixtures" / "import_baselines" / "documents" / "IntelliDocs (2).docx"
+    html = convert_docx_bytes_to_html(fixture.read_bytes(), split_tabs=True, build_json=False)["html"]
+    parts = re.split(r'<div data-tab-break="" data-tab-id="" data-title="[^"]*"></div>', html)
+    assert len(parts) > 3
+    for index, part in enumerate(parts):
+        assert not part.lstrip().startswith("</"), f"tab {index} opens inside a block"
+        assert part.count("<div") == part.count("</div"), f"tab {index} has unbalanced blocks"
+    chapter_one = next(part for part in parts if "CHAPTER I INTRODUCTION" in part)
+    assert "Document creation is a cornerstone" in chapter_one

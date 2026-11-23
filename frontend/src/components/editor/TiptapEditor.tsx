@@ -286,8 +286,24 @@ const ALLOWED_STYLE_PROPS = new Set([
  */
 const CELL_STYLE_PROPS: ReadonlySet<string> = new Set(['min-height', 'padding'])
 
-/** Extract only whitelisted CSS properties from an inline style string. */
-function filterStyle(raw: string | null, extra: ReadonlySet<string> = new Set()): string | null {
+/**
+ * The longhands of a `margin` or `padding` shorthand ("8.4px 23.7px 0px 24px" → top, right, bottom,
+ * left), or null when the value is not a plain 1–4 length list.
+ */
+export function expandBoxShorthand(prop: 'margin' | 'padding', value: string): string[] | null {
+  if (/[(),]/.test(value)) return null
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+  if (parts.length < 1 || parts.length > 4) return null
+  const [top, right = top, bottom = top, left = right] = parts
+  return [`${prop}-top: ${top}`, `${prop}-right: ${right}`, `${prop}-bottom: ${bottom}`, `${prop}-left: ${left}`]
+}
+
+/**
+ * Extract only whitelisted CSS properties from an inline style string. The browser writes a block's
+ * four margins as one `margin` shorthand when the document is saved; it is read back as its
+ * longhands, or an imported paragraph lost its space before/after and right indent on the second open.
+ */
+export function filterStyle(raw: string | null, extra: ReadonlySet<string> = new Set()): string | null {
   if (!raw) return null
   const kept: string[] = []
   for (const decl of raw.split(';')) {
@@ -296,7 +312,12 @@ function filterStyle(raw: string | null, extra: ReadonlySet<string> = new Set())
     const colon = trimmed.indexOf(':')
     if (colon < 1) continue
     const prop = trimmed.slice(0, colon).trim().toLowerCase()
-    if (ALLOWED_STYLE_PROPS.has(prop) || extra.has(prop)) kept.push(trimmed)
+    if (ALLOWED_STYLE_PROPS.has(prop) || extra.has(prop)) {
+      kept.push(trimmed)
+    } else if (prop === 'margin' || prop === 'padding') {
+      const longhands = expandBoxShorthand(prop, trimmed.slice(colon + 1))
+      if (longhands) kept.push(...longhands)
+    }
   }
   return kept.length > 0 ? kept.join('; ') : null
 }

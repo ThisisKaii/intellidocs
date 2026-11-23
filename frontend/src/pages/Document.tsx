@@ -1,3 +1,4 @@
+import { hasBodyText } from '@/lib/bodyText'
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { setActiveDocumentId } from '@/lib/activeDocument'
@@ -290,6 +291,13 @@ export default function Document(): JSX.Element {
    * longer than AUTOSAVE_DELAY). Nothing is saved while this is false.
    */
   const documentLoadedRef = useRef<boolean>(false)
+  /**
+   * Whether the body loaded from the server had text, and whether the user has typed, pasted or
+   * dropped anything since. A body the editor could not read comes out empty; saving that over a
+   * stored body with text erased whole imported tabs, so such a save is refused (see saveDocument).
+   */
+  const loadedHadTextRef = useRef<boolean>(false)
+  const userInputSinceLoadRef = useRef<boolean>(false)
   const latestTitleRef = useRef<string>('Untitled Document')
   /** The last title that was not blank: what a cleared title field goes back to (the server keeps it). */
   const keptTitleRef = useRef<string>('Untitled Document')
@@ -320,6 +328,17 @@ export default function Document(): JSX.Element {
   useEffect(() => {
     if (title.trim()) keptTitleRef.current = title
   }, [title])
+  // Any keyboard, clipboard or drop input counts as the user editing (see loadedHadTextRef).
+  useEffect(() => {
+    const mark = (): void => {
+      userInputSinceLoadRef.current = true
+    }
+    const events = ['keydown', 'paste', 'cut', 'drop'] as const
+    for (const name of events) window.addEventListener(name, mark, true)
+    return () => {
+      for (const name of events) window.removeEventListener(name, mark, true)
+    }
+  }, [])
   const [content, setContent] = useState<string>('')
   /** Saved editor JSON handed to the editor with each external `content` load (it loads in preference). */
   const [contentJson, setContentJson] = useState<EditorJson | null>(null)
@@ -936,6 +955,8 @@ export default function Document(): JSX.Element {
         setActiveTabId(tabId)
         setTabInUrl(tabId)
         applyLoadedDocument(shown)
+        loadedHadTextRef.current = hasBodyText(shown.content)
+        userInputSinceLoadRef.current = false
         documentLoadedRef.current = true
         setLoadedDocId(docId)
         // Opening a document puts it first in "Recent" and restarts its 7 days.
@@ -1886,6 +1907,10 @@ export default function Document(): JSX.Element {
     // Read the latest content from the cache kept fresh by every page edit
     const nextContent = latestContentRef.current
     const nextJson = latestJsonRef.current
+    if (loadedHadTextRef.current && !userInputSinceLoadRef.current && !hasBodyText(nextContent)) {
+      console.error('Not saving: the editor came out empty for a body that has text, with no typing since it loaded.')
+      return
+    }
     const nextFormatHistory = latestFormatHistoryRef.current
 
     savingRef.current = true
@@ -2095,6 +2120,8 @@ export default function Document(): JSX.Element {
       setTabInUrl(tabId)
       resetCompositionBaseline(updateWordCount(tab.content))
       setSaveStatus('saved')
+      loadedHadTextRef.current = hasBodyText(tab.content)
+      userInputSinceLoadRef.current = false
       documentLoadedRef.current = true
       const draftKey = tabDraftKey(id, tabId)
       const draft = readLocalDraft(draftKey)

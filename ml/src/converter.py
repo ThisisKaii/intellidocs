@@ -179,14 +179,38 @@ def _color_to_hex(color_obj: Any) -> Optional[str]:
 
 
 def _get_paragraph_alignment(p: Paragraph) -> str:
-    """Return text alignment CSS value for a paragraph."""
+    """Return text alignment CSS value for a paragraph: its own, else its style's (through basedOn),
+    as Word reads it. python-docx's `alignment` is the paragraph's own setting only, so a heading
+    centred by its style (Heading 3 with jc=center) came out left-aligned."""
     align_map = {
         WD_ALIGN_PARAGRAPH.CENTER: "center",
         WD_ALIGN_PARAGRAPH.RIGHT: "right",
         WD_ALIGN_PARAGRAPH.JUSTIFY: "justify",
         WD_ALIGN_PARAGRAPH.LEFT: "left",
     }
-    return align_map.get(p.alignment, "left")
+    value = p.alignment
+    if value is None:
+        value = _style_alignment(p)
+    return align_map.get(value, "left")
+
+
+def _style_alignment(p: Paragraph) -> Any:
+    """The alignment a paragraph's style chain sets (None when no style in it does)."""
+    try:
+        style = p.style
+    except (KeyError, ValueError, AttributeError):
+        return None
+    seen = 0
+    while style is not None and seen < 20:  # basedOn loops exist in damaged files
+        try:
+            value = style.paragraph_format.alignment
+        except (ValueError, AttributeError):
+            value = None
+        if value is not None:
+            return value
+        style = style.base_style
+        seen += 1
+    return None
 
 
 def _highlight_css(run: Run) -> Optional[str]:
@@ -4307,6 +4331,10 @@ def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int], jo
         if not widths or not segment or len(segment) > _MAX_COLUMN_ENTRIES or len(text) > _MAX_COLUMN_TEXT:
             continue
         if any('<hr class="page-break"' in item for item in segment):
+            continue
+        # A document-tab boundary inside the section: wrapping would put the tab marker inside a column,
+        # and the tab would open on a stray "</div>" that the editor reads as an empty document.
+        if any("data-tab-break" in item for item in segment):
             continue
         # Only sections with a real column break (a header line and its date): pdf2docx marks every
         # multi-column page as columns, and wrapping those would make unsplittable blocks.

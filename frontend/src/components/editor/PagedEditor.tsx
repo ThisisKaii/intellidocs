@@ -923,22 +923,50 @@ export function PagedEditor({
   // sits inside the margins — so nothing anchors to the library's zero-height
   // float markers (which painted the old CSS pseudo-element off-sheet).
   const [gridPageCount, setGridPageCount] = useState<number>(0)
+  // Where each page sheet starts, read from the editor and the gaps between pages. The first sheet is
+  // not always exactly page.height tall (on the Document page it came out 32px taller), so a box at
+  // index * (page.height + PAGE_GAP) sat above every later page's text area.
+  const [gridPageTops, setGridPageTops] = useState<number[]>([])
+  const gridLayerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!editor || editor.isDestroyed || !showGridlines) {
       setGridPageCount(0)
+      setGridPageTops([])
       return
     }
     const sync = (): void => {
-      const count = editor.view.dom.querySelectorAll('.rm-page-break').length
+      const dom = editor.view.dom as HTMLElement
+      const count = dom.querySelectorAll('.rm-page-break').length
       setGridPageCount((prev) => (prev === count ? prev : count))
+      const layer = gridLayerRef.current
+      if (!layer) return
+      const origin = layer.getBoundingClientRect()
+      const rect = dom.getBoundingClientRect()
+      const scale = dom.offsetWidth > 0 ? rect.width / dom.offsetWidth : 1
+      const gaps = Array.from(dom.querySelectorAll<HTMLElement>('.rm-pagination-gap'))
+        .map((gap) => gap.getBoundingClientRect())
+        .filter((box) => box.height > 0)
+        .map((box) => ({ top: (box.top - origin.top) / scale, bottom: (box.bottom - origin.top) / scale }))
+        .sort((a, b) => a.top - b.top)
+      // The first sheet starts with the editor; each later one right after the gap above it.
+      const tops = [(rect.top - origin.top) / scale, ...gaps.map((gap) => gap.bottom)]
+      setGridPageTops((prev) => (prev.length === tops.length && prev.every((top, i) => Math.abs(top - tops[i]) < 0.5) ? prev : tops))
     }
-    sync()
-    editor.on('update', sync)
-    window.addEventListener('resize', sync)
+    let frame = window.requestAnimationFrame(sync)
+    const schedule = (): void => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(sync)
+    }
+    editor.on('update', schedule)
+    window.addEventListener('resize', schedule)
+    const resize = new ResizeObserver(schedule)
+    resize.observe(editor.view.dom)
     return () => {
-      editor.off('update', sync)
-      window.removeEventListener('resize', sync)
+      window.cancelAnimationFrame(frame)
+      editor.off('update', schedule)
+      window.removeEventListener('resize', schedule)
+      resize.disconnect()
     }
   }, [editor, showGridlines])
 
@@ -1033,6 +1061,14 @@ export function PagedEditor({
           .ProseMirror.rm-with-pagination td {
             letter-spacing: -0.1px;
           }
+          /* Header art steps back from where its zone starts to the page corner
+             (lib/pageLayout zoneHtml). The first page's header sits in the text
+             column; every other page's zone starts at the page edge, so its art
+             must not step back by the left margin (page numbers landed 1.25in
+             left of Word's). */
+          .rm-with-pagination .rm-page-header:not(.rm-first-page-header) {
+            --intellidocs-zone-left: 0px;
+          }
           /* Imported header/footer art is positioned from the page corner and
              reaches outside the zone, so neither zone may clip it. */
           .rm-with-pagination .rm-page-header,
@@ -1105,15 +1141,18 @@ export function PagedEditor({
           })}
         </div>
       )}
-      {showGridlines && gridPageCount > 0 && (
+      {showGridlines && (
         <div
+          ref={gridLayerRef}
           aria-hidden="true"
           style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1 }}
         >
           {Array.from({ length: gridPageCount }).map((_, index) => {
             const column = spreadPreview ? index % 2 : 0
             const row = spreadPreview ? Math.floor(index / 2) : index
-            const sheetTop = row * (page.height + (spreadPreview ? SPREAD_GAP : PAGE_GAP))
+            // Single pages use the measured sheet tops; the spread preview keeps its fixed grid.
+            const measured = spreadPreview ? undefined : gridPageTops[index]
+            const sheetTop = measured ?? row * (page.height + (spreadPreview ? SPREAD_GAP : PAGE_GAP))
             const sheetLeft = column * (page.width + SPREAD_GAP)
             return (
               <div
