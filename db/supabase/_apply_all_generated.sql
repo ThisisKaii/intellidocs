@@ -1486,15 +1486,139 @@ VALUES ('user-models', 'user-models', false),
        ('ml-models', 'ml-models', false)
 ON CONFLICT (id) DO NOTHING;
 
-
-
--- 029_document_citations.sql
+-- ==================== 029_document_citations.sql ====================
 -- Citation style and reference list saved with each document, so references
 -- follow the student across devices instead of living in one browser.
 -- Shape: { "style": "ieee" | "apa" | "mla" | "chicago", "references": [ ... ] }
 
 alter table public.documents
   add column if not exists citation_data jsonb;
+
+-- ==================== 030_professor_applications.sql ====================
+-- IntelliDocs: Migration 030 — professor application tracking and plagiarism scan scope.
+-- Re-runnable: every statement is guarded.
+
+-- 1) The role an applicant asked for stays separate from the role they hold, so a
+--    pending or rejected applicant never gets professor privileges early.
+alter table public.user_profiles add column if not exists requested_role text;
+alter table public.user_profiles add column if not exists faculty_id varchar(50);
+alter table public.user_profiles add column if not exists decision_note text;
+alter table public.user_profiles add column if not exists decided_at timestamptz;
+alter table public.user_profiles add column if not exists decided_by uuid references auth.users(id) on delete set null;
+
+-- 2) Plagiarism scans remember whether they compared one class or all of a professor's classes.
+alter table public.plagiarism_scans add column if not exists scope text not null default 'local';
+alter table public.plagiarism_matches add column if not exists matched_folder_id uuid references public.folders(folder_id) on delete set null;
+
+-- 3) Class folders get a private join code (the class_code column is only the public course label).
+alter table public.folders add column if not exists join_code varchar(12);
+create unique index if not exists idx_folders_join_code on public.folders (upper(join_code)) where join_code is not null;
+
+-- ==================== 031_editor_preferences.sql ====================
+-- IntelliDocs: Migration 031 — editor preferences follow the account.
+-- Allows personalization_settings to hold one 'editor_preferences' row per user.
+-- Re-runnable: the constraint is dropped and recreated.
+
+alter table public.personalization_settings
+  drop constraint if exists personalization_settings_key_check;
+
+alter table public.personalization_settings
+  add constraint personalization_settings_key_check
+  check (key in ('custom_dictionary', 'ignored_patterns', 'editor_preferences'));
+
+-- ==================== 032_document_page_layout.sql ====================
+-- Header/footer art, per-section headers and page numbering that an imported
+-- Word document carries beyond the plain header/footer text columns.
+-- Shape: { sections: [...], parts: { key: { flow, art } }, repeat_art, page_art }
+
+alter table public.documents
+  add column if not exists page_layout jsonb;
+
+-- ==================== 033_reviews.sql ====================
+-- Migration 033: Tester reviews (bug reports) with optional screenshots
+-- Rows are written by the Express server with the service key; read them in
+-- the Supabase table editor. Images live in the public `review-images` bucket
+-- under {userId}/{uuid}.{ext} (unguessable paths).
+
+create table if not exists public.reviews (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  message text not null,
+  page_path text,
+  image_urls text[] not null default '{}',
+  user_agent text,
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_reviews_created_at on public.reviews(created_at desc);
+
+alter table public.reviews enable row level security;
+
+create policy "Users can read their own reviews"
+on public.reviews for select
+using (auth.uid() = user_id);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'review-images',
+  'review-images',
+  true,
+  10485760,
+  array['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+)
+on conflict (id) do nothing;
+
+-- ==================== 034_document_opens.sql ====================
+-- Migration 034: which documents each user opened, and when
+--
+-- Powers the "Recent" view: a document is recent for 7 days after the user last
+-- OPENED it (not edited it). Opening it again moves it to the top and restarts the
+-- 7 days. One row per (user, document); written by the Express server with the
+-- service key, so the user only needs the read policy.
+
+create table if not exists public.document_opens (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  document_id uuid not null references public.documents(id) on delete cascade,
+  last_opened_at timestamptz not null default now(),
+  primary key (user_id, document_id)
+);
+
+create index if not exists idx_document_opens_user_recent
+  on public.document_opens(user_id, last_opened_at desc);
+
+alter table public.document_opens enable row level security;
+
+create policy "Users can read their own document opens"
+on public.document_opens for select
+using (auth.uid() = user_id);
+
+-- ==================== 035_share_codes.sql ====================
+-- Migration 035: short share codes for collaboration
+--
+-- A document's share link can also carry a short code (8 characters, for example
+-- K7M2-QX9P). A collaborator types the code under "Shared with me" and the document
+-- is added to their shared list with the link's permission. The code lives and dies
+-- with the link: it is minted with it, kept when its permission or expiry changes,
+-- and cleared when the link is revoked. Stored without the dash, upper case.
+
+alter table public.documents
+  add column if not exists share_code text;
+
+create unique index if not exists idx_documents_share_code
+  on public.documents(share_code) where (share_code is not null);
+
+-- ==================== 036_avatars_bucket.sql ====================
+-- Profile photos: one public bucket, one folder per user. The server uploads with the
+-- service key and stores the public link in the user's auth metadata (avatar_url).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'avatars',
+  'avatars',
+  true,
+  2097152,
+  array['image/png', 'image/jpeg', 'image/webp']
+)
+on conflict (id) do nothing;
 
 -- ==================== 037_document_content_json.sql ====================
 -- IntelliDocs: Migration 037 — the editor's own JSON as a document's source of truth
@@ -1651,3 +1775,412 @@ begin
   return new;
 end;
 $$;
+
+-- ==================== 041_document_pinned.sql ====================
+-- Pinned documents: the owner can keep important documents (an active thesis)
+-- at the top of the dashboard. Only the owner can change it (documentModel).
+ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ==================== 042_document_pins.sql ====================
+-- Migration 042: each user's own pinned documents
+--
+-- Powers the "Pinned" view in the sidebar. A pin belongs to the user who made
+-- it, so anyone can pin a document they can open (their own, or one shared with
+-- them) without changing it for anybody else. One row per (user, document);
+-- written by the Express server with the service key, so the user only needs
+-- the read policy. Replaces the per-document documents.is_pinned flag (041).
+
+create table if not exists public.document_pins (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  document_id uuid not null references public.documents(id) on delete cascade,
+  pinned_at timestamptz not null default now(),
+  primary key (user_id, document_id)
+);
+
+create index if not exists idx_document_pins_user_recent
+  on public.document_pins(user_id, pinned_at desc);
+
+alter table public.document_pins enable row level security;
+
+drop policy if exists "Users can read their own document pins" on public.document_pins;
+create policy "Users can read their own document pins"
+on public.document_pins for select
+using (auth.uid() = user_id);
+
+-- Keep the pins made with the earlier per-document flag (migration 041), if it was applied.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'documents' and column_name = 'is_pinned'
+  ) then
+    insert into public.document_pins (user_id, document_id)
+    select user_id, id from public.documents where is_pinned
+    on conflict do nothing;
+  end if;
+end $$;
+
+-- ==================== 043_folder_source_class.sql ====================
+-- Migration 043: remember which class a student's folder came from
+--
+-- When a professor deletes a class, the folders students kept inside it (their
+-- workspace and submission folders) stay with the students and move to their
+-- top level. This column records the class they came from, so the app can label
+-- them "Class document · from <class>". Null for every other folder.
+
+alter table public.folders
+  add column if not exists source_class_name text;
+
+-- ==================== 044_review_rubric.sql ====================
+-- Migration 044: rubric breakdown on professor reviews
+--
+-- A grade can carry four criteria (content, methodology, formatting, mechanics),
+-- 0-25 each, that sum to the overall grade. Stored as jsonb on the review row:
+--   {"content": 22, "methodology": 20, "formatting": 24, "mechanics": 23}
+-- Null for grades given without a rubric.
+
+alter table public.document_reviews
+  add column if not exists rubric jsonb;
+
+-- ==================== 045_drop_default_drive_folder.sql ====================
+-- Migration 045: stop creating a default "My Drive" folder for new users
+--
+-- Migration 0004 added a trigger that inserted a root folder named "My Drive" for
+-- every new account. Documents live in the user's drive root already, so the
+-- folder was an empty extra level. New accounts no longer get one, and empty
+-- "My Drive" folders that the trigger created are removed. A "My Drive" folder a
+-- user has put documents or sub-folders into is kept and can now be renamed or
+-- deleted like any other folder.
+
+drop trigger if exists trg_create_default_drive_folder on auth.users;
+drop function if exists public.create_default_drive_folder();
+
+delete from public.folders f
+where f.name = 'My Drive'
+  and f.parent_id is null
+  and coalesce(f.folder_type, 'personal') = 'personal'
+  and not exists (select 1 from public.folder_documents fd where fd.folder_id = f.folder_id)
+  and not exists (select 1 from public.folders c where c.parent_id = f.folder_id);
+
+-- ==================== 046_class_rubrics.sql ====================
+-- Migration 046: a professor's own grading rubric per class folder
+--
+-- A class folder can carry the rubric its professor grades with, as jsonb:
+--   {"criteria": [{"id": "content", "name": "Content", "description": "Ideas, depth and accuracy", "maxPoints": 40}, ...]}
+-- The criteria's points add up to 100 (the grade). Null means the class uses the default
+-- rubric (Content, Methodology, Formatting, Mechanics, 25 points each).
+--
+-- Each grade keeps a copy of the criteria it was given with (document_reviews.rubric,
+-- migration 044), so editing a rubric never changes a grade already returned.
+
+alter table public.folders
+  add column if not exists rubric jsonb;
+
+-- ==================== 047_user_preset_blueprints.sql ====================
+-- Presets made from a document the user uploads (or a shared .idocpreset file) carry the look read
+-- from it: page size and margins, body font, size, spacing and indent, heading styles and the
+-- section outline. Plain forks of a built-in preset leave it null.
+alter table public.user_presets
+  add column if not exists blueprint jsonb;
+
+-- ==================== 048_document_tabs.sql ====================
+-- IntelliDocs: Migration 048 — document tabs (one document, a tab per chapter)
+--
+-- A long manuscript can be split into tabs (Front matter, Chapter 1 … N, References), like Google
+-- Docs tabs, so only one chapter is open in the editor at a time. It stays ONE document:
+--
+--   * `document_tabs` holds each tab's working copy (HTML + editor JSON). The editor saves one tab.
+--   * `documents.content` / `content_json` keep the WHOLE document, rebuilt from the tabs after every
+--     tab save by `assemble_document_tabs`, so search, plagiarism, AI chat, exports, previews, the
+--     storage quota and version history keep reading one body.
+--   * Tab boundaries are written into that body as an empty marker block before each tab:
+--       HTML  <div data-tab-break="" data-tab-id="…" data-title="…"></div>
+--       JSON  {"type":"tabBreak","attrs":{"tabId":"…","title":"…"}}
+--     They add no text. A version snapshot therefore carries its tabs, and restoring it re-splits.
+--
+-- A document without tabs has no rows here and is stored exactly as before.
+
+create table if not exists public.document_tabs (
+  tab_id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.documents(id) on delete cascade,
+  position integer not null default 0,
+  title text not null default 'Untitled tab',
+  content text not null default '',
+  content_json jsonb,
+  -- Measured by the editor when the tab was last laid out, so other tabs know where their pages start.
+  page_count integer not null default 0,
+  word_count integer not null default 0,
+  -- {format: none|roman|arabic, restart: bool, start: int, hideFirst: bool}; null = continue the previous tab.
+  numbering jsonb,
+  -- Figure/table counts and the chapter the tab ends in, so numbering continues in the next tab.
+  caption_counts jsonb,
+  -- Headings with their page numbers, for a table of contents built across tabs.
+  outline jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_document_tabs_document_position
+  on public.document_tabs(document_id, position);
+
+alter table public.document_tabs enable row level security;
+
+-- The server uses the service key; these keep direct client access to the owner only.
+drop policy if exists "Owners can read their document tabs" on public.document_tabs;
+create policy "Owners can read their document tabs"
+  on public.document_tabs for select
+  using (exists (select 1 from public.documents d where d.id = document_id and d.user_id = auth.uid()));
+
+drop policy if exists "Owners can change their document tabs" on public.document_tabs;
+create policy "Owners can change their document tabs"
+  on public.document_tabs for all
+  using (exists (select 1 from public.documents d where d.id = document_id and d.user_id = auth.uid()))
+  with check (exists (select 1 from public.documents d where d.id = document_id and d.user_id = auth.uid()));
+
+-- Escape text for an HTML attribute value (the marker's title).
+create or replace function public.html_attribute_escape(p_text text)
+returns text
+language sql
+immutable
+as $$
+  select replace(replace(replace(replace(coalesce(p_text, ''), '&', '&amp;'), '"', '&quot;'), '<', '&lt;'), '>', '&gt;');
+$$;
+
+-- Rebuild a document's whole body from its tabs, in the database (no multi-megabyte round trip).
+-- The editor JSON is rebuilt only when every tab has one; otherwise it is cleared so the HTML loads.
+create or replace function public.assemble_document_tabs(p_document_id uuid)
+returns void
+language sql
+as $$
+  update public.documents d
+  set
+    content = coalesce((
+      select string_agg(
+        '<div data-tab-break="" data-tab-id="' || t.tab_id::text || '" data-title="' || public.html_attribute_escape(t.title) || '"></div>' || t.content,
+        '' order by t.position, t.created_at)
+      from public.document_tabs t
+      where t.document_id = p_document_id
+    ), d.content),
+    content_json = (
+      select case
+        when count(*) = 0 then d.content_json
+        when bool_and(t.content_json is not null) then (
+          select jsonb_build_object('type', 'doc', 'content', coalesce(jsonb_agg(part.node order by part.position, part.created_at, part.ord), '[]'::jsonb))
+          from (
+            select t2.position, t2.created_at, 0::bigint as ord,
+                   jsonb_build_object('type', 'tabBreak', 'attrs', jsonb_build_object('tabId', t2.tab_id::text, 'title', t2.title)) as node
+            from public.document_tabs t2
+            where t2.document_id = p_document_id
+            union all
+            select t2.position, t2.created_at, e.ord, e.node
+            from public.document_tabs t2,
+                 jsonb_array_elements(coalesce(t2.content_json -> 'content', '[]'::jsonb)) with ordinality as e(node, ord)
+            where t2.document_id = p_document_id
+          ) part
+        )
+        else null
+      end
+      from public.document_tabs t
+      where t.document_id = p_document_id
+    ),
+    updated_at = now()
+  where d.id = p_document_id;
+$$;
+
+-- Snapshot the document's current (assembled) state as a version, copying the body inside the
+-- database. The caller throttles snapshots and supplies the format snapshot and word count.
+create or replace function public.snapshot_document_version(
+  p_document_id uuid,
+  p_reason text,
+  p_editor_prefs jsonb,
+  p_word_count integer
+)
+returns void
+language sql
+as $$
+  insert into public.document_versions
+    (document_id, user_id, content, content_json, title, word_count, page_size, margins, orientation, editor_prefs, reason)
+  select id, user_id, content, content_json, title, p_word_count, page_size, margins, orientation, p_editor_prefs, p_reason
+  from public.documents
+  where id = p_document_id;
+$$;
+
+-- ==================== 049_tabs_only_body.sql ====================
+-- IntelliDocs: Migration 049 — a tabbed document's text lives in its tabs only
+--
+-- Migration 048 kept the WHOLE body of a tabbed document in `documents.content`/`content_json` and
+-- rebuilt it after every tab save. A 1,447-page thesis (13 MB of HTML, 27 MB of editor JSON) could
+-- not be written that way: the rebuild ran past the statement timeout, and one 27 MB JSON write took
+-- the database's gateway down. From now on:
+--
+--   * `documents.content` of a tabbed document is a skeleton: one empty marker per tab, in order
+--       <div data-tab-break="" data-tab-id="…" data-title="…"></div>…
+--     and `content_json` is null. The server writes it whenever tabs are added, moved or renamed and
+--     reads the whole text from the tabs when it needs it (AI chat, originality checks, reviews).
+--   * Versions of a tabbed document are kept per tab: `document_versions.tab_id` names the tab,
+--     with its title and place then, so a deleted tab can be restored where it was.
+--   * Storage counts each tab, since the document row no longer holds the text.
+--
+-- Safe to run before the new server is deployed: the two functions below are redefined so the
+-- previous server writes skeletons too, and never records a skeleton as a whole-document version
+-- (restoring one would empty every tab).
+
+alter table public.document_versions add column if not exists tab_id uuid;
+alter table public.document_versions add column if not exists tab_title text;
+alter table public.document_versions add column if not exists tab_position integer;
+
+create index if not exists idx_document_versions_document_tab
+  on public.document_versions(document_id, tab_id, created_at desc);
+
+-- The skeleton of a tabbed document (its markers in order), or null when it has no tabs.
+create or replace function public.document_tab_skeleton(p_document_id uuid)
+returns text
+language sql
+stable
+as $$
+  select string_agg(
+    '<div data-tab-break="" data-tab-id="' || t.tab_id::text || '" data-title="' || public.html_attribute_escape(t.title) || '"></div>',
+    '' order by t.position, t.created_at)
+  from public.document_tabs t
+  where t.document_id = p_document_id;
+$$;
+
+-- Migration 048's rebuild now writes only the skeleton.
+create or replace function public.assemble_document_tabs(p_document_id uuid)
+returns void
+language sql
+as $$
+  update public.documents d
+  set content = coalesce(public.document_tab_skeleton(p_document_id), d.content),
+      content_json = case when public.document_tab_skeleton(p_document_id) is null then d.content_json else null end,
+      updated_at = now()
+  where d.id = p_document_id;
+$$;
+
+-- A whole-document version of a tabbed document would hold only its skeleton: none is taken.
+create or replace function public.snapshot_document_version(
+  p_document_id uuid,
+  p_reason text,
+  p_editor_prefs jsonb,
+  p_word_count integer
+)
+returns void
+language sql
+as $$
+  insert into public.document_versions
+    (document_id, user_id, content, content_json, title, word_count, page_size, margins, orientation, editor_prefs, reason)
+  select id, user_id, content, content_json, title, p_word_count, page_size, margins, orientation, p_editor_prefs, p_reason
+  from public.documents
+  where id = p_document_id
+    and not exists (select 1 from public.document_tabs t where t.document_id = p_document_id);
+$$;
+
+-- Documents already split into tabs drop their whole-body copy for the skeleton.
+update public.documents d
+set content = s.skeleton,
+    content_json = null
+from (
+  select t.document_id, public.document_tab_skeleton(t.document_id) as skeleton
+  from public.document_tabs t
+  group by t.document_id
+) s
+where d.id = s.document_id;
+
+-- A user's storage: each document's own content (its JSON when it has one, else its HTML), plus the
+-- tabs of tabbed documents. pg_column_size reads the stored (compressed) size, as in migration 037.
+create or replace function public.user_storage_bytes(p_user_id uuid)
+returns bigint
+language sql
+stable
+as $$
+  select (
+    coalesce((
+      select sum(coalesce(pg_column_size(d.content_json), pg_column_size(d.content)))
+      from public.documents d
+      where d.user_id = p_user_id and d.is_deleted = false
+    ), 0)
+    + coalesce((
+      select sum(coalesce(pg_column_size(t.content_json), pg_column_size(t.content)))
+      from public.document_tabs t
+      join public.documents d on d.id = t.document_id
+      where d.user_id = p_user_id and d.is_deleted = false
+    ), 0)
+  )::bigint;
+$$;
+
+-- ==================== 050_stored_images.sql ====================
+-- IntelliDocs: Migration 050 — pictures count toward a user's storage
+--
+-- Storage used to count only document text. A 1,447-page thesis is 13 MB of text and 200 MB of
+-- pictures, so pictures were the real cost and were free. Every stored picture now has a row here:
+-- where it lives (the Supabase bucket or Cloudflare R2), whose it is, which document it belongs to
+-- and its size. `user_storage_bytes` adds the pictures of the user's documents that are not in the
+-- trash, plus pictures not tied to a document (editor uploads, older imports).
+--
+-- Deleting a document for good removes its pictures (the server deletes the files first, then the
+-- rows go with the document). Existing pictures in the `document-images` bucket are backfilled
+-- below without a document.
+
+create table if not exists public.stored_images (
+  path text primary key,                                   -- object key: <user id>/<uuid>.<ext>
+  user_id uuid not null references auth.users(id) on delete cascade,
+  document_id uuid references public.documents(id) on delete cascade,
+  bytes bigint not null default 0,
+  backend text not null default 'supabase' check (backend in ('supabase', 'r2')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_stored_images_user on public.stored_images(user_id);
+create index if not exists idx_stored_images_document on public.stored_images(document_id);
+
+-- Only the server (service key) reads or writes this table.
+alter table public.stored_images enable row level security;
+
+-- Pictures already in the bucket: counted for their owner (the first folder of the path).
+insert into public.stored_images (path, user_id, bytes, backend)
+select o.name, u.id, coalesce((o.metadata ->> 'size')::bigint, 0), 'supabase'
+from storage.objects o
+join auth.users u on u.id::text = split_part(o.name, '/', 1)
+where o.bucket_id = 'document-images'
+on conflict (path) do nothing;
+
+-- A user's storage: document text (as in migration 049, tabs included) plus pictures.
+create or replace function public.user_storage_bytes(p_user_id uuid)
+returns bigint
+language sql
+stable
+as $$
+  select (
+    coalesce((
+      select sum(coalesce(pg_column_size(d.content_json), pg_column_size(d.content)))
+      from public.documents d
+      where d.user_id = p_user_id and d.is_deleted = false
+    ), 0)
+    + coalesce((
+      select sum(coalesce(pg_column_size(t.content_json), pg_column_size(t.content)))
+      from public.document_tabs t
+      join public.documents d on d.id = t.document_id
+      where d.user_id = p_user_id and d.is_deleted = false
+    ), 0)
+    + coalesce((
+      select sum(i.bytes)
+      from public.stored_images i
+      left join public.documents d on d.id = i.document_id
+      where i.user_id = p_user_id and (i.document_id is null or d.is_deleted = false)
+    ), 0)
+  )::bigint;
+$$;
+
+-- ==================== 051_caption_config.sql ====================
+-- IntelliDocs: Migration 051 — a document's own caption settings
+--
+-- Captions follow the document's preset (IEEE: "Fig. 1." 8pt below figures, "TABLE I" above
+-- tables; APA 7th: bold "Figure 1" above, italic title on the next line). Page Setup → Captions
+-- lets a document set its own: placement, label, separator, size, bold label, italic text and
+-- alignment, per figure and table. Null means "follow the preset". The server validates the shape
+-- (documentSchemas.captionConfigSchema); without this column the setting is simply not saved.
+
+alter table public.documents
+  add column if not exists caption_config jsonb;
+

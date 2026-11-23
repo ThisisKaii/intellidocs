@@ -1,8 +1,8 @@
 // IntelliDocs — Database Design (dbdiagram.io DBML)
-// Paste this into https://dbdiagram.io/d to generate the diagram
+// Paste this into https://dbdiagram.io/d to generate the interactive ERD diagram
 
 // ============================================
-// Tier 1: Supabase PostgreSQL
+// Tier 1: Supabase PostgreSQL (Relational & Transactional)
 // ============================================
 
 Table users {
@@ -15,12 +15,13 @@ Table users {
   created_at timestamptz
   last_sign_in_at timestamptz
 
-  Note: 'Managed by Supabase Auth'
+  Note: 'Managed by Supabase Auth (auth.users)'
 }
 
 Table roles {
   role_id integer [pk]
   role_name varchar [unique, not null]
+  Note: '1=User/Student, 2=Professor, 3=Admin'
 }
 
 Table user_profiles {
@@ -28,10 +29,15 @@ Table user_profiles {
   user_id uuid [unique, ref: > users.id]
   role_id integer [ref: > roles.role_id]
   verification_status text [not null, note: 'pending, approved, rejected']
+  requested_role text
+  faculty_id varchar
+  student_id varchar
+  decision_note text
+  decided_at timestamptz
+  decided_by uuid [ref: > users.id]
   display_name varchar
   phone varchar
-  student_id varchar [note: 'academic verification: student applications']
-  plan text [not null, note: 'free, pro (mock subscription)']
+  plan text [not null, default: 'free', note: 'free, pro']
   plan_started_at timestamptz
   plan_renews_at timestamptz
   plan_canceled_at timestamptz
@@ -46,11 +52,76 @@ Table documents {
   content text
   content_json jsonb
   formatting_history jsonb
-  is_isolated boolean
-  genre text [not null, note: 'ieee, thesis, memo, general; partitions behavior learning']
-  genre_source text [not null, note: 'auto, manual']
+  is_isolated boolean [default: false]
+  genre text [not null, default: 'general', note: 'ieee, thesis, memo, general']
+  genre_source text [not null, default: 'auto', note: 'auto, manual']
+  is_pinned boolean [default: false]
+  share_code text [unique]
+  citation_data jsonb
+  page_layout jsonb
+  caption_config jsonb
+  is_deleted boolean [default: false]
+  deleted_at timestamptz
   created_at timestamptz
   updated_at timestamptz
+}
+
+Table document_tabs {
+  tab_id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  position integer [not null, default: 0]
+  title text [not null, default: 'Untitled tab']
+  content text [not null]
+  content_json jsonb
+  page_count integer [default: 0]
+  word_count integer [default: 0]
+  numbering jsonb
+  caption_counts jsonb
+  outline jsonb
+  created_at timestamptz
+  updated_at timestamptz
+  Note: 'Partitions large 100+ page manuscripts into chapter tabs'
+}
+
+Table document_versions {
+  id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  user_id uuid [ref: > users.id]
+  tab_id uuid
+  tab_title text
+  tab_position integer
+  content text
+  content_json jsonb
+  title text
+  word_count integer
+  page_size text
+  margins text
+  orientation text
+  editor_prefs jsonb
+  reason text
+  created_at timestamptz
+}
+
+Table stored_images {
+  path text [pk, note: 'storage object key: user_id/uuid.ext']
+  user_id uuid [ref: > users.id]
+  document_id uuid [ref: > documents.id]
+  bytes bigint [not null, default: 0]
+  backend text [not null, default: 'supabase', note: 'supabase, r2']
+  created_at timestamptz
+  Note: 'Images metering towards user storage quota'
+}
+
+Table document_pins {
+  user_id uuid [pk, ref: > users.id]
+  document_id uuid [pk, ref: > documents.id]
+  pinned_at timestamptz [default: `now()`]
+}
+
+Table document_opens {
+  user_id uuid [pk, ref: > users.id]
+  document_id uuid [pk, ref: > documents.id]
+  last_opened_at timestamptz [default: `now()`]
 }
 
 Table folders {
@@ -58,6 +129,11 @@ Table folders {
   user_id uuid [ref: > users.id]
   name text [not null]
   parent_id uuid [ref: > folders.folder_id]
+  folder_type text [default: 'personal', note: 'personal, class, submission, workspace']
+  class_code varchar
+  join_code varchar [unique]
+  source_class_name text
+  rubric jsonb
   created_at timestamptz
   updated_at timestamptz
 }
@@ -66,6 +142,39 @@ Table folder_documents {
   folder_id uuid [pk, ref: > folders.folder_id]
   document_id uuid [pk, ref: > documents.id]
   added_at timestamptz
+  updated_at timestamptz
+}
+
+Table document_shares {
+  id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  owner_id uuid [ref: > users.id]
+  shared_with uuid [ref: > users.id]
+  permission text [not null, note: 'view, edit, comment']
+  expires_at timestamptz
+  created_at timestamptz
+}
+
+Table document_comments {
+  comment_id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  user_id uuid [ref: > users.id]
+  content text [not null]
+  block_id text
+  is_resolved boolean [default: false]
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table document_reviews {
+  id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  reviewer_id uuid [ref: > users.id]
+  grade numeric
+  feedback text
+  rubric jsonb
+  status text [not null, default: 'draft', note: 'draft, published']
+  created_at timestamptz
   updated_at timestamptz
 }
 
@@ -97,7 +206,7 @@ Table suggestion_feedback {
   feedback_id uuid [pk]
   suggestion_id uuid [ref: > ai_suggestions.suggestion_id]
   user_id uuid [ref: > users.id]
-  decision text [not null]
+  decision text [not null, note: 'accepted, rejected, ignored']
   decided_at timestamptz
   updated_at timestamptz
 }
@@ -124,8 +233,71 @@ Table google_tokens {
   updated_at timestamptz
 }
 
+Table academic_presets {
+  preset_id uuid [pk]
+  name text [unique, not null]
+  rules jsonb [not null]
+  is_default boolean [default: false]
+  created_at timestamptz
+}
+
+Table user_presets {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  name text [not null]
+  rules jsonb [not null]
+  blueprint jsonb
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table plagiarism_scans {
+  id uuid [pk]
+  document_id uuid [ref: > documents.id]
+  user_id uuid [ref: > users.id]
+  similarity_score numeric
+  word_count integer
+  scope text [not null, default: 'local', note: 'local, class, all']
+  status text [not null, default: 'pending']
+  created_at timestamptz
+}
+
+Table plagiarism_matches {
+  id uuid [pk]
+  scan_id uuid [ref: > plagiarism_scans.id]
+  matched_document_id uuid [ref: > documents.id]
+  matched_folder_id uuid [ref: > folders.folder_id]
+  matched_text text [not null]
+  source_text text [not null]
+  similarity numeric
+  created_at timestamptz
+}
+
+Table external_sources {
+  id uuid [pk]
+  scan_id uuid [ref: > plagiarism_scans.id]
+  url text [not null]
+  title text
+  matched_text text [not null]
+  similarity numeric
+  created_at timestamptz
+}
+
 // ============================================
-// Tier 3: DuckDB — Analytical Database
+// Tier 2: Redis / Upstash (Key-Value Buffer & Cache)
+// ============================================
+
+// Key patterns documented in DATABASE_DESIGN_REDIS_BUFFER_CACHE.md:
+// - behavior:{userId}:{documentId} -> List of raw editing telemetry
+// - behavior:patterns:{userId}:{genre} -> String (JSON map) of learned format patterns
+// - ai:cache:{scope}:{hash} -> String (JSON) of cached AI suggestion inference
+// - ai:quota:{userId}:{window} -> String integer atomic quota counter
+// - autosave:dirty:{documentId} -> Debounce dirty flag
+// - assistant:route:{userId}:{id} -> Pending assistant action route
+// - import:job:{jobId} -> Large file parsing background status
+
+// ============================================
+// Tier 3: DuckDB — Analytical Database & Feature Lake
 // ============================================
 
 Table behavior_events {
@@ -136,13 +308,17 @@ Table behavior_events {
   event_ts_raw text
   ingested_at timestamp
   source_key text
+  payload text
+  block_id text
+  genre text
 
-  Note: 'DuckDB — aggregated from Redis'
+  Note: 'DuckDB — raw telemetry aggregated from Redis'
 }
 
 Table formatting_features {
   user_id text
   document_id text
+  genre text
   total_events integer
   bold_count integer
   italic_count integer
@@ -154,11 +330,27 @@ Table formatting_features {
   unordered_list_count integer
   blockquote_count integer
   code_block_count integer
+  table_insert_count integer
+  table_row_add_count integer
+  table_col_add_count integer
+  table_alignment_count integer
+  table_header_toggle_count integer
+  image_insert_count integer
+  image_resize_count integer
+  image_alignment_count integer
+  image_caption_count integer
+  callout_insert_count integer
+  blockquote_indent_count integer
+  code_block_insert_count integer
+  avg_image_width double
+  avg_image_height double
+  max_table_rows double
+  max_table_cols double
   last_action text
   last_event_ts timestamp
   window_start timestamp
   window_end timestamp
   ingested_at timestamp
 
-  Note: 'DuckDB — ML training features'
+  Note: 'DuckDB — windowed ML training feature matrix'
 }
