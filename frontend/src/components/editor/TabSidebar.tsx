@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { ArrowDown, ArrowUp, BookOpen, ChevronRight, Download, FileText, Hash, Layers, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookOpen, ChevronRight, Download, FileText, Hash, Layers, MoreHorizontal, Pencil, Plus, Trash2, Check, X } from 'lucide-react'
 
 import type { DocumentTabSummary, TabNumbering } from '@/services/api'
 
@@ -87,6 +87,7 @@ export default function TabSidebar({
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [confirmMerge, setConfirmMerge] = useState(false)
   const menuRef = useRef<HTMLElement | null>(null)
+  const cancelledRenameRef = useRef(false)
 
   // Close an open menu on a click elsewhere or Escape.
   useEffect(() => {
@@ -115,11 +116,19 @@ export default function TabSidebar({
 
   function startRename(tab: DocumentTabSummary): void {
     setMenuFor(null)
+    cancelledRenameRef.current = false
     setRenaming(tab.tab_id)
     setDraftTitle(tab.title)
   }
 
+  /** Close the field without saving, even if it reports a blur on its way out. */
+  function cancelRename(): void {
+    cancelledRenameRef.current = true
+    setRenaming(null)
+  }
+
   function finishRename(tab: DocumentTabSummary): void {
+    if (cancelledRenameRef.current) return
     const title = draftTitle.trim()
     setRenaming(null)
     if (title && title !== tab.title) onRename(tab.tab_id, title)
@@ -198,29 +207,53 @@ export default function TabSidebar({
           return (
             <li key={tab.tab_id} style={{ position: 'relative' }} ref={menuFor === tab.tab_id ? (menuRef as React.RefObject<HTMLLIElement>) : undefined}>
               {renaming === tab.tab_id ? (
-                <input
-                  autoFocus
-                  value={draftTitle}
-                  maxLength={120}
-                  aria-label="Tab title"
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  onBlur={() => finishRename(tab)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') finishRename(tab)
-                    if (event.key === 'Escape') setRenaming(null)
-                  }}
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    fontSize: '0.8125rem',
-                    padding: '0.375rem 0.5rem',
-                    borderRadius: '0.375rem',
-                    border: '1px solid var(--primary)',
-                    background: 'var(--background)',
-                    color: 'var(--foreground)',
-                    fontFamily: 'inherit',
-                  }}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <input
+                    autoFocus
+                    value={draftTitle}
+                    maxLength={120}
+                    aria-label="Tab title"
+                    onChange={(event) => setDraftTitle(event.target.value)}
+                    onBlur={() => finishRename(tab)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') finishRename(tab)
+                      if (event.key === 'Escape') cancelRename()
+                    }}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      boxSizing: 'border-box',
+                      fontSize: '0.8125rem',
+                      padding: '0.375rem 0.5rem',
+                      borderRadius: '0.375rem',
+                      border: '1px solid var(--primary)',
+                      background: 'var(--background)',
+                      color: 'var(--foreground)',
+                      fontFamily: 'inherit',
+                    }}
+                  />
+                  {/* mousedown is held back so the field keeps focus: its blur saves the name. */}
+                  <button
+                    type="button"
+                    title="Save name"
+                    aria-label="Save name"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => finishRename(tab)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '1.75rem', height: '1.75rem', flexShrink: 0, borderRadius: '0.375rem', border: 'none', cursor: 'pointer', background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                  >
+                    <Check style={{ width: 14, height: 14 }} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Cancel rename"
+                    aria-label="Cancel rename"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={cancelRename}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '1.75rem', height: '1.75rem', flexShrink: 0, borderRadius: '0.375rem', border: 'none', cursor: 'pointer', background: 'transparent', color: 'var(--muted-foreground)' }}
+                  >
+                    <X style={{ width: 14, height: 14 }} />
+                  </button>
+                </div>
               ) : (
                 <div
                   style={{

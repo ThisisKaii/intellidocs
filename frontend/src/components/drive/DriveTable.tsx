@@ -27,6 +27,7 @@ import {
   Share2,
   Trash2,
   Users,
+  X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { ClassRosterModal } from '@/components/drive/ClassRosterModal'
@@ -254,6 +255,34 @@ function ListSkeleton(): JSX.Element {
 }
 
 /* ─── Main Component ──────────────────────────────────────────── */
+
+
+/** Save and Cancel buttons beside an inline rename (Enter and Escape do the same). */
+function RenameButtons({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }): JSX.Element {
+  const base = 'shrink-0 flex items-center justify-center w-7 h-7 rounded-md border-none cursor-pointer'
+  return (
+    <>
+      <button
+        type="button"
+        title="Save name"
+        aria-label="Save name"
+        onClick={(e) => { e.stopPropagation(); onSave() }}
+        className={`${base} bg-primary text-primary-foreground`}
+      >
+        <Check className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        title="Cancel rename"
+        aria-label="Cancel rename"
+        onClick={(e) => { e.stopPropagation(); onCancel() }}
+        className={`${base} bg-transparent text-muted-foreground hover:bg-foreground/5 hover:text-foreground`}
+      >
+        <X className="size-3.5" />
+      </button>
+    </>
+  )
+}
 
 export function DriveTable({
   documents,
@@ -579,18 +608,21 @@ export function DriveTable({
                   {/* Body: Title and term */}
                   <div className="min-w-0 mb-3">
                     {isEditing ? (
-                      <input
-                        value={editing.title}
-                        onChange={(e) => onTitleChange(e.target.value)}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') onSaveEdit()
-                          if (e.key === 'Escape') onCancelEdit()
-                        }}
-                        className="w-full h-8 rounded-lg bg-background text-foreground text-sm px-2.5 outline-none border border-ring font-medium"
-                        style={{ fontFamily: 'inherit' }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <input
+                          value={editing.title}
+                          onChange={(e) => onTitleChange(e.target.value)}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') onSaveEdit()
+                            if (e.key === 'Escape') onCancelEdit()
+                          }}
+                          className="flex-1 min-w-0 h-8 rounded-lg bg-background text-foreground text-sm px-2.5 outline-none border border-ring font-medium"
+                          style={{ fontFamily: 'inherit' }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <RenameButtons onSave={onSaveEdit} onCancel={onCancelEdit} />
+                      </div>
                     ) : (
                       <div>
                         <h3
@@ -746,6 +778,9 @@ export function DriveTable({
                               style={{ fontFamily: 'inherit' }}
                               onClick={(e) => e.stopPropagation()}
                             />
+                          ) : null}
+                          {isEditing ? (
+                            <RenameButtons onSave={onSaveEdit} onCancel={onCancelEdit} />
                           ) : (
                             <h3
                               className="text-sm font-semibold text-foreground truncate m-0 tracking-tight"
@@ -891,12 +926,7 @@ export function DriveTable({
                             style={{ fontFamily: 'inherit' }}
                             onClick={(e) => e.stopPropagation()}
                           />
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onSaveEdit() }}
-                            className="shrink-0 flex items-center justify-center w-7 h-7 rounded-md bg-primary text-primary-foreground border-none cursor-pointer"
-                          >
-                            <Check className="size-3.5" />
-                          </button>
+                          <RenameButtons onSave={onSaveEdit} onCancel={onCancelEdit} />
                         </div>
                       ) : (
                         <div>
