@@ -202,7 +202,8 @@ export const HarperLinterExtension = Extension.create({
      */
     const runLint = async (view: EditorView): Promise<void> => {
       const instance = await ensureLinter()
-      if (!instance || disposed) return
+      // The linter loads and lints asynchronously: the editor may have closed in the meantime.
+      if (!instance || disposed || view.isDestroyed) return
 
       const block = activeTextBlock(view.state)
       if (!block) return
@@ -223,7 +224,7 @@ export const HarperLinterExtension = Extension.create({
       } catch {
         return
       }
-      if (version !== requestVersion || disposed) return
+      if (version !== requestVersion || disposed || view.isDestroyed) return
 
       const entries: HarperLintEntry[] = []
       for (const lint of lints) {

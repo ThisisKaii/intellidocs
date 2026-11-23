@@ -36,6 +36,7 @@ import { SectionLayout } from './SectionLayout'
 import { ColumnSection, SectionColumn } from './ColumnSection'
 import { WrapBlock } from './WrapBlock'
 import { PageFlowExtension } from './PageFlow'
+import { MarginClick } from './MarginClick'
 import { TabStop } from './TabStop'
 import {
   HeaderFooterExtension,
@@ -1442,6 +1443,7 @@ const editorExtensionsAfterStarterKit = [
   SectionColumn,
   WrapBlock,
   PageFlowExtension.configure({ enabled: true }),
+  MarginClick,
   TabStop,
   HeaderFooterExtension,
   AcademicObjectsExtension,

@@ -1173,6 +1173,20 @@ def _filled_bar(shape: Any) -> Optional[Tuple[int, int, str]]:
     properties = shape.find(f"./{{{_NS_WPS}}}spPr")
     if properties is None or shape.find(f".//{qn('w:txbxContent')}") is not None:
         return None
+    # Only a bar Word lays out in the text: anchored in the column with top-and-bottom wrapping. One
+    # that floats (no wrap), sits behind the text or is placed from the page edge is letterhead art
+    # taking no room (a memo's ruled header); inline bars are left as they were (measured: one in
+    # DM-OUHRODI moved its later pages off Word's).
+    anchor = next(shape.iterancestors(f"{{{_NS_WP}}}anchor"), None)
+    position = anchor.find(f"{{{_NS_WP}}}positionH") if anchor is not None else None
+    if (
+        anchor is None
+        or anchor.find(f"{{{_NS_WP}}}wrapTopAndBottom") is None
+        or anchor.get("behindDoc") == "1"
+        or position is None
+        or position.get("relativeFrom") not in ("column", "margin")
+    ):
+        return None
     geometry = properties.find(f"./{{{_NS_A}}}prstGeom")
     if not (properties.find(f"./{{{_NS_A}}}custGeom") is not None or (geometry is not None and geometry.get("prst") == "rect")):
         return None
@@ -1186,7 +1200,19 @@ def _filled_bar(shape: Any) -> Optional[Tuple[int, int, str]]:
     return (length, height, f"#{fill.get('val')}")
 
 
-def _line_shapes_in(element: Any) -> List[Tuple[int, int, str]]:
+def _line_column_offset(shape: Any) -> Optional[float]:
+    """How far (px) from the text column's left edge Word places an anchored line, or None when it follows the text."""
+    anchor = next(shape.iterancestors(f"{{{_NS_WP}}}anchor"), None)
+    position = anchor.find(f"{{{_NS_WP}}}positionH") if anchor is not None else None
+    if position is None or position.get("relativeFrom") not in ("column", "margin"):
+        return None
+    child = next(iter(position), None)
+    if child is None or not child.tag.endswith("}posOffset") or not (child.text or "").lstrip("-").isdigit():
+        return None
+    return int(child.text) / EMU_PER_PX
+
+
+def _line_shapes_in(element: Any) -> List[Tuple[int, int, str, Optional[float]]]:
     """Straight horizontal lines drawn inside an element: (length EMU, weight EMU, colour).
 
     These are DrawingML line shapes (a "Straight Connector" with no height), the
@@ -1195,9 +1221,10 @@ def _line_shapes_in(element: Any) -> List[Tuple[int, int, str]]:
     """
     lines: List[Tuple[int, int, str]] = []
     for shape in element.iter(f"{{{_NS_WPS}}}wsp"):
+        offset = _line_column_offset(shape)
         bar = _filled_bar(shape)
         if bar is not None:
-            lines.append(bar)
+            lines.append((*bar, offset))
             continue
         geometry = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}prstGeom")
         extent = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}xfrm/{{{_NS_A}}}ext")
@@ -1218,13 +1245,13 @@ def _line_shapes_in(element: Any) -> List[Tuple[int, int, str]]:
                 color = f"#{rgb.get('val')}"
             elif scheme is not None:
                 color = _SCHEME_LINE_COLORS.get(scheme.get("val") or "", "#000000")
-        lines.append((length, weight, color))
+        lines.append((length, weight, color, offset))
     return lines
 
 
-def _line_paragraph_html(p: Paragraph, line: Tuple[int, int, str], space_before: bool) -> str:
+def _line_paragraph_html(p: Paragraph, line: Tuple[int, int, str, Optional[float]], space_before: bool) -> str:
     """An empty paragraph with a bottom border: how a drawn horizontal line is shown."""
-    length, weight, color = line
+    length, weight, color, offset = line
     pt = round(weight / EMU_PER_POINT, 2)
     # An inline line sits on the baseline of a normal-height line: about 78% of
     # that line is blank above the rule and the descent (22%) below it.
@@ -1246,14 +1273,18 @@ def _line_paragraph_html(p: Paragraph, line: Tuple[int, int, str], space_before:
     indent = _paragraph_indent_css(p)
     match = re.search(r"margin-left:\s*([\d.]+)px", indent)
     left_px = float(match.group(1)) if match else 0.0
-    if match:
+    if offset is not None:
+        # An anchored line sits where Word positions it from the column, not at the paragraph's indent.
+        left_px = max(round(offset, 1), 0.0)
+        parts.append(f"margin-left:{left_px:g}px")
+    elif match:
         parts.append(f"margin-left:{left_px:g}px")
     try:
         section = p.part.document.sections[0]
         column_px = (section.page_width - section.left_margin - section.right_margin) / EMU_PER_PX
         spare = column_px - left_px - length / EMU_PER_PX
         if spare > 4:
-            if _get_paragraph_alignment(p) == "center" and not match:
+            if _get_paragraph_alignment(p) == "center" and not match and offset is None:
                 parts.extend([f"margin-left:{round(spare / 2, 1)}px", f"margin-right:{round(spare / 2, 1)}px"])
             else:
                 parts.append(f"margin-right:{round(spare, 1)}px")
@@ -2103,7 +2134,7 @@ def _paragraph_json(p: Paragraph, items: List[Inline]) -> Tuple[str, Optional[Li
     nodes: List[Dict[str, Any]] = []
     for index, chunk in enumerate(chunks):
         if index > 0:
-            line = lines[index - 1] if index - 1 < len(lines) else (5486400, 9525, "#000000")
+            line = lines[index - 1] if index - 1 < len(lines) else (5486400, 9525, "#000000", None)
             rule = re.search(r'style="([^"]*)"', _line_paragraph_html(p, line, space_before=not nodes))
             nodes.append(_write_paragraph_json(rule.group(1) if rule else "", None, []))
             # Word's line breaks (and blank runs) right after a drawing are dropped with it.
@@ -3145,7 +3176,7 @@ def _paragraph_to_html_from_items(p: Paragraph, inner: str) -> str:
     pieces: List[str] = []
     for index, chunk in enumerate(chunks):
         if index > 0:
-            line = lines[index - 1] if index - 1 < len(lines) else (5486400, 9525, "#000000")
+            line = lines[index - 1] if index - 1 < len(lines) else (5486400, 9525, "#000000", None)
             pieces.append(_line_paragraph_html(p, line, space_before=not pieces))
             chunk = _strip_leading_breaks(chunk)
         if re.sub(r"<(?!img)[^>]+>", "", chunk).strip():

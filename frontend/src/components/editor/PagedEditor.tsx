@@ -1069,6 +1069,15 @@ export function PagedEditor({
           .rm-with-pagination .rm-page-header:not(.rm-first-page-header) {
             --intellidocs-zone-left: 0px;
           }
+          /* The float between pages spans the page but has a negative right
+             margin, so the room it keeps text out of ended at the text
+             column's edge. A block shifted past that edge (a section whose
+             right margin is narrower than the page setup's) kept a strip
+             beside the float and wrapped one letter per line there when it
+             sat on a page boundary, e.g. after Backspace moved it up a page. */
+          .rm-with-pagination .rm-page-break > .breaker {
+            margin-right: 0 !important;
+          }
           /* Imported header/footer art is positioned from the page corner and
              reaches outside the zone, so neither zone may clip it. */
           .rm-with-pagination .rm-page-header,

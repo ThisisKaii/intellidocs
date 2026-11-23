@@ -420,6 +420,21 @@ interface UseAutoFormatScannerOptions {
  *                                                   ↕ scroll
  *                                         OffScreen_Detected
  */
+/**
+ * Where a suggestion's target is on screen, or null once the editor has closed or the position no
+ * longer exists (an edit removed it). An unmounted TipTap editor hands out a placeholder view whose
+ * every method throws, which `isDestroyed` on it does not reveal.
+ */
+function suggestionCoords(editor: Editor, pos: number): { top: number; bottom: number } | null {
+  if (editor.isDestroyed) return null
+  try {
+    if (pos < 0 || pos > editor.state.doc.content.size) return null
+    return editor.view.coordsAtPos(pos)
+  } catch {
+    return null
+  }
+}
+
 export function useAutoFormatScanner({
   editor,
   enabled = true,
@@ -834,8 +849,10 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
       // Empty paragraphs beyond what the document usually leaves in the same kind of gap. Blank
       // lines that push the next block onto a new page (the end of a chapter) are layout, not
       // mistakes: a gap that spans a page break measures far taller than its blank lines.
-      const view = editor.view
+      // The scan runs when the browser is idle: the editor may have closed in the meantime.
+      const view = editor.isDestroyed ? null : editor.view
       const crossesPage = ({ prevEnd, nextStart, blankLines }: { prevEnd: number; nextStart: number; blankLines: number }): boolean => {
+        if (!view || view.isDestroyed) return false
         try {
           const prevBottom = view.coordsAtPos(Math.max(0, prevEnd - 1)).bottom
           const nextTop = view.coordsAtPos(Math.min(doc.content.size, nextStart + 1)).top
@@ -941,13 +958,11 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
       return
     }
 
-    const view = editor?.view
-    if (!view || view.isDestroyed) {
+    const coords = editor ? suggestionCoords(editor, activeSuggestion.from) : null
+    if (!coords) {
       setScannerState('Idle_Scanning')
       return
     }
-
-    const coords = view.coordsAtPos(activeSuggestion.from)
     const viewportTop = window.scrollY
     const viewportBottom = window.scrollY + window.innerHeight
     const MARGIN = 120
@@ -968,9 +983,8 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
       if (ticking) return
       ticking = true
       requestAnimationFrame(() => {
-        const view = editor.view
-        if (view.isDestroyed) { ticking = false; return }
-        const coords = view.coordsAtPos(activeSuggestion.from)
+        const coords = suggestionCoords(editor, activeSuggestion.from)
+        if (!coords) { ticking = false; return }
         const viewportTop = window.scrollY
         const viewportBottom = window.scrollY + window.innerHeight
         const MARGIN = 120
