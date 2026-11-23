@@ -16,7 +16,7 @@ import Blockquote from '@tiptap/extension-blockquote'
 // between rows. Stock <table> layout inside the paginator loops forever.
 import { TablePlus, TableRowPlus, TableCellPlus, TableHeaderPlus } from 'tiptap-table-plus'
 import type { NodeView as ProseMirrorNodeView } from '@tiptap/pm/view'
-import type { NodeViewRendererProps } from '@tiptap/core'
+import { mergeAttributes, type NodeViewRendererProps } from '@tiptap/core'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import Highlight from '@tiptap/extension-highlight'
@@ -1297,7 +1297,43 @@ const CustomOrderedList = OrderedList.extend({
  * drawn in the item's font, not its paragraph's, so without this an 11pt Word
  * list shows small markers beside 11pt text at the editor's default size.
  */
+/**
+ * Where a paragraph's first line starts, in px from its block's left edge: its left margin plus its
+ * first-line indent (negative for a hanging indent), read from its inline style. Units other than
+ * px are converted at 96 px per inch; anything unreadable counts as 0.
+ */
+export function firstLineStart(style: string): number {
+  const toPx = (value: string | undefined): number => {
+    const match = /^(-?[\d.]+)(px|pt|in|cm|mm)?$/.exec((value ?? '').trim())
+    if (!match) return 0
+    const amount = parseFloat(match[1])
+    const perUnit: Record<string, number> = { px: 1, pt: 96 / 72, in: 96, cm: 96 / 2.54, mm: 96 / 25.4 }
+    return amount * (perUnit[match[2] ?? 'px'] ?? 1)
+  }
+  const declarations = new Map<string, string>()
+  for (const part of style.split(';')) {
+    const colon = part.indexOf(':')
+    if (colon > 0) declarations.set(part.slice(0, colon).trim().toLowerCase(), part.slice(colon + 1).trim())
+  }
+  let left = 0
+  const shorthand = declarations.get('margin')
+  if (shorthand) {
+    // margin: all | vertical horizontal | top horizontal bottom | top right bottom left
+    const values = shorthand.split(/\s+/)
+    left = toPx(values.length === 4 ? values[3] : values.length >= 2 ? values[1] : values[0])
+  }
+  if (declarations.has('margin-left')) left = toPx(declarations.get('margin-left'))
+  return Math.round((left + toPx(declarations.get('text-indent'))) * 10) / 10
+}
+
 const CustomListItem = ListItem.extend({
+  // An item drawn with Word's marker tells the marker where its first line starts (--mfirst), so the
+  // marker, drawn inline at that line's start, can move to Word's x (see the li[data-mx] CSS).
+  renderHTML({ node, HTMLAttributes }) {
+    if (!node.attrs.markerX) return ['li', HTMLAttributes, 0]
+    const firstStyle = (node.firstChild?.attrs as { style?: string | null } | undefined)?.style ?? ''
+    return ['li', mergeAttributes(HTMLAttributes, { style: `--mfirst:${firstLineStart(firstStyle)}px` }), 0]
+  },
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -4205,19 +4241,29 @@ const PROSE_STYLES = `
      indent or spacing of its own. The number comes from the list's own counter. */
   .ProseMirror ol:has(> li[data-mx]) { list-style: none; padding: 0; margin: 0; }
   .ProseMirror li[data-mx] { list-style: none; position: relative; margin: 0; padding: 0; }
-  .ProseMirror li[data-mx]::before {
-    position: absolute;
-    left: var(--mx);
-    top: var(--mt);
+  /* The marker is a zero-width inline box at the start of the item's first line, moved sideways to
+     Word's x (--mx, from the text edge, less --mfirst, where that line starts). Being part of the
+     line it shares the text's baseline and goes wherever the line goes: a marker pinned to the top of
+     the li stayed behind when the paginator moved the first line to the next page, and sat a
+     line-gap low because the paragraph's space before collapses through the li. */
+  .ProseMirror li[data-mx] > :first-child::before {
+    display: inline-block;
+    /* Not 0: a zero-width box fits in the zero-width gap beside a page break's float, so the marker
+       stayed on the previous page while its text wrapped to the next. Any width keeps them together. */
+    width: 0.1px;
+    white-space: nowrap;
+    text-indent: 0;
+    position: relative;
+    left: calc(var(--mx) - var(--mfirst, 0px));
     content: var(--pre) counter(list-item, decimal) var(--post);
   }
-  .ProseMirror ol[data-list-type='a'] > li[data-mx]::before { content: var(--pre) counter(list-item, lower-alpha) var(--post); }
-  .ProseMirror ol[data-list-type='A'] > li[data-mx]::before { content: var(--pre) counter(list-item, upper-alpha) var(--post); }
-  .ProseMirror ol[data-list-type='i'] > li[data-mx]::before { content: var(--pre) counter(list-item, lower-roman) var(--post); }
-  .ProseMirror ol[data-list-type='I'] > li[data-mx]::before { content: var(--pre) counter(list-item, upper-roman) var(--post); }
+  .ProseMirror ol[data-list-type='a'] > li[data-mx] > :first-child::before { content: var(--pre) counter(list-item, lower-alpha) var(--post); }
+  .ProseMirror ol[data-list-type='A'] > li[data-mx] > :first-child::before { content: var(--pre) counter(list-item, upper-alpha) var(--post); }
+  .ProseMirror ol[data-list-type='i'] > li[data-mx] > :first-child::before { content: var(--pre) counter(list-item, lower-roman) var(--post); }
+  .ProseMirror ol[data-list-type='I'] > li[data-mx] > :first-child::before { content: var(--pre) counter(list-item, upper-roman) var(--post); }
   /* A number the converter wrote out (it joins several counters, or restarts at a chosen number). */
-  .ProseMirror ol > li[data-mx][data-marker]::before,
-  .ProseMirror ol[data-list-type] > li[data-mx][data-marker]::before { content: var(--marker); }
+  .ProseMirror ol > li[data-mx][data-marker] > :first-child::before,
+  .ProseMirror ol[data-list-type] > li[data-mx][data-marker] > :first-child::before { content: var(--marker); }
   .ProseMirror p.is-editor-empty:first-child::before {
     content: 'Start writing your document…';
     float: left;
