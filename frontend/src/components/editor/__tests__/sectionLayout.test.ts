@@ -73,10 +73,21 @@ describe('sectionDecorations', () => {
         '<table><tbody><tr><td><p>Cell</p></td></tr></tbody></table>' +
         '<ol><li data-mx="12"><p>Item</p></li></ol>',
     )
+    // Important, so it wins over the table's own inset (TableInset), which it already includes.
     expect(result).toEqual([
-      { node: 'Cell', style: 'margin-left:65.3px;width:calc(100% - 112.3px);margin-top:48px' },
+      { node: 'Cell', style: 'margin-left:65.3px !important;width:calc(100% - 112.3px) !important;margin-top:48px !important' },
       { node: 'Item', style: '--mx:77.3px' },
       { node: 'Item', style: 'margin-left:65.3px;margin-right:47px' },
+    ])
+  })
+
+  it("adds a table's own place in its column (Word's width and indent) to the section's shift", () => {
+    const result = decorated(
+      `<div class="intellidocs-page-break" data-section="1" data-section-props="${WIDE}"></div>` +
+        '<table data-inset="24,20,0"><tbody><tr><td><p>Cell</p></td></tr></tbody></table>',
+    )
+    expect(result).toEqual([
+      { node: 'Cell', style: 'margin-left:89.3px !important;width:calc(100% - 156.3px) !important;margin-top:48px !important' },
     ])
   })
 

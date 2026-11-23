@@ -112,7 +112,7 @@ def main() -> None:
         # a NEW divergence = the page offset changed, or the vertical drift jumped by more than a line
         changed = delta != prev_delta or (delta == prev_delta and abs(dy - prev_dy) > 14)
         if changed:
-            context = pairs[max(0, idx - 2):idx]
+            context = [pair for pair in pairs[max(0, idx - 2):idx] if pair[0].get("y") is not None]
             print(f"\n--- change #{shown + 1} at Word para {wp['i']}: Word p{wp['page']} y={wp['y']}pt | "
                   f"editor p{ep['page']} y={ep['y']:.0f}pt (page delta {prev_delta:+d}->{delta:+d}, dy {prev_dy:+.0f}->{dy:+.0f}pt)")
             print(f"    text: {wp['text'][:70]!r}")

@@ -22,10 +22,14 @@ export function parseInset(value: unknown): Inset | null {
   return left === 0 && right === 0 && top === 0 ? null : { left, right, top }
 }
 
-/** The inline style that moves and narrows a table by its inset. */
-export function insetStyle(inset: Inset): string {
-  const parts = [`margin-left:${inset.left}px`, `width:calc(100% - ${inset.left + inset.right}px)`]
-  if (inset.top !== 0) parts.push(`margin-top:${inset.top}px`)
+/**
+ * The inline style that moves and narrows a table by its inset. `important` makes it win over the
+ * table's own inset when both decorate the table (a section shift already includes it).
+ */
+export function insetStyle(inset: Inset, important = false): string {
+  const flag = important ? ' !important' : ''
+  const parts = [`margin-left:${inset.left}px${flag}`, `width:calc(100% - ${inset.left + inset.right}px)${flag}`]
+  if (inset.top !== 0) parts.push(`margin-top:${inset.top}px${flag}`)
   return parts.join(';')
 }
 

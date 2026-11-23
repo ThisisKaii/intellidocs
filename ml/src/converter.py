@@ -618,10 +618,27 @@ def _group_image_html(group: Any, doc_parts: Dict[str, bytes]) -> str:
         embed_id = blip.get(qn("r:embed")) if blip is not None else None
         if not embed_id or embed_id not in doc_parts or off is None or ext is None:
             return ""
-        x = ((_int_attr(off, "x") or 0) - origin_x) * scale_x / EMU_PER_POINT
-        y = ((_int_attr(off, "y") or 0) - origin_y) * scale_y / EMU_PER_POINT
-        w = (_int_attr(ext, "cx") or 0) * scale_x / EMU_PER_POINT
-        h = (_int_attr(ext, "cy") or 0) * scale_y / EMU_PER_POINT
+        px, py = float(_int_attr(off, "x") or 0), float(_int_attr(off, "y") or 0)
+        pw, ph = float(_int_attr(ext, "cx") or 0), float(_int_attr(ext, "cy") or 0)
+        # A picture in a nested group is placed in that group's own child space: map it out through
+        # each enclosing group up to the outer one (a Google Docs drawing nests its picture this way).
+        for inner in pic.iterancestors(f"{{{_NS_WPG}}}grpSp"):
+            if inner is group or not any(a is group for a in inner.iterancestors()):
+                break
+            frame_xfrm = inner.find(f"./{{{_NS_WPG}}}grpSpPr/{{{_NS_A}}}xfrm")
+            if frame_xfrm is None:
+                continue
+            i_off, i_ext = frame_xfrm.find(f"{{{_NS_A}}}off"), frame_xfrm.find(f"{{{_NS_A}}}ext")
+            i_choff, i_chext = frame_xfrm.find(f"{{{_NS_A}}}chOff"), frame_xfrm.find(f"{{{_NS_A}}}chExt")
+            sx = (_int_attr(i_ext, "cx") or 0) / (_int_attr(i_chext, "cx") or 1)
+            sy = (_int_attr(i_ext, "cy") or 0) / (_int_attr(i_chext, "cy") or 1)
+            px = (_int_attr(i_off, "x") or 0) + (px - (_int_attr(i_choff, "x") or 0)) * sx
+            py = (_int_attr(i_off, "y") or 0) + (py - (_int_attr(i_choff, "y") or 0)) * sy
+            pw, ph = pw * sx, ph * sy
+        x = (px - origin_x) * scale_x / EMU_PER_POINT
+        y = (py - origin_y) * scale_y / EMU_PER_POINT
+        w = pw * scale_x / EMU_PER_POINT
+        h = ph * scale_y / EMU_PER_POINT
         placed.append((_crop_image(doc_parts[embed_id], blip), (x, y, x + w, y + h)))
     if not placed:
         return ""
@@ -1043,11 +1060,18 @@ def _run_picture_html(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[
         element = run._element
         line_marks = _LINE_MARK * len(_line_shapes_in(element))
         # mc:AlternateContent stores a drawing twice (the real shape and a fallback
-        # picture of it for old readers); only the real one is rendered.
-        blips = [
-            b for b in element.findall(".//" + qn("a:blip"))
-            if not any(a.tag == _MC_FALLBACK for a in b.iterancestors())
+        # picture of it for old readers); only the real one is rendered, except for a diagram
+        # the editor cannot draw, which is shown as its fallback picture.
+        diagram_blips = [
+            blip for choice in element.iter(_MC_CHOICE) if (blip := _pictured_diagram_blip(choice)) is not None
         ]
+        blips = []
+        for b in element.findall(".//" + qn("a:blip")):
+            if _in_pictured_diagram(b):
+                continue  # a picture inside a diagram drawn from its backup picture
+            if any(a.tag == _MC_FALLBACK for a in b.iterancestors()) and not any(b is d for d in diagram_blips):
+                continue
+            blips.append(b)
         if blips:
             pieces: List[str] = []
             if row is not None and any(b in row["blips"] for b in blips):
@@ -1059,6 +1083,8 @@ def _run_picture_html(run: Run, doc_parts: Dict[str, bytes], row: Optional[Dict[
             for group in element.iter(f"{{{_NS_WPG}}}wgp"):
                 if next(group.iterancestors(f"{{{_NS_WPG}}}wgp"), None) is not None:
                     continue  # a nested group is flattened with its outer group
+                if _in_pictured_diagram(group):
+                    continue  # drawn from its backup picture
                 flat = _group_image_html(group, doc_parts)
                 if flat:
                     pieces.append(_as_page_art(flat, group))
@@ -1221,6 +1247,8 @@ def _line_shapes_in(element: Any) -> List[Tuple[int, int, str, Optional[float]]]
     """
     lines: List[Tuple[int, int, str]] = []
     for shape in element.iter(f"{{{_NS_WPS}}}wsp"):
+        if _in_pictured_diagram(shape):
+            continue  # drawn in the diagram's picture
         offset = _line_column_offset(shape)
         bar = _filled_bar(shape)
         if bar is not None:
@@ -1280,8 +1308,11 @@ def _line_paragraph_html(p: Paragraph, line: Tuple[int, int, str, Optional[float
     elif match:
         parts.append(f"margin-left:{left_px:g}px")
     try:
-        section = p.part.document.sections[0]
-        column_px = (section.page_width - section.left_margin - section.right_margin) / EMU_PER_PX
+        # The paragraph's own section: a title page's narrower margins made later rules too long.
+        column_px = _section_text_width_px(p._p) if p._p.getparent() is not None and p._p.getparent().tag == qn("w:body") else None
+        if column_px is None:
+            section = p.part.document.sections[0]
+            column_px = (section.page_width - section.left_margin - section.right_margin) / EMU_PER_PX
         spare = column_px - left_px - length / EMU_PER_PX
         if spare > 4:
             if _get_paragraph_alignment(p) == "center" and not match and offset is None:
@@ -3314,6 +3345,36 @@ def _iter_block_elements(container: Any) -> Any:
 
 
 _MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+_MC_CHOICE = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Choice"
+
+
+def _pictured_diagram_blip(choice: Any) -> Optional[Any]:
+    """The backup picture of a diagram the editor cannot draw, or None.
+
+    A diagram built as a group of shapes with text boxes (boxes, connectors and labels) has no
+    picture to show, and its text box is not laid out the way Word draws it. Files saved by
+    Google Docs or Word carry a picture of the whole diagram in the mc:Fallback beside it; that
+    picture is what Word itself shows, so it stands in for the group.
+    """
+    if choice is None or choice.tag != _MC_CHOICE:
+        return None
+    if choice.find(f".//{{{_NS_WPG}}}wgp") is None or choice.find(".//" + qn("w:txbxContent")) is None:
+        return None
+    # A group holding its own picture is drawn from that picture (_group_image_html). Google Docs
+    # saves a blank 1-pixel placeholder as every fallback, so a fallback is only worth showing
+    # when the group has nothing else to draw.
+    if choice.find(f".//{{{_NS_PIC}}}pic") is not None:
+        return None
+    fallback = choice.getnext()
+    while fallback is not None and fallback.tag != _MC_FALLBACK:
+        fallback = fallback.getnext()
+    blip = fallback.find(".//" + qn("a:blip")) if fallback is not None else None
+    return blip if blip is not None and blip.get(qn("r:embed")) else None
+
+
+def _in_pictured_diagram(node: Any) -> bool:
+    """Whether a node is part of a diagram drawn from its backup picture instead (see above)."""
+    return any(a.tag == _MC_CHOICE and _pictured_diagram_blip(a) is not None for a in node.iterancestors())
 
 
 def _textbox_paragraphs(paragraph_el: Any) -> List[Any]:
@@ -3334,7 +3395,7 @@ def _textbox_paragraphs(paragraph_el: Any) -> List[Any]:
         # A box Word pins to the page or hangs beside its paragraph is drawn in place, not flowed after it.
         anchor = next(content.iterancestors(f"{{{_NS_WP}}}anchor"), None)
         pinned = anchor is not None and _page_art_geometry(anchor) is not None
-        if not in_fallback and not pinned:
+        if not in_fallback and not pinned and not _in_pictured_diagram(content):
             found.extend(child for child in content if child.tag == qn("w:p"))
     return found
 
@@ -3753,6 +3814,83 @@ def _merged_cell_chunks(table: Table, rows: List[List[Dict[str, Any]]], col_px: 
     return chunks
 
 
+# A table narrower or more indented than its text column by less than this is drawn full width.
+_TABLE_INSET_MIN_PX = 2.0
+
+
+def _section_text_width_px(tbl: Any) -> Optional[float]:
+    """Printable width (px) of the section a top-level block (table or paragraph) is in: the page of
+    the next section break, which may be the block's own (a paragraph that ends its section)."""
+    own = tbl.find(qn("w:pPr") + "/" + qn("w:sectPr")) if tbl.tag == qn("w:p") else None
+    sect = own
+    for sibling in ([] if own is not None else tbl.itersiblings()):
+        if sibling.tag == qn("w:p"):
+            sect = sibling.find(qn("w:pPr") + "/" + qn("w:sectPr"))
+        elif sibling.tag == qn("w:sectPr"):
+            sect = sibling
+        if sect is not None:
+            break
+    if sect is None:
+        return None
+    size, margins = sect.find(qn("w:pgSz")), sect.find(qn("w:pgMar"))
+    try:
+        width = float(size.get(qn("w:w")))
+        left = float(margins.get(qn("w:left")) or 0)
+        right = float(margins.get(qn("w:right")) or 0)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return (width - left - right) * TWIPS_PER_PX
+
+
+def _table_inset(tbl: Any, text_width_px: Optional[float]) -> Optional[str]:
+    """Word's own placement of a top-level table in its text column, as the editor's "left,right,top" inset.
+
+    The editor draws a table across the whole column; Word gives it its own width (w:tblW, else the
+    sum of its grid) moved in by w:tblInd, or centred/right-aligned by w:jc. A narrower table wraps
+    its cells' text more, so drawing it full width made every row shorter than Word's. None when the
+    table fills the column.
+    """
+    column = _section_text_width_px(tbl) or text_width_px
+    if not column:
+        return None
+    props = tbl.find(qn("w:tblPr"))
+    width_el = props.find(qn("w:tblW")) if props is not None else None
+    width: Optional[float] = None
+    try:
+        kind = width_el.get(qn("w:type")) if width_el is not None else None
+        value = float(width_el.get(qn("w:w")) or 0) if width_el is not None else 0.0
+        if kind == "dxa" and value > 0:
+            width = value * TWIPS_PER_PX
+        elif kind == "pct" and value > 0:
+            width = column * value / 5000.0
+    except (TypeError, ValueError):
+        width = None
+    if width is None:
+        grid = [float(g.get(qn("w:w")) or 0) for g in tbl.iter(qn("w:gridCol"))]
+        width = sum(grid) * TWIPS_PER_PX if grid and all(grid) else None
+    if not width:
+        return None
+    indent = 0.0
+    ind = props.find(qn("w:tblInd")) if props is not None else None
+    try:
+        if ind is not None and ind.get(qn("w:type"), "dxa") == "dxa":
+            indent = float(ind.get(qn("w:w")) or 0) * TWIPS_PER_PX
+    except (TypeError, ValueError):
+        indent = 0.0
+    jc = props.find(qn("w:jc")) if props is not None else None
+    align = jc.get(qn("w:val")) if jc is not None else None
+    if align == "center":
+        left = (column - width) / 2.0
+    elif align in ("right", "end"):
+        left = column - width
+    else:
+        left = indent
+    right = column - left - width
+    if abs(left) < _TABLE_INSET_MIN_PX and abs(right) < _TABLE_INSET_MIN_PX:
+        return None
+    return f"{round(left, 1):g},{round(right, 1):g},0"
+
+
 def _table_to_html(table: Table, doc_parts: Dict[str, bytes], text_width_px: Optional[float] = None) -> str:
     """Convert a Word table to HTML with real colspan/rowspan, per-cell column widths and nested tables."""
     return _table(table, doc_parts, text_width_px)[0]
@@ -3872,7 +4010,10 @@ def _table(
 
     table_css = "border-collapse:collapse; width:100%; margin:0; table-layout:fixed;"
     column_size = _column_size_attribute(rows, col_px)
-    html = f'<table style="{table_css}"{column_size}>{"".join(rows_html)}</table>'
+    # Word's own width and indent (a top-level table: a nested one fills its cell).
+    inset = None if nested or tbl.getparent() is None or tbl.getparent().tag != qn("w:body") else _table_inset(tbl, text_width_px)
+    inset_attr = f' data-inset="{inset}"' if inset else ""
+    html = f'<table style="{table_css}"{column_size}{inset_attr}>{"".join(rows_html)}</table>'
     if any(row is _NOT_WRITTEN for row in rows_json):
         return html, _NOT_WRITTEN
     sizes = re.search(r'data-column-size="([^"]*)"', column_size)
@@ -3885,7 +4026,7 @@ def _table(
     # inside tables, so a nested table always keeps the one group of all its rows.
     grouped = nested or len(rows_json) == 1
     content = [{"type": "tableRowGroup", "content": rows_json}] if grouped else rows_json
-    return html, {"type": "table", "attrs": {"alignment": "center", "columnSize": columns, "inset": None, "span": None}, "content": content}
+    return html, {"type": "table", "attrs": {"alignment": "center", "columnSize": columns, "inset": inset, "span": None}, "content": content}
 
 
 def _body_to_html(*args: Any, **kwargs: Any) -> str:

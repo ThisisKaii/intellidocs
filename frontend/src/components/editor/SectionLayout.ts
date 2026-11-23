@@ -3,7 +3,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { readSectionProps, type SectionProps } from '@/lib/sectionProps'
-import { insetStyle } from './TableInset'
+import { insetStyle, parseInset } from './TableInset'
 import type { DocumentSectionBreak } from '@/lib/pageLayout'
 
 /** The document's page setup margins the paginator lays every page out with, in px. */
@@ -122,9 +122,11 @@ export function sectionDecorations(doc: ProseMirrorNode, page: PageMarginsPx | n
       })
     } else if (name === 'table' && shift) {
       const current: Shift = shift
-      const inset = { left: current.left, right: current.right, top: firstBlock ? current.top : 0 }
+      // The table's own placement in its column (Word's width and indent, see TableInset) moves with the section.
+      const own = parseInset(node.attrs.inset) ?? { left: 0, right: 0, top: 0 }
+      const inset = { left: current.left + own.left, right: current.right + own.right, top: firstBlock ? current.top + own.top : own.top }
       firstBlock = false
-      if (inset.left || inset.right || inset.top) out.push({ pos, end: pos + node.nodeSize, style: insetStyle(inset) })
+      if (inset.left || inset.right || inset.top) out.push({ pos, end: pos + node.nodeSize, style: insetStyle(inset, true) })
     }
   })
   return out
