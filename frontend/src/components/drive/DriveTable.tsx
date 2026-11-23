@@ -205,7 +205,7 @@ function ContextMenuOverlay({
                 style={{ fontFamily: 'inherit' }}
               >
                 {ctx.item.pinned ? <PinOff className="size-3.5 text-muted-foreground" /> : <Pin className="size-3.5 text-muted-foreground" />}
-                {ctx.item.pinned ? 'Unpin' : 'Pin to top'}
+                {ctx.item.pinned ? 'Unpin' : 'Pin'}
               </button>
             )}
             <button
@@ -367,7 +367,7 @@ export function DriveTable({
     if (!onTogglePin || item.kind !== 'file') return null
     return (
       <DropdownMenuItem onSelect={() => onTogglePin(item.id, !item.pinned)} className="cursor-pointer gap-2 text-sm text-foreground">
-        {item.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />} {item.pinned ? 'Unpin' : 'Pin to top'}
+        {item.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />} {item.pinned ? 'Unpin' : 'Pin'}
       </DropdownMenuItem>
     )
   }
