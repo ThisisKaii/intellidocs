@@ -1163,6 +1163,29 @@ def _is_flat_path(shape: Any) -> bool:
     return len(path.findall(f"{{{_NS_A}}}lnTo")) == 1 and path.find(f"{{{_NS_A}}}close") is None
 
 
+# A filled bar at most this tall (3pt) and many times longer is drawn as a rule.
+_MAX_BAR_HEIGHT_EMU = 38100
+_MIN_BAR_RATIO = 20
+
+
+def _filled_bar(shape: Any) -> Optional[Tuple[int, int, str]]:
+    """A thin filled rectangle with no outline or text (a rule exported from Google Docs or a PDF): (length, weight, colour)."""
+    properties = shape.find(f"./{{{_NS_WPS}}}spPr")
+    if properties is None or shape.find(f".//{qn('w:txbxContent')}") is not None:
+        return None
+    geometry = properties.find(f"./{{{_NS_A}}}prstGeom")
+    if not (properties.find(f"./{{{_NS_A}}}custGeom") is not None or (geometry is not None and geometry.get("prst") == "rect")):
+        return None
+    extent = properties.find(f"./{{{_NS_A}}}xfrm/{{{_NS_A}}}ext")
+    fill = properties.find(f"./{{{_NS_A}}}solidFill/{{{_NS_A}}}srgbClr")
+    if extent is None or fill is None or not fill.get("val"):
+        return None
+    length, height = _int_attr(extent, "cx") or 0, _int_attr(extent, "cy") or 0
+    if height <= 0 or height > _MAX_BAR_HEIGHT_EMU or length < height * _MIN_BAR_RATIO:
+        return None
+    return (length, height, f"#{fill.get('val')}")
+
+
 def _line_shapes_in(element: Any) -> List[Tuple[int, int, str]]:
     """Straight horizontal lines drawn inside an element: (length EMU, weight EMU, colour).
 
@@ -1172,6 +1195,10 @@ def _line_shapes_in(element: Any) -> List[Tuple[int, int, str]]:
     """
     lines: List[Tuple[int, int, str]] = []
     for shape in element.iter(f"{{{_NS_WPS}}}wsp"):
+        bar = _filled_bar(shape)
+        if bar is not None:
+            lines.append(bar)
+            continue
         geometry = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}prstGeom")
         extent = shape.find(f"./{{{_NS_WPS}}}spPr/{{{_NS_A}}}xfrm/{{{_NS_A}}}ext")
         if extent is None or not (
@@ -2115,11 +2142,12 @@ def _paragraph_piece_json(p: Paragraph, items: List[Inline]) -> Tuple[str, Optio
     heading = _heading_kind(props.style_name)
     if heading is not None:
         level, size, margin, weight, italic = heading
-        style, tabs, heading_level = _heading_css(font_css, spacing_css, align, indent_css, size, margin, weight, italic), None, level
+        style, heading_level = _heading_css(font_css, spacing_css, align, indent_css, size, margin, weight, italic), level
     else:
         css = "; ".join(part.rstrip("; ") for part in filter(None, [align, font_css, spacing_css, indent_css])).strip()
         style, heading_level = (f"{css};" if css else ""), None
-        tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p))) if "data-tab" in inner else None
+    # Headings keep their tab stops too: an approval sheet's signature lines ("NAME<tab>NAME") are often headings.
+    tabs = (json.dumps(_paragraph_tab_stops(p), separators=(",", ":")), str(_default_tab_px(p))) if "data-tab" in inner else None
     if any(isinstance(item, Picture) for item in items):
         items = _without_inline_icons(items, inner)
     pictures = [item for item in items if isinstance(item, Picture)]
@@ -3180,7 +3208,7 @@ def _paragraph_html_from_inner(p: Paragraph, inner: str) -> str:
         level, size, margin, weight, italic = heading
         css = _heading_css(font_css, spacing_css, align_style, indent_style, size, margin, weight, italic)
         role = ' class="title"' if "title" in style_name and "sub" not in style_name else ' class="subtitle"' if "subtitle" in style_name else ""
-        return f'<h{level}{role} style="{css}">{inner}</h{level}>'
+        return f'<h{level}{role} style="{css}"{_tab_attributes(p, inner)}>{inner}</h{level}>'
 
     css_parts = filter(None, [align_style, font_css, spacing_style, indent_style])
     css_combined = "; ".join(part.rstrip("; ") for part in css_parts).strip()
@@ -4506,6 +4534,44 @@ def _mark_page_fields(element: Any) -> None:
             stack[-1]["results"].extend(run.findall(qn("w:t")))
 
 
+# A header/footer line that is only a page number: "12", "viii", "Page 4". Year-sized numbers are left alone.
+_STATIC_PAGE_NUMBER = re.compile(
+    r"(?:page\s*)?(\d{1,3}|(?=[ivxlcdm])m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3}))", re.IGNORECASE
+)
+
+
+def _mark_static_page_numbers(element: Any) -> Optional[str]:
+    """Turn page numbers typed as plain text into the editor's {page} token; return their number style.
+
+    Files exported from Google Docs or converted from a PDF keep a header's page number as the
+    text it showed on one page ("viii" in a text box), with no PAGE field, so every page of the
+    section repeated it. The section's own numbering (pgNumType start) is right in those files;
+    only the shown number is stale, exactly like a PAGE field's cached result. Returns
+    'lowerRoman', 'upperRoman' or 'decimal' for the first number found, or None.
+    """
+    style: Optional[str] = None
+    for paragraph in element.iter(qn("w:p")):
+        if paragraph.find(".//" + qn("w:fldChar")) is not None or paragraph.find(".//" + qn("w:fldSimple")) is not None:
+            continue
+        own: List[Any] = []
+        for node in paragraph.iter(qn("w:t")):
+            ancestor = node.getparent()
+            while ancestor is not None and ancestor.tag != qn("w:p"):
+                ancestor = ancestor.getparent()
+            if ancestor is paragraph:
+                own.append(node)
+        text = "".join(node.text or "" for node in own).strip()
+        match = _STATIC_PAGE_NUMBER.fullmatch(text) if text else None
+        if not match:
+            continue
+        number = match.group(1)
+        for index, node in enumerate(own):
+            node.text = text.replace(number, "{page}") if index == 0 else ""
+        if style is None:
+            style = "decimal" if number.isdigit() else ("lowerRoman" if number == number.lower() else "upperRoman")
+    return style
+
+
 def _springy_tabs(html: str) -> str:
     """Header/footer text is not edited by ProseMirror, so a tab becomes a flexible gap in a flex line."""
     def line(match: "re.Match[str]") -> str:
@@ -4529,7 +4595,8 @@ def _hf_part_html(part: Any, text_width: Optional[float], origin_y: float = 0.0)
     drawn = element.find(".//" + qn("w:drawing")) is not None or element.find(".//" + qn("w:pict")) is not None
     tables = element.find(qn("w:tbl")) is not None
     has_tab = element.find(".//" + qn("w:tab")) is not None
-    if not (drawn or tables or has_tab):
+    static_style = _mark_static_page_numbers(element)
+    if not (drawn or tables or has_tab or static_style):
         return None
     _mark_page_fields(element)
     images = _part_images(part)
@@ -4553,7 +4620,10 @@ def _hf_part_html(part: Any, text_width: Optional[float], origin_y: float = 0.0)
     flow = _springy_tabs(flow)
     if not (art or "<img" in flow or re.sub(r"<[^>]+>", "", flow).strip()):
         return None
-    return {"flow": flow, "art": "".join(_art_html(item) for item in art)}
+    converted = {"flow": flow, "art": "".join(_art_html(item) for item in art)}
+    if static_style:
+        converted["number_style"] = static_style
+    return converted
 
 
 def _extract_sections(doc: docx.Document) -> Dict[str, Any]:
@@ -4598,12 +4668,17 @@ def _extract_sections(doc: docx.Document) -> Dict[str, Any]:
     footers = resolve_chain("footer", False)
     first_headers = resolve_chain("header", True)
     first_footers = resolve_chain("footer", True)
+    # A page number typed as text ("viii") says how its pages are numbered; the part keeps only flow and art.
+    static_styles = {key: part.pop("number_style") for key, part in parts.items() if "number_style" in part}
 
     described: List[Dict[str, Any]] = []
     for index, section in enumerate(sections):
         number = section._sectPr.find(qn("w:pgNumType"))
         start = number.get(qn("w:start")) if number is not None else None
         fmt = number.get(qn("w:fmt")) if number is not None else None
+        if not fmt:
+            shown = [static_styles.get(key or "") for key in (headers[index], footers[index], first_headers[index], first_footers[index])]
+            fmt = next((style for style in shown if style), None)
         described.append({
             "index": index,
             "header": headers[index],
