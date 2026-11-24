@@ -2785,17 +2785,28 @@ def _write_spacing_css(spacing: ParagraphSpacing, font_name: Optional[str]) -> s
     """
     if spacing.unset:
         return ""
+    # Once a paragraph sets any spacing, the parts set nowhere (paragraph, style chain, docDefaults) are
+    # Word's own defaults: no space before or after, single lines. Left out, they fell to the editor's
+    # paragraph CSS (1.5 lines and a gap after), and a page of short "Module Name:" lines ran ~4pt a
+    # line longer than in Word.
     styles: List[str] = []
     if spacing.before_twips is not None:
         px = round(spacing.before_twips * TWIPS_PER_PX, 1)
         styles.append(f"margin-top:{px}px" if px else "margin-top:0")
     elif spacing.before_lines:
         styles.append(f"margin-top:{round(spacing.before_lines * 0.012, 2)}em")
+    else:
+        styles.append("margin-top:0")
     if spacing.after_twips is not None:
         px = round(spacing.after_twips * TWIPS_PER_PX, 1)
         styles.append(f"margin-bottom:{px}px" if px else "margin-bottom:0")
     elif spacing.after_lines:
         styles.append(f"margin-bottom:{round(spacing.after_lines * 0.012, 2)}em")
+    else:
+        styles.append("margin-bottom:0")
+    if not spacing.line:
+        factor = _FONT_LINE_FACTORS.get((font_name or "").lower(), _DEFAULT_LINE_FACTOR)
+        styles.append(f"line-height:{factor}")
     if spacing.line:
         if spacing.line_rule in ("exact", "atLeast"):
             # Exact/atLeast spacing is stored in twips (1/20 pt): 240 = 12pt.
@@ -2811,7 +2822,7 @@ def _write_spacing_css(spacing: ParagraphSpacing, font_name: Optional[str]) -> s
 def _paragraph_spacing_css(p: Paragraph) -> str:
     """CSS for the paragraph's effective spacing, empty when the document sets none."""
     spacing = _read_spacing(p)
-    needs_font = spacing.line and spacing.line_rule not in ("exact", "atLeast")
+    needs_font = not spacing.unset and spacing.line_rule not in ("exact", "atLeast")
     return _write_spacing_css(spacing, _resolve_font_name(p) if needs_font else None)
 
 
@@ -3780,15 +3791,22 @@ def _paragraph_height_px(p: Paragraph, width_px: float) -> float:
     """
     size_pt = _resolve_font_size_pt(p) or 11.0
     size_px = size_pt * 96.0 / 72.0
-    before = int(_resolve_spacing_attr(p, "before") or 0) * TWIPS_PER_PX
-    after = int(_resolve_spacing_attr(p, "after") or 0) * TWIPS_PER_PX
-    line = _resolve_spacing_attr(p, "line")
+    def twips(name: str) -> float:
+        # Some files write spacing as a decimal ("14.399999999999999"), which int() refuses.
+        try:
+            return float(_resolve_spacing_attr(p, name) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    before = twips("before") * TWIPS_PER_PX
+    after = twips("after") * TWIPS_PER_PX
+    line = twips("line")
     rule = _resolve_spacing_attr(p, "lineRule") or "auto"
-    if line and line != "0" and rule in ("exact", "atLeast"):
-        line_px = int(line) / 20.0 * 96.0 / 72.0
+    if line and rule in ("exact", "atLeast"):
+        line_px = line / 20.0 * 96.0 / 72.0
     else:
         factor = _FONT_LINE_FACTORS.get((_resolve_font_name(p) or "").lower(), _DEFAULT_LINE_FACTOR)
-        line_px = size_px * factor * (int(line) / 240.0 if line and line != "0" else 1.0)
+        line_px = size_px * factor * (line / 240.0 if line else 1.0)
     characters = sum(len(t.text or "") for t in p._p.iter(qn("w:t")))
     breaks = len(p._p.findall(".//" + qn("w:br")))
     wrapped = max(1, math.ceil(characters * 0.5 * size_px / max(width_px, 20.0))) if characters else 1
@@ -4406,6 +4424,62 @@ def _mark_continuous_sections(doc: docx.Document, out: List[str], starts: Dict[i
                 jout.insert(at, [{"type": "sectionMark", "attrs": {"section": index, "sectionProps": None}}])
 
 
+def _header_part_of(section: Any) -> Any:
+    """The header part a section's ordinary pages show: its own, or the one it inherits ("linked to
+    previous"), or None. Read without python-docx's `part`, which adds an empty header when there is none."""
+    holder = section.header
+    while holder is not None:
+        if holder._has_definition:
+            return holder._definition
+        holder = holder._prior_headerfooter
+    return None
+
+
+def _header_flow_height_px(part: Any, width_px: float) -> float:
+    """How far a header's own paragraphs reach down from where the header starts. Floating boxes and
+    pictures (the page number is often one) take no room; an inline picture is as tall as it is."""
+    total = 0.0
+    for child in part.element:
+        if child.tag == qn("w:p"):
+            paragraph = Paragraph(child, part)
+            height = _paragraph_height_px(paragraph, width_px)
+            pictures = [int(e.get("cy") or 0) / EMU_PER_PX for e in child.iter(qn("wp:extent")) if e.getparent().tag == qn("wp:inline")]
+            if pictures:
+                height = max(height, max(pictures))
+            total += height
+        elif child.tag == qn("w:tbl"):
+            for row in child.iter(qn("w:tr")):
+                total += max(
+                    (sum(_paragraph_height_px(Paragraph(p, part), width_px / 2) for p in cell.iter(qn("w:p"))) for cell in row.iter(qn("w:tc"))),
+                    default=0.0,
+                )
+    return total
+
+
+def _body_top_px(section: Any) -> float:
+    """Where Word starts a section's body text: its top margin, or lower when the header is taller than the
+    room above that margin. Word pushes the body down below such a header; the editor draws headers over
+    the page, so each page's header zone carries a spacer that far past the margin instead (`header_push`,
+    frontend lib/pageLayout.ts). IntelliDocs' 3-line header: 67pt -> 89pt."""
+    top = (section.top_margin if section.top_margin is not None else 914400) / EMU_PER_PX
+    try:
+        part = _header_part_of(section)
+        if part is None:
+            return top
+        width = ((section.page_width or 7772400) - (section.left_margin or 0) - (section.right_margin or 0)) / EMU_PER_PX
+        bottom = (section.header_distance or 0) / EMU_PER_PX + _header_flow_height_px(part, max(width, 96.0))
+    except Exception:
+        return top
+    return max(top, bottom)
+
+
+def _header_push_px(section: Any) -> float:
+    """How far a section's header reaches below its top margin (0 when it fits), as both the section's
+    break and page_layout.sections carry it."""
+    top = round((section.top_margin if section.top_margin is not None else 914400) / EMU_PER_PX, 1)
+    return round(max(0.0, round(_body_top_px(section), 1) - top), 1)
+
+
 def _section_props(section: Any, described: Dict[str, Any]) -> Dict[str, Any]:
     """One section's properties as the editor's SectionProps (frontend/src/lib/sectionProps.ts), in px."""
     sect_pr = section._sectPr
@@ -4436,6 +4510,8 @@ def _section_props(section: Any, described: Dict[str, Any]) -> Dict[str, Any]:
             "header": round((section.header_distance or 457200) / EMU_PER_PX, 1),
             "footer": round((section.footer_distance or 457200) / EMU_PER_PX, 1),
             "gutter": px(section.gutter, 0),
+            # How far the header reaches below the top margin (see _body_top_px); 0 when it fits.
+            "headerPush": _header_push_px(section),
         },
         "columns": {"count": count, "gap": gap, "widths": widths},
         "headers": {"default": described.get("header"), "first": described.get("first_header"), "even": None},
@@ -4931,6 +5007,8 @@ def _extract_sections(doc: docx.Document) -> Dict[str, Any]:
             "number_format": fmt or "decimal",
             "header_distance": round((section.header_distance or 457200) / EMU_PER_PX, 1),
             "footer_distance": round((section.footer_distance or 457200) / EMU_PER_PX, 1),
+            # How far the header reaches below the top margin: Word starts the body that much lower.
+            "header_push": _header_push_px(section),
         })
     return {"parts": parts, "sections": described}
 

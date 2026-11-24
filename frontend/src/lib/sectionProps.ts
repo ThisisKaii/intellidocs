@@ -17,6 +17,8 @@ export interface SectionMargins {
   /** Distance of the footer from the page's bottom edge. */
   footer: number
   gutter: number
+  /** How far the header reaches below the top margin: Word starts the body that much lower. Absent = 0. */
+  headerPush?: number
 }
 
 /** Header or footer part keys (into the document's page layout parts) for each kind of page. */
@@ -95,6 +97,7 @@ export function readSectionProps(value: unknown): SectionProps | null {
       header: Number(margins.header),
       footer: Number(margins.footer),
       gutter: Number(margins.gutter),
+      ...(isLength(margins.headerPush) && margins.headerPush > 0 ? { headerPush: margins.headerPush } : {}),
     },
     columns: { count: columns.count as number, gap: columns.gap, widths: widths === null ? null : [...(widths as number[])] },
     headers,

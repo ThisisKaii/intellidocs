@@ -42,8 +42,10 @@ export function extractTOCFromHTML(html: string): Omit<TOCEntry, 'pageNumber' | 
   while ((match = headingRegex.exec(html)) !== null) {
     const level = parseInt(match[1], 10)
     if (level > 3) continue
-    const rawText = match[2]
-    const text = decodeEntities(rawText.replace(/<[^>]*>/g, '')).trim()
+    // A tab (an empty <span data-tab>) or line break between words is a gap, not nothing: two names
+    // set apart by a tab ("GIAN S. MAHUSAY<tab>ALEXANDER Y. BUCOL") read as one run-on word otherwise.
+    const rawText = match[2].replace(/<span[^>]*data-tab[^>]*>\s*<\/span>|<br\s*\/?>/gi, ' ')
+    const text = decodeEntities(rawText.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim()
     if (!text) continue
     const id = `toc-${text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${entries.length}`
     entries.push({ id, level, text })
@@ -57,7 +59,7 @@ export function extractTOCFromHTML(html: string): Omit<TOCEntry, 'pageNumber' | 
   const structuralRegex = STRUCTURAL_SECTION_PATTERN
   const paragraphRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi
   while ((match = paragraphRegex.exec(html)) !== null) {
-    const inner = match[1]
+    const inner = match[1].replace(/<span[^>]*data-tab[^>]*>\s*<\/span>|<br\s*\/?>/gi, ' ')
     if (!/<(?:strong|b)[\s>]/i.test(inner)) continue
     const text = decodeEntities(inner.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim()
     if (!text || text.length > 80 || !structuralRegex.test(text)) continue

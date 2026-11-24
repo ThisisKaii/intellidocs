@@ -2068,7 +2068,10 @@ export function TiptapToolbar({
   const currentFontFamily = (() => {
     if (!editor) return 'Times New Roman'
     const ff = editor.getAttributes('textStyle').fontFamily as string | undefined
-    return ff ? ff.replace(/^["']|["']$/g, '') : 'Times New Roman'
+    // Imported text carries a whole CSS stack ("'Times New Roman', 'Times New Roman', serif"): the
+    // font the user chose is its first name.
+    const first = ff?.split(',')[0]?.trim().replace(/^["']+|["']+$/g, '')
+    return first || 'Times New Roman'
   })()
 
   const currentFontSize = (() => {
@@ -2337,6 +2340,10 @@ export function TiptapToolbar({
               style={{
                 fontFamily:
                   FONT_FAMILIES.find((f) => f.value === currentFontFamily)?.fontStyle,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: '120px',
               }}
             >
               {currentFontFamily}

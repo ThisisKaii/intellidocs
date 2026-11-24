@@ -27,19 +27,23 @@ class TestSpacing:
         assert _write_spacing_css(ParagraphSpacing(), "Arial") == ""
 
     def test_an_explicit_zero_is_written(self):
-        assert _write_spacing_css(ParagraphSpacing(before_twips=0, after_twips=0, unset=False), None) == "margin-top:0; margin-bottom:0"
+        assert _write_spacing_css(ParagraphSpacing(before_twips=0, after_twips=0, unset=False), None) == "margin-top:0; margin-bottom:0; line-height:1.15"
+
+    def test_parts_set_nowhere_are_words_defaults(self):
+        # Once a paragraph sets any spacing, the rest is Word's default: no space around, single lines.
+        assert _write_spacing_css(ParagraphSpacing(before_twips=160, unset=False), "Cambria") == "margin-top:10.7px; margin-bottom:0; line-height:1.172"
 
     def test_lines_count_only_when_twips_are_unset(self):
         css = _write_spacing_css(ParagraphSpacing(before_lines=100, after_twips=120, after_lines=50, unset=False), None)
-        assert css == "margin-top:1.2em; margin-bottom:8.0px"
+        assert css == "margin-top:1.2em; margin-bottom:8.0px; line-height:1.15"
 
     def test_exact_and_at_least_lines_are_points(self):
-        assert _write_spacing_css(ParagraphSpacing(line=280, line_rule="exact", unset=False), "Arial") == "line-height:14.0pt"
-        assert _write_spacing_css(ParagraphSpacing(line=240, line_rule="atLeast", unset=False), None) == "line-height:12.0pt"
+        assert _write_spacing_css(ParagraphSpacing(line=280, line_rule="exact", unset=False), "Arial") == "margin-top:0; margin-bottom:0; line-height:14.0pt"
+        assert _write_spacing_css(ParagraphSpacing(line=240, line_rule="atLeast", unset=False), None) == "margin-top:0; margin-bottom:0; line-height:12.0pt"
 
     def test_auto_lines_scale_by_the_font_natural_height(self):
-        assert _write_spacing_css(ParagraphSpacing(line=360, unset=False), "Calibri") == "line-height:1.832"
-        assert _write_spacing_css(ParagraphSpacing(line=240, unset=False), "Unknown Font") == "line-height:1.15"
+        assert _write_spacing_css(ParagraphSpacing(line=360, unset=False), "Calibri") == "margin-top:0; margin-bottom:0; line-height:1.832"
+        assert _write_spacing_css(ParagraphSpacing(line=240, unset=False), "Unknown Font") == "margin-top:0; margin-bottom:0; line-height:1.15"
 
 
 class TestIndent:

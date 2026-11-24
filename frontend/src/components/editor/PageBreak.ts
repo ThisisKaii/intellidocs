@@ -40,7 +40,12 @@ function layoutPageBreaks(root: HTMLElement): void {
     const pageTop = previous ? previous.bottom : breakers[0].top - body
     const offset = rect.top - pageTop
     const atPageTop = offset / scale < AT_PAGE_TOP_TOLERANCE_PX
-    const target = atPageTop ? 0 : Math.max(0, (body - offset) / scale)
+    // Pages differ in body height when a header pushes the body down on some of them (header_push),
+    // so fill to this page's own end, the next breaker, and fall back to the usual body on the last page.
+    // A spacer already inside the gap between pages (room < 0) needs no height.
+    const next = breakers.find((b) => b.bottom > rect.top + scale)
+    const room = next ? next.top - rect.top : body - offset
+    const target = atPageTop ? 0 : Math.max(0, room / scale)
     if (Math.abs(target - spacer.offsetHeight) > HEIGHT_EPSILON_PX) spacer.style.height = `${Math.round(target)}px`
   }
 }

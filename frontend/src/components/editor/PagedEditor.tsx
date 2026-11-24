@@ -1037,6 +1037,11 @@ export function PagedEditor({
             position: relative;
             top: calc(var(--rm-margin-top) * -0.5);
           }
+          /* A header taller than the top margin leaves room for pushes the body down in Word; its
+             spacer (pageZones' data-header-push) is the one in-flow child, so this height is the push. */
+          .rm-with-pagination .rm-page-header-content:has([data-header-push]) {
+            height: auto !important;
+          }
           .rm-with-pagination .rm-page-footer-content {
             height: 0 !important;
             overflow: visible !important;

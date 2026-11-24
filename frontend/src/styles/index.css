@@ -715,6 +715,25 @@ html {
   width: 100%;
 }
 
+/* A column section is a grid, and a grid beside a float shrinks to the room left by it. Where one met
+   the paginator's full-width page float it got 0px, wrapped after every letter and ran 3 pages long.
+   An explicit width moves it below the float instead, as for images above. */
+.ProseMirror > .intellidocs-columns {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* A picture keeps the width it was given, as Word does, even when its paragraph is indented: Word lets
+   a full-column picture in an indented paragraph run into the right margin. The picture's box is a
+   flex item of the root, so without this the indent squeezed it (624px drawn as 594px), every such
+   figure came out shorter than in Word, and the pages after it drifted up. Stored widths are already
+   capped to the text column (imageWidthCapKey), so this overflows by at most the indent. */
+.ProseMirror .intellidocs-image-root > div[style^='width:'],
+.ProseMirror .intellidocs-image-root > div[style*=' width:'],
+.ProseMirror .intellidocs-image-root > div[style*=';width:'] {
+  flex-shrink: 0;
+}
+
 /* A picture slot from a template (pictureSlots.ts): a dashed frame and its label, so it reads as
    "put a picture here". Selecting it shows Replace / Paste / Remove in the picture toolbar. */
 .ProseMirror .intellidocs-picture-slot {

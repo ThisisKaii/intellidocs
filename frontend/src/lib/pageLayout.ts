@@ -12,6 +12,8 @@ export interface PageLayoutSection {
   number_format: string
   header_distance: number
   footer_distance: number
+  /** How far the header reaches below the top margin (px): the page's body starts that much lower. */
+  header_push?: number
 }
 
 /** What an import keeps of a document's page furniture beyond header/footer text. */
@@ -151,8 +153,13 @@ export function pageZones(layout: PageLayoutData, measure: PageMeasure, page: nu
   const footerKey = first ? section.first_footer : section.footer
   const footerArt = footerKey ? (layout.parts[footerKey]?.art ?? '') : ''
   const extra = `${layout.repeat_art}${layout.page_art[String(page)] ?? ''}${footerArt}`
+  // Word starts the body below a header that is taller than the top margin leaves room for. The
+  // paginator starts each page's body its header's measured height below the margin, so an in-flow
+  // spacer of that height (index.css lets a header holding one take its height) moves the body down.
+  const push = section.header_push && section.header_push > 0 ? section.header_push : 0
+  const spacer = push ? `<div data-header-push="" style="height:${push}px"></div>` : ''
   return {
-    header: zoneHtml(layout, headerKey, 'header', section, extra),
+    header: `${zoneHtml(layout, headerKey, 'header', section, extra)}${spacer}`,
     footer: zoneHtml(layout, footerKey, 'footer', section, ''),
   }
 }
@@ -275,6 +282,7 @@ export function layoutSectionFromProps(index: number, props: SectionProps): Page
     number_format: props.numbering.format,
     header_distance: props.margins.header,
     footer_distance: props.margins.footer,
+    ...(props.margins.headerPush ? { header_push: props.margins.headerPush } : {}),
   }
 }
 

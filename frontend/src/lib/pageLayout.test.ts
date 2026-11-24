@@ -57,6 +57,21 @@ describe('pageZones', () => {
   })
 })
 
+describe('header push', () => {
+  it("gives the pages of a section whose header runs past the margin a spacer that survives sanitizing", () => {
+    const pushed: PageLayoutData = { ...layout, sections: [section(0), section(1, { header_push: 29.1 })] }
+    expect(pageZones(pushed, measure, 2).header).not.toContain('data-header-push')
+    const header = sanitizeHeaderHtml(pageZones(pushed, measure, 5).header)
+    expect(header).toContain('data-header-push')
+    expect(header).toContain('height:29.1px')
+  })
+  it('is read from the section break, and left out when the header fits', () => {
+    const props = { ...SAMPLE_SECTION, margins: { ...SAMPLE_SECTION.margins, headerPush: 29.1 } }
+    expect(layoutSectionFromProps(3, props).header_push).toBe(29.1)
+    expect(layoutSectionFromProps(3, SAMPLE_SECTION).header_push).toBeUndefined()
+  })
+})
+
 describe('lastLineSlackPx', () => {
   it('gives only imported Word documents the room for a last line', () => {
     expect(lastLineSlackPx({ ...layout, flow_rules: true })).toBe(3)

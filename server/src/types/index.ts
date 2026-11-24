@@ -200,6 +200,8 @@ export interface PageLayoutSection {
   number_format: string
   header_distance: number
   footer_distance: number
+  /** How far the header reaches below the top margin (px): the page's body starts that much lower. */
+  header_push?: number
 }
 
 /** What an import keeps of a document's page furniture beyond header/footer text. */

@@ -66,7 +66,7 @@ export function sanitizeHeaderHtml(html: string): string {
         else element.removeAttribute('style')
       } else if (name === 'src' && element.tagName === 'IMG') {
         if (!safeSource(attribute.value)) element.remove()
-      } else if (!['colspan', 'rowspan', 'width', 'height', 'alt'].includes(name)) {
+      } else if (!['colspan', 'rowspan', 'width', 'height', 'alt', 'data-header-push'].includes(name)) {
         element.removeAttribute(attribute.name)
       }
     }
