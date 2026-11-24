@@ -2416,6 +2416,8 @@ export default function Document(): JSX.Element {
     }
   }
 
+  /** More pages than any tab of a real manuscript has (a runaway layout once stored 3,385). */
+  const MAX_PLAUSIBLE_TAB_PAGES = 1500
   // Report how many pages the open tab takes once it is laid out, so the tabs after it number
   // their pages from the right place (also when it was opened and not edited).
   useEffect(() => {
@@ -2431,7 +2433,8 @@ export default function Document(): JSX.Element {
       previous = pages
       if (!steady) return
       const tab = docTabsRef.current?.find((candidate) => candidate.tab_id === activeTabId)
-      if (!tab || pages <= 0) return
+      // A layout that ran away (pages without end) is not a page count to keep.
+      if (!tab || pages <= 0 || pages > MAX_PLAUSIBLE_TAB_PAGES) return
       // Caption counts too: the tabs after this one number their figures and tables from them, and a
       // tab that is only read (opening saves nothing) would otherwise keep the counts it was split with.
       const counts = captionCountsOf(editor)

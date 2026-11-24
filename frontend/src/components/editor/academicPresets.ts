@@ -195,8 +195,9 @@ const UCLM_CAPSTONE: PresetInput = {
   key: 'uclm_capstone',
   name: 'UCLM Capstone (Thesis)',
   description:
-    'UCLM spec — 1.5" left binding margin, Times New Roman 11pt justified at 1.5 spacing; 12pt bold uppercase centered chapter headings (CHAPTER I: INTRODUCTION), 11pt bold section headings, roman preliminary page numbers.',
-  pageSize: 'letter',
+    'UCLM spec — short bond paper (8.5x11"), 1.5" left binding margin, Times New Roman 11pt justified at 1.5 spacing; 12pt bold uppercase centered chapter headings (CHAPTER I: INTRODUCTION), 11pt bold section headings, roman preliminary page numbers.',
+  // UCLM manuscripts are printed on short bond paper: the same 8.5x11" as Letter, named as the school names it.
+  pageSize: 'short',
   orientation: 'portrait',
   margins: { top: 1, bottom: 1, left: 1.5, right: 1 },
   fontFamily: "'Times New Roman', Times, serif",
