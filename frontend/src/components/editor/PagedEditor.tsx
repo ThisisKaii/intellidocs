@@ -755,6 +755,15 @@ export function PagedEditor({
     ;(editor.storage as unknown as { pageFlow: { enabled: boolean } }).pageFlow.enabled = flowRules
   }, [editor, flowRules])
 
+  // Pages whose header pushes the body down (header_push) have that much less room, and a picture
+  // sized to a whole page body then fits on none of them: the paginator added pages without end (a
+  // pasted diagram once made a chapter 2,601 pages). index.css takes the largest push off the cap.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    const push = Math.max(0, ...(layout?.sections ?? []).map((section) => section.header_push ?? 0))
+    ;(editor.view.dom as HTMLElement).style.setProperty('--intellidocs-header-push-max', `${push}px`)
+  }, [editor, layout])
+
   // Give every page the header and footer of its section: art, text and page numbers.
   useEffect(() => {
     if (!editor || editor.isDestroyed || !layout) return

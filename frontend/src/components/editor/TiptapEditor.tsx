@@ -30,6 +30,7 @@ import { HarperLinterExtension } from './HarperLinterExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { ListItem, OrderedList } from '@tiptap/extension-list'
 import { columnSizeFromTable } from './tableColumnWidths'
+import { PastePictures } from './PastePictures'
 import { PasteKeepsNextBlock } from './PasteKeepsNextBlock'
 import { PageBreak } from './PageBreak'
 import { SectionMark } from './SectionMark'
@@ -1444,6 +1445,7 @@ export function buildEditorExtensions(collaborative = false) {
 
 const editorExtensionsAfterStarterKit = [
   PasteKeepsNextBlock,
+  PastePictures,
   CustomListItem,
   CustomOrderedList,
   CustomParagraph,
