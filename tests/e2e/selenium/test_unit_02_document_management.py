@@ -309,5 +309,240 @@ def test_UT_DOC_13(driver, student_api, actual):
     assert message, "no message for the repeated invite"
 
 
+# ── Pin Document ─────────────────────────────────────────────────────────────
+
+
+def listed(driver, title: str) -> bool:
+    return bool(driver.find_elements(By.XPATH, f"//h3[normalize-space()='{title}']"))
+
+
+def test_UT_DOC_14(driver, student_api, actual):
+    """UT-DOC-14 | Pin Document | Normal
+    A student chooses Pin in a document's menu, then opens Pinned in the sidebar.
+    Expected: the document is listed under Pinned."""
+    student_api.create_document("UT-DOC-14 Pin me")
+    sign_in(driver, STUDENT)
+    card_menu(driver, "UT-DOC-14 Pin me", "Pin")
+    time.sleep(2)
+    sidebar(driver, "Pinned")
+    card(driver, "UT-DOC-14 Pin me")
+    actual("After Pin, the document was listed under Pinned.")
+
+
+def test_UT_DOC_15(driver, student_api, actual):
+    """UT-DOC-15 | Pin Document | Error
+    A student pins a document, then moves it to the Trash.
+    Expected: the deleted document is no longer listed under Pinned."""
+    student_api.create_document("UT-DOC-15 Pinned then deleted")
+    sign_in(driver, STUDENT)
+    card_menu(driver, "UT-DOC-15 Pinned then deleted", "Pin")
+    time.sleep(2)
+    card_menu(driver, "UT-DOC-15 Pinned then deleted", "Delete")
+    click(driver, visible(driver, By.XPATH, "//button[normalize-space()='Move to trash']"))
+    wait_for(driver, lambda d: not listed(d, "UT-DOC-15 Pinned then deleted"), timeout=30)
+    sidebar(driver, "Pinned")
+    time.sleep(3)
+    assert not listed(driver, "UT-DOC-15 Pinned then deleted"), "the deleted document is still under Pinned"
+    actual("After the pinned document was moved to the Trash, Pinned no longer listed it.")
+
+
+# ── Recent Documents ─────────────────────────────────────────────────────────
+
+
+def test_UT_DOC_16(driver, student_api, actual):
+    """UT-DOC-16 | Recent Documents | Normal
+    A student opens a document, goes back to the dashboard and opens Recent in the sidebar.
+    Expected: the document just opened is listed under Recent."""
+    doc_id = student_api.create_document("UT-DOC-16 Opened lately", "<p>Recent text.</p>")
+    sign_in(driver, STUDENT)
+    open_document(driver, doc_id)
+    time.sleep(2)
+    open_page(driver, "/dashboard")
+    sidebar(driver, "Recent")
+    card(driver, "UT-DOC-16 Opened lately")
+    actual("The document opened a moment ago was listed under Recent.")
+
+
+def test_UT_DOC_17(driver, student_api, actual):
+    """UT-DOC-17 | Recent Documents | Error
+    A student opens a document, then moves it to the Trash and opens Recent.
+    Expected: the deleted document is no longer listed under Recent."""
+    doc_id = student_api.create_document("UT-DOC-17 Opened then deleted", "<p>Recent text.</p>")
+    sign_in(driver, STUDENT)
+    open_document(driver, doc_id)
+    time.sleep(2)
+    open_page(driver, "/dashboard")
+    card_menu(driver, "UT-DOC-17 Opened then deleted", "Delete")
+    click(driver, visible(driver, By.XPATH, "//button[normalize-space()='Move to trash']"))
+    wait_for(driver, lambda d: not listed(d, "UT-DOC-17 Opened then deleted"), timeout=30)
+    sidebar(driver, "Recent")
+    time.sleep(3)
+    assert not listed(driver, "UT-DOC-17 Opened then deleted"), "the deleted document is still under Recent"
+    actual("After the opened document was moved to the Trash, Recent no longer listed it.")
+
+
+# ── Shared with Me ───────────────────────────────────────────────────────────
+
+
+def test_UT_DOC_18(driver, student_api, actual):
+    """UT-DOC-18 | Shared with Me | Normal
+    A classmate shares a document with the student, who opens Shared with me and then the document.
+    Expected: the document is listed under Shared with me and opens with the classmate's text."""
+    owner = Api.sign_in(STUDENT_2)
+    try:
+        doc_id = owner.create_document("UT-DOC-18 From a classmate", "<p>Text the classmate wrote.</p>")
+        owner.call("POST", f"/documents/{doc_id}/shares", {"email": STUDENT[0], "permission": "view"}).raise_for_status()
+        sign_in(driver, STUDENT)
+        sidebar(driver, "Shared with me")
+        ActionChains(driver).double_click(card(driver, "UT-DOC-18 From a classmate")).perform()
+        wait_for(driver, lambda d: "Text the classmate wrote." in d.find_element(By.CSS_SELECTOR, ".ProseMirror").text, timeout=60)
+        actual("The classmate's document was listed under Shared with me and opened with their text.")
+    finally:
+        owner.cleanup()
+
+
+def test_UT_DOC_19(driver, actual):
+    """UT-DOC-19 | Shared with Me | Error
+    A student presses Enter code under Shared with me and types a share code that does not exist.
+    Expected: "That code is not valid or has expired" is shown and nothing is added to Shared with me."""
+    sign_in(driver, STUDENT)
+    sidebar(driver, "Shared with me")
+    click(driver, visible(driver, By.XPATH, "//button[contains(normalize-space(), 'Enter code')]"))
+    field = visible(driver, By.CSS_SELECTOR, "input[placeholder='K7M2-QX9P']")
+    field.send_keys("ZZZZ-9999")
+    click(driver, visible(driver, By.XPATH, "//button[normalize-space()='Join']"))
+    assert text_appears(driver, "not valid", timeout=20), "the wrong code was not refused"
+    actual("\"That code is not valid or has expired\" was shown; nothing was added to Shared with me.")
+
+
+# ── Rename Document ──────────────────────────────────────────────────────────
+
+
+def rename_field(driver):
+    return visible(driver, By.XPATH, "//button[@aria-label='Save name']/preceding-sibling::input[1] | //button[@aria-label='Save name']/ancestor::div[1]//input")
+
+
+def test_UT_DOC_20(driver, student_api, actual):
+    """UT-DOC-20 | Rename Document | Normal
+    A student chooses Rename in a document's menu, types a new title and saves it.
+    Expected: the card shows the new title, also after reloading the dashboard."""
+    stamp = int(time.time())
+    student_api.create_document(f"UT-DOC-20 Old {stamp}")
+    sign_in(driver, STUDENT)
+    card_menu(driver, f"UT-DOC-20 Old {stamp}", "Rename")
+    field = rename_field(driver)
+    field.send_keys(Keys.CONTROL, "a")
+    field.send_keys(f"UT-DOC-20 New {stamp}")
+    click(driver, visible(driver, By.CSS_SELECTOR, "button[aria-label='Save name']"))
+    card(driver, f"UT-DOC-20 New {stamp}")
+    driver.refresh()
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", card(driver, f"UT-DOC-20 New {stamp}"))
+    actual(f"The card showed \"UT-DOC-20 New {stamp}\" and kept it after a reload.")
+
+
+def test_UT_DOC_21(driver, student_api, actual):
+    """UT-DOC-21 | Rename Document | Error
+    A student renames a document to an empty title and saves it.
+    Expected: the empty title is refused and the document keeps its old title."""
+    title = f"UT-DOC-21 Keep {int(time.time())}"
+    student_api.create_document(title)
+    sign_in(driver, STUDENT)
+    card_menu(driver, title, "Rename")
+    field = rename_field(driver)
+    field.send_keys(Keys.CONTROL, "a")
+    field.send_keys(Keys.DELETE)
+    click(driver, visible(driver, By.CSS_SELECTOR, "button[aria-label='Save name']"))
+    time.sleep(3)
+    shown_now = listed(driver, title)
+    driver.refresh()
+    kept = bool(card(driver, title))
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", card(driver, title))
+    actual(f"The document kept the title \"{title}\"" + (" on screen and after a reload." if shown_now else "; it showed an empty title until the page was reloaded."))
+    assert kept and shown_now, "the document showed an empty title"
+
+
+# ── Search Documents ─────────────────────────────────────────────────────────
+
+
+def search(driver, text: str) -> None:
+    field = visible(driver, By.ID, "drive-search-input")
+    field.send_keys(Keys.CONTROL, "a")
+    field.send_keys(text)
+    time.sleep(2)
+
+
+def test_UT_DOC_22(driver, student_api, actual):
+    """UT-DOC-22 | Search Documents | Normal
+    A student types part of a document's title in the search box on the dashboard.
+    Expected: the matching document is listed and documents that do not match are hidden."""
+    stamp = int(time.time())
+    student_api.create_document(f"UT-DOC-22 Thesis draft {stamp}")
+    student_api.create_document(f"UT-DOC-22 Grocery list {stamp}")
+    sign_in(driver, STUDENT)
+    card(driver, f"UT-DOC-22 Grocery list {stamp}")
+    search(driver, f"Thesis draft {stamp}")
+    card(driver, f"UT-DOC-22 Thesis draft {stamp}")
+    wait_for(driver, lambda d: not listed(d, f"UT-DOC-22 Grocery list {stamp}"), timeout=15, message="the non-matching document stayed listed")
+    actual("Only the document whose title matched the search was listed; the other was hidden.")
+
+
+def test_UT_DOC_23(driver, student_api, actual):
+    """UT-DOC-23 | Search Documents | Error
+    A student searches for words that are in no document title.
+    Expected: no documents are listed and the page says "No results for" the words searched."""
+    student_api.create_document("UT-DOC-23 Some document")
+    sign_in(driver, STUDENT)
+    card(driver, "UT-DOC-23 Some document")
+    search(driver, "zzqx nothing has this title")
+    wait_for(driver, lambda d: not d.find_elements(By.XPATH, "//main//h3[starts-with(normalize-space(), 'UT-')]"), timeout=15,
+             message="documents stayed listed for a search that matches nothing")
+    text = body_text(driver)
+    message = next((line for line in text.splitlines() if line.startswith("No results for")), None)
+    actual(f"No documents were listed; the page said \"{message}\"." if message else "No documents were listed; the page only said \"No items here\", not that nothing matched.")
+    assert message, "the empty search did not say nothing matched"
+
+
+# ── Version History ──────────────────────────────────────────────────────────
+
+
+def history_tab(driver) -> None:
+    click(driver, visible(driver, By.XPATH, "//button[normalize-space()='History']"))
+    time.sleep(2)
+
+
+def test_UT_DOC_24(driver, student_api, actual):
+    """UT-DOC-24 | Version History | Normal
+    A student opens History in the editor and presses Restore on the earlier version of the document.
+    Expected: the document's text goes back to the earlier version."""
+    doc_id = student_api.create_document("UT-DOC-24 History", "<p>First draft of the introduction.</p>")
+    student_api.call("PUT", f"/documents/{doc_id}", {"content": "<p>Second draft that replaced it.</p>"}).raise_for_status()
+    sign_in(driver, STUDENT)
+    open_document(driver, doc_id)
+    history_tab(driver)
+    restore = [b for b in driver.find_elements(By.XPATH, "//button[normalize-space()='Restore']") if b.is_displayed()]
+    assert restore, "no version to restore"
+    click(driver, restore[-1])
+    wait_for(driver, lambda d: "First draft of the introduction." in d.find_element(By.CSS_SELECTOR, ".ProseMirror").text, timeout=60,
+             message="the text did not go back")
+    actual("After Restore, the editor showed the earlier text \"First draft of the introduction.\"")
+
+
+def test_UT_DOC_25(driver, student_api, actual):
+    """UT-DOC-25 | Version History | Error
+    A student creates a document and opens History before writing anything in it.
+    Expected: History says there are no earlier versions and offers nothing to restore."""
+    created = student_api.call("POST", "/documents", {"title": "UT-DOC-25 No history"})
+    created.raise_for_status()
+    doc_id = created.json()["id"]
+    student_api.created_documents.append(doc_id)
+    sign_in(driver, STUDENT)
+    open_document(driver, doc_id)
+    history_tab(driver)
+    restore = [b for b in driver.find_elements(By.XPATH, "//button[normalize-space()='Restore']") if b.is_displayed()]
+    assert text_appears(driver, "No snapshots yet", timeout=20), "History did not say there are no versions"
+    assert not restore, "a version to restore was offered"
+    actual("History said \"No snapshots yet\" and offered nothing to restore.")
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

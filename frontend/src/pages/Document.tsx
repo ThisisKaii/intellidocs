@@ -301,6 +301,13 @@ export default function Document(): JSX.Element {
    */
   const loadedHadTextRef = useRef<boolean>(false)
   const userInputSinceLoadRef = useRef<boolean>(false)
+  /**
+   * Whether the user has done anything since the document or tab loaded: typed, clicked, pasted or
+   * dropped. Until then a content change is the editor settling what it loaded (it writes the stored
+   * HTML in its own normal form), not an edit: saving it marked every opened document "Unsaved
+   * changes" and added a History version identical to the text.
+   */
+  const userActedSinceLoadRef = useRef<boolean>(false)
   const latestTitleRef = useRef<string>('Untitled Document')
   /** The last title that was not blank: what a cleared title field goes back to (the server keeps it). */
   const keptTitleRef = useRef<string>('Untitled Document')
@@ -337,9 +344,15 @@ export default function Document(): JSX.Element {
       userInputSinceLoadRef.current = true
     }
     const events = ['keydown', 'paste', 'cut', 'drop'] as const
+    const acted = (): void => {
+      userActedSinceLoadRef.current = true
+    }
+    const actions = ['keydown', 'paste', 'cut', 'drop', 'pointerdown'] as const
     for (const name of events) window.addEventListener(name, mark, true)
+    for (const name of actions) window.addEventListener(name, acted, true)
     return () => {
       for (const name of events) window.removeEventListener(name, mark, true)
+      for (const name of actions) window.removeEventListener(name, acted, true)
     }
   }, [])
   const [content, setContent] = useState<string>('')
@@ -961,6 +974,7 @@ export default function Document(): JSX.Element {
         applyLoadedDocument(shown)
         loadedHadTextRef.current = hasBodyText(shown.content)
         userInputSinceLoadRef.current = false
+        userActedSinceLoadRef.current = false
         documentLoadedRef.current = true
         setLoadedDocId(docId)
         // Opening a document puts it first in "Recent" and restarts its 7 days.
@@ -2135,6 +2149,7 @@ export default function Document(): JSX.Element {
       setSaveStatus('saved')
       loadedHadTextRef.current = hasBodyText(tab.content)
       userInputSinceLoadRef.current = false
+      userActedSinceLoadRef.current = false
       documentLoadedRef.current = true
       const draftKey = tabDraftKey(id, tabId)
       const draft = readLocalDraft(draftKey)
@@ -2570,6 +2585,8 @@ export default function Document(): JSX.Element {
     latestJsonRef.current = json
     setContent(newContent)
     const textLength = updateWordCount(newContent)
+    // The editor settling what it just loaded is kept as the starting point, not saved as an edit.
+    if (!userActedSinceLoadRef.current) return
     trackComposition(textLength)
     scheduleSave()
     scheduleAutoFormatPrediction(newContent)

@@ -998,6 +998,7 @@ export default function HomePage(): JSX.Element {
 
           <DriveTable
             pageResetKey={`${selection.type}:${selection.folderId ?? ''}:${query}`}
+            searchQuery={query}
             emptyVariant={selection.type === 'shared' || selection.type === 'recent' || selection.type === 'pinned' || selection.type === 'trash' ? selection.type : 'default'}
             onEnterCode={() => setJoinCodeOpen(true)}
             documents={visibleDocuments}

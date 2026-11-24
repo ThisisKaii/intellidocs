@@ -95,6 +95,8 @@ interface DriveTableProps {
   emptyVariant?: 'default' | 'shared' | 'recent' | 'pinned' | 'trash'
   /** Opens the "enter a share code" dialog (shown in the empty "Shared with me" state). */
   onEnterCode?: () => void
+  /** What the user typed in the search box: an empty list then says nothing matched it. */
+  searchQuery?: string
   /** Pin or unpin a document for the signed-in user; omitted where pins do not apply (Trash). */
   onTogglePin?: (id: string, pinned: boolean) => void
   /** Ids of the documents this user pinned (shown with a pin icon; the menu offers Unpin). */
@@ -313,7 +315,9 @@ export function DriveTable({
   pageResetKey = '',
   emptyVariant = 'default',
   onEnterCode,
+  searchQuery = '',
 }: DriveTableProps): JSX.Element {
+  const searching = searchQuery.trim().length > 0
   const navigate = useNavigate()
   const { user } = useAuth()
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null)
@@ -436,8 +440,22 @@ export function DriveTable({
       {/* ── Loading ─────────────────────────────────── */}
       {loading && <ListSkeleton />}
 
+      {/* ── Empty search: say that nothing matched, rather than that the place is empty ── */}
+      {isEmpty && searching && (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-24 px-8 text-center bg-secondary/30 mt-4">
+          <div
+            className="flex items-center justify-center w-16 h-16 rounded-2xl bg-secondary mb-5"
+            style={{ boxShadow: 'inset 0 0 0 1px var(--border)' }}
+          >
+            <FileText className="size-7 text-muted-foreground" />
+          </div>
+          <p className="text-lg font-semibold text-foreground mb-1.5">No results for “{searchQuery.trim()}”</p>
+          <p className="text-sm text-muted-foreground max-w-sm">No document or folder here has that in its name. Check the spelling or try fewer words.</p>
+        </div>
+      )}
+
       {/* ── Empty state: Shared, Recent and Trash say what they are; they never offer to create ── */}
-      {isEmpty && emptyVariant !== 'default' && (
+      {isEmpty && !searching && emptyVariant !== 'default' && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-24 px-8 text-center bg-secondary/30 mt-4">
           <div
             className="flex items-center justify-center w-16 h-16 rounded-2xl bg-secondary mb-5"
@@ -461,7 +479,7 @@ export function DriveTable({
       )}
 
       {/* ── Empty state (My documents, folders) ──────── */}
-      {isEmpty && emptyVariant === 'default' && (
+      {isEmpty && !searching && emptyVariant === 'default' && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-24 px-8 text-center bg-secondary/30 mt-4">
           <div
             className="flex items-center justify-center w-16 h-16 rounded-2xl bg-secondary mb-5"

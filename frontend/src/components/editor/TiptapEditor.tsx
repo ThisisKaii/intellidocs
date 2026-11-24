@@ -29,6 +29,7 @@ import { BlueprintGuideExtension } from './BlueprintGuideExtension'
 import { HarperLinterExtension } from './HarperLinterExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { ListItem, OrderedList } from '@tiptap/extension-list'
+import { PasteKeepsNextBlock } from './PasteKeepsNextBlock'
 import { PageBreak } from './PageBreak'
 import { SectionMark } from './SectionMark'
 import { TabBreak } from './TabBreak'
@@ -1430,6 +1431,7 @@ export function buildEditorExtensions(collaborative = false) {
 }
 
 const editorExtensionsAfterStarterKit = [
+  PasteKeepsNextBlock,
   CustomListItem,
   CustomOrderedList,
   CustomParagraph,
@@ -3321,7 +3323,8 @@ export function TiptapToolbar({
                         step={0.25}
                         value={margins[m]}
                         onChange={(e) =>
-                          onMarginsChange({ ...margins, [m]: parseFloat(e.target.value) || 0.5 })
+                          // Kept within the field's own 0.25–3 in: a typed 10 in margin left no text column.
+                          onMarginsChange({ ...margins, [m]: Math.min(3, Math.max(0.25, parseFloat(e.target.value) || 0.5)) })
                         }
                         style={{
                           width: '48px',

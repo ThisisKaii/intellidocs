@@ -184,5 +184,150 @@ def test_UT_REV_08(driver, submission, actual):
     actual("The new submission's Grade column read \"Ungraded\".")
 
 
+# ── Create Class ─────────────────────────────────────────────────────────────
+
+
+def new_class_dialog(driver):
+    open_page(driver, "/dashboard")
+    click(driver, visible(driver, By.XPATH, "//button[contains(normalize-space(), 'New document')]"))
+    click(driver, visible(driver, By.XPATH, "//*[@role='menuitem'][contains(normalize-space(), 'New folder')]"))
+    click(driver, visible(driver, By.XPATH, "//button[.//*[normalize-space()='Student Class Folder'] or starts-with(normalize-space(), 'Student Class Folder')]"))
+    return visible(driver, By.ID, "folder-name")
+
+
+def delete_class(professor_api, name: str) -> None:
+    for folder in professor_api.call("GET", "/folders").json():
+        if folder.get("name") == name:
+            professor_api.call("DELETE", f"/folders/{folder['folder_id']}")
+
+
+def test_UT_REV_09(driver, professor_api, actual):
+    """UT-REV-09 | Create Class | Normal
+    A professor chooses New document > New folder > Student Class Folder, types a class name and code and creates it.
+    Expected: the class appears among the professor's folders with its join code for students."""
+    name = f"UT-REV-09 Thesis Writing {int(time.time())}"
+    try:
+        sign_in(driver, PROFESSOR)
+        new_class_dialog(driver).send_keys(name)
+        driver.find_element(By.ID, "folder-class-code").send_keys("CS-201")
+        click(driver, visible(driver, By.XPATH, "//button[contains(normalize-space(), 'Create')][@type='submit' or contains(normalize-space(), 'class')]"))
+        visible(driver, By.XPATH, f"//*[@title='{name}' or normalize-space()='{name}']", timeout=40)
+        code = next((f.get("join_code") for f in professor_api.call("GET", "/folders").json() if f.get("name") == name), None)
+        assert code, "the class has no join code"
+        actual(f"The class \"{name}\" appeared among the folders with the join code {code}.")
+    finally:
+        delete_class(professor_api, name)
+
+
+def test_UT_REV_10(driver, professor_api, actual):
+    """UT-REV-10 | Create Class | Error
+    A professor creates a class with a course code that is not in the form CS-201.
+    Expected: "Class code must look like CS-201" appears and no class is created."""
+    name = f"UT-REV-10 Bad code {int(time.time())}"
+    try:
+        sign_in(driver, PROFESSOR)
+        new_class_dialog(driver).send_keys(name)
+        driver.find_element(By.ID, "folder-class-code").send_keys("thesis")
+        click(driver, visible(driver, By.XPATH, "//button[contains(normalize-space(), 'Create')][@type='submit' or contains(normalize-space(), 'class')]"))
+        assert text_appears(driver, "Class code must look like CS-201"), "the bad code was not refused"
+        assert not any(f.get("name") == name for f in professor_api.call("GET", "/folders").json()), "a class was created"
+        actual("\"Class code must look like CS-201\" appeared and no class was created.")
+    finally:
+        delete_class(professor_api, name)
+
+
+# ── Join Class ───────────────────────────────────────────────────────────────
+
+
+def join_dialog(driver):
+    open_page(driver, "/dashboard")
+    click(driver, visible(driver, By.XPATH, "//button[contains(normalize-space(), 'New document')]"))
+    click(driver, visible(driver, By.XPATH, "//*[@role='menuitem'][contains(normalize-space(), 'Join a class')]"))
+    return visible(driver, By.CSS_SELECTOR, "input[placeholder='e.g. K7M2QX']")
+
+
+def test_UT_REV_11(driver, professor_api, actual):
+    """UT-REV-11 | Join Class | Normal
+    A student chooses New document > Join a class and types the join code the professor gave.
+    Expected: the student joins and the class appears in the student's folders."""
+    name = f"UT-REV-11 Joinable {int(time.time())}"
+    created = professor_api.call("POST", "/folders", {"name": name, "folderType": "class", "classCode": "CS-301"})
+    created.raise_for_status()
+    code = created.json().get("join_code")
+    try:
+        assert code, "the class has no join code"
+        sign_in(driver, STUDENT)
+        join_dialog(driver).send_keys(code)
+        click(driver, visible(driver, By.XPATH, "//button[contains(normalize-space(), 'Join class')]"))
+        visible(driver, By.XPATH, f"//*[contains(normalize-space(), '{name}')]", timeout=40)
+        actual(f"With the code {code} the student joined, and \"{name}\" appeared in their folders.")
+    finally:
+        professor_api.call("DELETE", f"/folders/{created.json()['folder_id']}")
+
+
+def test_UT_REV_12(driver, actual):
+    """UT-REV-12 | Join Class | Error
+    A student types a join code that belongs to no class.
+    Expected: the code is refused with a message and the student joins nothing."""
+    sign_in(driver, STUDENT)
+    join_dialog(driver).send_keys("ZZ99ZZ")
+    click(driver, visible(driver, By.XPATH, "//button[contains(normalize-space(), 'Join class')]"))
+    dialog = visible(driver, By.CSS_SELECTOR, "[role='dialog'][aria-label='Join a class']")
+    wait_for(driver, lambda d: any(w in dialog.text.lower() for w in ("not", "no class", "invalid", "could not")), timeout=20,
+             message="the wrong code was not refused")
+    message = next(line for line in dialog.text.splitlines() if any(w in line.lower() for w in ("not", "no class", "invalid", "could not")))
+    actual(f"\"{message}\" was shown and the student joined nothing.")
+
+
+# ── Originality Check ────────────────────────────────────────────────────────
+
+ESSAY = (
+    "<h1>Introduction</h1>"
+    "<p>Students at our university spend many evenings fixing the margins, headings and spacing of their papers before a deadline. "
+    "In our own survey, most of them said that the formatting took longer than the writing of the last chapter.</p>"
+    "<p>This study builds an editor that watches how each student formats a paper and offers the same formatting the next time, "
+    "so that a student can spend that time on the ideas of the paper instead. The editor also checks grammar and spelling as the student types.</p>"
+    "<p>The editor was tested by forty students and five professors of the College of Computer Studies, who rated how easy it was to use "
+    "and how often its suggestions were right.</p>"
+)
+
+
+def originality(driver, doc_id: str) -> None:
+    open_document(driver, doc_id)
+    click(driver, visible(driver, By.CSS_SELECTOR, "a[aria-label='Check originality against online and scholarly sources']"))
+    visible(driver, By.XPATH, "//*[normalize-space()='Ready to scan']", timeout=60)
+    time.sleep(2)  # the paper is shown before the check is ready to start
+    click(driver, visible(driver, By.XPATH, "//button[contains(normalize-space(), 'Check online')]", timeout=60))
+    wait_for(driver, lambda d: "Searching online" in d.find_element(By.TAG_NAME, "body").text
+             or "too short" in d.find_element(By.TAG_NAME, "body").text
+             or "match with published sources" in d.find_element(By.TAG_NAME, "body").text, timeout=20, message="the check did not start")
+
+
+def test_UT_REV_13(driver, student_api, actual):
+    """UT-REV-13 | Originality Check | Normal
+    A student opens Check originality on a finished paper and presses Check online.
+    Expected: the result shows how much of the paper matches published sources (a percentage), or that no passage matched."""
+    doc_id = student_api.create_document("UT-REV-13 Originality", ESSAY)
+    sign_in(driver, STUDENT)
+    originality(driver, doc_id)
+    wait_for(driver, lambda d: "match with published sources" in d.find_element(By.TAG_NAME, "body").text
+             or "No matching passages" in d.find_element(By.TAG_NAME, "body").text, timeout=150, message="no result was shown")
+    text = driver.find_element(By.TAG_NAME, "body").text
+    line = next((l for l in text.splitlines() if "match with published sources" in l or "No matching passages" in l), "")
+    actual(f"The check finished and showed: \"{line.strip()}\".")
+
+
+def test_UT_REV_14(driver, student_api, actual):
+    """UT-REV-14 | Originality Check | Error
+    A student presses Check online on a document with only one short sentence.
+    Expected: "The document is too short to check online" is shown instead of a score."""
+    doc_id = student_api.create_document("UT-REV-14 Too short", "<p>Only one short sentence here.</p>")
+    sign_in(driver, STUDENT)
+    originality(driver, doc_id)
+    assert text_appears(driver, "too short to check online", timeout=90), "no message for the short document"
+    assert "match with published sources" not in driver.find_element(By.TAG_NAME, "body").text
+    actual("\"The document is too short to check online. Write a few more sentences first.\" was shown, with no score.")
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

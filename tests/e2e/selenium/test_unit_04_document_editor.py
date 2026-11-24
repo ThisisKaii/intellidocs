@@ -12,7 +12,10 @@ import pytest
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
-from selenium_helpers import STUDENT, body_text, click, open_document, select_paragraph, sign_in, visible, wait_for
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+from selenium_helpers import STUDENT, body_text, click, open_document, select_paragraph, sign_in, visible, wait_for, write_png
 
 TEXT = "The quick brown fox studies document formatting."
 SECOND = "A second paragraph stays as it is."
@@ -32,8 +35,11 @@ def press(driver, title: str) -> None:
     time.sleep(0.6)
 
 
+RIBBON_TABS = {"Home": "Text editing and formatting", "Insert": "Insert content into the document", "Styles": "Styles and academic presets"}
+
+
 def ribbon_tab(driver, name: str) -> None:
-    click(driver, visible(driver, By.XPATH, f"//*[contains(@class, 'ribbon-tabs')]//button[normalize-space()='{name}']"))
+    click(driver, visible(driver, By.CSS_SELECTOR, f".ribbon-tabs button[title='{RIBBON_TABS[name]}']"))
 
 
 BLOCK = """
@@ -365,6 +371,131 @@ def test_UT_EDT_18(driver, student_api, actual):
     words = footer_words(driver)
     assert words == 0, words
     actual("The empty document showed 0 words.")
+
+
+# ── Insert Table ─────────────────────────────────────────────────────────────
+
+
+def click_end_of(driver, text: str) -> None:
+    """Put the caret at the end of the paragraph holding `text` (click it, then End)."""
+    paragraph = visible(driver, By.XPATH, f"//div[contains(@class,'ProseMirror')]//p[contains(normalize-space(), '{text}')]")
+    click(driver, paragraph)
+    paragraph.send_keys(Keys.END)
+    time.sleep(0.3)
+
+
+def table_shape(driver):
+    return driver.execute_script("""const t = document.querySelector('.ProseMirror table');
+      return t ? [t.querySelectorAll('tr').length, t.querySelector('tr').children.length] : null""")
+
+
+def test_UT_EDT_19(driver, editor, actual):
+    """UT-EDT-19 | Insert Table | Normal
+    A student opens Insert > Table and picks a 3 by 4 grid.
+    Expected: a table of 3 rows and 4 columns appears where the cursor is."""
+    click_end_of(driver, SECOND)
+    ribbon_tab(driver, "Insert")
+    press(driver, "Insert & Manage Table")
+    click(driver, visible(driver, By.CSS_SELECTOR, "button[aria-label='3 by 4']"))
+    wait_for(driver, lambda d: table_shape(d) is not None, timeout=10, message="no table was inserted")
+    assert table_shape(driver) == [3, 4], table_shape(driver)
+    actual("A table of 3 rows and 4 columns appeared below the second paragraph.")
+
+
+def test_UT_EDT_20(driver, editor, actual):
+    """UT-EDT-20 | Insert Table | Error
+    A student opens Insert > Table, then closes the grid with Escape without picking a size.
+    Expected: no table is inserted and the text is unchanged."""
+    click_end_of(driver, SECOND)
+    ribbon_tab(driver, "Insert")
+    press(driver, "Insert & Manage Table")
+    visible(driver, By.CSS_SELECTOR, "button[aria-label='3 by 4']")
+    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+    time.sleep(1)
+    if driver.find_elements(By.CSS_SELECTOR, "button[aria-label='3 by 4']"):
+        press(driver, "Insert & Manage Table")  # the button closes its own grid as well
+    time.sleep(1)
+    assert table_shape(driver) is None, "a table was inserted"
+    assert TEXT in body_text(driver) and SECOND in body_text(driver)
+    actual("The grid closed without a choice; no table was inserted and the text stayed the same.")
+
+
+# ── Insert Image ─────────────────────────────────────────────────────────────
+
+
+def test_UT_EDT_21(driver, editor, tmp_path, actual):
+    """UT-EDT-21 | Insert Image | Normal
+    A student chooses Insert > Insert Image and picks a PNG picture.
+    Expected: the picture appears in the document."""
+    picture = write_png(tmp_path / "UT-EDT-21 picture.png", 320, 200)
+    click_end_of(driver, SECOND)
+    ribbon_tab(driver, "Insert")
+    picker = driver.find_element(By.CSS_SELECTOR, "input[type=file][accept^='image/png']")
+    driver.execute_script("arguments[0].style.display = 'block'", picker)
+    picker.send_keys(str(picture))
+    wait_for(driver, lambda d: d.find_elements(By.CSS_SELECTOR, ".ProseMirror img"), timeout=60, message="the picture did not appear")
+    actual("The PNG picture appeared in the document below the second paragraph.")
+
+
+def test_UT_EDT_22(driver, editor, tmp_path, actual):
+    """UT-EDT-22 | Insert Image | Error
+    A student chooses Insert > Insert Image and picks a text file instead of a picture.
+    Expected: "That file is not a picture" is shown and nothing is added to the document."""
+    not_picture = tmp_path / "UT-EDT-22 notes.txt"
+    not_picture.write_text("These are notes, not a picture.", encoding="utf-8")
+    click_end_of(driver, SECOND)
+    ribbon_tab(driver, "Insert")
+    picker = driver.find_element(By.CSS_SELECTOR, "input[type=file][accept^='image/png']")
+    driver.execute_script("arguments[0].style.display = 'block'", picker)
+    picker.send_keys(str(not_picture))
+    alert = WebDriverWait(driver, 20).until(EC.alert_is_present())
+    message = alert.text
+    alert.accept()
+    assert "not a picture" in message, message
+    assert not driver.find_elements(By.CSS_SELECTOR, ".ProseMirror img"), "something was inserted"
+    actual(f"\"{message}\" was shown and nothing was added to the document.")
+
+
+# ── Page Setup ───────────────────────────────────────────────────────────────
+
+
+def page_box(driver) -> tuple[float, float]:
+    return tuple(driver.execute_script("""const w = document.querySelector('.rm-pages-wrapper'); const s = getComputedStyle(w);
+      return [parseFloat(s.getPropertyValue('--rm-page-width')), parseFloat(s.getPropertyValue('--rm-page-height'))]"""))
+
+
+def open_page_setup(driver) -> None:
+    click(driver, visible(driver, By.CSS_SELECTOR, "button[title^='Page setup']"))
+    visible(driver, By.XPATH, "//*[normalize-space()='Margins (Inches)']")
+
+
+def test_UT_EDT_23(driver, editor, actual):
+    """UT-EDT-23 | Page Setup | Normal
+    A student opens Page setup and chooses Landscape.
+    Expected: the page turns sideways (wider than it is tall)."""
+    width, height = page_box(driver)
+    assert width < height
+    open_page_setup(driver)
+    click(driver, visible(driver, By.XPATH, "//button[normalize-space()='landscape']"))
+    wait_for(driver, lambda d: page_box(d)[0] > page_box(d)[1], timeout=15, message="the page did not turn")
+    width, height = page_box(driver)
+    actual(f"The page turned sideways: {width / 96:.1f} in wide by {height / 96:.1f} in tall.")
+
+
+def test_UT_EDT_24(driver, editor, actual):
+    """UT-EDT-24 | Page Setup | Error
+    A student types 10 inches as the left margin in Page setup, more than the page can hold.
+    Expected: the margin is kept within the allowed 0.25 to 3 inches and the text column does not disappear."""
+    open_page_setup(driver)
+    field = visible(driver, By.XPATH, "//span[normalize-space()='left:']/following::input[@type='number'][1]")
+    field.send_keys(Keys.CONTROL, "a")
+    field.send_keys("10")
+    time.sleep(2)
+    left = driver.execute_script("return parseFloat(getComputedStyle(document.querySelector('.rm-pages-wrapper')).getPropertyValue('--rm-margin-left'))") / 96
+    column = driver.execute_script("return document.querySelector('.ProseMirror p').getBoundingClientRect().width")
+    actual(f"The left margin became {left:.2f} in and the text column was {column:.0f} px wide.")
+    assert left <= 3.0, f"a {left:.2f} in margin was accepted"
+    assert column > 100, "the text column disappeared"
 
 
 if __name__ == "__main__":
