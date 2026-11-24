@@ -20,6 +20,15 @@ export const ColumnSection = Node.create({
         parseHTML: (element: HTMLElement) => element.getAttribute('data-widths') ?? '',
         renderHTML: (attributes: Record<string, unknown>) => (attributes.widths ? { 'data-widths': String(attributes.widths) } : {}),
       },
+      // The space between the columns in px (Word's w:space); widths share what is left.
+      gap: {
+        default: 0,
+        parseHTML: (element: HTMLElement) => {
+          const value = Number.parseFloat(element.getAttribute('data-gap') ?? '')
+          return Number.isFinite(value) && value > 0 ? value : 0
+        },
+        renderHTML: (attributes: Record<string, unknown>) => (attributes.gap ? { 'data-gap': String(attributes.gap) } : {}),
+      },
     }
   },
 
@@ -27,14 +36,15 @@ export const ColumnSection = Node.create({
     return [{ tag: 'div.intellidocs-columns' }]
   },
 
-  renderHTML({ node }) {
+  renderHTML({ node, HTMLAttributes }) {
     const widths = String(node.attrs.widths || '')
       .split(',')
       .filter(Boolean)
       .map((value) => `${value}fr`)
       .join(' ')
-    const style = `display:grid;${widths ? `grid-template-columns:${widths};` : ''}column-gap:0`
-    return ['div', { class: 'intellidocs-columns', style }, 0]
+    const gap = Number(node.attrs.gap) || 0
+    const style = `display:grid;${widths ? `grid-template-columns:${widths};` : ''}column-gap:${gap}px`
+    return ['div', { ...HTMLAttributes, class: 'intellidocs-columns', style }, 0]
   },
 })
 

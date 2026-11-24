@@ -137,6 +137,10 @@ export const IndentExtension = Extension.create({
         if (parent.type.name !== 'paragraph' && parent.type.name !== 'heading') return false
         const style = typeof parent.attrs.style === 'string' ? parent.attrs.style : ''
         if (firstLineIndentPx(style) <= 0) return false
+        // On a centred or right-aligned line the indent barely shows, so taking it off looked like
+        // Backspace doing nothing: join instead.
+        const align = String(parent.attrs.textAlign ?? /(?:^|;)\s*text-align\s*:\s*(\w+)/i.exec(style)?.[1] ?? '')
+        if (align === 'center' || align === 'right') return false
         const pos = selection.$from.before()
         return this.editor.commands.command(({ tr, dispatch }) => {
           if (dispatch) tr.setNodeMarkup(pos, undefined, { ...parent.attrs, style: withoutFirstLineIndent(style) })

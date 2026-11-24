@@ -117,6 +117,7 @@ import { api } from '@/services/api'
 import { FontSizeExtension } from './FontSizeExtension'
 import { LetterSpacingExtension } from './LetterSpacingExtension'
 import { IndentExtension } from './IndentExtension'
+import { InvisibleBackspace } from './InvisibleBackspace'
 import { exportThesisWord, exportThesisPdf } from '@/lib/thesisExport'
 import { exportIeeeDocx } from '@/lib/ieeeExport'
 import { readRibbonCollapsed, writeRibbonCollapsed } from '@/lib/ribbonState'
@@ -1455,6 +1456,7 @@ const editorExtensionsAfterStarterKit = [
   FontSizeExtension,
   LetterSpacingExtension,
   IndentExtension,
+  InvisibleBackspace,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   AlignedImageResize.configure({ inline: false, allowBase64: true }),
   // table-plus draws its own column handles; prosemirror-tables' resizing

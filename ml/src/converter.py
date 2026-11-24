@@ -4185,6 +4185,7 @@ def _write_body_html(
     section_no = 0
     section_starts: Dict[int, int] = {0: 0}
     previous_closed_section = False
+    doc_sections = [section._sectPr for section in doc.sections]
     for element in _iter_block_elements(doc.element.body):
         tab_title = _STATE.tab_starts.get(element)
         if tab_title is not None:
@@ -4210,6 +4211,9 @@ def _write_body_html(
                 html = _paragraph_to_html(p, doc_parts)
                 nodes = _STATE.last_paragraph_nodes
                 if pending_page_break and html.startswith('<p class="empty-spacer"'):
+                    continue
+                if _is_column_change_mark(element, doc_sections, section_no):
+                    emit_textboxes(element)
                     continue
                 if html:
                     out.append(html)
@@ -4413,8 +4417,7 @@ def _section_props(section: Any, described: Dict[str, Any]) -> Dict[str, Any]:
     count, gap, widths = 1, 48.0, None
     if cols is not None:
         count = max(1, int(cols.get(qn("w:num")) or 1))
-        space = cols.get(qn("w:space"))
-        gap = round(int(space) * TWIPS_PER_PX, 1) if space and space.isdigit() else 48.0
+        gap = _column_gap_px(cols)
         explicit = [c.get(qn("w:w")) for c in cols.findall(qn("w:col"))]
         if cols.get(qn("w:equalWidth")) in ("0", "false") and len(explicit) == count and all(w and w.isdigit() for w in explicit):
             widths = [round(int(w) * TWIPS_PER_PX, 1) for w in explicit]
@@ -4520,6 +4523,40 @@ _MAX_COLUMN_ENTRIES = 40
 _MAX_COLUMN_TEXT = 3000
 
 
+_MIN_COLUMN_GAP_PX = 6.0
+
+
+def _column_count(sect_pr: Any) -> int:
+    return max(1, len(_column_widths(sect_pr)))
+
+
+def _is_column_change_mark(element: Any, sect_prs: List[Any], section_no: int) -> bool:
+    """An empty paragraph that only carries a section break into a continuous section with another
+    number of columns. Word gives it no line of its own (it sits on the line above), so it is left out."""
+    sect_pr = element.find(f"{qn('w:pPr')}/{qn('w:sectPr')}")
+    if sect_pr is None or section_no + 1 >= len(sect_prs):
+        return False
+    if any((t.text or "").strip() for t in element.iter(qn("w:t"))):
+        return False
+    if any(True for tag in ("w:drawing", "w:pict", "w:object", "w:tab", "w:br") for _ in element.iter(qn(tag))):
+        return False
+    following = sect_prs[section_no + 1]
+    start = following.find(qn("w:type"))
+    if start is None or start.get(qn("w:val")) != "continuous":
+        return False
+    return _column_count(sect_pr) != _column_count(following)
+
+
+def _column_gap_px(cols: Any) -> float:
+    """The space between a section's columns, in px: w:cols' own w:space, else (columns of their own
+    widths) the first column's w:space, else Word's default half inch."""
+    space = cols.get(qn("w:space"))
+    if not (space and space.isdigit()):
+        first = cols.find(qn("w:col"))
+        space = first.get(qn("w:space")) if first is not None else None
+    return round(int(space) * TWIPS_PER_PX, 1) if space and space.isdigit() else 48.0
+
+
 def _column_widths(sect_pr: Any) -> List[float]:
     """Column widths (percent) of a section's w:cols, equal unless it lists its own widths; [] for one column."""
     cols = sect_pr.find(qn("w:cols"))
@@ -4547,6 +4584,12 @@ def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int], jo
         if index >= len(sections) or index + 1 not in starts:
             continue
         widths = _column_widths(sections[index]._sectPr)
+        cols = sections[index]._sectPr.find(qn("w:cols"))
+        gap = _column_gap_px(cols) if cols is not None else 48.0
+        # A hairline gap (memo templates leave ~40 twips) is narrower than the browser's fonts run wider
+        # than Word's: kept, it made a letterhead line that just fits in Word wrap and push a page over.
+        if gap < _MIN_COLUMN_GAP_PX:
+            gap = 0.0
         begin, end = starts[index], starts[index + 1]
         # A "next page" section opens with its page break: that break belongs before the columns,
         # not inside them (only a break in the middle makes the section too long to wrap).
@@ -4576,11 +4619,11 @@ def _wrap_columns(doc: docx.Document, out: List[str], starts: Dict[int, int], jo
             columns[-1].append(item)
             json_columns[-1].append(jout[begin + position] if jout is not None else [])
         body = "".join('<div class="intellidocs-column">' + "\n".join(column) + "</div>" for column in columns if column)
-        out[begin:end] = [f'<div class="intellidocs-columns" data-widths="{",".join(f"{w:g}" for w in widths)}">{body}</div>']
+        out[begin:end] = [f'<div class="intellidocs-columns" data-widths="{",".join(f"{w:g}" for w in widths)}" data-gap="{gap:g}">{body}</div>']
         if jout is not None:
             inner = [_body_nodes(column) for column, html_column in zip(json_columns, columns) if html_column]
             jout[begin:end] = [None if any(column is None for column in inner) else [{
-                "type": "columnSection", "attrs": {"widths": ",".join(f"{w:g}" for w in widths)},
+                "type": "columnSection", "attrs": {"widths": ",".join(f"{w:g}" for w in widths), "gap": gap},
                 "content": [{"type": "sectionColumn", "content": column} for column in inner],
             }]]
         # Later sections' offsets move with the replaced range.
@@ -5131,7 +5174,40 @@ def _plan_tab_starts(doc: docx.Document) -> Dict[Any, str]:
     if _is_two_column_body(doc):
         return {}
     elements, blocks = _tab_blocks(doc)
-    return {elements[index]: title for index, title in tab_plan.plan_tabs(blocks).items()}
+    starts = tab_plan.plan_tabs(blocks)
+    breaks = _page_break_paragraphs(doc)
+    return {elements[_tab_page_start(elements, index, breaks, starts)]: title for index, title in starts.items()}
+
+
+# At most this many short paragraphs before a chapter's heading move into its tab with it.
+_TAB_LEAD_BLOCKS = 3
+_TAB_LEAD_CHARS = 200
+
+
+def _tab_page_start(elements: List[Any], index: int, breaks: Set[Any], starts: Dict[int, str]) -> int:
+    """Where a tab that opens at elements[index] starts: the first element of that page when only a
+    few short paragraphs sit above the heading on it (a subheading drawn beside or above the chapter
+    title), so they open the chapter instead of ending the tab before it. Otherwise index itself."""
+
+    def starts_page(position: int) -> bool:
+        element = elements[position]
+        if position == 0 or element.find(f"{qn('w:pPr')}/{qn('w:pageBreakBefore')}") is not None:
+            return True
+        previous = elements[position - 1]
+        if previous in breaks:
+            return True
+        page_breaks = previous.findall(f".//{qn('w:br')}[@{qn('w:type')}='page']")
+        return bool(page_breaks) and not "".join(t.text or "" for t in previous.iter(qn("w:t"))).strip()
+
+    position = index
+    while position > 0 and index - position < _TAB_LEAD_BLOCKS and not starts_page(position):
+        previous = elements[position - 1]
+        text = "".join(t.text or "" for t in previous.iter(qn("w:t")))
+        contents_line = previous.find(f".//{qn('w:r')}/{qn('w:tab')}") is not None
+        if position - 1 in starts or previous.tag != qn("w:p") or len(text) > _TAB_LEAD_CHARS or contents_line:
+            return index
+        position -= 1
+    return position if starts_page(position) else index
 
 
 def _docx_document_to_result(

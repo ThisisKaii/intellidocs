@@ -9,6 +9,7 @@ from docx.enum.section import WD_SECTION
 from docx.enum.text import WD_BREAK
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.shared import Pt
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "ml" / "src"))
@@ -69,3 +70,66 @@ def test_every_tab_of_a_split_manuscript_opens_on_whole_blocks() -> None:
         assert part.count("<div") == part.count("</div"), f"tab {index} has unbalanced blocks"
     chapter_one = next(part for part in parts if "CHAPTER I INTRODUCTION" in part)
     assert "Document creation is a cornerstone" in chapter_one
+    # The subheading on the chapter's first page opens the chapter's tab, not the end of the one before.
+    assert "Rationale of the Study" in chapter_one
+
+
+def _two_column_section_after(document, space_twips: int, width_twips: int) -> None:
+    """A continuous two-column section from here on, with columns of their own widths and gap."""
+    section = document.add_section(WD_SECTION.CONTINUOUS)
+    cols = section._sectPr.find(qn("w:cols"))
+    if cols is None:
+        cols = OxmlElement("w:cols")
+        section._sectPr.append(cols)
+    for name in ("w:space", "w:num", "w:equalWidth"):
+        cols.attrib.pop(qn(name), None)
+    cols.set(qn("w:num"), "2")
+    cols.set(qn("w:equalWidth"), "0")
+    for _ in range(2):
+        col = OxmlElement("w:col")
+        col.set(qn("w:w"), str(width_twips))
+        col.set(qn("w:space"), str(space_twips))
+        cols.append(col)
+
+
+def definitions_docx() -> bytes:
+    """A glossary page: a one-column title, then a term and its definition side by side."""
+    document = Document()
+    document.add_paragraph("DEFINITION OF TERMS")
+    _two_column_section_after(document, space_twips=143, width_twips=4608)
+    # The paragraph that carries the break into the columns is empty but has its own size and spacing.
+    carrier = document.paragraphs[-1]
+    carrier.paragraph_format.space_before = Pt(2.25)
+    carrier.add_run().font.size = Pt(10)
+    document.add_paragraph("Artificial Intelligence (AI)")
+    definition = document.add_paragraph()
+    definition.add_run().add_break(WD_BREAK.COLUMN)
+    definition.add_run("Refers to the technology that enables the system to analyze user inputs.")
+    body = document.add_section(WD_SECTION.CONTINUOUS)
+    if body._sectPr.find(qn("w:cols")) is not None:
+        body._sectPr.remove(body._sectPr.find(qn("w:cols")))
+    document.add_paragraph("Behavioral Tracking")
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def test_columns_keep_the_gap_word_gives_each_column() -> None:
+    """Columns of their own widths carry the gap on each w:col (143 twips here), not on w:cols: read
+    as Word's default half inch, the definitions sat 18 px off Word's."""
+    import re
+
+    html = convert_docx_bytes_to_html(definitions_docx())["html"]
+    block = re.search(r'<div class="intellidocs-columns"[^>]*>', html)
+    assert block, "the term and its definition were not put side by side"
+    assert 'data-gap="9.5"' in block.group(0)
+
+
+def test_the_empty_paragraph_that_switches_to_columns_takes_no_line() -> None:
+    """Word draws the empty paragraph that carries a continuous break into another number of columns
+    on the line above it; as a blank line it pushed the glossary 27 px down the page."""
+    import re
+
+    html = convert_docx_bytes_to_html(definitions_docx())["html"]
+    between = html[html.find("DEFINITION OF TERMS"):html.find('<div class="intellidocs-columns"')]
+    assert "<p " not in between and "<p>" not in between, between
