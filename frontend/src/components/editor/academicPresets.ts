@@ -211,9 +211,11 @@ const UCLM_CAPSTONE: PresetInput = {
   headings: {
     level1: { textAlign: 'center', fontSize: '12pt', fontWeight: 700, textTransform: 'uppercase' },
     level2: { textAlign: 'left', fontSize: '11pt', fontWeight: 700, textTransform: 'none' },
-    level3: { textAlign: 'left', fontSize: '11pt', fontWeight: 400, fontStyle: 'italic', textTransform: 'none', note: 'Italicized' },
+    // Front-matter titles (APPROVAL SHEET, ABSTRACT …) arrive at this level from imported manuscripts:
+    // bold like the other headings, never italic.
+    level3: { textAlign: 'left', fontSize: '11pt', fontWeight: 700, textTransform: 'none', note: '11pt bold' },
   },
-  title: { textAlign: 'center', fontSize: '11pt', fontWeight: 700, textTransform: 'uppercase', note: '11pt bold, all caps' },
+  title: { textAlign: 'center', fontSize: '12pt', fontWeight: 700, textTransform: 'uppercase', note: '12pt bold, all caps' },
 }
 
 export const ACADEMIC_PRESETS: AcademicPreset[] = [APA_7TH, IEEE, UCLM_CAPSTONE].map(
