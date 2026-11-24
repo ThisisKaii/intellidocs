@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   XCircle,
   BarChart3,
-  Trash2,
   RefreshCw,
   Clock,
   ArrowLeft,
@@ -183,22 +182,6 @@ export default function AdminDashboard(): JSX.Element {
     }
   }
 
-  async function handleDeleteDocument(documentId: string) {
-    if (!window.confirm('Are you sure you want to permanently delete this document as moderator?')) {
-      return
-    }
-    setActionLoading(documentId)
-    try {
-      await api.admin.deleteDocument(documentId)
-      showToast('success', 'Document deleted successfully by Admin moderator.')
-      await loadData()
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : 'Failed to delete document')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
   async function handleExportEmpiricalData() {
     setExportLoading(true)
     try {
@@ -300,7 +283,7 @@ export default function AdminDashboard(): JSX.Element {
               </h1>
             </div>
             <p style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', margin: 0 }}>
-              Verify students and faculty, manage users, monitor platform telemetry, moderate documents, and export research data.
+              Verify students and faculty, manage users, monitor platform telemetry, view documents, and export research data.
             </p>
           </div>
 
@@ -449,7 +432,7 @@ export default function AdminDashboard(): JSX.Element {
             }}
           >
             <AlertTriangle style={{ width: '16px', height: '16px' }} />
-            Moderation ({documents.length})
+            Documents ({documents.length})
           </button>
 
           <button
@@ -785,10 +768,10 @@ export default function AdminDashboard(): JSX.Element {
         {activeTab === 'moderation' && (
           <div style={{ backgroundColor: 'var(--card)', borderRadius: '0.75rem', border: '1px solid var(--border)', padding: '1.5rem' }}>
             <h2 style={{ fontSize: '1.125rem', fontWeight: 600, margin: '0 0 0.25rem' }}>
-              Document moderation
+              Documents
             </h2>
             <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1rem' }}>
-              Global search across all users with author email, revision count, and last-updated audit info.
+              Read-only search across all users' documents with author email, revision count, and last-updated audit info.
             </p>
 
             <form
@@ -874,30 +857,6 @@ export default function AdminDashboard(): JSX.Element {
                         Author: {doc.email || doc.user_id} • Revisions: {doc.revision_count} • Updated {timeAgo(doc.updated_at)}
                       </p>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteDocument(doc.id)}
-                      disabled={actionLoading === doc.id}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.375rem',
-                        height: '32px',
-                        padding: '0 0.75rem',
-                        borderRadius: '0.375rem',
-                        border: 'none',
-                        backgroundColor: 'color-mix(in srgb, var(--error) 12%, transparent)',
-                        color: 'var(--error)',
-                        fontSize: '0.8125rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      <Trash2 style={{ width: '14px', height: '14px' }} />
-                      Purge Document
-                    </button>
                   </div>
                 ))}
               </div>

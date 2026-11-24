@@ -10,7 +10,6 @@ import {
   SystemReport,
   VerificationStatus,
 } from '../types/index'
-import { removeDocumentImages } from './imageStorageModel'
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!)
 
@@ -416,21 +415,6 @@ export async function getReportTimeseries(weeks: number): Promise<ReportTimeseri
 }
 
 /** Delete any document as an Admin moderator. */
-export async function deleteDocumentByAdmin(documentId: string): Promise<boolean> {
-  await removeDocumentImages(documentId)
-  const { error } = await supabase
-    .from('documents')
-    .delete()
-    .eq('id', documentId)
-
-  if (error) {
-    console.error('Error deleting document as admin:', error)
-    throw new Error(error.message)
-  }
-
-  return true
-}
-
 /** Generate a structured empirical research CSV dataset for Chapter 4 analysis. */
 export async function generateEmpiricalDataset(): Promise<string> {
   // Fetch prediction feedback records

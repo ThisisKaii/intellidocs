@@ -86,22 +86,6 @@ export async function getSystemReports(req: AuthenticatedRequest, res: Response)
   }
 }
 
-export async function deleteDocument(req: AuthenticatedRequest, res: Response): Promise<void> {
-  try {
-    const documentId = req.params.documentId
-    if (!documentId) {
-      res.status(400).json({ error: 'Missing documentId' })
-      return
-    }
-
-    await adminModel.deleteDocumentByAdmin(documentId)
-    res.json({ message: 'Document deleted by admin' })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to delete document'
-    res.status(500).json({ error: message })
-  }
-}
-
 /** Export empirical research dataset as CSV for Chapter 4 analysis. */
 export async function exportEmpiricalData(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {

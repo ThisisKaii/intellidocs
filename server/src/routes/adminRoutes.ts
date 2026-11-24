@@ -16,7 +16,6 @@ router.patch('/users/:userId/role', validateBody(updateRoleSchema), adminControl
 router.get('/reports', adminController.getSystemReports)
 router.get('/reports/timeseries', adminController.getReportTimeseries)
 router.get('/documents', adminController.getAllDocuments)
-router.delete('/documents/:documentId', adminController.deleteDocument)
 router.get('/export-empirical', adminController.exportEmpiricalData)
 
 

@@ -2205,11 +2205,6 @@ export const api = {
       const qs = query && query.trim().length > 0 ? `?q=${encodeURIComponent(query.trim())}` : ''
       return fetchAPI<AdminDocumentRecord[]>(`admin/documents${qs}`)
     },
-    deleteDocument: async (documentId: string): Promise<{ message: string }> => {
-      return fetchAPI<{ message: string }>(`admin/documents/${documentId}`, {
-        method: 'DELETE',
-      })
-    },
     /** Download the empirical research dataset as a CSV blob. */
     exportEmpiricalData: async (): Promise<Blob> => {
       const token = getAuthToken()

@@ -57,7 +57,7 @@ export function AdminRoute({ children }: ProtectedRouteProps): JSX.Element {
   return <>{children}</>
 }
 
-/** Approved Professor route guard. Only approved professors and administrators get in; everyone else sees why. */
+/** Approved Professor route guard. Only approved professors get in (administrators manage users, not classes); everyone else sees why. */
 export function ApprovedProfessorRoute({ children }: ProtectedRouteProps): JSX.Element {
   const { user, isAuthenticated, loading } = useAuth()
 
@@ -73,7 +73,7 @@ export function ApprovedProfessorRoute({ children }: ProtectedRouteProps): JSX.E
     return <Navigate to="/login" replace />
   }
 
-  if (user?.role === 'admin' || (user?.role === 'professor' && user?.verificationStatus === 'approved')) {
+  if (user?.role === 'professor' && user?.verificationStatus === 'approved') {
     return <>{children}</>
   }
 

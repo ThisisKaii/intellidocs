@@ -160,12 +160,13 @@ export async function requireApprovedProfessor(
     const roleName = profileRoleName(profile as ProfileRoleJoin)
     const status = profile.verification_status
 
-    if (roleName !== 'professor' && roleName !== 'admin') {
+    // Administrators manage users and view data; they do not teach, review or scan (professors only).
+    if (roleName !== 'professor') {
       res.status(403).json({ error: '403 Forbidden: Professor role required' })
       return
     }
 
-    if (roleName === 'professor' && status !== 'approved') {
+    if (status !== 'approved') {
       res.status(403).json({
         error: `403 Forbidden: Professor application status is '${status}'. Administrator approval required.`,
       })
