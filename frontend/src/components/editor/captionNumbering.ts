@@ -86,8 +86,12 @@ export type CaptionScheme = 'sequence' | 'chapter' | 'restart'
 /** The label at the start of a caption: word, space, number (Arabic, chapter.number or Roman). */
 export const CAPTION_LABEL = /^(Figure|FIGURE|Fig\.|Table|TABLE|Tab\.)(\s+)(\d+(?:\.\d+)?|[IVXLCDM]+)(?![A-Za-z0-9])/
 
-/** What may follow the number of an untagged caption: a separator, or nothing at all. */
-const PLAIN_SEPARATOR = /^\s*(?:[.:–—-]|$)/
+/**
+ * What may follow the number of an untagged caption: a separator, nothing at all, a line break (the
+ * title on the next line), or a title in capitals ("Table 2 SCORING POINTS", as manuscripts write
+ * them). Prose that starts with a label ("Table 2 shows the scores") is none of these.
+ */
+const PLAIN_SEPARATOR = /^(?:\s*(?:[.:–—-]|$)|[ \t]*\n|\s+[A-Z0-9][A-Z0-9 ,&/()'’-]*$)/
 /** A list-of-figures entry ("Figure 1. Framework ........ 23"): never a caption. */
 const LIST_ENTRY = /(?:\.{3,}|…|\t)\s*[ivxlcdm\d]+\s*$/i
 /** Longest text an untagged caption has; longer paragraphs are prose that starts "Figure 3 …". */

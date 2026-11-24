@@ -28,6 +28,16 @@ describe('recognising the captions a document came with', () => {
     expect(findCaptions(editor.state.doc).map((entry) => entry.label)).toEqual(['Figure 1', 'Figure 2'])
   })
 
+  it('counts manuscript table captions whose title follows in capitals or on the next line', () => {
+    const editor = editorWith(
+      '<p>Table 1 COMPARATIVE MATRIX</p>' +
+        '<p>Table 2<br>SCORING POINTS</p>' +
+        '<p>Table 2 shows the scoring points each respondent could give.</p>' +
+        '<p>Table 3 A summary of the answers</p>',
+    )
+    expect(findCaptions(editor.state.doc).map((entry) => entry.label)).toEqual(['Table 1', 'Table 2'])
+  })
+
   it('finds a figure number that does not follow from its place', () => {
     const editor = editorWith(
       '<p>Figure 1: A</p><p>Figure 2: B</p><p>Figure 3: C</p><p>Figure 4: D</p><p>Figure 4: DocEdit-v2</p><p>Figure 3: ReWriteLM</p>',
@@ -93,5 +103,31 @@ describe('captions in one tab of a document split into tabs', () => {
     const editor = editorWith('<h1>Chapter 3</h1><p>Table 1. A</p><p>Table 2. B</p>')
     const context = { offsets: { figure: 0, table: 6 }, schemes: { table: 'restart' as const } }
     expect(misnumberedCaptions(findCaptions(editor.state.doc), 'default', false, context)).toEqual([])
+  })
+})
+
+describe('editing a caption label by hand', () => {
+  function positionOf(editor: Editor, text: string): number {
+    let found = -1
+    editor.state.doc.forEach((node, offset) => {
+      if (node.textContent === text) found = offset + 1
+    })
+    return found
+  }
+
+  it('leaves the other captions alone while a label is typed over', () => {
+    const editor = editorWith('<p>Table 1: A</p><p>Table 2: B</p><p>Table 3: C</p>')
+    const start = positionOf(editor, 'Table 2: B')
+    // Select "Table 2" and type the first letter of the new label over it.
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start, start + 7)))
+    editor.view.dispatch(editor.state.tr.insertText('T'))
+    expect(texts(editor)).toEqual(['Table 1: A', 'T: B', 'Table 3: C'])
+  })
+
+  it('still renumbers the captions after one whose paragraph is deleted', () => {
+    const editor = editorWith('<p>Table 1: A</p><p>Table 2: B</p><p>Table 3: C</p>')
+    const start = positionOf(editor, 'Table 1: A') - 1
+    editor.view.dispatch(editor.state.tr.delete(start, start + editor.state.doc.child(0).nodeSize))
+    expect(texts(editor)).toEqual(['Table 1: B', 'Table 2: C'])
   })
 })

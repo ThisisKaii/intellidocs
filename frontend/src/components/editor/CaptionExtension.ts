@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core'
 import type { Mark, Node as ProseMirrorNode, Schema } from '@tiptap/pm/model'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Mapping } from '@tiptap/pm/transform'
 
 import { hasLocalDocChange } from './collabTransactions'
 import { planAutoCaptions } from './autoCaption'
@@ -69,6 +70,14 @@ interface CaptionEdit {
 
 /** Caption counts of a document, kept so the plugin can tell when a caption came or went. */
 const countsByDoc = new WeakMap<ProseMirrorNode, Record<CaptionKind, number>>()
+
+/** Whether the transactions deleted the paragraph of a caption the document had before them. */
+function captionParagraphDeleted(transactions: readonly Transaction[], before: ProseMirrorNode): boolean {
+  const mapping = new Mapping()
+  for (const tr of transactions) mapping.appendMapping(tr.mapping)
+  // The token before a paragraph's content is its opening: gone only when the paragraph is.
+  return findCaptions(before).some((entry) => mapping.mapResult(entry.pos + 1, -1).deleted)
+}
 
 function countsOf(doc: ProseMirrorNode, entries?: CaptionEntry[]): Record<CaptionKind, number> {
   const cached = countsByDoc.get(doc)
@@ -326,7 +335,10 @@ export const CaptionExtension = Extension.create({
           // A caption inserted with the command, or one removed: every caption after it moves, so
           // the document's own captions are renumbered too. Typing a new one by hand is not.
           const inserted = transactions.some((tr) => tr.getMeta(CAPTION_INSERTED) === true)
-          const removed = after.figure < before.figure || after.table < before.table
+          // Removed means the caption's paragraph went away. Retyping a label ("Table 1" selected and
+          // "Table 7" typed over it) also stops it reading as a caption for a keystroke, and that
+          // renumbered every caption of a manuscript in the middle of the typing.
+          const removed = (after.figure < before.figure || after.table < before.table) && captionParagraphDeleted(transactions, oldState.doc)
           const plan = planCaptionChanges(newState, storage.labelStyle, inserted || removed, entries, storage.context)
           if (plan.edits.length === 0 && plan.unmark.length === 0) return null
           const tr = newState.tr

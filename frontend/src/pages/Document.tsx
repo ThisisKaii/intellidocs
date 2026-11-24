@@ -2420,13 +2420,28 @@ export default function Document(): JSX.Element {
   // their pages from the right place (also when it was opened and not edited).
   useEffect(() => {
     if (!editor || !id || !activeTabId || readOnly) return
+    // Right after a switch or a reload the editor can still hold, or still be paginating, the tab
+    // that was open before: a half-laid-out 61-page tab was once filed as the front matter's
+    // "33 p.". Only a count that held for two checks, from an editor whose words match the tab, counts.
+    let previous = -1
     const timer = window.setInterval(() => {
       if (editor.isDestroyed || contentTabRef.current !== activeTabId) return
       const pages = editor.view.dom.querySelectorAll('.rm-page-break').length
+      const steady = pages === previous
+      previous = pages
+      if (!steady) return
       const tab = docTabsRef.current?.find((candidate) => candidate.tab_id === activeTabId)
-      if (!tab || pages <= 0 || tab.page_count === pages) return
-      setDocTabs((current) => current?.map((candidate) => (candidate.tab_id === activeTabId ? { ...candidate, page_count: pages } : candidate)) ?? current)
-      void api.documents.tabs.update(id, activeTabId, { page_count: pages }).catch(() => {})
+      if (!tab || pages <= 0) return
+      // Caption counts too: the tabs after this one number their figures and tables from them, and a
+      // tab that is only read (opening saves nothing) would otherwise keep the counts it was split with.
+      const counts = captionCountsOf(editor)
+      const stale = Number(tab.caption_counts?.figure) !== counts.figure || Number(tab.caption_counts?.table) !== counts.table
+      if (tab.page_count === pages && !stale) return
+      const words = editor.state.doc.textContent.split(/\s+/).filter(Boolean).length
+      if (tab.word_count > 0 && Math.abs(words - tab.word_count) > Math.max(50, tab.word_count * 0.2)) return
+      const captionCounts = { ...(tab.caption_counts ?? {}), ...counts }
+      setDocTabs((current) => current?.map((candidate) => (candidate.tab_id === activeTabId ? { ...candidate, page_count: pages, caption_counts: captionCounts } : candidate)) ?? current)
+      void api.documents.tabs.update(id, activeTabId, { page_count: pages, caption_counts: captionCounts }).catch(() => {})
     }, 4000)
     return () => window.clearInterval(timer)
   }, [editor, id, activeTabId, readOnly])
