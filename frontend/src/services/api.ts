@@ -1525,8 +1525,13 @@ export const api = {
       return fetchAPI<null>(`documents/${id}/pin`, { method: 'DELETE' })
     },
     /** List version snapshots for a document (owner only, newest first). */
+    /** The version history, newest first, without each version's text (content is ''): see `version`. */
     versions: async (id: string, tabId?: string | null): Promise<DocumentVersion[]> => {
       return fetchAPI<DocumentVersion[]>(`documents/${id}/versions${tabId ? `?tab=${encodeURIComponent(tabId)}` : ''}`)
+    },
+    /** One version with its text, for comparing or restoring it. */
+    version: async (id: string, versionId: string): Promise<DocumentVersion> => {
+      return fetchAPI<DocumentVersion>(`documents/${id}/versions/${encodeURIComponent(versionId)}`)
     },
     /** Restore a specific version snapshot, returning the restored document. */
     /** Save the document (or one tab) as a named version now, e.g. before the assistant changes it. */

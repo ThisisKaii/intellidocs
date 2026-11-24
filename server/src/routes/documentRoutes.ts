@@ -135,6 +135,7 @@ router.delete('/:id/tabs/:tabId', validateParams(documentTabParamsSchema), docum
 
 /** Undo-lock version history — owner can list and restore snapshots. */
 router.get('/:id/versions', documentController.getDocumentVersions)
+router.get('/:id/versions/:versionId', documentController.getDocumentVersion)
 router.post('/:id/versions', validateParams(documentIdParamSchema), validateBody(versionCheckpointSchema), documentController.createDocumentCheckpoint)
 router.post('/:id/versions/:versionId/restore', documentController.restoreDocumentVersion)
 

@@ -29,6 +29,7 @@ import { BlueprintGuideExtension } from './BlueprintGuideExtension'
 import { HarperLinterExtension } from './HarperLinterExtension'
 import { MarkdownTriggers } from './MarkdownTriggers'
 import { ListItem, OrderedList } from '@tiptap/extension-list'
+import { columnSizeFromTable } from './tableColumnWidths'
 import { PasteKeepsNextBlock } from './PasteKeepsNextBlock'
 import { PageBreak } from './PageBreak'
 import { SectionMark } from './SectionMark'
@@ -1026,8 +1027,19 @@ const AlignedTable = TablePlus.extend({
     return (props) => fitHandleStrip(parent(props) as ProseMirrorNodeView)
   },
   addAttributes() {
+    const inherited: Record<string, unknown> = this.parent?.() ?? {}
+    const columnSize = inherited.columnSize as { parseHTML?: (element: HTMLElement) => unknown } | undefined
     return {
-      ...this.parent?.(),
+      ...inherited,
+      // The editor's own data-column-size first; a table pasted from Word, Docs or the web keeps
+      // the widths it brought on its <col>s or first row instead of coming out with equal columns.
+      columnSize: {
+        ...columnSize,
+        parseHTML: (element: HTMLElement) => {
+          const own = columnSize?.parseHTML?.(element)
+          return typeof own === 'string' && own ? own : columnSizeFromTable(element)
+        },
+      },
       alignment: {
         default: 'center',
         parseHTML: (element) =>

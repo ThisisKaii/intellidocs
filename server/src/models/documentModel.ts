@@ -745,15 +745,37 @@ export async function getDocumentVersions(
   // Only the owner may read the version history of a document.
   const doc = await getDocumentById(documentId, userId)
 
-  const list = (forTab: string | undefined) => {
-    const query = supabase.from('document_versions').select('*').eq('document_id', doc.id)
+  // The list leaves out each version's body (content, content_json): for a long manuscript that is
+  // megabytes a row, and fifty of them timed the query out, so History could not open at all. A
+  // version's body is read on its own when it is compared or restored (getDocumentVersion).
+  const list = (forTab: string | undefined, columns: string) => {
+    const query = supabase.from('document_versions').select(columns).eq('document_id', doc.id)
     return (forTab ? query.or(`tab_id.eq.${forTab},tab_id.is.null`) : query).order('created_at', { ascending: false }).limit(50)
   }
-  let { data, error } = await list(tabId)
-  if (tabId && isUndefinedColumnError(error)) ({ data, error } = await list(undefined))
+  let { data, error } = await list(tabId, VERSION_LIST_COLUMNS)
+  // A database without the tab columns (migration 048 not run yet) lists every version without them.
+  if (isUndefinedColumnError(error)) ({ data, error } = await list(undefined, VERSION_LIST_COLUMNS_BEFORE_TABS))
 
   if (error) throw new Error(`Failed to list document versions: ${error.message}`)
-  return (data as DocumentVersion[] | null) || []
+  return ((data as unknown as DocumentVersion[] | null) || []).map((version) => ({ ...version, content: version.content ?? '' }))
+}
+
+const VERSION_LIST_COLUMNS_BEFORE_TABS =
+  'version_id, document_id, user_id, title, word_count, version_number, page_size, margins, orientation, editor_prefs, reason, created_at'
+const VERSION_LIST_COLUMNS = `${VERSION_LIST_COLUMNS_BEFORE_TABS}, tab_id, tab_title`
+
+/** One version with its body, for comparing or restoring it. Owner only, like the history itself. */
+export async function getDocumentVersion(documentId: string, userId: string, versionId: string): Promise<DocumentVersion> {
+  const doc = await getDocumentById(documentId, userId)
+  const { data, error } = await supabase
+    .from('document_versions')
+    .select('*')
+    .eq('document_id', doc.id)
+    .eq('version_id', versionId)
+    .maybeSingle()
+  if (error) throw new Error(`Failed to read the version: ${error.message}`)
+  if (!data) throw Object.assign(new Error('Version not found'), { status: 404 })
+  return data as DocumentVersion
 }
 
 /**

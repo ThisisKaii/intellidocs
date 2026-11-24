@@ -78,12 +78,18 @@ export default function HistoryPanel({
     }
   }, [documentId, tabId])
 
+  /** The version with its text: the history list leaves each version's text out. */
+  async function withBody(v: DocumentVersion): Promise<DocumentVersion> {
+    return v.content || !documentId ? v : api.documents.version(documentId, v.version_id)
+  }
+
   async function handleRestore(v: DocumentVersion): Promise<void> {
     if (!documentId) return
     setRestoringId(v.version_id)
     try {
+      const full = await withBody(v)
       await api.documents.restoreVersion(documentId, v.version_id)
-      onRestored(v)
+      onRestored(full)
     } catch {
       setError('Restore failed. Try again.')
     } finally {
@@ -101,7 +107,7 @@ export default function HistoryPanel({
     try {
       // A tab's version is compared with that tab; a whole-document version with the whole document.
       const current = !v.tab_id && loadCurrentHtml ? await loadCurrentHtml() : currentHtml
-      setDiffHtml(diffToHtml(v.content, current))
+      setDiffHtml(diffToHtml((await withBody(v)).content, current))
     } catch {
       setError('Could not load the document to compare.')
       setDiffingId(null)
@@ -221,7 +227,8 @@ export default function HistoryPanel({
                     </p>
                   )}
                   <p style={{ margin: 0, fontSize: '0.65625rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {v.content.replace(/<[^>]+>/g, '').slice(0, 60) || '(empty)'}
+                    {/* The list comes without each version's text (see api.documents.version). */}
+                    {(v.content ? v.content.replace(/<[^>]+>/g, '').slice(0, 60) : v.word_count === 0 ? '' : v.tab_title ?? v.title) || '(empty)'}
                     {v.word_count != null && <> · {v.word_count} words</>}
                   </p>
                 </div>

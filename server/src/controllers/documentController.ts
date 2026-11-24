@@ -17,6 +17,26 @@ import { getImportJob, listUserImportJobs, settleStaleJob } from '../models/impo
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Return the version history for a document (owner only, newest first). */
+/** One version with its body (the history list leaves bodies out). */
+export async function getDocumentVersion(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    const { id, versionId } = req.params
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    if (!id || !versionId || !/^[0-9a-f-]{36}$/i.test(versionId)) {
+      res.status(400).json({ error: 'Document and version IDs are required' })
+      return
+    }
+    res.json(await documentModel.getDocumentVersion(id, userId, versionId))
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status
+    res.status(status ?? 500).json({ error: (error as Error).message })
+  }
+}
+
 export async function getDocumentVersions(req: Request, res: Response): Promise<void> {
   try {
     const userId = req.user?.id
