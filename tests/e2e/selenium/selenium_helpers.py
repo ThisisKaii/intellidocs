@@ -1,4 +1,4 @@
-"""Shared helpers for the Chapter 4 Selenium suite: the running stack's addresses, the test
+"""Shared helpers for the Chapter 4 unit and integration testing suite: the running stack's addresses, the test
 accounts, an HTTP client for setting up and cleaning up test data, and browser helpers.
 
 Every test file imports from here and uses the fixtures in conftest.py, so each file still runs on
@@ -38,6 +38,7 @@ ML = os.environ.get("ML_URL", "http://127.0.0.1:8001").rstrip("/")
 REPO = Path(__file__).resolve().parents[3]
 FIXTURES = REPO / "tests" / "fixtures"
 FIGURES = REPO / "docs" / "manuscript" / "figures" / "chapter_4"
+DOWNLOADS = REPO / "tests" / "e2e" / "artifacts" / "downloads"  # where the test browser saves exports
 
 # Test accounts (no 2FA). The professor owns the seeded class; the students submit to it.
 PROFESSOR = ("e2e-professor@intellidocs.test", "e2e-Professor-123")
@@ -215,6 +216,15 @@ def create_tabbed_document(api: Api, title: str, chapters: list[tuple[str, str]]
     split = api.call("POST", f"/documents/{doc_id}/tabs/split", {"content": body})
     split.raise_for_status()
     return doc_id
+
+
+def restore_suggestion_switches(api: Api) -> None:
+    """Turn the account's formatting and grammar suggestion switches back on (they are saved on the
+    account, so a case that turns one off must not leave it off for the next case)."""
+    saved = api.call("GET", "/profile/editor-preferences")
+    preferences = (saved.json().get("preferences") if saved.ok else None) or {}
+    preferences.update({"formattingSuggestions": True, "grammarSuggestions": True})
+    api.call("PUT", "/profile/editor-preferences", preferences)
 
 
 def unique_email(prefix: str) -> str:
@@ -514,6 +524,19 @@ def wait_for_checks(driver: WebDriver, seconds: float = 15) -> list[dict[str, st
 
 
 ACCEPT_CARD = "//button[normalize-space()='Accept']/ancestor::*[contains(., '→')][1]"
+
+
+def open_issue(driver: WebDriver, word: str) -> WebElement:
+    """Click an underlined word and return its correction card (a click that lands while the
+    underline is being redrawn is repeated)."""
+    xpath = f"//*[(contains(@class,'grammar-issue') or contains(@class,'harper-underline')) and normalize-space()='{word}']"
+    for _ in range(3):
+        click(driver, visible(driver, By.XPATH, xpath, timeout=45))
+        try:
+            return visible(driver, By.XPATH, ACCEPT_CARD, timeout=8)
+        except TimeoutException:
+            time.sleep(1)
+    return visible(driver, By.XPATH, ACCEPT_CARD, timeout=5)
 
 
 # ---- Originality (Module 6) --------------------------------------------------------------
