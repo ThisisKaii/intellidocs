@@ -114,19 +114,26 @@ def _sweep(now: float) -> None:
             pass
 
 
-def externalise(result: Dict[str, Any]) -> Dict[str, Any]:
+def picture_key(mime: str, data_b64: str) -> str:
+    """The key of a picture (its type and base64 data): identical pictures share one."""
+    return hashlib.sha256(f"{mime}:{data_b64}".encode("ascii")).hexdigest()[:32]
+
+
+def externalise(result: Dict[str, Any], collected: Optional[Dict[str, Tuple[bytes, str]]] = None) -> Dict[str, Any]:
     """The result with every data-URI picture replaced by a token, plus `image_set` and `images`.
 
-    Identical pictures share one key. A result without pictures is returned with an empty list.
+    `collected` holds pictures the converter already took out of the result ({key: (bytes, mime)},
+    see converter.collecting_pictures): they are stored with the rest. Identical pictures share one
+    key. A result without pictures is returned with an empty list.
     """
     _sweep(time.time())
     set_id = uuid.uuid4().hex
     folder = ROOT / set_id
-    raw_images: Dict[str, Tuple[bytes, str]] = {}
+    raw_images: Dict[str, Tuple[bytes, str]] = dict(collected or {})
 
     def swap(match: re.Match) -> str:
         mime, data = match.group(1), match.group(2)
-        key = hashlib.sha256(f"{mime}:{data}".encode("ascii")).hexdigest()[:32]
+        key = picture_key(mime, data)
         if key not in raw_images:
             raw = base64.b64decode(data)
             raw_images[key] = (raw, mime)

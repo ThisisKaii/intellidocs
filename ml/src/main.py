@@ -4,7 +4,7 @@ import pickle
 import sys
 import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Optional
@@ -28,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import converted_images
-from converter import UnreadableDocumentError, convert_docx_bytes_to_html, convert_pdf_bytes_to_html
+from converter import UnreadableDocumentError, collecting_pictures, convert_docx_bytes_to_html, convert_pdf_bytes_to_html
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -939,18 +939,21 @@ def convert_document(
         # For tabbed manuscripts, the editor loads each tab individually from HTML; assembling
         # a 12+ MB monolithic JSON slows down conversion by 3x and risks timing out on cloud hosts.
         build_json = json and not tabs
-        if filename_lower.endswith(".docx"):
-            result = convert_docx_bytes_to_html(content_bytes, split_tabs=tabs, build_json=build_json)
-        elif filename_lower.endswith(".pdf"):
-            result = convert_pdf_bytes_to_html(content_bytes, split_tabs=tabs)
-        else:
+        if not filename_lower.endswith((".docx", ".pdf")):
             raise HTTPException(status_code=400, detail="Unsupported file format for high-fidelity conversion.")
+        # With separate images the pictures leave the HTML as it is written, not after: as base64
+        # they are most of a manuscript's HTML, and each pass over it copied them again.
+        with collecting_pictures() if images == "separate" else nullcontext() as pictures:
+            if filename_lower.endswith(".docx"):
+                result = convert_docx_bytes_to_html(content_bytes, split_tabs=tabs, build_json=build_json)
+            else:
+                result = convert_pdf_bytes_to_html(content_bytes, split_tabs=tabs)
 
         del content_bytes
         import gc
         gc.collect()
 
-        return converted_images.externalise(result) if images == "separate" else result
+        return converted_images.externalise(result, pictures) if images == "separate" else result
     except HTTPException:
         raise
     except UnreadableDocumentError as error:

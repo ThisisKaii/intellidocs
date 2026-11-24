@@ -113,3 +113,50 @@ def test_the_manifest_lists_the_shrunk_size_and_type(tmp_path, monkeypatch):
 def test_an_animated_gif_is_kept_whole():
     animated = b"GIF89a" + b"\x00" * 20 + b"NETSCAPE2.0" + b"\x00" * 20
     assert converted_images.shrink_picture(animated, "image/gif") == (animated, "image/gif")
+
+
+# ─── Pictures kept out of the HTML while it is written ──────────────────────
+
+def _small_png() -> bytes:
+    import struct
+    import zlib
+
+    raw = b"".join(b"\x00" + b"\x20\x60\xa0" * 8 for _ in range(8))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 8, 8, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+def test_collected_pictures_give_the_same_result_as_externalising_afterwards(tmp_path, monkeypatch):
+    """The converter can take pictures out as it writes (a manuscript's HTML is mostly its pictures);
+    what the server receives is the same as when externalise finds them in the HTML."""
+    import io
+
+    from docx import Document
+
+    import converter
+
+    monkeypatch.setattr(converted_images, "ROOT", tmp_path)
+    document = Document()
+    document.add_paragraph("Before the figure")
+    document.add_picture(io.BytesIO(_small_png()))
+    document.add_picture(io.BytesIO(_small_png()))  # the same picture twice shares one key
+    buffer = io.BytesIO()
+    document.save(buffer)
+    data = buffer.getvalue()
+
+    afterwards = converted_images.externalise(converter.convert_docx_bytes_to_html(data))
+    with converter.collecting_pictures() as pictures:
+        written = converter.convert_docx_bytes_to_html(data)
+    assert "data:image/" not in str(written) and len(pictures) == 1
+    collected = converted_images.externalise(written, pictures)
+
+    assert collected["html"] == afterwards["html"]
+    assert collected["content_json"] == afterwards["content_json"]
+    assert collected["images"] == afterwards["images"]
+    key = collected["images"][0]["key"]
+    assert converted_images.read_image(collected["image_set"], key) == converted_images.read_image(afterwards["image_set"], key)
+    # Collecting ends with the conversion: the next one writes base64 again.
+    assert "data:image/png" in converter.convert_docx_bytes_to_html(data)["html"]

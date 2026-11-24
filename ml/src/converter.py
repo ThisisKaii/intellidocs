@@ -11,9 +11,12 @@ import os
 import re
 import tempfile
 import threading
+from contextlib import contextmanager
 from html import escape as _html_escape
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 import docx
+
+import converted_images
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, parse_xml
@@ -569,10 +572,18 @@ def _match_drawn_aspect(img_bytes: bytes, width_px: int, height_px: int) -> byte
 
 def _img_tag(img_bytes: bytes, width_px: Optional[int]) -> str:
     """An <img> with the drawn width, so the editor shows it as big as Word does."""
+    mime = _image_mime(img_bytes)
     src = base64.b64encode(img_bytes).decode("utf-8")
     style = "max-width:100%; height:auto; display:block; border-radius:4px;"
     width_attr = f' width="{width_px}"' if width_px else ""
-    return f'<img src="data:{_image_mime(img_bytes)};base64,{src}"{width_attr} style="{style}" />'
+    sink = _STATE.picture_sink
+    if sink is not None:
+        # The picture leaves the HTML now rather than after conversion: a manuscript's pictures as
+        # base64 are most of its HTML, and every pass over the HTML would copy them again.
+        key = converted_images.picture_key(mime, src)
+        sink.setdefault(key, (img_bytes, mime))
+        return f'<img src="{converted_images.TOKEN_PREFIX}{key}"{width_attr} style="{style}" />'
+    return f'<img src="data:{mime};base64,{src}"{width_attr} style="{style}" />'
 
 
 def _image_html(blip: Any, doc_parts: Dict[str, bytes]) -> str:
@@ -2112,9 +2123,24 @@ class _ConversionState(threading.local):
         self.style_attr_cache: Dict[Tuple[int, Optional[str], str, str], Optional[str]] = {}
         # Whether to assemble editor JSON during conversion (can be disabled for tabbed manuscripts)
         self.build_json = True
+        # When set, pictures are written here ({key: (bytes, mime)}) and the HTML carries their
+        # `idoc-image:<key>` tokens instead of base64 (see converted_images.externalise).
+        self.picture_sink: Optional[Dict[str, Tuple[bytes, str]]] = None
 
 
 _STATE = _ConversionState()
+
+
+@contextmanager
+def collecting_pictures() -> Iterator[Dict[str, Tuple[bytes, str]]]:
+    """Convert with pictures kept out of the HTML: yields the {key: (bytes, mime)} the conversion
+    fills, for converted_images.externalise (whose tokens the HTML then already carries)."""
+    sink: Dict[str, Tuple[bytes, str]] = {}
+    _STATE.picture_sink = sink
+    try:
+        yield sink
+    finally:
+        _STATE.picture_sink = None
 
 # While measuring, every table the body holds at the top level is recorded here: its node, or None.
 _JSON_TABLE_SINK: Optional[List[Optional[Dict[str, Any]]]] = None

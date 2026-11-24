@@ -14,6 +14,9 @@ COPY . .
 
 ENV PYTHONPATH=/app
 ENV BASE_MODEL_PATH=/app/models/base_model.pkl
+# glibc gives each thread its own malloc arena; FastAPI converts in worker threads, so a large
+# import's freed memory stays spread over several arenas and the 512 MB instance runs out.
+ENV MALLOC_ARENA_MAX=2
 
 # Render routes traffic to $PORT (10000 unless set); 8000 is the local/compose default.
 EXPOSE 8000 10000
