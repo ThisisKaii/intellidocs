@@ -539,6 +539,8 @@ export interface PresetBodyLook {
   lineHeight: number
   /** CSS length, e.g. "0.5in". */
   firstLineIndent: string
+  /** The preset's page margins in px: this part's section breaks take them (see applyPresetToBody). */
+  margins?: { top: number; right: number; bottom: number; left: number }
 }
 
 /**
@@ -549,6 +551,52 @@ export interface PresetBodyLook {
  * style and mark is kept, and the whole change is ONE transaction, so a
  * single undo takes it back. Returns how many paragraphs changed.
  */
+/** Imported side indents up to this size are the old file's layout, not a deliberate block indent. */
+const MAX_LAYOUT_INDENT_PX = 72
+
+function px(value: string): number | null {
+  const match = /^(-?[\d.]+)(px|pt|in)?$/.exec(value.trim())
+  if (!match) return value.trim() === '0' ? 0 : null
+  const n = Number(match[1])
+  return match[2] === 'pt' ? (n * 4) / 3 : match[2] === 'in' ? n * 96 : n
+}
+
+/**
+ * A block's inline style without the left/right indents (and, for headings, the first-line indent)
+ * a Word file gave it: under a preset the page margins and the preset's own heading and body rules
+ * place the text. Larger indents (a quotation, a hanging list) are kept; a `margin` shorthand keeps
+ * its top and bottom.
+ */
+export function withoutLayoutIndents(style: string | null | undefined, heading: boolean): string | null {
+  const kept: string[] = []
+  for (const decl of (style ?? '').split(';')) {
+    const colon = decl.indexOf(':')
+    if (colon < 1) continue
+    const prop = decl.slice(0, colon).trim().toLowerCase()
+    const value = decl.slice(colon + 1).trim()
+    if (prop === 'margin') {
+      const parts = value.split(/\s+/)
+      const [top, right = top, bottom = top, left = right] = parts
+      kept.push(`margin-top: ${top}`, `margin-bottom: ${bottom}`)
+      for (const [side, v] of [['right', right], ['left', left]] as const) {
+        const n = px(v)
+        if (n === null || Math.abs(n) > MAX_LAYOUT_INDENT_PX) kept.push(`margin-${side}: ${v}`)
+      }
+      continue
+    }
+    if (prop === 'margin-left' || prop === 'margin-right') {
+      const n = px(value)
+      if (n !== null && Math.abs(n) <= MAX_LAYOUT_INDENT_PX) continue
+    }
+    if (heading && prop === 'text-indent') {
+      const n = px(value)
+      if (n !== null && Math.abs(n) <= MAX_LAYOUT_INDENT_PX) continue
+    }
+    kept.push(`${prop}: ${value}`)
+  }
+  return kept.length > 0 ? kept.join('; ') : null
+}
+
 export function applyPresetToBody(editor: Editor, look: PresetBodyLook): number {
   const { state } = editor
   const blocks = topBlocks(state.doc)
@@ -557,12 +605,24 @@ export function applyPresetToBody(editor: Editor, look: PresetBodyLook): number 
   const { tr } = state
   let changed = 0
   for (const { node, pos } of blocks.slice(firstChapter === -1 ? 0 : firstChapter)) {
-    if (node.type.name !== 'paragraph' || node.textContent.trim().length === 0) continue
-    if (isChapterHeading(node) || isHeadingLikeParagraph(node) || node.attrs?.docRole === 'title') continue
+    if (node.textContent.trim().length === 0) continue
+    // Headings and heading-like lines keep their look; only the old file's indents go, so they sit at
+    // the preset's margin (they were 0.25-0.5" in from it, out of line with the body).
+    const headingLike = node.type.name === 'heading' || (node.type.name === 'paragraph' && (isChapterHeading(node) || isHeadingLikeParagraph(node)))
+    // The import keeps a small left margin as an indent level (IndentExtension, 24px a level): that
+    // level is the same old layout, so it goes too.
+    const indent = Number(node.attrs?.indent) || 0
+    const level = indent > 0 && indent * 24 <= MAX_LAYOUT_INDENT_PX ? 0 : indent
+    if (headingLike && node.type.spec.attrs && 'style' in node.type.spec.attrs) {
+      const style = withoutLayoutIndents(node.attrs.style as string | null, true)
+      if (style !== (node.attrs.style ?? null) || level !== indent) tr.setNodeMarkup(pos, undefined, { ...node.attrs, style, ...(level !== indent ? { indent: level } : {}) })
+      continue
+    }
+    if (node.type.name !== 'paragraph' || node.attrs?.docRole === 'title') continue
     if (node.attrs?.textAlign === 'center' || node.attrs?.textAlign === 'right') continue
     if (node.type.spec.attrs && 'style' in node.type.spec.attrs) {
-      const style = mergeStyleDecls(node.attrs.style as string | null, { 'line-height': String(look.lineHeight), 'text-indent': look.firstLineIndent })
-      tr.setNodeMarkup(pos, undefined, { ...node.attrs, style })
+      const style = mergeStyleDecls(withoutLayoutIndents(node.attrs.style as string | null, false), { 'line-height': String(look.lineHeight), 'text-indent': look.firstLineIndent })
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, style, ...(level !== indent ? { indent: level } : {}) })
     }
     if (textStyle) {
       node.forEach((child, offset) => {
@@ -573,6 +633,20 @@ export function applyPresetToBody(editor: Editor, look: PresetBodyLook): number 
       })
     }
     changed += 1
+  }
+  // An imported file's sections carry its own margins, and the editor keeps each section's text there
+  // (SectionLayout). Under the preset this part's sections take the preset's margins instead, so its
+  // text, headings and pictures all sit at the preset's margins; parts not reformatted keep theirs.
+  if (look.margins) {
+    const margins = look.margins
+    state.doc.forEach((node, pos) => {
+      if (node.type.name !== 'pageBreak' && node.type.name !== 'sectionMark') return
+      const props = node.attrs.sectionProps as { margins?: Record<string, number> } | null | undefined
+      if (!props || typeof props !== 'object' || !props.margins) return
+      const current = props.margins
+      if (['top', 'right', 'bottom', 'left'].every((side) => current[side] === margins[side as keyof typeof margins])) return
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, sectionProps: { ...props, margins: { ...current, ...margins } } })
+    })
   }
   if (tr.docChanged) editor.view.dispatch(tr)
   return changed

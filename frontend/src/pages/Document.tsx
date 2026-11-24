@@ -3764,6 +3764,12 @@ export default function Document(): JSX.Element {
       fontSize: preset.baseFontSize,
       lineHeight: preset.lineHeight,
       firstLineIndent: preset.firstLineIndent,
+      margins: {
+        top: preset.margins.top * 96,
+        right: preset.margins.right * 96,
+        bottom: preset.margins.bottom * 96,
+        left: preset.margins.left * 96,
+      },
     })
     setPresetToast((toast) =>
       toast
