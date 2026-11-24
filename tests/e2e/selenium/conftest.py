@@ -3,7 +3,8 @@
 test_unit_*.py hold the unit cases (one file per module of Table 24) and test_integration.py the
 integration cases; each case drives the app as a user does and checks what the user sees.
 
-Screenshots go to docs/manuscript/figures/chapter_4/unit/ and .../integration/:
+Browser screenshots go to docs/manuscript/figures/chapter_4/unit_browser/ and .../integration_browser/
+(unit/ and integration/ hold the IDE figures):
 - `<case id>.png`: the browser at the end of a passing case (its test evidence).
   A failing case saves `<case id>_FAILED.png` instead, so a failure is never filed as evidence.
 - With CAPTURE_IDE=1, `tools/capture_ide_test.py` also captures the IDE window (code and the
@@ -88,8 +89,11 @@ def student2_api() -> Iterator[Api]:
 
 
 def figure_path(item: pytest.Item, passed: bool) -> Path:
-    """docs/manuscript/figures/chapter_4/<unit|integration>/<case id>.png (…_FAILED.png on failure)."""
-    folder = FIGURES / ("integration" if "integration" in Path(str(item.fspath)).stem else "unit")
+    """docs/manuscript/figures/chapter_4/<unit|integration>_browser/<case id>.png (…_FAILED.png on failure).
+
+    unit/ and integration/ hold the IDE figures (code and PASSED line); the browser shots go beside them.
+    """
+    folder = FIGURES / ("integration_browser" if "integration" in Path(str(item.fspath)).stem else "unit_browser")
     folder.mkdir(parents=True, exist_ok=True)
     name = item.name.removeprefix("test_")
     return folder / (f"{name}.png" if passed else f"{name}_FAILED.png")
@@ -114,13 +118,48 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> Itera
     report = outcome.get_result()
     if report.when != "call":
         return
-    browser = item.funcargs.get("driver") if hasattr(item, "funcargs") else None
+    funcargs = getattr(item, "funcargs", {})
+    browser = funcargs.get("driver")
+    other = funcargs.get("second_driver")
     if browser is None:
         return
     try:
-        browser.save_screenshot(str(figure_path(item, report.passed)))
+        # A case that acts only in the second browser leaves the first one blank: show the second.
+        if other is not None and browser.current_url.startswith(("data:", "about:")):
+            browser = other
+        figure_path(item, report.passed).write_bytes(settled_screenshot(browser))
     except Exception as error:  # a closed or crashed browser must not hide the test's own result
         print(f"[screenshot] not saved: {error}")
+
+
+def settled_screenshot(browser: webdriver.Chrome, timeout: float = 6.0) -> bytes:
+    """A screenshot taken once fade-ins, slide-ins and loading text have finished.
+
+    Pages fade in (framer-motion) and some panels say "Loading…" first, so a screenshot taken
+    the moment a case ends can be white or half-transparent. Finish running animations, wait for
+    loading text to go, then wait until two shots in a row are the same.
+    """
+    end = time.time() + timeout
+    finish = "document.getAnimations().forEach(a => { try { a.finish() } catch (e) {} });"
+    loading = "return /\\bLoading\\b[^\\n]*(\\.\\.\\.|…)/.test(document.body.innerText)"
+    try:
+        browser.execute_script(finish)
+        while time.time() < end and browser.execute_script(loading):
+            time.sleep(0.3)
+    except Exception:
+        pass
+    shot = browser.get_screenshot_as_png()
+    while time.time() < end:
+        time.sleep(0.4)
+        try:
+            browser.execute_script(finish)
+        except Exception:
+            pass
+        again = browser.get_screenshot_as_png()
+        if again == shot:
+            break
+        shot = again
+    return shot
 
 
 def _load_capture_tool():
