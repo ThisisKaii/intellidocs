@@ -6,6 +6,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Dialect, WorkerLinter } from 'harper.js'
 import { binary } from 'harper.js/binary'
 import { academicDictionary } from './academicVocabulary'
+import { getEditorPreferences, subscribeEditorPreferences } from '@/lib/editorPreferences'
 
 const harperKey = new PluginKey<HarperPluginState>('harperLinter')
 
@@ -201,6 +202,8 @@ export const HarperLinterExtension = Extension.create({
      * linted blocks keep their underlines.
      */
     const runLint = async (view: EditorView): Promise<void> => {
+      // "Grammar & spelling checks" turned off: no spelling underlines either.
+      if (!getEditorPreferences().grammarSuggestions) return
       const instance = await ensureLinter()
       // The linter loads and lints asynchronously: the editor may have closed in the meantime.
       if (!instance || disposed || view.isDestroyed) return
@@ -224,7 +227,7 @@ export const HarperLinterExtension = Extension.create({
       } catch {
         return
       }
-      if (version !== requestVersion || disposed || view.isDestroyed) return
+      if (version !== requestVersion || disposed || view.isDestroyed || !getEditorPreferences().grammarSuggestions) return
 
       const entries: HarperLintEntry[] = []
       for (const lint of lints) {
@@ -272,8 +275,9 @@ export const HarperLinterExtension = Extension.create({
             }
 
             const meta = tr.getMeta(harperKey) as
-              | { entries?: HarperLintEntry[]; blockFrom?: number; blockTo?: number }
+              | { entries?: HarperLintEntry[]; blockFrom?: number; blockTo?: number; clear?: boolean }
               | undefined
+            if (meta?.clear) return { entries: [], decorations: DecorationSet.empty }
             if (
               meta?.entries &&
               typeof meta.blockFrom === 'number' &&
@@ -307,6 +311,15 @@ export const HarperLinterExtension = Extension.create({
           disposed = false
           scheduleLint(view)
           let lastBlock = blockKey(view.state)
+          // Follow the "Grammar & spelling checks" switch: off clears every underline at once,
+          // on checks the current paragraph again.
+          let checking = getEditorPreferences().grammarSuggestions
+          const unsubscribe = subscribeEditorPreferences((prefs) => {
+            if (prefs.grammarSuggestions === checking || view.isDestroyed) return
+            checking = prefs.grammarSuggestions
+            if (checking) scheduleLint(view)
+            else view.dispatch(view.state.tr.setMeta(harperKey, { clear: true }))
+          })
           return {
             update(currentView, prevState) {
               const currentBlock = blockKey(currentView.state)
@@ -315,6 +328,7 @@ export const HarperLinterExtension = Extension.create({
               scheduleLint(currentView)
             },
             destroy() {
+              unsubscribe()
               if (lintTimer) clearTimeout(lintTimer)
               // Dispose only if no new view takes over (a plugin-list change creates one at once).
               pendingDispose = setTimeout(() => {

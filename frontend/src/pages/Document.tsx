@@ -233,6 +233,8 @@ export default function Document(): JSX.Element {
   // `?share=TOKEN` grants read-only access to non-owners via a share link.
   const shareToken = searchParams.get('share') ?? undefined
   const [viewOnly, setViewOnly] = useState<boolean>(false)
+  /** Why the document could not be opened (no access, or gone); null once it loads. */
+  const [loadError, setLoadError] = useState<string | null>(null)
   const readOnly = searchParams.get('readonly') === '1' || viewOnly
   const [docOwnerId, setDocOwnerId] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState<boolean>(false)
@@ -924,6 +926,7 @@ export default function Document(): JSX.Element {
     // already navigated away from must never be applied to the new one.
     documentLoadedRef.current = false
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    setLoadError(null)
     let cancelled = false
     async function loadDocument(): Promise<void> {
       try {
@@ -991,6 +994,15 @@ export default function Document(): JSX.Element {
         if (!cancelled) {
           setSaveStatus('error')
           setLoadedDocId(docId)
+          const status = (error as { status?: number } | null)?.status
+          if (status === 403 || status === 404) {
+            // Someone else's document (not shared with this user) or one that no longer exists:
+            // say so, and keep the empty editor locked instead of offering it for typing.
+            setViewOnly(true)
+            setLoadError(status === 403
+              ? 'It belongs to someone else and has not been shared with you. Ask its owner to share it.'
+              : 'It does not exist or was permanently deleted.')
+          }
         }
       }
     }
@@ -3841,9 +3853,11 @@ export default function Document(): JSX.Element {
   }, [editor])
   // Only the issues in scope are underlined: a long document's hundreds of underlines were what
   // made typing lag. The list keeps every issue (the side panel filters what it shows).
+  // With checks turned off nothing is underlined, even if a check already under way answers late.
   const scopedGrammarIssues = useMemo(
-    () => (suggestionScope === 'all' ? grammarIssues : grammarIssues.filter((issue) => inSuggestionScope(suggestionScope, grammarPages.get(issue), caretPage))),
-    [grammarIssues, grammarPages, caretPage, suggestionScope],
+    () => (!prefs.grammarSuggestions ? []
+      : suggestionScope === 'all' ? grammarIssues : grammarIssues.filter((issue) => inSuggestionScope(suggestionScope, grammarPages.get(issue), caretPage))),
+    [grammarIssues, grammarPages, caretPage, suggestionScope, prefs.grammarSuggestions],
   )
 
   // Push grammar issues into the editor's wavy-underline decorations whenever they change.
@@ -4510,6 +4524,21 @@ export default function Document(): JSX.Element {
               <button type="button" onClick={() => setTabError('')} style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}>
                 Dismiss
               </button>
+            </div>
+          )}
+
+          {/* The document could not be opened (not shared with this user, or deleted) */}
+          {loadError && (
+            <div
+              role="alertdialog"
+              aria-label="Document cannot be opened"
+              style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'color-mix(in srgb, var(--background) 85%, transparent)' }}
+            >
+              <div style={{ width: 'min(26rem, calc(100vw - 2rem))', padding: '1.5rem', borderRadius: '0.75rem', border: '1px solid var(--border)', backgroundColor: 'var(--card)', boxShadow: '0 10px 30px rgba(0, 0, 0, 0.12)', textAlign: 'center' }}>
+                <h2 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, color: 'var(--foreground)' }}>This document can't be opened</h2>
+                <p style={{ margin: '0.5rem 0 1.125rem', fontSize: '0.875rem', lineHeight: 1.5, color: 'var(--muted-foreground)' }}>{loadError}</p>
+                <button type="button" className="btn-primary" onClick={() => navigate('/dashboard')}>Back to my documents</button>
+              </div>
             </div>
           )}
 

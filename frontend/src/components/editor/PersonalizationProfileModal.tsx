@@ -107,7 +107,13 @@ export default function PersonalizationProfileModal({
     reader.onload = () => {
       try {
         const text = typeof reader.result === 'string' ? reader.result : ''
-        const parsed: unknown = JSON.parse(text)
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(text)
+        } catch {
+          // Not JSON at all: say so in plain words instead of the parser's message.
+          throw new Error(`"${file.name}" is not a valid .idocprofile file. Choose a profile exported from IntelliDocs.`)
+        }
         if (typeof parsed !== 'object' || parsed === null) {
           throw new Error('Not a valid .idocprofile file (expected a JSON object).')
         }

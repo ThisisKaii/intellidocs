@@ -172,14 +172,33 @@ export async function joinByShareCode(userId: string, code: string, now: number 
   return { documentId: doc.id, title: doc.title, permission: granted, alreadyShared: false }
 }
 
-/** List all shares for a given document as the owner. */
+/** List all shares for a given document as the owner, each with the collaborator's email and name. */
 export async function getDocumentShares(documentId: string): Promise<ShareWithDetails[]> {
   const { data, error } = await supabase
     .from('document_shares')
     .select('*')
     .eq('document_id', documentId)
   if (error) throw new Error(`Failed to get shares: ${error.message}`)
-  return data || []
+  return Promise.all((data || []).map((share: DocumentShare) => withCollaborator(share)))
+}
+
+/** A share with its collaborator's email and display name, so the owner sees who it is. */
+export async function withCollaborator(share: DocumentShare): Promise<ShareWithDetails> {
+  if (!share.shared_with) return { ...share, collaborator_email: share.pending_email ?? null, collaborator_display_name: null }
+  const { data } = await supabase.auth.admin.getUserById(share.shared_with)
+  const user = data?.user
+  const meta = (user?.user_metadata ?? {}) as { display_name?: string; full_name?: string }
+  return { ...share, collaborator_email: user?.email ?? null, collaborator_display_name: meta.display_name ?? meta.full_name ?? null }
+}
+
+/** The document's existing share for this person (by account, or a pending invite to this email), if any. */
+export async function findExistingShare(documentId: string, collaboratorId: string | null, email: string): Promise<DocumentShare | null> {
+  const query = supabase.from('document_shares').select('*').eq('document_id', documentId)
+  const { data, error } = collaboratorId
+    ? await query.eq('shared_with', collaboratorId).limit(1)
+    : await query.ilike('pending_email', email).limit(1)
+  if (error) throw new Error(`Failed to check existing shares: ${error.message}`)
+  return data?.[0] ?? null
 }
 
 /** Create a share, either to an existing user id or via a pending email. */

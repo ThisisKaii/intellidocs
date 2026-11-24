@@ -62,7 +62,7 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
   async function handleAddShare(): Promise<void> {
     const target = email.trim().toLowerCase()
     if (!target) return
-    if (shares.some((s) => (s.pending_email ?? '').toLowerCase() === target)) {
+    if (shares.some((s) => (s.collaborator_email ?? s.pending_email ?? '').toLowerCase() === target)) {
       setError('That email is already on this document')
       return
     }
@@ -551,7 +551,9 @@ export default function ShareModal({ documentId, onClose }: ShareModalProps): JS
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.pending_email ?? `User ${s.shared_with?.slice(0, 8)}`}
+                    {s.collaborator_display_name && s.collaborator_email
+                      ? `${s.collaborator_display_name} (${s.collaborator_email})`
+                      : s.collaborator_email ?? s.pending_email ?? `User ${s.shared_with?.slice(0, 8)}`}
                   </div>
                   {s.pending_email && (
                     <div style={{ fontSize: '0.6875rem', color: 'var(--muted-foreground)' }}>

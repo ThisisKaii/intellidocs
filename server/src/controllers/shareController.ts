@@ -55,15 +55,21 @@ export async function createShare(req: Request, res: Response): Promise<void> {
     const { data: authList, error: listError } = await supabase.auth.admin.listUsers()
     if (listError) throw new Error(`Failed to look up users: ${listError.message}`)
 
-    const targetUser = (authList?.users ?? []).find((u) => u.email === email)
+    const target = email.trim().toLowerCase()
+    const targetUser = (authList?.users ?? []).find((u) => u.email?.toLowerCase() === target)
+    if (targetUser?.id === userId) { res.status(400).json({ error: 'That is your own email; you already own this document' }); return }
+    // One share per person: inviting someone who already has access changes nothing.
+    if (await shareModel.findExistingShare(id, targetUser?.id ?? null, target)) {
+      res.status(409).json({ error: 'That person already has access to this document' }); return
+    }
     const share = await shareModel.createShare(
       id,
       userId,
       targetUser?.id ?? null,
-      targetUser ? null : email,
+      targetUser ? null : target,
       permission,
     )
-    res.status(201).json(share)
+    res.status(201).json(await shareModel.withCollaborator(share))
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     res.status(500).json({ error: message })

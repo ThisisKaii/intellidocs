@@ -517,6 +517,9 @@ export interface DocumentShare {
   pending_email: string | null
   permission: SharePermission
   shared_at: string
+  /** The collaborator's email (an account's, or the pending invite's) for the owner's list. */
+  collaborator_email?: string | null
+  collaborator_display_name?: string | null
 }
 
 export interface DocumentShareLink {
@@ -1545,6 +1548,17 @@ export const api = {
         (await fetchAPI<{ tabs: DocumentTabSummary[] }>(`documents/${id}/tabs${shareQuery(shareToken)}`)).tabs,
       get: async (id: string, tabId: string, shareToken?: string | null): Promise<DocumentTab> =>
         fetchAPI<DocumentTab>(`documents/${id}/tabs/${tabId}${shareQuery(shareToken)}`),
+      /**
+       * The whole body of a document split into tabs, every tab's HTML in order (the same text the
+       * server checks); null when the document has no tabs, so its own content is the body.
+       */
+      wholeBody: async (id: string, shareToken?: string | null): Promise<string | null> => {
+        const tabs = await api.documents.tabs.list(id, shareToken)
+        if (tabs.length === 0) return null
+        const ordered = [...tabs].sort((a, b) => a.position - b.position)
+        const bodies = await Promise.all(ordered.map((tab) => api.documents.tabs.get(id, tab.tab_id, shareToken)))
+        return bodies.map((tab) => tab.content ?? '').join('')
+      },
       save: async (
         id: string,
         tabId: string,

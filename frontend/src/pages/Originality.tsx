@@ -144,9 +144,11 @@ export default function Originality(): JSX.Element {
     let cancelled = false
     api.documents
       .get(id)
-      .then((record) => {
+      .then(async (record) => {
+        // A document split into tabs keeps its text in the tabs: show and scope the whole of it.
+        const body = await api.documents.tabs.wholeBody(id).catch(() => null)
         if (cancelled) return
-        setDocument(record)
+        setDocument(body === null ? record : { ...record, content: body })
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not open this document.')

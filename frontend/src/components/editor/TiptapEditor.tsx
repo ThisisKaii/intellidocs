@@ -1473,8 +1473,9 @@ const editorExtensionsAfterStarterKit = [
   TableRowPlus,
   CustomTableCell,
   CustomTableHeader,
-  Subscript,
-  Superscript,
+  // A character is raised or lowered, never both: applying one replaces the other (as in Word).
+  Subscript.extend({ excludes: 'superscript' }),
+  Superscript.extend({ excludes: 'subscript' }),
   Highlight.configure({ multicolor: true }),
   GrammarUnderlineExtension,
   SuggestionDecorationsExtension,

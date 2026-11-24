@@ -821,6 +821,17 @@ export async function logAIFeedback(req: Request, res: Response): Promise<void> 
       keptFormat?: string
     }
 
+    // An isolated document teaches nothing: its accept/dismiss decisions are neither stored nor
+    // counted, the same as its behavior events.
+    if (body.documentId) {
+      const { getDocumentForUser } = await import('../models/documentModel')
+      const doc = await getDocumentForUser(body.documentId, userId, req.user?.email).catch(() => null)
+      if (doc?.is_isolated) {
+        res.status(200).json({ status: 'isolated', message: 'Document is isolated; feedback not recorded' })
+        return
+      }
+    }
+
     const { processAIFeedback } = await import('../skills/feedbackLoop')
 
     await processAIFeedback({
