@@ -308,14 +308,8 @@ class TestGenreIsolation:
         genres = sorted(dict(zip(order, row))["genre"] for row in rows)
         assert genres == ["ieee", "thesis"]
 
-    def test_fine_tuner_reads_one_genre_only(self, mixed):
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../ml/training'))
-        import fine_tuner
-
-        feature_extractor.overwrite_features(mixed, feature_extractor.extract_features(mixed))
-        frame = fine_tuner.load_user_features(mixed, "u1", "thesis")
-        assert set(frame["genre"]) == {"thesis"}
-        assert set(frame["document_id"]) == {"thesis"}
+    # The fine-tuner now learns from labeled feedback, split by genre in /fine-tune: see
+    # test_user_forest.py::test_fine_tune_trains_each_genre_on_its_own_blocks.
 
     def test_fallback_sync_carries_genre(self, tmp_path, monkeypatch):
         primary = tmp_path / "p.duckdb"

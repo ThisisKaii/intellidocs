@@ -1,4 +1,5 @@
 import { hasBodyText } from '@/lib/bodyText'
+import { feedbackBlock } from '@/lib/feedbackBlock'
 import { useEffect, useRef, useState, useCallback, useMemo, type ChangeEvent } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { setActiveDocumentId } from '@/lib/activeDocument'
@@ -2821,6 +2822,8 @@ export default function Document(): JSX.Element {
         })
         .catch((error) => console.error('Auto-format acceptance log failed', error))
 
+      // The block it was for, so the acceptance can train the user's own model (labelled `applied`).
+      const block = editor && !editor.isDestroyed ? feedbackBlock(editor.state.doc, formatPrompt?.range ?? suggestionRange) : null
       api.ai
         .logFeedback({
           documentId: id,
@@ -2828,6 +2831,7 @@ export default function Document(): JSX.Element {
           predictedFormat: applied,
           confidence,
           accepted: true,
+          ...(block ? { blockText: block.blockText } : {}),
         })
         .catch((error) => console.error('Format prompt acceptance feedback failed', error))
     }
@@ -2948,6 +2952,8 @@ export default function Document(): JSX.Element {
         })
         .catch((error) => console.error('Auto-format rejected log failed', error))
 
+      // The block and the format it keeps: that kept format is the label the user's model learns.
+      const block = editor && !editor.isDestroyed ? feedbackBlock(editor.state.doc, suggestionRange) : null
       api.ai
         .logFeedback({
           documentId: id,
@@ -2955,6 +2961,7 @@ export default function Document(): JSX.Element {
           predictedFormat: format,
           confidence: formatPrompt?.confidence,
           accepted: false,
+          ...(block ? { blockText: block.blockText, ...(block.keptFormat ? { keptFormat: block.keptFormat } : {}) } : {}),
         })
         .catch((error) => console.error('Format prompt rejection feedback failed', error))
     }

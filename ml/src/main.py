@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import converted_images
+import user_forest
 from converter import UnreadableDocumentError, collecting_pictures, convert_docx_bytes_to_html, convert_pdf_bytes_to_html
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -194,6 +195,35 @@ class TextCheckRequest(BaseModel):
 
     text: str = ""
     blocks: list[TextBlock] | None = None
+
+
+_USER_FOREST_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def load_user_forest(user_id: str, genre: str) -> Optional[dict[str, Any]]:
+    """The user's fine-tuned RandomForest for this genre, or None when they have none yet.
+
+    Read from Supabase Storage through the 24h file cache, and kept loaded until the file changes.
+    """
+    try:
+        from storage import download_user_forest
+
+        path = download_user_forest(user_id, genre)
+        if not path:
+            return None
+        changed = os.path.getmtime(path)
+        cached = _USER_FOREST_CACHE.get(path)
+        if cached and cached[0] == changed:
+            return cached[1]
+        with open(path, "rb") as handle:
+            payload = pickle.load(handle)
+        if "model" not in payload or "feature_columns" not in payload:
+            return None
+        _USER_FOREST_CACHE[path] = (changed, payload)
+        return payload
+    except Exception as exc:  # noqa: BLE001 - personalization is optional
+        print(f"User model unavailable for {user_id}: {exc}")
+        return None
 
 
 def load_model_payload() -> dict[str, Any]:
@@ -701,6 +731,7 @@ async def predict_format_core(request: PredictRequest) -> PredictResponse:
             prediction = model.predict(ordered_features)[0]
             probabilities = model.predict_proba(ordered_features)[0]
             rf_confidence = float(max(probabilities))
+            base_labels = [str(label) for label in model.classes_]
 
             # Tier-3 cascade: when the Tier-2 RandomForest is unsure, let the
             # DistilBERT INT8 ONNX model vote only if its confidence is higher.
@@ -711,6 +742,17 @@ async def predict_format_core(request: PredictRequest) -> PredictResponse:
                     if onnx_confidence > rf_confidence:
                         prediction = onnx_format
                         rf_confidence = onnx_confidence
+                        # What the user's model is blended with is now Tier 3's answer.
+                        base_labels, probabilities = [str(onnx_format)], [onnx_confidence]
+
+            # The user's own RandomForest for this genre, fine-tuned on their feedback, adjusts the
+            # answer of Tiers 2-3 (outside the baseline mode). It comes after Tier 3, so the generic
+            # model settles only the base model's doubt and never overrules what the user taught.
+            if request.user_id and isolation_mode != "baseline":
+                personal = load_user_forest(request.user_id, request.genre)
+                if personal is not None:
+                    prediction, rf_confidence = user_forest.blend(base_labels, probabilities, personal, feature_frame)
+                    genre_partition_hit = True
 
             predicted_format = str(prediction)
 
@@ -876,6 +918,7 @@ def release_prediction_models() -> None:
     model) so a document conversion can use their memory. Each reloads on its next request, in a few
     seconds; a request already running keeps its own references and finishes normally."""
     _MODEL_CACHE.clear()
+    _USER_FOREST_CACHE.clear()
     _ONNX_RUNTIME.clear()
     _TOKENIZER_CACHE.clear()
     grammar_module = sys.modules.get("grammar.grammar_checker")
@@ -1052,11 +1095,23 @@ async def trigger_feature_export() -> dict[str, str]:
         ) from error
 
 
+class FineTuneExample(BaseModel):
+    """One block the user gave feedback on, labelled with the format they want for it."""
+
+    text: str = Field(..., max_length=2000)
+    label: str = Field(..., max_length=40)
+    genre: str = "general"
+
+
 class FineTuneRequest(BaseModel):
     user_id: str = Field(..., description="Supabase user id to fine-tune.")
     genre: Optional[Literal["ieee", "thesis", "memo", "general"]] = Field(
         None,
         description="Train one genre partition; omitted trains each genre separately (never pooled).",
+    )
+    examples: list[FineTuneExample] = Field(
+        default_factory=list,
+        description="The user's labeled blocks (accepted: the suggested format; rejected: the format kept).",
     )
 
 
@@ -1070,10 +1125,13 @@ class FineTuneResponse(BaseModel):
 async def trigger_fine_tune(request: FineTuneRequest) -> FineTuneResponse:
     """Trigger supervised user fine-tuning in a background thread.
 
-    Runs the RandomForest fine-tuner and the LSTM sequence trainer, then uploads
-    the LSTM artifact to Supabase Storage so predictions reuse it from cloud.
+    Per genre: the RandomForest fine-tuner learns from the user's labeled blocks of that genre (as
+    the same feature rows /predict builds), and the LSTM sequence trainer from their behavior. Both
+    models go to Supabase Storage, where /predict reads them.
     """
+    import json as json_module
     import subprocess
+    import tempfile
     import threading
 
     fine_tuner_path = ROOT_DIR / "training" / "fine_tuner.py"
@@ -1084,16 +1142,42 @@ async def trigger_fine_tune(request: FineTuneRequest) -> FineTuneResponse:
 
     genres = [request.genre] if request.genre else list(duckdb_store.GENRES)
 
+    # Feature rows for each genre's labeled blocks, built now with the base model's columns. Only
+    # labels the base model knows can be blended with it.
+    base = load_model_payload()
+    known = {str(label) for label in base["model"].classes_}
+    columns = list(base["feature_columns"])
+    by_genre: dict[str, dict[str, list[Any]]] = {}
+    for example in request.examples:
+        genre = duckdb_store.normalize_genre(example.genre)
+        if genre not in genres or example.label not in known or not example.text.strip():
+            continue
+        row = build_feature_row(PredictRequest(text=example.text, genre=genre)).reindex(columns=columns, fill_value=0)
+        bucket = by_genre.setdefault(genre, {"rows": [], "labels": []})
+        bucket["rows"].append([float(value) for value in row.iloc[0].tolist()])
+        bucket["labels"].append(example.label)
+
     def run_fine_tuner() -> None:
         # One model per (user, genre): each run reads only its own partition.
         for genre in genres:
-            subprocess.run(
-                [python_exec, str(fine_tuner_path), "--user-id", request.user_id, "--genre", genre],
-                cwd=str(ROOT_DIR),
-                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-                capture_output=True,
-                text=True,
-            )
+            examples = by_genre.get(genre)
+            if examples:
+                with tempfile.TemporaryDirectory(prefix="intellidocs-finetune-") as workdir:
+                    examples_path = os.path.join(workdir, "examples.json")
+                    with open(examples_path, "w", encoding="utf-8") as handle:
+                        json_module.dump({"feature_columns": columns, **examples}, handle)
+                    subprocess.run(
+                        [python_exec, str(fine_tuner_path), "--user-id", request.user_id, "--genre", genre, "--examples", examples_path],
+                        cwd=str(ROOT_DIR),
+                        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                        capture_output=True,
+                        text=True,
+                    )
+            if _low_memory_host():
+                # Importing torch alone takes ~500 MB: beside the running service it would exhaust a
+                # 512 MB host. The user's RandomForest above still personalizes their predictions.
+                print(f"[fine-tune] {request.user_id}/{genre}: LSTM training skipped on a low-memory host")
+                continue
             subprocess.run(
                 [python_exec, str(lstm_trainer_path), "--user-id", request.user_id, "--genre", genre, "--epochs", "8"],
                 cwd=str(ROOT_DIR),

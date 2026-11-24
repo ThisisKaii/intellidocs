@@ -99,6 +99,44 @@ def upload_user_model(local_path: str, user_id: str, genre: str) -> bool:
         return False
 
 
+def user_forest_object(user_id: str, genre: str) -> str:
+    """Storage object for one user's fine-tuned RandomForest in one genre: `{user_id}/{genre}.forest.pkl`."""
+    return f"{user_id}/{genre}.forest.pkl"
+
+
+def download_user_forest(user_id: str, genre: str) -> Optional[str]:
+    """A local cached path for a user's fine-tuned RandomForest in one genre, or None when there is none.
+
+    Same 24h cache as the LSTM; only the requested genre is ever fetched.
+    """
+    object_name = user_forest_object(user_id, genre)
+    local = _cache_path(object_name)
+    if _is_fresh(local):
+        return str(local)
+    try:
+        local.write_bytes(_client().storage.from_(BUCKET).download(object_name))
+        return str(local)
+    except Exception:  # noqa: BLE001 - most users have no model yet
+        return None
+
+
+def upload_user_forest(local_path: str, user_id: str, genre: str) -> bool:
+    """Upload a freshly fine-tuned RandomForest; the cached copy is replaced so predictions use it at once."""
+    try:
+        _client().storage.create_bucket(BUCKET, public=False)
+    except Exception:
+        pass  # bucket likely already exists
+    try:
+        data = Path(local_path).read_bytes()
+        object_name = user_forest_object(user_id, genre)
+        _client().storage.from_(BUCKET).upload(object_name, data, {"upsert": "true"})
+        _cache_path(object_name).write_bytes(data)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        print(f"Storage upload warning for {user_id}: {exc}")
+        return False
+
+
 def _local_models_dir() -> Path:
     """Return the ml/models directory used as the offline fallback for the base ONNX model."""
     return Path(__file__).resolve().parent / "models"

@@ -1,5 +1,6 @@
 import { createFeedbackRecord, type CreateFeedbackParams } from '../models/feedbackModel'
 import { appendDocumentBehaviorEvent } from '../models/behaviorModel'
+import { maybeStartPersonalization } from './personalizationTrigger'
 
 export interface ProcessFeedbackInput {
   userId: string
@@ -8,6 +9,9 @@ export interface ProcessFeedbackInput {
   predictedFormat: string
   confidence?: number
   accepted: boolean
+  /** The block the suggestion was for, and on a rejection the format it kept (see feedbackModel). */
+  blockText?: string
+  keptFormat?: string
 }
 
 /**
@@ -17,7 +21,7 @@ export interface ProcessFeedbackInput {
 export async function processAIFeedback(
   input: ProcessFeedbackInput
 ): Promise<void> {
-  const { userId, documentId, predictionType, predictedFormat, confidence, accepted } = input
+  const { userId, documentId, predictionType, predictedFormat, confidence, accepted, blockText, keptFormat } = input
 
   // 1. Save structured feedback record to Supabase
   const feedbackParams: CreateFeedbackParams = {
@@ -27,8 +31,18 @@ export async function processAIFeedback(
     predictedFormat,
     confidence,
     accepted,
+    ...(blockText !== undefined ? { blockText } : {}),
+    ...(keptFormat !== undefined ? { keptFormat } : {}),
   }
   await createFeedbackRecord(feedbackParams)
+
+  // A labeled block can retrain the user's own model: at 5 of them, then every 10 more, a
+  // personalization run starts in the background (this request does not wait for it).
+  if (blockText !== undefined) {
+    maybeStartPersonalization(userId).catch((error: unknown) =>
+      console.warn('Could not check for a personalization run:', error instanceof Error ? error.message : error)
+    )
+  }
 
   // 2. Buffer real-time event to Redis behavior stream for DuckDB aggregation. Feedback with no
   //    document has no genre, so it is kept in Supabase only and never enters training data.

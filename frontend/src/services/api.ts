@@ -1875,6 +1875,9 @@ export const api = {
       predictedFormat: string
       confidence?: number
       accepted: boolean
+      /** The block the suggestion was for, and on a rejection the format it kept. */
+      blockText?: string
+      keptFormat?: string
     }): Promise<{ status: string; message: string }> => {
       return fetchAPI<{ status: string; message: string }>('ai/feedback', {
         method: 'POST',

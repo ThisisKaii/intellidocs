@@ -817,6 +817,8 @@ export async function logAIFeedback(req: Request, res: Response): Promise<void> 
       predictedFormat: string
       confidence?: number
       accepted: boolean
+      blockText?: string
+      keptFormat?: string
     }
 
     const { processAIFeedback } = await import('../skills/feedbackLoop')
@@ -828,6 +830,8 @@ export async function logAIFeedback(req: Request, res: Response): Promise<void> 
       predictedFormat: body.predictedFormat,
       confidence: body.confidence,
       accepted: body.accepted,
+      blockText: body.blockText,
+      keptFormat: body.keptFormat,
     })
 
     res.status(201).json({ status: 'ok', message: 'Feedback logged successfully' })
@@ -872,8 +876,9 @@ export async function triggerUserFineTune(req: Request, res: Response): Promise<
       return
     }
 
-    const { triggerFineTune } = await import('../ai/bridge/pythonBridge')
-    const result = await triggerFineTune(userId)
+    // Aggregate the user's behavior, then fine-tune on their labeled blocks (as the automatic runs do).
+    const { runPersonalization } = await import('../skills/personalizationTrigger')
+    const result = await runPersonalization(userId)
 
     res.status(200).json(result)
   } catch (error) {

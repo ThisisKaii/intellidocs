@@ -2,8 +2,11 @@ import { processAIFeedback } from '../feedbackLoop'
 import * as feedbackModel from '../../models/feedbackModel'
 import * as behaviorModel from '../../models/behaviorModel'
 
+import * as trigger from '../personalizationTrigger'
+
 jest.mock('../../models/feedbackModel')
 jest.mock('../../models/behaviorModel')
+jest.mock('../personalizationTrigger')
 
 describe('processAIFeedback skill', () => {
   const createRecordMock = feedbackModel.createFeedbackRecord as jest.MockedFunction<
@@ -16,6 +19,7 @@ describe('processAIFeedback skill', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     createRecordMock.mockResolvedValue(undefined)
+    ;(trigger.maybeStartPersonalization as jest.Mock).mockResolvedValue(false)
     appendEventMock.mockResolvedValue('logged')
   })
 
@@ -45,6 +49,35 @@ describe('processAIFeedback skill', () => {
         action: 'ai_suggestion_accepted:heading1',
       })
     )
+  })
+
+  it('passes the block and the format it kept on to the feedback record', async () => {
+    await processAIFeedback({
+      userId: 'user-123',
+      documentId: 'doc-456',
+      predictionType: 'format_prompt',
+      predictedFormat: 'heading1',
+      accepted: false,
+      blockText: 'Rationale of the Study',
+      keptFormat: 'paragraph',
+    })
+
+    expect(createRecordMock).toHaveBeenCalledWith(
+      expect.objectContaining({ accepted: false, blockText: 'Rationale of the Study', keptFormat: 'paragraph' })
+    )
+    // A labeled block may start the user's personalization run.
+    expect(trigger.maybeStartPersonalization).toHaveBeenCalledWith('user-123')
+  })
+
+  it('never starts personalization for feedback without its block', async () => {
+    await processAIFeedback({
+      userId: 'user-123',
+      documentId: 'doc-456',
+      predictionType: 'chat_preview',
+      predictedFormat: 'blockquote',
+      accepted: true,
+    })
+    expect(trigger.maybeStartPersonalization).not.toHaveBeenCalled()
   })
 
   it('logs a negative behavior event against the document', async () => {

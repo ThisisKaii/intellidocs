@@ -449,11 +449,19 @@ export interface FineTuneBridgeResponse {
   user_id: string
 }
 
-/** Trigger per-user supervised fine-tuning on the ML FastAPI service. */
-export async function triggerFineTune(userId: string): Promise<FineTuneBridgeResponse> {
+/** One labeled block the user's own formatting model learns from. */
+export interface FineTuneExample {
+  text: string
+  label: string
+  genre: string
+}
+
+/** Trigger per-user supervised fine-tuning on the ML FastAPI service, with the user's labeled blocks. */
+export async function triggerFineTune(userId: string, examples: FineTuneExample[] = []): Promise<FineTuneBridgeResponse> {
   const mlApiUrl = getMLApiUrl()
   const response = await axios.post<FineTuneBridgeResponse>(`${mlApiUrl}/fine-tune`, {
     user_id: userId,
+    examples,
   })
   return response.data
 }
