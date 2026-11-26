@@ -131,7 +131,7 @@ const IEEE: DocumentBlueprint = {
 
 /**
  * University capstone / thesis, laid out as a UCLM College of Computer Studies capstone manuscript:
- * the title page, the front matter in its usual order, Chapters I to III with their standard sections,
+ * the title page, the front matter in its usual order, Chapters I to IV with their standard sections, the conclusion, recommendations and translational research,
  * then the references, curriculum vitae and appendices.
  */
 const TITLE_LINE = { block: 'paragraph', centered: true, group: 'title_page' } as const
@@ -201,6 +201,20 @@ const UCLM_SECTIONS: BlueprintSection[] = [
   { block: 'paragraph', placeholder: 'Consent, privacy and data protection.' },
   { block: 'heading', level: 2, placeholder: 'Software Engineering Methodology' },
   { block: 'paragraph', placeholder: 'The development methodology and its phases.' },
+  { block: 'heading', level: 1, placeholder: 'CHAPTER IV: PRESENTATION, ANALYSIS AND INTERPRETATION OF DATA' },
+  { block: 'heading', level: 2, placeholder: 'Profile of the Respondents' },
+  { block: 'paragraph', placeholder: 'Who answered the survey, presented in tables or charts.' },
+  { block: 'heading', level: 2, placeholder: 'Results of the Survey' },
+  { block: 'paragraph', placeholder: 'Each result, its table or chart, and what it means.' },
+  { block: 'heading', level: 2, placeholder: 'Software Testing Results' },
+  { block: 'paragraph', placeholder: 'How the system performed in its tests.' },
+  // UCLM manuscripts have no Chapter V: these close the study as parts of their own, like the references.
+  { block: 'heading', level: 1, placeholder: 'CONCLUSION' },
+  { block: 'paragraph', placeholder: 'What the study found, answering its objectives.' },
+  { block: 'heading', level: 1, placeholder: 'RECOMMENDATIONS' },
+  { block: 'paragraph', placeholder: 'What should be done next, based on the findings.' },
+  { block: 'heading', level: 1, placeholder: 'TRANSLATIONAL RESEARCH' },
+  { block: 'paragraph', placeholder: 'How the study is put into practice.' },
   { block: 'heading', level: 1, placeholder: 'REFERENCES' },
   { block: 'paragraph', placeholder: 'Build this from Tools, Citations, Bibliography.' },
   { block: 'heading', level: 1, placeholder: 'CURRICULUM VITAE' },
@@ -212,7 +226,7 @@ const UCLM_SECTIONS: BlueprintSection[] = [
 const UCLM_CAPSTONE: DocumentBlueprint = {
   key: 'uclm_capstone',
   name: 'University Capstone / Thesis',
-  description: 'UCLM spec: 1.5" left margin, 11pt justified at 1.5 spacing, CHAPTER I to III, roman front matter.',
+  description: 'UCLM spec: 1.5" left margin, 11pt justified at 1.5 spacing, CHAPTER I to IV with conclusion and recommendations, roman front matter.',
   presetKey: 'uclm_capstone',
   // Each front-matter part and chapter starts on a new page, as in the printed manuscript.
   sections: UCLM_SECTIONS.map((section) => (section.block === 'heading' && section.level === 1 ? { ...section, newPage: true } : section)),

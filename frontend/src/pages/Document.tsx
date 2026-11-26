@@ -121,6 +121,31 @@ function captionsForPreset(key: string | null | undefined): CaptionConfig {
   return findAcademicPreset(base ?? key)?.captions ?? (base === 'ieee' ? IEEE_CAPTIONS : DEFAULT_CAPTIONS)
 }
 
+/** Where this browser remembers whether the editor's side panel was open. */
+const RIGHT_PANEL_KEY = 'intellidocs.rightPanelOpen'
+
+/** The citation style a preset gives its documents (a user's own preset takes its base preset's). */
+function citationStyleForPreset(key: string | null | undefined): CitationStyle | undefined {
+  return findAcademicPreset(key)?.citationStyle ?? findAcademicPreset(basePresetKey(key) ?? key)?.citationStyle
+}
+
+/**
+ * The citation style this browser kept for a document, if the author has used it (see the references
+ * copy below). The copy is written as soon as the page opens, with the default style, so a copy
+ * without references is not a choice.
+ */
+function browserCitationStyle(documentId: string): CitationStyle | null {
+  try {
+    const raw = localStorage.getItem(`intellidocs.references.${documentId}`)
+    const saved = raw ? (JSON.parse(raw) as Partial<CitationData>) : null
+    if (!saved || !Array.isArray(saved.references) || saved.references.length === 0) return null
+    const style = saved.style
+    return style && style in CITATION_STYLE_LABELS ? style : null
+  } catch {
+    return null
+  }
+}
+
 /** Where a document's unsaved local copy is kept: per tab for a document split into tabs. */
 function tabDraftKey(documentId: string, tabId: string | null): string {
   return tabId ? `${documentId}#${tabId}` : documentId
@@ -453,7 +478,20 @@ export default function Document(): JSX.Element {
     query.addEventListener('change', onChange)
     return () => query.removeEventListener('change', onChange)
   }, [])
-  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches)
+  // The side panel stays as the user last left it (it reopened on every load); a phone starts with it closed.
+  const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    try {
+      const saved = window.localStorage.getItem(RIGHT_PANEL_KEY)
+      if (saved === 'open' || saved === 'closed') return saved === 'open'
+    } catch { /* blocked storage: fall back to the screen size */ }
+    return !window.matchMedia('(max-width: 767px)').matches
+  })
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(RIGHT_PANEL_KEY, rightPanelOpen ? 'open' : 'closed')
+    } catch { /* blocked storage: the panel opens by default next time */ }
+  }, [rightPanelOpen])
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>('assistant')
   // A professor's grade and comments on this submission (owner or reviewing professor only).
   const [feedback, setFeedback] = useState<DocumentFeedback | null>(null)
@@ -1178,8 +1216,11 @@ export default function Document(): JSX.Element {
       setReferences(doc.citation_data.references)
       savedCitationsRef.current = JSON.stringify(doc.citation_data)
     } else {
-      // No server copy yet: the first edit (or a browser-held copy) will be saved as one.
-      savedCitationsRef.current = JSON.stringify({ style: 'ieee', references: [] })
+      // No server copy yet: the first edit (or a browser-held copy) will be saved as one. Until the
+      // author picks a style, the document's preset decides it (a UCLM manuscript cites in APA).
+      const presetStyle = citationStyleForPreset(doc.formatting_preset) ?? 'ieee'
+      if (!browserCitationStyle(doc.id)) setCitationStyle(presetStyle)
+      savedCitationsRef.current = JSON.stringify({ style: presetStyle, references: [] })
     }
   }
 
@@ -2330,7 +2371,8 @@ export default function Document(): JSX.Element {
     }
   }
 
-  // The split offer: proposed once the document is open, shown by itself once per document.
+  // The split offer: proposed once the document is open, shown by itself once per long document.
+  const SPLIT_PROMPT_MIN_WORDS = 4000
   const [splitProposal, setSplitProposal] = useState<ProposedTab[] | null>(null)
   const [splitOpen, setSplitOpen] = useState<boolean>(false)
   const [splitBusy, setSplitBusy] = useState<boolean>(false)
@@ -2350,8 +2392,10 @@ export default function Document(): JSX.Element {
       if (editor.isDestroyed) return
       const proposal = proposeChapterSplit(editor.getJSON() as EditorJson)
       setSplitProposal(proposal)
-      // Asks by itself only the owner, and only once per document ("Not now" is remembered).
-      if (proposal && docOwnerId === user?.id && !splitPromptDismissed(id)) setSplitOpen(true)
+      // Asks by itself only the owner, only once per document ("Not now" is remembered), and only for a
+      // long document: splitting keeps a long manuscript fast, a fresh 350-word template does not need it.
+      const words = editor.state.doc.textContent.split(/\s+/).filter(Boolean).length
+      if (proposal && words >= SPLIT_PROMPT_MIN_WORDS && docOwnerId === user?.id && !splitPromptDismissed(id)) setSplitOpen(true)
     }, 1500)
     return () => window.clearTimeout(timer)
     // The proposal is read once per opened document; typing does not re-ask.
@@ -3802,9 +3846,10 @@ export default function Document(): JSX.Element {
     // Say what changed, and offer to reformat text that keeps its own (e.g. imported) styling.
     setPresetToast({ presetKey: key, summary: describePresetChanges(preset), result: null })
     schedulePresetToastHide()
-    // Switching preset restyles the captions and, for IEEE, the citation style.
+    // Switching preset restyles the captions and the citation style (IEEE numbers, UCLM and APA author-date).
     if (editor && !editor.isDestroyed) editor.commands.setCaptionLabelStyle(captionConfig ?? captionsForPreset(key))
-    if (basePresetKey(key) === 'ieee') setCitationStyle('ieee')
+    const presetCitations = citationStyleForPreset(key)
+    if (presetCitations) setCitationStyle(presetCitations)
     if (id) {
       try {
         await api.formatting.setDocumentPreset(id, key)

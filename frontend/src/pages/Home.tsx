@@ -920,7 +920,8 @@ export default function HomePage(): JSX.Element {
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-semibold normal-case tracking-tight text-foreground m-0">{pageTitle}</h1>
               <span className="text-xs font-medium text-muted-foreground bg-secondary rounded-full px-2.5 py-1 leading-none">
-                {visibleDocuments.length} {visibleDocuments.length === 1 ? 'document' : 'documents'}
+                {/* While the list loads its count is not known yet: "0 documents" read as an empty account. */}
+                {loading ? 'Loading…' : `${visibleDocuments.length} ${visibleDocuments.length === 1 ? 'document' : 'documents'}`}
               </span>
               {openClassFolder && (
                 <button

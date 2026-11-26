@@ -126,6 +126,9 @@ ACADEMIC_WHITELIST: frozenset[str] = frozenset({
     "face_validity", "concurrent_validity", "predictive_validity",
     "discriminant_validity", "convergent_validity", "known_groups",
 
+    # This system and its school (manuscripts written in it name both)
+    "intellidocs", "uclm",
+
     # Software / tools
     "spss", "sas", "stata", "r", "python", "matlab", "julia", "julia",
     "nvivo", "atlas_ti", "maxqda", "dedoose", "quirkos", "weft_qda",

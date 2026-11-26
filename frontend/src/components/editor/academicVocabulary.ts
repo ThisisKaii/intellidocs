@@ -33,7 +33,7 @@ export const ACADEMIC_WORDS: readonly string[] = [
   'hline', 'hochberg', 'holm', 'homoscedastic', 'homoscedasticity', 'homoskedasticity', 'hon',
   'hpd', 'href', 'hyperref', 'hypotheses', 'hypothesis', 'ibid', 'icc', 'ideas', 'identity',
   'ieee', 'imprecision', 'include', 'includegraphics', 'inconsistency', 'indentfirst',
-  'independent', 'indirectness', 'inductive', 'inf', 'infra', 'infty', 'initiation', 'input',
+  'independent', 'indirectness', 'inductive', 'inf', 'infra', 'infty', 'initiation', 'input', 'intellidocs',
   'inputenc', 'instrument', 'instrumentation', 'int', 'integration', 'interpretivism', 'inverse',
   'investigation', 'iota', 'isbn', 'issn', 'jabref', 'jackknife', 'jbi', 'jenkins', 'jest',
   'julia', 'kappa', 'kendall', 'kendalltau', 'keywords', 'kolmogorov', 'kruskal', 'kubernetes',
@@ -69,7 +69,7 @@ export const ACADEMIC_WORDS: readonly string[] = [
   'tabular', 'tag', 'tau', 'taylor', 'tbl', 'terraform', 'tetrachoric', 'tex', 'texlive', 'textbf',
   'textit', 'texttt', 'thanks', 'theorem', 'theoretical', 'therefore', 'theta', 'tikz', 'title',
   'titlesec', 'tox', 'transferability', 'travis', 'triangulation', 'tukey', 'turabian',
-  'underline', 'unidimensional', 'unittest', 'upsilon', 'url', 'usepackage', 'validation',
+  'uclm', 'underline', 'unidimensional', 'unittest', 'upsilon', 'url', 'usepackage', 'validation',
   'validity', 'vancouver', 'variable', 'variables', 'verbatim', 'vide', 'visualization', 'viz',
   'vol', 'vox', 'voxeu', 'wallis', 'webpack', 'wem', 'whitney', 'wilcoxon', 'wiley', 'wilk',
   'woolf', 'wos', 'writelatex', 'xcolor', 'yarn', 'zeta', 'zotero',
@@ -82,10 +82,17 @@ export const ACADEMIC_ACRONYMS: readonly string[] = [
 ]
 
 /**
+ * Names written with their own capitals: the product a manuscript describes and its school. Harper
+ * reads a lowercase entry as allowing only lowercase or sentence-start capitals, so "IntelliDocs"
+ * mid-sentence needs its exact spelling.
+ */
+export const PROPER_NAMES: readonly string[] = ['IntelliDocs', 'UCLM']
+
+/**
  * Everything Harper should accept. Words go in lowercase only: Harper already accepts a lowercase
  * word capitalised at the start of a sentence, while a capitalised entry ("Heteroscedasticity")
  * reads as a proper noun and makes the lowercase spelling an error.
  */
 export function academicDictionary(): string[] {
-  return [...ACADEMIC_WORDS, ...ACADEMIC_ACRONYMS]
+  return [...ACADEMIC_WORDS, ...ACADEMIC_ACRONYMS, ...PROPER_NAMES]
 }

@@ -6,6 +6,8 @@ import { UCLM_CAPTIONS, findCaptions } from '../captionNumbering'
 import { insertOrUpdateGenerated } from '../DocumentParts'
 import { findAcademicPreset } from '../academicPresets'
 import { manuscriptPageLabel } from '@/lib/pageLayout'
+import { getBlueprint } from '../documentBlueprints'
+import { academicDictionary } from '../academicVocabulary'
 
 // The page-break plugin watches for layout changes; jsdom has no layout to watch.
 globalThis.ResizeObserver = class {
@@ -33,6 +35,29 @@ describe('UCLM manuscript parts', () => {
     const preset = findAcademicPreset('uclm_capstone')
     expect(preset?.pageNumbers).toBe('manuscript')
     expect(preset?.captions).toBe(UCLM_CAPTIONS)
+  })
+
+  it('cites in APA in UCLM and APA documents, IEEE in IEEE ones', () => {
+    expect(findAcademicPreset('uclm_capstone')?.citationStyle).toBe('apa')
+    expect(findAcademicPreset('apa_7th')?.citationStyle).toBe('apa')
+    expect(findAcademicPreset('ieee')?.citationStyle).toBe('ieee')
+  })
+
+  it('lays out the whole manuscript: Chapter IV, then the conclusion, recommendations and translational research as parts of their own', () => {
+    const titles = getBlueprint('uclm_capstone').sections
+      .filter((section) => section.block === 'heading' && section.level === 1)
+      .map((section) => section.placeholder)
+    const at = (title: string): number => titles.indexOf(title)
+    expect(at('CHAPTER IV: PRESENTATION, ANALYSIS AND INTERPRETATION OF DATA')).toBeGreaterThan(at('CHAPTER III: RESEARCH METHODOLOGY'))
+    expect(at('CONCLUSION')).toBeGreaterThan(at('CHAPTER IV: PRESENTATION, ANALYSIS AND INTERPRETATION OF DATA'))
+    expect(at('RECOMMENDATIONS')).toBe(at('CONCLUSION') + 1)
+    expect(at('TRANSLATIONAL RESEARCH')).toBe(at('RECOMMENDATIONS') + 1)
+    expect(at('REFERENCES')).toBe(at('TRANSLATIONAL RESEARCH') + 1)
+    expect(titles.some((title) => /^CHAPTER V/.test(title))).toBe(false)
+  })
+
+  it('does not flag the product or the school as misspelled', () => {
+    expect(academicDictionary()).toEqual(expect.arrayContaining(['IntelliDocs', 'UCLM', 'intellidocs']))
   })
 
   it('writes a UCLM figure caption as "Figure 1: " with the title bold and underlined', () => {

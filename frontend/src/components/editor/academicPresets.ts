@@ -1,5 +1,6 @@
 import type { PageSizeKey, PageOrientation, MarginValues } from './TiptapEditor'
 import type { PageNumberFormat, PresetBlueprint } from '@/services/api'
+import type { CitationStyle } from '@/lib/citationFormats'
 import { APA_CAPTIONS, IEEE_CAPTIONS, UCLM_CAPTIONS, type CaptionConfig } from './captionNumbering'
 
 /**
@@ -54,6 +55,8 @@ export interface AcademicPreset {
   captions?: CaptionConfig
   /** Page numbers a new document made with this preset starts with (in the header). */
   pageNumbers?: PageNumberFormat
+  /** Citation style a document with this preset uses until the author picks another. */
+  citationStyle?: CitationStyle
   /** Scoped stylesheet applied while this preset is active. */
   css: string
 }
@@ -138,6 +141,7 @@ ${preset.extraCss ?? ''}`
 const APA_7TH: PresetInput = {
   key: 'apa_7th',
   captions: APA_CAPTIONS,
+  citationStyle: 'apa',
   name: 'APA 7th Edition',
   description:
     "APA 7 — 1\" margins, Times New Roman 12pt, double-spaced, hanging-style centered title, five-level headings.",
@@ -160,6 +164,7 @@ const APA_7TH: PresetInput = {
 const IEEE: PresetInput = {
   key: 'ieee',
   captions: IEEE_CAPTIONS,
+  citationStyle: 'ieee',
   name: 'IEEE Conference',
   description:
     'IEEE — Letter, 0.75" top, 1" bottom and 0.625" side margins, Times New Roman 10pt justified, centered small-caps Roman-numeral sections (I. II. III.), italic alphabetized subsections.',
@@ -198,6 +203,8 @@ const UCLM_CAPSTONE: PresetInput = {
   captions: UCLM_CAPTIONS,
   // No number on the title page, i, ii, iii on the front matter, 1, 2, 3 from Chapter I.
   pageNumbers: 'manuscript',
+  // UCLM manuscripts cite author-date: (Zou & Boisvert, 2021).
+  citationStyle: 'apa',
   name: 'UCLM Capstone (Thesis)',
   description:
     'UCLM spec — short bond paper (8.5x11"), 1.5" left binding margin, Times New Roman 11pt justified at 1.5 spacing; 12pt bold uppercase centered chapter headings (CHAPTER I: INTRODUCTION), 11pt bold section headings, roman preliminary page numbers.',
