@@ -34,6 +34,9 @@ export interface CaptionKindConfig {
   fontSize: string
   boldLabel: boolean
   italicText: boolean
+  /** The title in bold and/or underlined (UCLM: "Figure 1: " then the title bold and underlined). */
+  boldText?: boolean
+  underlineText?: boolean
   alignment: 'center' | 'left'
 }
 
@@ -62,6 +65,15 @@ export const IEEE_CAPTIONS: CaptionConfig = {
 export const APA_CAPTIONS: CaptionConfig = {
   figure: { placement: 'top', label: 'Figure', numerals: 'arabic', separator: 'line', fontSize: '', boldLabel: true, italicText: true, alignment: 'left' },
   table: { placement: 'top', label: 'Table', numerals: 'arabic', separator: 'line', fontSize: '', boldLabel: true, italicText: true, alignment: 'left' },
+}
+
+/**
+ * UCLM capstone manuscripts: "Figure 1: " below the figure with the title bold and underlined;
+ * "Table 1" above the table with its title on the next line; both centred.
+ */
+export const UCLM_CAPTIONS: CaptionConfig = {
+  figure: { placement: 'bottom', label: 'Figure', numerals: 'arabic', separator: ': ', fontSize: '', boldLabel: false, italicText: false, boldText: true, underlineText: true, alignment: 'center' },
+  table: { placement: 'top', label: 'Table', numerals: 'arabic', separator: 'line', fontSize: '', boldLabel: false, italicText: false, alignment: 'center' },
 }
 
 /** The configuration a style stands for. */

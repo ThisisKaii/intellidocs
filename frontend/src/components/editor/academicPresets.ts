@@ -1,6 +1,6 @@
 import type { PageSizeKey, PageOrientation, MarginValues } from './TiptapEditor'
-import type { PresetBlueprint } from '@/services/api'
-import { APA_CAPTIONS, IEEE_CAPTIONS, type CaptionConfig } from './captionNumbering'
+import type { PageNumberFormat, PresetBlueprint } from '@/services/api'
+import { APA_CAPTIONS, IEEE_CAPTIONS, UCLM_CAPTIONS, type CaptionConfig } from './captionNumbering'
 
 /**
  * One-click academic formatting presets. Each preset drives:
@@ -52,6 +52,8 @@ export interface AcademicPreset {
   extraCss?: string
   /** How captions are placed and written in documents using this preset (default: Figure 1 below, Table 1 above). */
   captions?: CaptionConfig
+  /** Page numbers a new document made with this preset starts with (in the header). */
+  pageNumbers?: PageNumberFormat
   /** Scoped stylesheet applied while this preset is active. */
   css: string
 }
@@ -189,10 +191,13 @@ const IEEE: PresetInput = {
 /**
  * UCLM capstone / thesis style, measured from a UCLM capstone manuscript: 1.5" binding margin,
  * 11pt Times New Roman body justified at 1.5 line spacing with a 0.5" first-line indent, 12pt bold
- * uppercase centered chapter headings, 11pt bold section headings, an 11pt bold all-caps title.
+ * uppercase centered chapter headings, 11pt bold section headings, a 12pt bold all-caps title.
  */
 const UCLM_CAPSTONE: PresetInput = {
   key: 'uclm_capstone',
+  captions: UCLM_CAPTIONS,
+  // No number on the title page, i, ii, iii on the front matter, 1, 2, 3 from Chapter I.
+  pageNumbers: 'manuscript',
   name: 'UCLM Capstone (Thesis)',
   description:
     'UCLM spec — short bond paper (8.5x11"), 1.5" left binding margin, Times New Roman 11pt justified at 1.5 spacing; 12pt bold uppercase centered chapter headings (CHAPTER I: INTRODUCTION), 11pt bold section headings, roman preliminary page numbers.',

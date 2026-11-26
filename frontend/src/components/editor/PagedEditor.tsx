@@ -5,7 +5,6 @@ import { ColumnsDraft } from './ColumnsDraft'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCaret from '@tiptap/extension-collaboration-caret'
 import type * as Y from 'yjs'
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { WebsocketProvider } from 'y-websocket'
 import {
   buildEditorExtensions,
@@ -26,7 +25,7 @@ import type { GrammarIssue } from './GrammarPanel'
 import { loadEditorContent } from '@/lib/loadEditorContent'
 import type { EditorJson } from '@/services/api'
 import {
-  FIRST_CHAPTER,
+  firstChapterPos,
   lastLineSlackPx,
   manuscriptNumberingCss,
   measureKey,
@@ -41,29 +40,7 @@ import { documentSectionBreaks } from './SectionLayout'
 import { layoutForTab, tabNumberingCss, type ResolvedTabNumbering } from '@/lib/tabNumbering'
 import { sanitizeHeaderHtml } from '@/lib/sanitizeHeaderHtml'
 
-/**
- * Position of the block that opens Chapter 1, or null. Contents entries also read "CHAPTER I …",
- * so a heading wins; otherwise the last short line (the contents come before the chapter).
- * Entries ending in a page number or holding a tab are contents lines, never the chapter.
- */
-export function firstChapterPos(doc: ProseMirrorNode): number | null {
-  let heading: number | null = null
-  let line: number | null = null
-  doc.forEach((node, offset) => {
-    if (heading !== null || !node.isTextblock) return
-    const text = node.textContent.trim()
-    const match = FIRST_CHAPTER.exec(text)
-    if (!match || text.length > 80) return
-    let tab = false
-    node.forEach((child) => {
-      if (!child.isText && /tab/i.test(child.type.name)) tab = true
-    })
-    if (tab || /\d\s*$/.test(text.slice(match[0].length))) return
-    if (node.type.name === 'heading') heading = offset
-    else line = offset
-  })
-  return heading ?? line
-}
+export { firstChapterPos }
 
 /** Limit page-numbering rules to one editor's container (see the `scopeId` prop). */
 function scopeCss(css: string, scopeId: string | undefined): string {
@@ -843,6 +820,14 @@ export function PagedEditor({
       mutations.disconnect()
     }
   }, [editor, manuscript, tabNumbered, layout, page.height])
+
+  // A generated table of contents prints the numbers the pages show: it reads this mark.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    const dom = editor.view.dom as HTMLElement
+    if (manuscript) dom.dataset.pageNumbers = 'manuscript'
+    else delete dom.dataset.pageNumbers
+  }, [editor, manuscript])
 
   const romanStyle = tabNumbered && tabNumbering && !layout
     ? tabNumberingCss(tabNumbering, manuscriptPages.pageCount)

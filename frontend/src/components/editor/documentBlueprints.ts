@@ -137,7 +137,7 @@ const IEEE: DocumentBlueprint = {
 const TITLE_LINE = { block: 'paragraph', centered: true, group: 'title_page' } as const
 
 const UCLM_SECTIONS: BlueprintSection[] = [
-  { block: 'title', placeholder: 'TITLE OF THE CAPSTONE PROJECT', hint: 'Title: 11pt bold, all caps, centered' },
+  { block: 'title', placeholder: 'TITLE OF THE CAPSTONE PROJECT', hint: 'Title: 12pt bold, all caps, centered' },
   { ...TITLE_LINE, placeholder: 'A Capstone Project', hint: 'Title page lines: 11pt, centered' },
   { ...TITLE_LINE, placeholder: 'Presented to the Faculty of the College of Computer Studies' },
   { ...TITLE_LINE, placeholder: 'University of Cebu - Lapu-Lapu and Mandaue' },
@@ -193,7 +193,7 @@ const UCLM_SECTIONS: BlueprintSection[] = [
   { block: 'heading', level: 2, placeholder: 'Research Instrument' },
   { block: 'paragraph', placeholder: 'The questionnaire or tool used to gather data.' },
   { block: 'heading', level: 2, placeholder: 'Research Procedure' },
-  { block: 'heading', level: 3, placeholder: 'Data Gathering', hint: 'Subsection: 11pt italic' },
+  { block: 'heading', level: 3, placeholder: 'Data Gathering', hint: 'Subsection: 11pt bold, left' },
   { block: 'paragraph', placeholder: 'How the data is gathered.' },
   { block: 'heading', level: 3, placeholder: 'Statistical Treatment of Data' },
   { block: 'paragraph', placeholder: 'The statistical tools used to analyze the data.' },

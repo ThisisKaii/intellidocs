@@ -171,7 +171,10 @@ function captionParagraph(
     ? [schema.marks.textStyle.create({ fontSize: config.fontSize || null, fontFamily: config.fontFamily || null })]
     : []
   const labelMarks = config.boldLabel && schema.marks.bold ? [...textStyle, schema.marks.bold.create()] : textStyle
-  const titleMarks = config.italicText && schema.marks.italic ? [...textStyle, schema.marks.italic.create()] : textStyle
+  const titleMarks = [...textStyle]
+  if (config.italicText && schema.marks.italic) titleMarks.push(schema.marks.italic.create())
+  if (config.boldText && schema.marks.bold) titleMarks.push(schema.marks.bold.create())
+  if (config.underlineText && schema.marks.underline) titleMarks.push(schema.marks.underline.create())
   const content = [schema.text(label, labelMarks)]
   if (config.separator === 'line' && schema.nodes.hardBreak) content.push(schema.nodes.hardBreak.create())
   else content.push(schema.text(config.separator === 'line' ? '. ' : config.separator, textStyle))

@@ -62,7 +62,7 @@ function preview(kind: CaptionKind, config: CaptionKindConfig): JSX.Element {
     <p style={style}>
       <span style={{ fontWeight: config.boldLabel ? 700 : 400 }}>{label}</span>
       {config.separator === 'line' ? <br /> : config.separator}
-      <span style={{ fontStyle: config.italicText ? 'italic' : 'normal' }}>{title}</span>
+      <span style={{ fontStyle: config.italicText ? 'italic' : 'normal', fontWeight: config.boldText ? 700 : 400, textDecoration: config.underlineText ? 'underline' : 'none' }}>{title}</span>
     </p>
   )
 }
@@ -132,6 +132,12 @@ function KindSettings({
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
           <input type="checkbox" checked={value.italicText} onChange={(e) => set('italicText', e.target.checked)} /> Italic title
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+          <input type="checkbox" checked={!!value.boldText} onChange={(e) => set('boldText', e.target.checked)} /> Bold title
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+          <input type="checkbox" checked={!!value.underlineText} onChange={(e) => set('underlineText', e.target.checked)} /> Underline title
         </label>
       </div>
       <div aria-label={`${noun} caption preview`} style={{ borderRadius: '0.5rem', background: 'var(--secondary)', padding: '0.625rem 0.75rem', color: 'var(--foreground)' }}>

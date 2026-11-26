@@ -3977,7 +3977,9 @@ export default function Document(): JSX.Element {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'hidden', backgroundColor: 'var(--background)' }}>
+    // clip, not hidden: a hidden box can still be scrolled (focusing a control past its edge shifted the
+    // whole editor sideways and left it there).
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'clip', backgroundColor: 'var(--background)' }}>
 
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 bg-card/80 backdrop-blur-md border-b border-border/80 flex-shrink-0 transition-all">

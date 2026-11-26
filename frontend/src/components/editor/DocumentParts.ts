@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core'
 import type { Editor, JSONContent } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { STRUCTURAL_SECTION_PATTERN } from './TableOfContents'
+import { firstChapterPos, manuscriptPageLabel } from '@/lib/pageLayout'
 
 /** The generated blocks a document can carry. */
 export type GeneratedKind = 'toc' | 'lof' | 'lot' | 'refs'
@@ -245,6 +246,30 @@ export function referencesHeadingEnd(editor: Editor): { at: number; placeholder:
   return result
 }
 
+/** Blueprint text under an empty front-matter heading ("Generate this from Tools, Document parts, …"). */
+const PART_PLACEHOLDER = /^Generate this from Tools/i
+
+/**
+ * The document's own heading for a generated part ("TABLE OF CONTENTS", "LIST OF FIGURES",
+ * "LIST OF TABLES"): where it ends, and the placeholder paragraph under it if there is one.
+ */
+function partHeading(editor: Editor, kind: GeneratedKind): { end: number; placeholder: { from: number; to: number } | null } | null {
+  const want = GENERATED_TITLES[kind].toLowerCase()
+  let result: { end: number; placeholder: { from: number; to: number } | null } | null = null
+  const doc = editor.state.doc
+  doc.forEach((node, offset) => {
+    if (result || node.type.name !== 'heading' || node.attrs.generated) return
+    if (node.textContent.trim().toLowerCase() !== want) return
+    const end = offset + node.nodeSize
+    const next = doc.nodeAt(end)
+    const placeholder = next && next.type.name === 'paragraph' && PART_PLACEHOLDER.test(next.textContent.trim())
+      ? { from: end, to: end + next.nodeSize }
+      : null
+    result = { end, placeholder }
+  })
+  return result
+}
+
 /** First top-level run of paragraphs tagged with `kind`, as a document range. */
 function findGeneratedRange(editor: Editor, kind: GeneratedKind): { from: number; to: number } | null {
   let from = -1
@@ -269,23 +294,38 @@ function findGeneratedRange(editor: Editor, kind: GeneratedKind): { from: number
 export function buildAutoNodes(editor: Editor, kind: 'toc' | 'lof' | 'lot', crossTab: CrossTabEntries | null = null): JSONContent[] {
   const entries = kind === 'toc' ? collectSections(editor) : collectCaptions(editor, kind === 'lof' ? 'figure' : 'table')
   const pageOf = pageFinder(editor)
-  const label = crossTab?.pageLabel ?? ((page: number) => String(page))
+  let label = crossTab?.pageLabel ?? ((page: number) => String(page))
+  if (!crossTab && (editor.view.dom as HTMLElement).dataset.pageNumbers === 'manuscript') {
+    // The pages show i, ii, iii on the front matter and 1, 2, 3 from Chapter I: list those numbers.
+    const chapterPos = firstChapterPos(editor.state.doc)
+    const chapterPage = chapterPos === null ? null : pageOf(chapterPos)
+    label = (page: number) => manuscriptPageLabel(page, chapterPage)
+  }
   const own = entries.map((entry) => ({ text: entry.text, level: entry.level, pageLabel: label(pageOf(entry.pos)) }))
   return buildListNodes(editor, kind, crossTab ? [...crossTab.before, ...own, ...crossTab.after] : own)
 }
 
 /**
- * Replace the existing generated block of this kind, or insert a new one below
- * the caret's top-level block. Returns true when an existing block was updated.
+ * Replace the existing generated block of this kind, fill the document's own heading for it, or
+ * insert a new one below the caret's top-level block. Says which of the three it did.
  */
-export function insertOrUpdateGenerated(editor: Editor, kind: GeneratedKind, nodes: JSONContent[]): boolean {
+export function insertOrUpdateGenerated(editor: Editor, kind: GeneratedKind, nodes: JSONContent[]): 'updated' | 'heading' | 'cursor' {
   const existing = findGeneratedRange(editor, kind)
+  const heading = kind === 'refs' ? null : partHeading(editor, kind)
+  // Under the document's own "TABLE OF CONTENTS" / "LIST OF FIGURES" heading the list needs no title of its own.
+  const entries = heading && nodes[0]?.attrs?.textAlign === 'center' ? nodes.slice(1) : nodes
   if (existing) {
-    editor.chain().focus().insertContentAt(existing, nodes).run()
-    return true
+    editor.chain().focus().insertContentAt(existing, heading && existing.from === heading.end ? entries : nodes).run()
+    return 'updated'
+  }
+  if (heading) {
+    // Fill the heading the document already has (a blueprint's front matter), replacing its
+    // "Generate this from Tools …" placeholder, instead of adding a second list at the caret.
+    editor.chain().focus().insertContentAt(heading.placeholder ?? heading.end, entries).run()
+    return 'heading'
   }
   const { $from } = editor.state.selection
   const at = $from.depth >= 1 ? $from.after(1) : editor.state.doc.content.size
   editor.chain().focus().insertContentAt(at, nodes).run()
-  return false
+  return 'cursor'
 }

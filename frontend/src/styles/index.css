@@ -769,9 +769,15 @@ html {
 }
 
 /* An image taller than a page body fits on no page, and the paginator then adds pages forever
-   (hundreds a second, freezing the tab). Cap it to the body height; contain keeps the aspect. */
+   (hundreds a second, freezing the tab). Cap it to the tallest block the paginator can place: it
+   publishes that as --rm-max-content-child-height (the smallest page body less 10px). The page body
+   itself is not enough: a picture 1-9px under it (863px on a 1" short bond page) still fit nowhere and
+   added 400+ pages. contain keeps the aspect. */
 .ProseMirror .intellidocs-image-root img {
-  max-height: calc(var(--rm-page-height) - var(--rm-margin-top) - var(--rm-margin-bottom) - var(--intellidocs-header-push-max, 0px) - 1px);
+  max-height: min(
+    var(--rm-max-content-child-height, 100000px),
+    calc(var(--rm-page-height) - var(--rm-margin-top) - var(--rm-margin-bottom) - var(--intellidocs-header-push-max, 0px) - 10px)
+  );
   object-fit: contain;
 }
 
@@ -1273,6 +1279,15 @@ html {
   padding: 14px 12px;
   margin: 6px 0;
   background-color: color-mix(in srgb, var(--accent-strong) 3%, transparent);
+}
+/* The box reaches out into the page margin by its padding and border, so the text inside stays on the
+   margin: a standard heading ("Rationale of the Study") keeps its placeholder text and so its guide, and
+   must not look indented. Only the sides: the heading's own top and bottom spacing stays as the preset
+   sets it. (More specific than the editor's `.intellidocs-page-editor .ProseMirror h2` margin.) */
+.intellidocs-page-editor .ProseMirror .doc-guide,
+.ProseMirror .doc-guide.doc-guide {
+  margin-left: -13.5px;
+  margin-right: -13.5px;
 }
 .doc-guide::before {
   content: attr(data-guide);

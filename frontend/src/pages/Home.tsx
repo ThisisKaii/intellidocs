@@ -397,6 +397,8 @@ export default function HomePage(): JSX.Element {
             page_size: preset.pageSize,
             orientation: preset.orientation,
             margins: preset.margins,
+            // A UCLM manuscript opens with its page numbers already set up (roman front matter).
+            ...(preset.pageNumbers ? { show_header: true, header_number_format: preset.pageNumbers } : {}),
           })
         } catch { /* the editor falls back to the default page setup */ }
       }

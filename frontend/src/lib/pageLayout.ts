@@ -1,4 +1,5 @@
 import type { SectionProps } from './sectionProps'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 /** One Word section's header/footer choice and page numbering (mirrors the server's PageLayoutSection). */
 export interface PageLayoutSection {
@@ -260,8 +261,52 @@ export function manuscriptNumberingCss(chapterPage: number | null, pageCount: nu
   return numberingCss(layout, { starts, pageCount: Math.max(pageCount, chapterPage ?? 1) })
 }
 
+/**
+ * The number manuscript numbering prints for a page (as manuscriptNumberingCss lays it out), for a
+ * table of contents: front matter in roman (the unnumbered title page counts as i), then 1, 2, 3
+ * from the page Chapter 1 starts on. Without a chapter the pages are numbered on from 1.
+ */
+export function manuscriptPageLabel(page: number, chapterPage: number | null): string {
+  if (chapterPage === null || chapterPage <= 1) return String(page)
+  if (page >= chapterPage) return String(page - chapterPage + 1)
+  const numerals: Array<[number, string]> = [[10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]
+  let rest = page
+  let out = ''
+  for (const [value, symbol] of [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], ...numerals] as Array<[number, string]>) {
+    while (rest >= value) {
+      out += symbol
+      rest -= value
+    }
+  }
+  return out
+}
+
 /** "Chapter 1", "CHAPTER I", "Chapter One": the line that opens a manuscript's first chapter. */
 export const FIRST_CHAPTER = /^chapter\s+(?:1|i|one)\b/i
+
+/**
+ * Position of the block that opens Chapter 1, or null. Contents entries also read "CHAPTER I …",
+ * so a heading wins; otherwise the last short line (the contents come before the chapter).
+ * Entries ending in a page number or holding a tab are contents lines, never the chapter.
+ */
+export function firstChapterPos(doc: ProseMirrorNode): number | null {
+  let heading: number | null = null
+  let line: number | null = null
+  doc.forEach((node, offset) => {
+    if (heading !== null || !node.isTextblock) return
+    const text = node.textContent.trim()
+    const match = FIRST_CHAPTER.exec(text)
+    if (!match || text.length > 80) return
+    let tab = false
+    node.forEach((child) => {
+      if (!child.isText && /tab/i.test(child.type.name)) tab = true
+    })
+    if (tab || /\d\s*$/.test(text.slice(match[0].length))) return
+    if (node.type.name === 'heading') heading = offset
+    else line = offset
+  })
+  return heading ?? line
+}
 
 /** A section break in the document: the section it starts and that section's properties. */
 export interface DocumentSectionBreak {

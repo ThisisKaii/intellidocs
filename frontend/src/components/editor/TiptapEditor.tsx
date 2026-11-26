@@ -2226,7 +2226,9 @@ export function TiptapToolbar({
       <div
         className="ribbon-row"
         data-testid="ribbon-row"
-        style={{ display: 'flex', alignItems: 'center', flexWrap: 'nowrap', gap: '4px', minWidth: 0, width: '100%' }}
+        // Wraps only when it does not fit (a 1024px window with the side panel open): on one line the
+        // last controls (Page setup, Export) were off screen and scrolled the whole page sideways.
+        style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', minWidth: 0, width: '100%' }}
       >
       {/* Home tab — text editing and formatting */}
       <div

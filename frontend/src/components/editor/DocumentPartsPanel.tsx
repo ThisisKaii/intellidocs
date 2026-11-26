@@ -25,8 +25,8 @@ export default function DocumentPartsPanel({ editor, readOnly = false, crossTab 
   /** Build the block from the live document, then rebuild once more so page numbers settle after reflow. */
   function run(kind: AutoKind): void {
     if (!editor || editor.isDestroyed || !editor.isEditable) return
-    const updated = insertOrUpdateGenerated(editor, kind, buildAutoNodes(editor, kind, crossTab?.(kind) ?? null))
-    setMessage(updated ? 'Updated.' : 'Inserted below your cursor.')
+    const where = insertOrUpdateGenerated(editor, kind, buildAutoNodes(editor, kind, crossTab?.(kind) ?? null))
+    setMessage(where === 'updated' ? 'Updated.' : where === 'heading' ? 'Added under its heading.' : 'Inserted below your cursor.')
     window.setTimeout(() => {
       if (editor.isDestroyed) return
       insertOrUpdateGenerated(editor, kind, buildAutoNodes(editor, kind, crossTab?.(kind) ?? null))
