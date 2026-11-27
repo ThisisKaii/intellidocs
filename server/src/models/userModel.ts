@@ -74,8 +74,15 @@ export async function updateOwnProfile(
   names: { firstName: string; lastName: string } | { displayName: string },
 ): Promise<AccountNames | null> {
   const { data: existing } = await supabase.auth.admin.getUserById(userId)
+  const currentMeta = existing?.user?.user_metadata ?? {}
+
+  // If first and last name are already saved, they are static and cannot be changed
+  if (currentMeta.first_name && currentMeta.last_name) {
+    throw new Error('Names are static and cannot be changed after registration.')
+  }
+
   const metadata = {
-    ...(existing?.user?.user_metadata ?? {}),
+    ...currentMeta,
     ...('displayName' in names ? { display_name: names.displayName } : namesMetadata(names.firstName, names.lastName)),
   }
   const { data, error } = await supabase.auth.admin.updateUserById(userId, {

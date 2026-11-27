@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
 import { updateOwnProfile, registerUser, getOwnNames, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow, signInWithPassword } from '../models/userModel'
+import { verifyApplicant } from '../models/adminModel'
 import { effectivePlan } from '../utils/plan'
 import { resolvePendingShares } from '../models/shareModel'
 import * as accountModel from '../models/accountModel'
@@ -170,8 +171,9 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
       },
       message: 'Profile updated successfully',
     })
-  } catch {
-    res.status(500).json({ error: 'Failed to update profile' })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to update profile'
+    res.status(400).json({ error: message })
   }
 }
 
@@ -318,9 +320,32 @@ export async function getApplicationStatus(req: AuthenticatedRequest, res: Respo
   }
 }
 
+/** Extract text from an uploaded study load file (PDF via pdf-parse, image via Tesseract OCR). */
+async function extractStudyLoadText(file: Express.Multer.File): Promise<string> {
+  try {
+    const isPdf = file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')
+    if (isPdf) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const pdfParse = require('pdf-parse')
+      const data = await pdfParse(file.buffer)
+      return data?.text ? String(data.text) : ''
+    }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Tesseract = require('tesseract.js')
+    const { data } = await Tesseract.recognize(file.buffer, 'eng')
+    return data?.text ? String(data.text) : ''
+  } catch (err) {
+    console.warn('Study load text extraction warning:', err instanceof Error ? err.message : err)
+    return ''
+  }
+}
+
+import { checkStudyLoadNameMatch } from '../utils/studyLoadMatcher'
+
 /**
- * Submit a student role-application. Baseline users apply for verified Student status
- * (25MB quota, thesis presets); they keep their current role until an admin approves.
+ * Submit a student role-application with optional study load upload.
+ * If the study load's extracted name matches the account's static first and last name,
+ * the application is automatically approved. Otherwise, it is held for admin review.
  */
 export async function applyStudent(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -337,6 +362,28 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
       return
     }
 
+    const names = await getOwnNames(userId)
+    const firstName = names?.firstName ?? ''
+    const lastName = names?.lastName ?? ''
+
+    let autoApproved = false
+    if (req.file) {
+      const extractedText = await extractStudyLoadText(req.file)
+      if (checkStudyLoadNameMatch(extractedText, firstName, lastName)) {
+        autoApproved = true
+      }
+    }
+
+    if (autoApproved) {
+      await verifyApplicant(userId, 'approved', 'student', 'Auto-accepted: Name matched on uploaded study load', 'system')
+      res.status(200).json({
+        message: 'Study load verified successfully! Your student status has been automatically approved.',
+        status: 'approved',
+        autoApproved: true,
+      })
+      return
+    }
+
     const outcome = await createStudentApplication(userId, {
       email: req.user?.email ?? null,
       studentId,
@@ -349,8 +396,11 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
     }
 
     res.status(200).json({
-      message: 'Student application submitted successfully. An administrator will review your application.',
+      message: req.file
+        ? 'Application submitted! The name on your study load could not be automatically confirmed, so it has been submitted for administrator review.'
+        : 'Student application submitted successfully. An administrator will review your application.',
       status: 'pending',
+      autoApproved: false,
     })
   } catch (err) {
     console.error('applyStudent: unexpected error:', err instanceof Error ? err.message : err)
