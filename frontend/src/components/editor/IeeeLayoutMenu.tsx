@@ -7,7 +7,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ToolButton } from './RibbonControls'
 
 export interface IeeeLayoutMenuProps {
   disabled: boolean
@@ -43,16 +42,24 @@ export function IeeeLayoutMenu({
   onToggleFullSpan,
   spread,
 }: IeeeLayoutMenuProps): JSX.Element {
+  const isActive = columnsDraft || Boolean(spread?.active)
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <ToolButton
-          icon={LayoutTemplate}
+        <button
+          type="button"
           title="IEEE layout"
-          active={columnsDraft || Boolean(spread?.active)}
+          aria-label="IEEE layout"
+          aria-pressed={isActive}
           disabled={disabled}
-          onClick={() => undefined}
-        />
+          className={`inline-flex size-8 items-center justify-center rounded-lg border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-45 ${
+            isActive
+              ? 'border-primary/30 bg-primary/15 text-primary'
+              : 'border-border/70 bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground'
+          }`}
+        >
+          <LayoutTemplate className="size-4" strokeWidth={1.75} />
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">IEEE layout</DropdownMenuLabel>
