@@ -65,8 +65,10 @@ ml/convtest.py
 ml/ml/
 
 # DuckDB
+db/duckdb/
 **/*.duckdb
 **/duckdb/exports/
+*.parquet
 *.sqlite
 *.db
 
@@ -83,3 +85,29 @@ y-websocket-persistence/
 # Scratch / temp
 about.md
 about2.md
+Temp/
+tests/e2e/artifacts/
+~$*
+.opencode/
+.planning/
+*.cjs
+fix_tabs2.js
+write_academic.js
+write_headerfooter.js
+docs/b64_images.json
+docs/landing_page_concept.html
+docs/logo_showcase.html
+docs/logo-concepts/
+docs/*300DPI*
+server/mock-supabase/
+
+# Oversized fixtures and manuscript duplicates
+tests/fixtures/import_baselines/documents/DATASENSEI*
+tests/fixtures/import_baselines/documents/IntelliDocs Real.docx
+tests/fixtures/import_baselines/documents/IntelliDocs.docx
+tests/fixtures/import_baselines/word_truth/IntelliDocs Real.json
+tests/fixtures/import_baselines/word_truth/IntelliDocs.json
+docs/manuscript/manuscript/
+docs/manuscript/*Copy*
+docs/manuscript/*(1)*
+

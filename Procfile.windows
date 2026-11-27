@@ -1,0 +1,4 @@
+# IntelliDocs Multi-Process Procfile (Windows Local Dev)
+server: npm --prefix server run dev
+frontend: npm --prefix frontend run dev
+ml: ml\venv\Scripts\python.exe ml\src\main.py
