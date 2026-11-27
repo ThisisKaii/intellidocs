@@ -2670,42 +2670,6 @@ export function TiptapToolbar({
           active={isActive('orderedList')}
           onClick={() => run('ordered_list', () => editor && (toggleListInSelectedCells(editor, 'orderedList') || editor.chain().focus().toggleOrderedList().run()))}
         />
-        {isIeee && (
-          <IeeeLayoutMenu
-            disabled={!editor}
-            hasContent={Boolean(editor && !editor.isEmpty)}
-            onRenumber={() =>
-              run('ieee_numbering', () => {
-                if (editor) applyIeeeNumbering(editor)
-              })
-            }
-            onRestructure={() => {
-              if (wholeBodyActionsBlocked) onBlockedAction?.(wholeBodyActionsBlocked)
-              else setRestructureOpen(true)
-            }}
-            onPreview={() => setIeeePreviewHtml(editor?.getHTML() ?? '')}
-            columnsDraft={columnsDraft}
-            onToggleColumnsDraft={() => toggleColumnsDraft()}
-            fullSpanAvailable={Boolean(fullSpanTarget)}
-            fullSpanActive={fullSpanTarget?.node.attrs.span === 'full'}
-            onToggleFullSpan={() => editor?.chain().focus().toggleFullSpan().run()}
-            spread={
-              onSpreadPreviewChange
-                ? { active: spreadPreview, allowed: spreadAllowed, onChange: onSpreadPreviewChange }
-                : undefined
-            }
-          />
-        )}
-        <IeeeRestructureDialog
-          open={restructureOpen}
-          onOpenChange={setRestructureOpen}
-          onConfirm={() => {
-            if (editor) run('ieee_convert', () => convertToIeee(editor))
-          }}
-        />
-        {ieeePreviewHtml !== null && (
-          <IeeePrintPreview html={ieeePreviewHtml} onClose={() => setIeeePreviewHtml(null)} />
-        )}
         <ToolButton
           icon={Outdent}
           title="Outdent"
@@ -3188,7 +3152,6 @@ export function TiptapToolbar({
             currentStyleKey={currentStyleKey}
             onApplyStyle={onApplyStyle}
             onApplyPreset={onApplyPreset}
-            onConvertToIeeeCopy={onConvertToIeeeCopy}
             activePreset={activePreset}
           />
         </div>
@@ -3196,7 +3159,44 @@ export function TiptapToolbar({
 
       <div style={{ flex: 1 }} />
 
-      {genreBadge && <div style={{ display: 'flex', alignItems: 'center', marginRight: '6px' }}>{genreBadge}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginRight: '6px' }}>
+        <IeeeLayoutMenu
+          disabled={!editor}
+          hasContent={Boolean(editor && !editor.isEmpty)}
+          onRenumber={() =>
+            run('ieee_numbering', () => {
+              if (editor) applyIeeeNumbering(editor)
+            })
+          }
+          onRestructure={() => {
+            if (wholeBodyActionsBlocked) onBlockedAction?.(wholeBodyActionsBlocked)
+            else setRestructureOpen(true)
+          }}
+          onConvertCopy={onConvertToIeeeCopy}
+          onPreview={() => setIeeePreviewHtml(editor?.getHTML() ?? '')}
+          columnsDraft={columnsDraft}
+          onToggleColumnsDraft={() => toggleColumnsDraft()}
+          fullSpanAvailable={Boolean(fullSpanTarget)}
+          fullSpanActive={fullSpanTarget?.node.attrs.span === 'full'}
+          onToggleFullSpan={() => editor?.chain().focus().toggleFullSpan().run()}
+          spread={
+            onSpreadPreviewChange
+              ? { active: spreadPreview, allowed: spreadAllowed, onChange: onSpreadPreviewChange }
+              : undefined
+          }
+        />
+        {genreBadge}
+      </div>
+      <IeeeRestructureDialog
+        open={restructureOpen}
+        onOpenChange={setRestructureOpen}
+        onConfirm={() => {
+          if (editor) run('ieee_convert', () => convertToIeee(editor))
+        }}
+      />
+      {ieeePreviewHtml !== null && (
+        <IeeePrintPreview html={ieeePreviewHtml} onClose={() => setIeeePreviewHtml(null)} />
+      )}
 
       {/* Page setup */}
       <div style={{ position: 'relative' }}>

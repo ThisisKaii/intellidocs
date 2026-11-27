@@ -1,4 +1,4 @@
-import { BookOpen, Columns, Hash, LayoutTemplate, MoveHorizontal, Printer } from 'lucide-react'
+import { BookOpen, Columns, FilePlus2, Hash, LayoutTemplate, MoveHorizontal, Printer } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,7 @@ export interface IeeeLayoutMenuProps {
   hasContent: boolean
   onRenumber: () => void
   onRestructure: () => void
+  onConvertCopy?: () => void
   onPreview: () => void
   columnsDraft: boolean
   onToggleColumnsDraft: () => void
@@ -35,6 +36,7 @@ export function IeeeLayoutMenu({
   hasContent,
   onRenumber,
   onRestructure,
+  onConvertCopy,
   onPreview,
   columnsDraft,
   onToggleColumnsDraft,
@@ -54,7 +56,7 @@ export function IeeeLayoutMenu({
           onClick={() => undefined}
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
+      <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">IEEE layout</DropdownMenuLabel>
         <DropdownMenuItem disabled={!hasContent} title="Renumber IEEE headings (I. II. A. 1))" onSelect={onRenumber}>
           <span style={ITEM_STYLE}><Hash style={ICON_STYLE} /> Renumber headings</span>
@@ -62,6 +64,11 @@ export function IeeeLayoutMenu({
         <DropdownMenuItem disabled={!hasContent} title="Restructure into IEEE format" onSelect={onRestructure}>
           <span style={ITEM_STYLE}><LayoutTemplate style={ICON_STYLE} /> Restructure into IEEE format…</span>
         </DropdownMenuItem>
+        {onConvertCopy && (
+          <DropdownMenuItem disabled={!hasContent} title="Create a new IEEE Conference copy without modifying this document" onSelect={onConvertCopy}>
+            <span style={ITEM_STYLE}><FilePlus2 style={ICON_STYLE} /> Convert to IEEE copy…</span>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem title="Exact IEEE print preview (two columns, PDF)" onSelect={onPreview}>
           <span style={ITEM_STYLE}><Printer style={ICON_STYLE} /> Print preview (two columns)</span>
         </DropdownMenuItem>
