@@ -777,7 +777,7 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
           format: 'paragraph',
           confidence: presetBased ? 78 : 82,
           from: deviation.pos,
-          to: deviation.pos + deviation.node.nodeSize,
+          to: deviation.endPos ?? deviation.pos + deviation.node.nodeSize,
           pageNumber: estimatePageNumber(deviation.pos),
           preview: deviation.text.slice(0, 60),
           label: bodySuggestionLabel(deviation.fix, 1, ''),

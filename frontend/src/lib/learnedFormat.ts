@@ -64,14 +64,24 @@ export function addLearnedFormatSteps(tr: Transaction, spec: LearnedFormatSpec, 
   const level = HEADING_LEVELS[spec.format]
   const headingType = schema.nodes.heading
   const align = spec.textAlign && ALIGNMENTS.has(spec.textAlign) ? spec.textAlign : null
+  // Keep block inline font-size aligned with text-level size so <p style="font-size:13pt"> never overrides a fix.
+  const blockFontStyle: Record<string, string> =
+    spec.blockStyle && 'font-size' in spec.blockStyle
+      ? {}
+      : typeof spec.fontSize === 'number' && spec.fontSize > 0
+        ? { 'font-size': `${spec.fontSize}pt` }
+        : spec.fontSize === null
+          ? { 'font-size': '' }
+          : {}
+  const blockDecls = { ...blockFontStyle, ...(spec.blockStyle ?? {}) }
   tr.doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isTextblock) return true
     const type = level && headingType ? headingType : node.type
     const attrs: Record<string, unknown> = { ...node.attrs }
     if (level && headingType) attrs.level = level
     if (align && 'textAlign' in (type.spec.attrs ?? {})) attrs.textAlign = align
-    if (spec.blockStyle && Object.keys(spec.blockStyle).length > 0 && 'style' in (type.spec.attrs ?? {})) {
-      attrs.style = mergeStyleDecls(node.attrs.style as string | null, spec.blockStyle)
+    if (Object.keys(blockDecls).length > 0 && 'style' in (type.spec.attrs ?? {})) {
+      attrs.style = mergeStyleDecls(node.attrs.style as string | null, blockDecls)
     }
     const changed = type !== node.type || Object.keys(attrs).some((key) => attrs[key] !== node.attrs[key])
     if (changed) tr.setNodeMarkup(pos, type, attrs)

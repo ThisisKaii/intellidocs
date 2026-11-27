@@ -147,7 +147,7 @@ export function PreviewStyles(): JSX.Element {
 function pageCanvas(setup: PreviewPageSetup): { width: number; height: number; padding: string; left: number; right: number; top: number } {
   const preset = PAGE_SIZES[setup.pageSize ?? 'short'] ?? PAGE_SIZES.short
   const landscape = setup.orientation === 'landscape'
-  const m = setup.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 }
+  const m = setup.margins ?? { top: 1, bottom: 1, left: 1, right: 1 }
   return {
     width: landscape ? preset.height : preset.width,
     height: landscape ? preset.width : preset.height,

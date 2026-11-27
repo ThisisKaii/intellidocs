@@ -78,6 +78,23 @@ describe('findBodyDeviations', () => {
     expect(deviations.map((d) => d.text.includes('mostly bold'))).toEqual([true])
   })
 
+  it('flags a multi-word bold clause inside a plain paragraph while leaving run-in terms alone', () => {
+    const clause = `<p style="text-align:justify; font-size:11pt"><strong>The researchers are also deeply grateful</strong> for the guidance received while writing this paper.</p>`
+    const term = `<p style="text-align:justify; font-size:11pt"><strong>Future Researchers.</strong> ${SENTENCE} with run-in bold lead-in</p>`
+    const base = Array.from({ length: 10 }, (_, i) => `<p style="text-align:justify; font-size:11pt">${SENTENCE} ${i}</p>`).join('')
+    const { deviations } = sweep(`<h1>INTRODUCTION</h1>${base}${clause}${term}`)
+    expect(deviations).toHaveLength(1)
+    expect(deviations[0].fix).toEqual({ bold: false })
+  })
+
+  it('flags a trailing larger-size span and fixes to the body baseline size', () => {
+    const base = Array.from({ length: 10 }, (_, i) => `<p style="text-align:justify; font-size:11pt">${SENTENCE} ${i}</p>`).join('')
+    const mixed = `<p style="text-align:justify; font-size:11pt">Special thanks go to our adviser for guiding us toward <span style="font-size: 13pt">quality of their research.</span></p>`
+    const { deviations } = sweep(`<h1>INTRODUCTION</h1>${base}${mixed}`)
+    expect(deviations).toHaveLength(1)
+    expect(deviations[0].fix).toEqual({ fontSize: 11 })
+  })
+
   it('leaves manually numbered items alone (their hanging indent is on purpose)', () => {
     const items = `<p style="${BODY_STYLE.replace('0.5in', '-0.25in')}">1.2. ${SENTENCE}</p><p style="text-indent:0">2. ${SENTENCE}</p>`
     expect(sweep(documentHtml(10, items, BODY_STYLE)).deviations).toEqual([])

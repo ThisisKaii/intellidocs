@@ -74,12 +74,24 @@ describe('addLearnedFormatSteps', () => {
   })
 
   it('drops an explicit size so the inherited size shows', () => {
-    const ed = open('<p><span style="font-size: 16pt">Too big body text</span></p>')
+    const ed = open('<p style="font-size: 13pt"><span style="font-size: 16pt">Too big body text</span></p>')
     const [range] = blocksWith(ed, 'Too big')
     const tr = ed.state.tr
     addLearnedFormatSteps(tr, { format: 'paragraph', fontSize: null }, range)
     ed.view.dispatch(tr)
     expect(ed.getHTML()).not.toContain('16pt')
+    expect(ed.getHTML()).not.toContain('13pt')
+  })
+
+  it('replaces paragraph and span font-size when applying a baseline size', () => {
+    const ed = open('<p style="font-size: 13pt"><span style="font-size: 13pt">Oversized body text</span></p>')
+    const [range] = blocksWith(ed, 'Oversized')
+    const tr = ed.state.tr
+    addLearnedFormatSteps(tr, { format: 'paragraph', fontSize: 11 }, range)
+    ed.view.dispatch(tr)
+    const html = ed.getHTML()
+    expect(html).not.toContain('13pt')
+    expect(html).toContain('font-size: 11pt')
   })
 
   it('leaves quote blocks to the caller', () => {

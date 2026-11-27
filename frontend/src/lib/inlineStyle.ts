@@ -29,12 +29,22 @@ export function lengthToPt(value: string | null | undefined): number | null {
   return factor === undefined ? null : amount * factor
 }
 
-/** A unitless line-height ("2", "1.725"), or null for absent, "normal" or unit-bearing values. */
-export function readLineHeight(style: string | null | undefined): number | null {
+/**
+ * A unitless line-height ("2", "1.725"), or when `effectiveSizePt` is given, a length
+ * line-height ("19.0pt" used by PDF imports) divided by that font size.
+ */
+export function readLineHeight(style: string | null | undefined, effectiveSizePt?: number | null): number | null {
   const value = readStyleDecl(style, 'line-height')
-  if (!value || !/^[\d.]+$/.test(value)) return null
-  const number = Number(value)
-  return Number.isFinite(number) ? number : null
+  if (!value) return null
+  if (/^[\d.]+$/.test(value)) {
+    const number = Number(value)
+    return Number.isFinite(number) ? number : null
+  }
+  if (typeof effectiveSizePt === 'number' && effectiveSizePt > 0) {
+    const pt = lengthToPt(value)
+    if (pt !== null && pt > 0) return Math.round((pt / effectiveSizePt) * 100) / 100
+  }
+  return null
 }
 
 /**

@@ -155,12 +155,12 @@ function DriveSidebar({
               <div className="flex items-center justify-center size-6 rounded-lg bg-primary-foreground/20 text-primary-foreground">
                 <Plus className="size-4 stroke-[2.5]" />
               </div>
-              <span>New document</span>
+              <span>New content</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" style={{ minWidth: '180px' }}>
             <DropdownMenuItem onClick={() => { onClose(); onCreate() }} className="gap-2 py-2 cursor-pointer">
-              <FileText className="size-4" /> New document
+              <FileText className="size-4" /> New content
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => { onClose(); onCreateFolder() }} className="gap-2 py-2 cursor-pointer">
               <FolderIcon className="size-4 text-primary" /> New folder

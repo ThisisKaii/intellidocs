@@ -465,11 +465,11 @@ export default function Document(): JSX.Element {
 
   /* ── Page layout state ─────────────────────────────────────────────── */
   const [pageSize, setPageSize] = useState<PageSizeKey>('short')
-  const [margins, setMargins] = useState<MarginValues>({ top: 1, bottom: 1, left: 1.5, right: 1 })
+  const [margins, setMargins] = useState<MarginValues>({ top: 1, bottom: 1, left: 1, right: 1 })
   const [orientation, setOrientation] = useState<PageOrientation>('portrait')
   const latestPageSetupRef = useRef({
     pageSize: 'short' as PageSizeKey,
-    margins: { top: 1, bottom: 1, left: 1.5, right: 1 } as MarginValues,
+    margins: { top: 1, bottom: 1, left: 1, right: 1 } as MarginValues,
     orientation: 'portrait' as PageOrientation,
   })
 
@@ -1199,7 +1199,7 @@ export default function Document(): JSX.Element {
       footerNumberFormat: doc.footer_number_format ?? 'none',
     }
     const nextPageSize = doc.page_size ?? 'short'
-    const nextMargins = doc.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 }
+    const nextMargins = doc.margins ?? { top: 1, bottom: 1, left: 1, right: 1 }
     const nextOrientation = doc.orientation ?? 'portrait'
     setPageSize(nextPageSize)
     setMargins(nextMargins)
@@ -3411,7 +3411,7 @@ export default function Document(): JSX.Element {
             bold: captures.bold,
             italic: captures.italic,
             underline: captures.underline,
-            fontSize: captures.fontSize ?? undefined,
+            fontSize: captures.fontSize,
             textAlign: captures.textAlign,
             blockStyle: captures.blockStyle,
           },

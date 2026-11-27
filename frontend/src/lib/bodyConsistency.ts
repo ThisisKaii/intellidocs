@@ -38,6 +38,8 @@ export interface PresetBodyRules {
 /** A body paragraph whose look departs from the document's usual body text. */
 export interface BodyDeviation {
   pos: number
+  /** End position of the inspected prose range (omitted when it matches pos + node.nodeSize). */
+  endPos?: number
   node: ProseMirrorNode
   text: string
   style: BodyStyle
@@ -89,41 +91,130 @@ const SKIPPED_ANCESTORS = new Set([
   'blockquote', 'codeBlock', 'columnSection',
 ])
 
-/** The look of a paragraph: bold or italic when most of its characters carry it (a few bold terms do not count). */
-export function bodyStyleOf(node: ProseMirrorNode): BodyStyle {
+/** Glossary section whose PDF import flattens table rows into heading+paragraph pairs. */
+const DEFINITION_TERMS = /^definition\s+of\s+terms\s*[:.]?$/i
+/** Accidental bold clause length that still warrants unbolding (short "Term." lead-ins are exempt). */
+const STRAY_BOLD_MIN_CHARS = 15
+const STRAY_SIZE_MIN_CHARS = 5
+const MIN_BODY_FONT_PT = 8
+
+interface RunStats {
+  bold: boolean
+  hasStrayBold: boolean
+  italic: boolean
+  fontSize: number | null
+  outlierSizePt: number | null
+  textAlign: string | null
+}
+
+function inspectChildRuns(children: ProseMirrorNode[], paraSizePt: number | null): Omit<RunStats, 'textAlign'> {
   let boldChars = 0
+  let nonLeadInBoldChars = 0
   let italicChars = 0
   let totalChars = 0
-  let fontSize: number | null = null
-  let sawText = false
+  let sawNonEmptyText = false
+  const sizeWeights = new Map<number | null, number>()
+  const explicitRuns: Array<{ size: number; chars: number }> = []
+
+  for (const child of children) {
+    if (!child.isText || !child.text) continue
+    const trimmed = child.text.trim()
+    if (!trimmed) continue
+    const length = trimmed.length
+    totalChars += length
+
+    const isBold = child.marks.some((mark) => mark.type.name === 'bold')
+    const isItalic = child.marks.some((mark) => mark.type.name === 'italic')
+    const isScript = child.marks.some((mark) => mark.type.name === 'superscript' || mark.type.name === 'subscript')
+
+    if (isBold) {
+      boldChars += length
+      const isLeadInTerm = !sawNonEmptyText && /[.:]$/.test(trimmed) && length <= 40
+      if (!isLeadInTerm) nonLeadInBoldChars += length
+    }
+    if (isItalic) italicChars += length
+
+    if (!isScript) {
+      const raw = child.marks.find((mark) => mark.type.name === 'textStyle')?.attrs?.fontSize
+      const parsed = typeof raw === 'string' ? parseFloat(raw) : NaN
+      const size = Number.isNaN(parsed) || parsed <= 0 ? null : parsed
+      sizeWeights.set(size, (sizeWeights.get(size) ?? 0) + length)
+      if (size !== null && size >= MIN_BODY_FONT_PT && length >= STRAY_SIZE_MIN_CHARS) {
+        explicitRuns.push({ size, chars: length })
+      }
+    }
+    sawNonEmptyText = true
+  }
+
+  // Pick the character-weighted dominant run size; fallback null if nothing explicit.
+  let dominantSize: number | null = null
+  let bestWeight = -1
+  for (const [size, weight] of sizeWeights) {
+    if (weight > bestWeight) {
+      bestWeight = weight
+      dominantSize = size
+    }
+  }
+
+  // Check if any substantial non-script run diverges from the rendered size of the paragraph.
+  const renderedBase = dominantSize ?? paraSizePt
+  let outlierSizePt: number | null = null
+  for (const run of explicitRuns) {
+    if (renderedBase !== null && Math.abs(run.size - renderedBase) >= TOLERANCE.effectiveSizePt) {
+      outlierSizePt = run.size
+      break
+    }
+    if (renderedBase === null && Math.abs(run.size - INHERITED_PT) >= INHERITED_TOLERANCE_PT) {
+      outlierSizePt = run.size
+      break
+    }
+  }
+
+  const bold = sawNonEmptyText && boldChars / totalChars > 0.5
+  const hasStrayBold =
+    sawNonEmptyText && !bold && nonLeadInBoldChars >= STRAY_BOLD_MIN_CHARS && boldChars / totalChars <= 0.5
+  return {
+    bold,
+    hasStrayBold,
+    italic: sawNonEmptyText && italicChars / totalChars > 0.5,
+    fontSize: dominantSize,
+    outlierSizePt,
+  }
+}
+
+interface InternalBodyStyle extends BodyStyle {
+  _hasStrayBold?: boolean
+  _outlierSizePt?: number | null
+  _skipTextAlign?: boolean
+}
+
+/** The look of a paragraph: bold or italic when most of its characters carry it (a few bold terms do not count). */
+export function bodyStyleOf(node: ProseMirrorNode): BodyStyle {
+  const children: ProseMirrorNode[] = []
   let leadingTab = false
   node.forEach((child, _offset, index) => {
     if (index === 0 && (child.type.name === 'tab' || (child.isText && child.text?.startsWith('\t')))) leadingTab = true
-    if (!child.isText || !child.text?.trim()) return
-    const length = child.text.trim().length
-    totalChars += length
-    if (child.marks.some((mark) => mark.type.name === 'bold')) boldChars += length
-    if (child.marks.some((mark) => mark.type.name === 'italic')) italicChars += length
-    if (!sawText) {
-      const raw = child.marks.find((mark) => mark.type.name === 'textStyle')?.attrs?.fontSize
-      const parsed = typeof raw === 'string' ? parseFloat(raw) : NaN
-      fontSize = Number.isNaN(parsed) ? null : parsed
-    }
-    sawText = true
+    children.push(child)
   })
   const style = typeof node.attrs.style === 'string' ? node.attrs.style : null
+  const paraSizePt = lengthToPt(readStyleDecl(style, 'font-size'))
+  const runs = inspectChildRuns(children, paraSizePt)
   const align = typeof node.attrs.textAlign === 'string' && node.attrs.textAlign ? node.attrs.textAlign : 'left'
   const textIndent = lengthToPt(readStyleDecl(style, 'text-indent'))
-  return {
-    bold: sawText && boldChars / totalChars > 0.5,
-    italic: sawText && italicChars / totalChars > 0.5,
-    fontSize,
+  const effectiveSizePt = runs.fontSize ?? paraSizePt
+  const result: InternalBodyStyle = {
+    bold: runs.bold,
+    italic: runs.italic,
+    fontSize: runs.fontSize,
     textAlign: align,
-    effectiveSizePt: fontSize ?? lengthToPt(readStyleDecl(style, 'font-size')),
-    lineHeight: readLineHeight(style),
+    effectiveSizePt,
+    lineHeight: readLineHeight(style, effectiveSizePt),
     firstIndentPt: leadingTab ? Math.max(textIndent ?? 0, 0) + TAB_INDENT_PT : textIndent,
     spaceBeforePt: lengthToPt(readStyleDecl(style, 'margin-top')) ?? 0,
+    _hasStrayBold: runs.hasStrayBold,
+    _outlierSizePt: runs.outlierSizePt,
   }
+  return result
 }
 
 /** The size inherited text renders at in the editor, and how far an explicit size must stray from it to count. */
@@ -186,7 +277,10 @@ function settleBaseline(
   }
   settle('bold', usualValue(styles.map((s) => s.bold), String, total))
   settle('italic', usualValue(styles.map((s) => s.italic), String, total))
-  settle('textAlign', usualValue(styles.map((s) => s.textAlign), String, total))
+  const alignEligible = styles.filter((s) => !(s as InternalBodyStyle)._skipTextAlign).map((s) => s.textAlign)
+  if (alignEligible.length >= Math.max(MIN_PROSE_BLOCKS / 2, total / 2)) {
+    settle('textAlign', usualValue(alignEligible, String, alignEligible.length))
+  }
   // Text size: an explicit size close to the inherited one is the same look.
   settle('fontSize', usualValue(styles.map((s) => s.fontSize), (v) => (v === null || !sizesDiffer(null, v) ? 'inherited' : String(v)), total))
   for (const key of NUMERIC) {
@@ -223,38 +317,49 @@ const describeNumber: Record<NumericProperty, (style: number, usual: number) => 
 }
 
 /** The baseline values a paragraph departs from, and those departures in plain words. */
-function compare(baseline: BodyBaseline, style: BodyStyle): { fix: BodyBaseline; differences: string[] } {
+function compare(baseline: BodyBaseline, style: InternalBodyStyle): { fix: BodyBaseline; differences: string[] } {
   const fix: BodyBaseline = {}
   const differences: string[] = []
+  const resolvedTargetSize = baseline.effectiveSizePt ?? baseline.fontSize ?? null
   if ('fontSize' in baseline && sizesDiffer(baseline.fontSize ?? null, style.fontSize)) {
-    fix.fontSize = baseline.fontSize ?? null
-    differences.push(style.fontSize !== null && baseline.fontSize != null ? `${style.fontSize}pt instead of ${baseline.fontSize}pt` : 'a different size')
+    fix.fontSize = resolvedTargetSize
+    differences.push(style.fontSize !== null && resolvedTargetSize != null ? `${style.fontSize}pt instead of ${resolvedTargetSize}pt` : 'a different size')
   } else if (
     'fontSize' in baseline &&
     typeof baseline.effectiveSizePt === 'number' &&
     style.effectiveSizePt !== null &&
     Math.abs(style.effectiveSizePt - baseline.effectiveSizePt) >= TOLERANCE.effectiveSizePt
   ) {
-    // The text's own size reads as "the usual inherited size" (12pt is close to the editor's
-    // default), but the paragraphs around it render at another size: an imported thesis sets its
-    // body at 11pt on the paragraph, so a 12pt run is a different size there.
     fix.fontSize = baseline.effectiveSizePt
     differences.push(describeNumber.effectiveSizePt(style.effectiveSizePt, baseline.effectiveSizePt))
   } else if (!('fontSize' in baseline) && typeof baseline.effectiveSizePt === 'number' && style.effectiveSizePt !== null &&
     Math.abs(style.effectiveSizePt - baseline.effectiveSizePt) >= TOLERANCE.effectiveSizePt) {
-    // No usual size of the text itself: judge the size it renders at against the preset.
     fix.fontSize = baseline.effectiveSizePt
     differences.push(describeNumber.effectiveSizePt(style.effectiveSizePt, baseline.effectiveSizePt))
+  } else if (
+    style._outlierSizePt != null &&
+    resolvedTargetSize !== null &&
+    Math.abs(style._outlierSizePt - resolvedTargetSize) >= TOLERANCE.effectiveSizePt
+  ) {
+    fix.fontSize = resolvedTargetSize
+    differences.push(describeNumber.effectiveSizePt(style._outlierSizePt, resolvedTargetSize))
+  } else if (
+    style._outlierSizePt != null &&
+    resolvedTargetSize === null &&
+    Math.abs(style._outlierSizePt - INHERITED_PT) >= INHERITED_TOLERANCE_PT
+  ) {
+    fix.fontSize = null
+    differences.push(`${style._outlierSizePt}pt`)
   }
-  if (baseline.bold !== undefined && baseline.bold !== style.bold) {
+  if (baseline.bold !== undefined && (baseline.bold !== style.bold || (baseline.bold === false && style._hasStrayBold))) {
     fix.bold = baseline.bold
-    differences.push(style.bold ? 'bold' : 'not bold')
+    differences.push(baseline.bold === false ? 'bold' : 'not bold')
   }
   if (baseline.italic !== undefined && baseline.italic !== style.italic) {
     fix.italic = baseline.italic
     differences.push(style.italic ? 'italic' : 'not italic')
   }
-  if (baseline.textAlign !== undefined && baseline.textAlign !== style.textAlign) {
+  if (!style._skipTextAlign && baseline.textAlign !== undefined && baseline.textAlign !== style.textAlign) {
     fix.textAlign = baseline.textAlign
     differences.push(`${style.textAlign}-aligned instead of ${baseline.textAlign}`)
   }
@@ -332,6 +437,37 @@ export function findListItemDeviations(doc: ProseMirrorNode): ListItemDeviation[
   return deviations
 }
 
+interface HardBreakSlice {
+  text: string
+  children: ProseMirrorNode[]
+  from: number
+  to: number
+}
+
+/** Partition a paragraph on hardBreak nodes so glued PDF headings and prose can be inspected separately. */
+function hardBreakSlices(node: ProseMirrorNode, pos: number): HardBreakSlice[] {
+  const slices: HardBreakSlice[] = []
+  let children: ProseMirrorNode[] = []
+  let start = pos + 1
+  let offset = pos + 1
+  let text = ''
+  node.forEach((child) => {
+    if (child.type.name === 'hardBreak') {
+      slices.push({ text: text.trim(), children, from: start, to: offset })
+      children = []
+      text = ''
+      offset += child.nodeSize
+      start = offset
+      return
+    }
+    children.push(child)
+    if (child.isText && child.text) text += child.text
+    offset += child.nodeSize
+  })
+  slices.push({ text: text.trim(), children, from: start, to: offset })
+  return slices
+}
+
 /**
  * Body paragraphs that look different from the rest of the body text, judged property by property
  * against the document's usual body look (the preset fills in properties the document has no clear
@@ -339,11 +475,12 @@ export function findListItemDeviations(doc: ProseMirrorNode): ListItemDeviation[
  * look as well. `presetGaps` lists where the whole body departs from the preset.
  */
 export function findBodyDeviations(doc: ProseMirrorNode, preset: PresetBodyRules | null = null): BodySweep {
-  const members: Array<{ pos: number; node: ProseMirrorNode; text: string; style: BodyStyle }> = []
+  const members: Array<{ pos: number; endPos?: number; node: ProseMirrorNode; text: string; style: InternalBodyStyle }> = []
   const frontProse: typeof members = []
   // Cover pages, approval sheets and tables of contents are styled by hand; the body starts at the first chapter.
   let markerSeen = false
   let inProseFrontMatter = false
+  let inDefinitionTerms = false
   // Whether the block before the current one was a paragraph of prose (space above is judged only then).
   let previousIsProse = false
   doc.descendants((node, pos) => {
@@ -357,28 +494,94 @@ export function findBodyDeviations(doc: ProseMirrorNode, preset: PresetBodyRules
       return true
     }
     const text = node.textContent.trim()
+    const slices = node.type.name === 'paragraph' ? hardBreakSlices(node, pos) : []
+    const sliceTexts = slices.length > 1 ? slices.map((s) => s.text).filter(Boolean) : [text]
+
     const followsProse = previousIsProse
     const isCaption = /^(table|figure)\s+\d+\s*[:.]/i.test(text)
     previousIsProse = node.type.name === 'paragraph' && text.length >= MIN_PROSE_CHARS && !isCaption
-    if (!markerSeen && BODY_START.test(text)) {
-      markerSeen = true
-      members.length = 0
-    } else if (!markerSeen && text.length < MIN_PROSE_CHARS) {
-      // A short line before the body opens (or closes) a front-matter section.
-      if (PROSE_FRONT_MATTER.test(text)) inProseFrontMatter = true
-      else if (/^[A-Z][A-Z\s]{3,}$/.test(text)) inProseFrontMatter = false
+
+    for (const part of sliceTexts) {
+      if (!markerSeen && BODY_START.test(part)) {
+        markerSeen = true
+        members.length = 0
+        inDefinitionTerms = false
+      } else if (!markerSeen && part.length < MIN_PROSE_CHARS) {
+        // A short line before the body opens (or closes) a front-matter section.
+        if (PROSE_FRONT_MATTER.test(part)) inProseFrontMatter = true
+        else if (/^[A-Z][A-Z\s]{3,}$/.test(part)) inProseFrontMatter = false
+      }
+      if (DEFINITION_TERMS.test(part)) {
+        inDefinitionTerms = true
+      } else if (
+        inDefinitionTerms &&
+        part.length < MIN_PROSE_CHARS &&
+        (/^chapter\s+\S+/i.test(part) || /^(related literature|related studies|methodology)\s*[:.]?$/i.test(part))
+      ) {
+        inDefinitionTerms = false
+      }
     }
-    if (node.type.name !== 'paragraph') return false
-    if (text.length >= MIN_PROSE_CHARS && !/^(table|figure)\s+\d+\s*[:.]/i.test(text) && !/^\[\d+\]/.test(text) && !MANUAL_LIST_ITEM.test(text)) {
-      const style = bodyStyleOf(node)
-      if (!followsProse) style.spaceBeforePt = null
-      // A lead-in sentence ("…this study aims to:") introduces the list or labelled paragraphs
-      // under it; writers set it flush and tight on purpose, so its indent and space are not judged.
-      if (isLeadIn(text)) {
+    if (node.type.name === 'heading' && inDefinitionTerms && Number(node.attrs.level) === 1 && !DEFINITION_TERMS.test(text)) {
+      inDefinitionTerms = false
+    }
+    if (node.type.name !== 'paragraph' || inDefinitionTerms) return false
+
+    // When a PDF block glued short heading/caption lines above a prose paragraph via <br>,
+    // isolate the prose tail so heading bold/alignment doesn't taint the body check.
+    let targetPos = pos
+    let targetEndPos: number | undefined
+    let targetText = text
+    let style: InternalBodyStyle = bodyStyleOf(node) as InternalBodyStyle
+    let gluedToHeading = false
+
+    if (slices.length > 1) {
+      const firstLongIdx = slices.findIndex((s) => s.text.length >= MIN_PROSE_CHARS)
+      if (firstLongIdx > 0 && slices.slice(0, firstLongIdx).every((s) => s.text.length < MIN_PROSE_CHARS)) {
+        const tail = slices.slice(firstLongIdx)
+        const proseText = tail.map((s) => s.text).join(' ').trim()
+        const proseChildren = tail.flatMap((s) => s.children)
+        const blockStyle = typeof node.attrs.style === 'string' ? node.attrs.style : null
+        const paraSizePt = lengthToPt(readStyleDecl(blockStyle, 'font-size'))
+        const proseRuns = inspectChildRuns(proseChildren, paraSizePt)
+        targetPos = tail[0].from
+        targetEndPos = tail[tail.length - 1].to
+        targetText = proseText
+        gluedToHeading = true
+        style = {
+          bold: proseRuns.bold,
+          italic: proseRuns.italic,
+          fontSize: proseRuns.fontSize,
+          textAlign: style.textAlign,
+          effectiveSizePt: proseRuns.fontSize ?? paraSizePt,
+          lineHeight: style.lineHeight,
+          firstIndentPt: null,
+          spaceBeforePt: null,
+          _hasStrayBold: proseRuns.hasStrayBold,
+          _outlierSizePt: proseRuns.outlierSizePt,
+          _skipTextAlign: true,
+        }
+      }
+    }
+
+    if (
+      targetText.length >= MIN_PROSE_CHARS &&
+      !/^(table|figure)\s+\d+\s*[:.]/i.test(targetText) &&
+      !/^\[\d+\]/.test(targetText) &&
+      !MANUAL_LIST_ITEM.test(targetText)
+    ) {
+      if (!followsProse && !gluedToHeading) style.spaceBeforePt = null
+      // Lowercase opening means a mid-paragraph continuation split across a PDF page break.
+      if (/^[a-z]/.test(targetText)) {
         style.firstIndentPt = null
         style.spaceBeforePt = null
       }
-      const entry = { pos, node, text, style }
+      // A lead-in sentence ("…this study aims to:") introduces the list or labelled paragraphs
+      // under it; writers set it flush and tight on purpose, so its indent and space are not judged.
+      if (isLeadIn(targetText)) {
+        style.firstIndentPt = null
+        style.spaceBeforePt = null
+      }
+      const entry = { pos: targetPos, ...(targetEndPos !== undefined ? { endPos: targetEndPos } : {}), node, text: targetText, style }
       if (markerSeen) members.push(entry)
       else if (inProseFrontMatter) frontProse.push(entry)
       else members.push(entry)
