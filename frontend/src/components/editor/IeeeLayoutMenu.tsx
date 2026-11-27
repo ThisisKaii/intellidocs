@@ -1,4 +1,4 @@
-import { BookOpen, Columns, FilePlus2, Hash, LayoutTemplate, MoveHorizontal, Printer } from 'lucide-react'
+import { BookOpen, Columns, Hash, LayoutTemplate, MoveHorizontal, Printer } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,8 +35,6 @@ export function IeeeLayoutMenu({
   disabled,
   hasContent,
   onRenumber,
-  onRestructure,
-  onConvertCopy,
   onPreview,
   columnsDraft,
   onToggleColumnsDraft,
@@ -61,14 +59,6 @@ export function IeeeLayoutMenu({
         <DropdownMenuItem disabled={!hasContent} title="Renumber IEEE headings (I. II. A. 1))" onSelect={onRenumber}>
           <span style={ITEM_STYLE}><Hash style={ICON_STYLE} /> Renumber headings</span>
         </DropdownMenuItem>
-        <DropdownMenuItem disabled={!hasContent} title="Restructure into IEEE format" onSelect={onRestructure}>
-          <span style={ITEM_STYLE}><LayoutTemplate style={ICON_STYLE} /> Restructure into IEEE format…</span>
-        </DropdownMenuItem>
-        {onConvertCopy && (
-          <DropdownMenuItem disabled={!hasContent} title="Create a new IEEE Conference copy without modifying this document" onSelect={onConvertCopy}>
-            <span style={ITEM_STYLE}><FilePlus2 style={ICON_STYLE} /> Convert to IEEE copy…</span>
-          </DropdownMenuItem>
-        )}
         <DropdownMenuItem title="Exact IEEE print preview (two columns, PDF)" onSelect={onPreview}>
           <span style={ITEM_STYLE}><Printer style={ICON_STYLE} /> Print preview (two columns)</span>
         </DropdownMenuItem>
