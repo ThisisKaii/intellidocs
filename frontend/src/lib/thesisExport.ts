@@ -133,6 +133,15 @@ export function buildThesisPdfHtml(html: string, title: string): string {
   blockquote { margin: 0.2in 0.4in; font-style: italic; }
   table { border-collapse: collapse; width: 100%; }
   th, td { border: 1px solid #444; padding: 4pt; vertical-align: top; }
+  img { max-width: 100%; height: auto; }
+  .intellidocs-page-break, hr.page-break {
+    page-break-after: always;
+    break-after: page;
+    height: 0;
+    border: 0;
+    margin: 0;
+    visibility: hidden;
+  }
 </style>
 </head>
 <body>
@@ -184,6 +193,9 @@ export function exportThesisPdf(html: string, title: string): void {
       doc.close()
       frame.contentWindow?.focus()
       frame.contentWindow?.print()
+      setTimeout(() => {
+        if (frame.parentNode) frame.parentNode.removeChild(frame)
+      }, 1000)
     }
     return
   }

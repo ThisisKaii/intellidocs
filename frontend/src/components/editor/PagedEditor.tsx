@@ -1094,6 +1094,11 @@ export function PagedEditor({
             word-break: normal;
             overflow-wrap: break-word;
           }
+          @media print {
+            @page {
+              margin: 0;
+            }
+          }
           /* Centered header/footer placement: fill the space between the page
              margins so the text centers on the text column, not the page. */
           .intellidocs-page-editor--header-center .rm-with-pagination .rm-page-header-left,

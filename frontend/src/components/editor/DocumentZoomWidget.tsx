@@ -62,7 +62,7 @@ export default function DocumentZoomWidget({
       ref={rootRef}
       role="group"
       aria-label="Document zoom"
-      className="sticky bottom-4 z-30 ml-auto mr-5 mt-2 flex w-fit items-center gap-1.5 rounded-xl border border-border/60 bg-card/95 p-1 shadow-sm backdrop-blur-sm"
+      className="no-print sticky bottom-4 z-30 ml-auto mr-5 mt-2 flex w-fit items-center gap-1.5 rounded-xl border border-border/60 bg-card/95 p-1 shadow-sm backdrop-blur-sm"
     >
       <button
         type="button"

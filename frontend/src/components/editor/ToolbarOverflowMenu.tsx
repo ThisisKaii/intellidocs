@@ -1,4 +1,4 @@
-import { Download, FileCode, FileText, GraduationCap, Printer, UserCog } from 'lucide-react'
+import { Download, FileText, UserCog } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,13 +11,7 @@ import { ToolButton } from './RibbonControls'
 
 export interface ToolbarExportActions {
   onWord: () => void
-  /** IEEE papers export an IEEE Word file; everything else a thesis Word file. */
-  ieee: boolean
-  onIeeeWord: () => void
-  onThesisWord: () => void
   onPdf: () => void
-  onHtml: () => void
-  onPrint: () => void
 }
 
 interface ToolbarOverflowMenuProps {
@@ -39,25 +33,10 @@ export function ToolbarOverflowMenu({ disabled, exportActions, onOpenPersonaliza
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuLabel className="text-[0.6875rem] uppercase tracking-wide text-muted-foreground">Export</DropdownMenuLabel>
         <DropdownMenuItem onSelect={exportActions.onWord}>
-          <span style={ITEM_STYLE}><FileText style={ICON_STYLE} /> Word (.doc / .docx)</span>
+          <span style={ITEM_STYLE}><FileText style={ICON_STYLE} /> Word (.docx)</span>
         </DropdownMenuItem>
-        {exportActions.ieee ? (
-          <DropdownMenuItem onSelect={exportActions.onIeeeWord}>
-            <span style={ITEM_STYLE}><FileText style={ICON_STYLE} /> IEEE paper (Word)</span>
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem onSelect={exportActions.onThesisWord}>
-            <span style={ITEM_STYLE}><GraduationCap style={ICON_STYLE} /> Thesis Word (1.5&Prime; binding)</span>
-          </DropdownMenuItem>
-        )}
         <DropdownMenuItem onSelect={exportActions.onPdf}>
-          <span style={ITEM_STYLE}><FileText style={ICON_STYLE} /> Defense-Ready PDF</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={exportActions.onHtml}>
-          <span style={ITEM_STYLE}><FileCode style={ICON_STYLE} /> HTML Document</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={exportActions.onPrint}>
-          <span style={ITEM_STYLE}><Printer style={ICON_STYLE} /> Print / PDF</span>
+          <span style={ITEM_STYLE}><FileText style={ICON_STYLE} /> PDF (.pdf)</span>
         </DropdownMenuItem>
         {onOpenPersonalization && (
           <>

@@ -214,11 +214,13 @@ export default function EditorSidePanel({
     {compact && open && (
       <div
         aria-hidden="true"
+        className="no-print"
         onClick={onToggle}
         style={{ position: 'fixed', inset: 0, zIndex: 59, backgroundColor: 'rgba(0,0,0,0.35)' }}
       />
     )}
     <motion.aside
+      className="no-print"
       initial={false}
       animate={compact ? { y: open ? 0 : '100%' } : { width: open ? 380 : 0 }}
       transition={{ duration: 0.2, ease: 'easeInOut' }}

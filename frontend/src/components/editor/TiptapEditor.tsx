@@ -121,8 +121,6 @@ import { FontSizeExtension } from './FontSizeExtension'
 import { LetterSpacingExtension } from './LetterSpacingExtension'
 import { IndentExtension } from './IndentExtension'
 import { InvisibleBackspace } from './InvisibleBackspace'
-import { exportThesisWord, exportThesisPdf } from '@/lib/thesisExport'
-import { exportIeeeDocx } from '@/lib/ieeeExport'
 import { readRibbonCollapsed, writeRibbonCollapsed } from '@/lib/ribbonState'
 import {
   snapshotTableContext,
@@ -3775,13 +3773,8 @@ export function TiptapToolbar({
         disabled={!editor}
         onOpenPersonalization={onOpenPersonalization}
         exportActions={{
-          ieee: isIeee,
           onWord: () => { if (onExportRequest?.('word')) return; if (editor) downloadDOCX(editor.getHTML(), documentTitle) },
-          onIeeeWord: () => { if (onExportRequest?.('ieeeWord')) return; if (editor) void exportIeeeDocx(editor.getHTML(), documentTitle) },
-          onThesisWord: () => { if (onExportRequest?.('thesisWord')) return; if (editor) exportThesisWord(editor.getHTML(), documentTitle) },
-          onPdf: () => { if (onExportRequest?.('pdf')) return; if (editor) exportThesisPdf(editor.getHTML(), documentTitle) },
-          onHtml: () => { if (onExportRequest?.('html')) return; if (editor) downloadHTML(editor.getHTML(), documentTitle) },
-          onPrint: () => { if (onExportRequest?.('print')) return; printDocument() },
+          onPdf: () => { if (onExportRequest?.('pdf')) return; printDocument() },
         }}
       />
       </div>

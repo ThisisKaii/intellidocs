@@ -31,6 +31,7 @@ export default function WordProgress({
 
   return (
     <div
+      className="no-print"
       style={{
         display: 'flex',
         alignItems: 'center',

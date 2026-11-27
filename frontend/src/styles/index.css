@@ -1873,3 +1873,73 @@ aside input[type='checkbox']:focus-visible,
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+
+/* ── Print / Save as PDF: hide app chrome and un-clip the document canvas ── */
+@media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .no-print,
+  .heading-flash-overlay {
+    display: none !important;
+  }
+
+  .doc-page-shell,
+  .workspace-grid,
+  .workspace-grid > main,
+  .doc-editor-canvas {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    width: 100% !important;
+    overflow: visible !important;
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  .intellidocs-page-editor {
+    zoom: 1 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .rm-with-pagination .rm-page-break > .page {
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  .rm-with-pagination .rm-pagination-gap {
+    display: none !important;
+  }
+
+  .rm-with-pagination .rm-pages-wrapper > .rm-page-break:not(:last-child) {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .intellidocs-page-break {
+    height: 0 !important;
+    min-height: 0 !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  .intellidocs-page-editor .ProseMirror .doc-guide,
+  .intellidocs-page-editor .ProseMirror [data-blueprint-guide] {
+    border: none !important;
+    background: transparent !important;
+  }
+}

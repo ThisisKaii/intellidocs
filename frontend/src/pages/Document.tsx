@@ -2552,7 +2552,7 @@ export default function Document(): JSX.Element {
       openTabId: contentTabRef.current,
       liveHtml: live && !live.isDestroyed ? live.getHTML() : latestContentRef.current,
     }
-    if (format === 'print' && choice.selection.kind === 'tab') {
+    if ((format === 'print' || format === 'pdf') && choice.selection.kind === 'tab') {
       // The open tab is what is on screen: the browser prints it as laid out.
       setExportFormat(null)
       window.setTimeout(() => window.print(), 50)
@@ -4059,10 +4059,10 @@ export default function Document(): JSX.Element {
   return (
     // clip, not hidden: a hidden box can still be scrolled (focusing a control past its edge shifted the
     // whole editor sideways and left it there).
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'clip', backgroundColor: 'var(--background)' }}>
+    <div className="doc-page-shell" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', overflow: 'clip', backgroundColor: 'var(--background)' }}>
 
       {/* ── Header ─────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 bg-card/80 backdrop-blur-md border-b border-border/80 flex-shrink-0 transition-all">
+      <header className="no-print sticky top-0 z-40 bg-card/80 backdrop-blur-md border-b border-border/80 flex-shrink-0 transition-all">
         {/* Main nav row */}
         <div className="flex items-center justify-between h-14 px-4 sm:px-6 gap-3">
           {/* Left: logo (home link) + title + save/sync status */}
@@ -4308,6 +4308,7 @@ export default function Document(): JSX.Element {
       {/* Read-only banner — shown for trash documents or share-link visitors */}
       {readOnly && (
         <div
+          className="no-print"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -4361,7 +4362,7 @@ export default function Document(): JSX.Element {
 
         {/* Left panel — Outline Navigator */}
         <aside
-          className={`left-panel transition-all duration-200 ease-in-out ${leftPanelCollapsed ? 'collapsed' : ''}`}
+          className={`no-print left-panel transition-all duration-200 ease-in-out ${leftPanelCollapsed ? 'collapsed' : ''}`}
           style={{
             zIndex: 30,
             width: leftPanelOpen ? undefined : 0,
@@ -4430,7 +4431,7 @@ export default function Document(): JSX.Element {
         <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div
             ref={editorCanvasRef}
-            className={prefs.showStyleGuides ? 'guide-boundary' : undefined}
+            className={`doc-editor-canvas${prefs.showStyleGuides ? ' guide-boundary' : ''}`}
             style={{
               position: 'relative',
               flex: 1,
@@ -4477,6 +4478,7 @@ export default function Document(): JSX.Element {
             {!leftPanelOpen && (
               <button
                 type="button"
+                className="no-print"
                 onClick={() => setLeftPanelOpen(true)}
                 title="Show outline (Ctrl+Shift+\\)"
                 aria-label="Show outline"

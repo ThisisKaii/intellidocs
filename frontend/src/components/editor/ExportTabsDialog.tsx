@@ -111,9 +111,9 @@ export default function ExportTabsDialog({ format, tabs, openTabId, busy, error,
               onChange={(event) => onFormatChange(event.target.value as ExportFormat)}
               style={{ fontSize: '0.8125rem', padding: '0.25rem', borderRadius: '0.375rem', border: '1px solid var(--border)', background: 'var(--background)', color: 'var(--foreground)' }}
             >
-              {(['word', 'thesisWord', 'ieeeWord', 'pdf', 'html'] as const).map((value) => (
+              {(['word', 'pdf'] as const).map((value) => (
                 <option key={value} value={value}>
-                  {FORMAT_LABEL[value]}
+                  {value === 'word' ? 'Word (.docx)' : 'PDF (.pdf)'}
                 </option>
               ))}
             </select>
