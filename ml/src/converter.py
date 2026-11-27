@@ -5630,6 +5630,38 @@ def _realign_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Se
             return _centred_line_run(gaps) is not None
         return False
 
+    def justified_over_lines(text: str, page_index: int, width: float, element: Any) -> bool:
+        """Whether a multi-line left/unset paragraph's non-final lines reach both edges (justified)."""
+        target = squash(text)
+        ordered = ordered_pages[page_index]
+        for start in range(len(ordered)):
+            first = squash(ordered[start][0])
+            if not first or not target.startswith(first):
+                continue
+            joined, end = first, start
+            while len(joined) < len(target) and end + 1 < len(ordered):
+                end += 1
+                joined += squash(ordered[end][0])
+                if not target.startswith(joined):
+                    break
+            if joined != target or end <= start:
+                continue
+            boxes = ordered[start:end + 1]
+            ind_left, ind_right = _paragraph_side_indents(element)
+            col_left = left_margin + ind_left
+            col_right = width - right_margin - ind_right
+            if col_right - col_left < 180:
+                return False
+            # Every wrapped line (except the short closing line) starts near col_left (line 0 may have
+            # first-line indent) and reaches flush against col_right.
+            wrapped = boxes[:-1]
+            if not all(abs(col_right - x1) <= 8 for _, _x0, x1 in wrapped):
+                continue
+            if len(wrapped) >= 2 and not all(abs(x0 - col_left) <= 6 for _, x0, _x1 in wrapped[1:]):
+                continue
+            return abs(boxes[0][1] - col_left) <= 44
+        return False
+
     def has_left_indent(element: Any) -> bool:
         ind = element.find(qn("w:pPr") + "/" + qn("w:ind"))
         return ind is not None and int(ind.get(qn("w:left")) or ind.get(qn("w:start")) or 0) > 0
@@ -5662,19 +5694,26 @@ def _realign_from_pdf(doc: docx.Document, pdf_bytes: bytes, page_break_after: Se
                                     paragraph_properties.append(jc)
                                 jc.set(qn("w:val"), wanted)
                                 changed += 1
-            elif len(text) > 80 and not any(True for _ in element.iter(qn("w:tab"))) and not has_left_indent(element):
-                # A centred paragraph of several lines (pdf2docx calls them left or justified).
+            elif len(text) > 80 and not any(True for _ in element.iter(qn("w:tab"))):
+                # Multi-line PDF paragraphs: restore centred or justified alignment where pdf2docx dropped it.
                 width, _ = pages[page_index]
-                if centred_over_lines(text, page_index, width, element):
-                    paragraph_properties = element.get_or_add_pPr() if hasattr(element, "get_or_add_pPr") else element.pPr
+                paragraph_properties = element.get_or_add_pPr() if hasattr(element, "get_or_add_pPr") else element.pPr
+                jc = paragraph_properties.find(qn("w:jc")) if paragraph_properties is not None else None
+                current = jc.get(qn("w:val")) if jc is not None else "left"
+                if not has_left_indent(element) and centred_over_lines(text, page_index, width, element):
+                    if paragraph_properties is not None and current != "center":
+                        if jc is None:
+                            jc = paragraph_properties.makeelement(qn("w:jc"), {})
+                            paragraph_properties.append(jc)
+                        jc.set(qn("w:val"), "center")
+                        changed += 1
+                elif current in ("left", None) and justified_over_lines(text, page_index, width, element):
                     if paragraph_properties is not None:
-                        jc = paragraph_properties.find(qn("w:jc"))
-                        if jc is None or jc.get(qn("w:val")) != "center":
-                            if jc is None:
-                                jc = paragraph_properties.makeelement(qn("w:jc"), {})
-                                paragraph_properties.append(jc)
-                            jc.set(qn("w:val"), "center")
-                            changed += 1
+                        if jc is None:
+                            jc = paragraph_properties.makeelement(qn("w:jc"), {})
+                            paragraph_properties.append(jc)
+                        jc.set(qn("w:val"), "both")
+                        changed += 1
         if element in page_break_after:
             page_index += 1
     return changed
@@ -6254,6 +6293,162 @@ def _is_title_page_line(p: Paragraph, first_page: Set[Any]) -> bool:
     return not any(rx.match(text) for rx in (_HEADING_NUMBERED, _HEADING_KEYWORD, _HEADING_ROMAN))
 
 
+_PDF_SECTION_LABEL = re.compile(
+    r"^(?:approval sheet|acknowledge?ments?|dedication|abstract|preface|foreword|"
+    r"table of contents|list of (?:tables|figures)|definition of terms|introduction|"
+    r"related (?:literature|studies)|conceptual framework|comparative matrix|"
+    r"references|bibliography|curriculum vitae|appendices)[:.]?$",
+    re.IGNORECASE,
+)
+
+
+def _split_heading_hard_breaks(doc: docx.Document, page_break_after: Set[Any]) -> int:
+    """Split PDF paragraphs where pdf2docx merged a heading, section label or caption onto prose via <w:br/>."""
+    def _line_stats(nodes: List[Any]) -> Tuple[str, bool, bool]:
+        chunks: List[str] = []
+        has_text = False
+        all_bold = True
+        has_tab = False
+        for node in nodes:
+            if node.tag != qn("w:r"):
+                continue
+            if node.find(qn("w:tab")) is not None:
+                has_tab = True
+            txt = "".join(t.text or "" for t in node.iter(qn("w:t")))
+            if not txt.strip():
+                continue
+            has_text = True
+            chunks.append(txt)
+            rpr = node.find(qn("w:rPr"))
+            b = rpr.find(qn("w:b")) if rpr is not None else None
+            is_bold = b is not None and b.get(qn("w:val")) not in ("0", "false", "False")
+            all_bold = all_bold and is_bold
+        return "".join(chunks).strip(), (has_text and all_bold), (not has_tab)
+
+    def _is_standalone_line(text: str, all_bold: bool, no_tab: bool) -> bool:
+        if not text or not no_tab or len(text) > 80:
+            return False
+        if text[-1] in ",;-":
+            return False
+        if _PDF_SECTION_LABEL.match(text) or _HEADING_KEYWORD.match(text) or _HEADING_ROMAN.match(text) or _CAPTION.match(text):
+            return True
+        if all_bold and not text.endswith(".") and _heading_shape(text.split(), text):
+            return True
+        return False
+
+    splits = 0
+    for p_el in list(doc.element.body):
+        if p_el.tag != qn("w:p"):
+            continue
+        if p_el.find(".//" + qn("w:drawing")) is not None or p_el.find(".//" + qn("w:pict")) is not None:
+            continue
+        # Quick check for line breaks (not page/column breaks).
+        line_breaks = [
+            br for br in p_el.iter(qn("w:br"))
+            if (br.get(qn("w:type")) or "textWrapping") == "textWrapping"
+        ]
+        if not line_breaks:
+            continue
+
+        ppr = p_el.find(qn("w:pPr"))
+        groups: List[List[Any]] = [[]]
+        for child in list(p_el):
+            if child.tag == qn("w:pPr"):
+                continue
+            if child.tag == qn("w:r"):
+                # Partition a run if it mixes text and textWrapping <w:br/> children.
+                brs = [c for c in child if c.tag == qn("w:br") and (c.get(qn("w:type")) or "textWrapping") == "textWrapping"]
+                if brs:
+                    rpr = child.find(qn("w:rPr"))
+                    cur = OxmlElement("w:r")
+                    if rpr is not None:
+                        cur.append(copy.deepcopy(rpr))
+                    for sub in list(child):
+                        if sub.tag == qn("w:rPr"):
+                            continue
+                        if sub.tag == qn("w:br") and (sub.get(qn("w:type")) or "textWrapping") == "textWrapping":
+                            if any(c.tag != qn("w:rPr") for c in cur):
+                                groups[-1].append(cur)
+                            groups.append([])
+                            cur = OxmlElement("w:r")
+                            if rpr is not None:
+                                cur.append(copy.deepcopy(rpr))
+                        else:
+                            cur.append(copy.deepcopy(sub))
+                    if any(c.tag != qn("w:rPr") for c in cur):
+                        groups[-1].append(cur)
+                    continue
+            groups[-1].append(child)
+
+        groups = [g for g in groups if any(True for _ in g)]
+        if len(groups) < 2:
+            continue
+
+        stats = [_line_stats(g) for g in groups]
+        standalone = [_is_standalone_line(t, b, nt) for t, b, nt in stats]
+        # Split wherever at least one side of the break is a standalone structural line.
+        split_after = [standalone[i] or standalone[i + 1] for i in range(len(groups) - 1)]
+        if not any(split_after):
+            continue
+
+        chunks: List[List[Any]] = []
+        current: List[Any] = []
+        for idx, g in enumerate(groups):
+            if current:
+                # Preserve original separator if we are NOT splitting at this boundary.
+                br_run = OxmlElement("w:r")
+                br_run.append(OxmlElement("w:br"))
+                current.append(br_run)
+            current.extend(g)
+            if idx < len(split_after) and split_after[idx]:
+                chunks.append(current)
+                current = []
+        if current:
+            chunks.append(current)
+
+        if len(chunks) <= 1:
+            continue
+
+        # Rebuild p_el as chunks[0] and insert chunks[1:] directly after it, zeroing internal gaps.
+        for child in list(p_el):
+            if child.tag != qn("w:pPr"):
+                p_el.remove(child)
+        for node in chunks[0]:
+            p_el.append(node)
+
+        orig_spacing = ppr.find(qn("w:spacing")) if ppr is not None else None
+        orig_after = orig_spacing.get(qn("w:after")) if orig_spacing is not None else None
+        if orig_spacing is not None and orig_after is not None:
+            orig_spacing.set(qn("w:after"), "0")
+
+        had_page_break = p_el in page_break_after
+        if had_page_break:
+            page_break_after.discard(p_el)
+
+        anchor = p_el
+        for c_idx, chunk in enumerate(chunks[1:], start=1):
+            new_p = OxmlElement("w:p")
+            if ppr is not None:
+                new_ppr = copy.deepcopy(ppr)
+                sp = new_ppr.find(qn("w:spacing"))
+                if sp is not None:
+                    sp.set(qn("w:before"), "0")
+                    if c_idx == len(chunks) - 1 and orig_after is not None:
+                        sp.set(qn("w:after"), orig_after)
+                    else:
+                        sp.set(qn("w:after"), "0")
+                new_p.append(new_ppr)
+            for node in chunk:
+                new_p.append(node)
+            anchor.addnext(new_p)
+            anchor = new_p
+
+        if had_page_break:
+            page_break_after.add(anchor)
+        splits += len(chunks) - 1
+    return splits
+
+
 def _infer_heading_styles(doc: docx.Document, page_break_after: Optional[Set[Any]] = None) -> int:
     """Give heading-shaped body paragraphs real Heading 1-3 styles.
 
@@ -6599,6 +6794,7 @@ def convert_pdf_bytes_to_html(file_bytes: bytes, split_tabs: bool = False) -> Di
     _loosen_page_bottoms(doc, page_break_after)
     _keep_blank_pages(doc, page_break_after)
     _fill_blanks_from_pdf(doc, file_bytes, page_break_after)
+    _split_heading_hard_breaks(doc, page_break_after)
     _realign_from_pdf(doc, file_bytes, page_break_after)
     _reflow_centred_blocks_from_pdf(doc, file_bytes, page_break_after)
     _rejoin_side_lines_from_pdf(doc, file_bytes, page_break_after)
