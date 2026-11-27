@@ -1748,6 +1748,8 @@ interface ToolbarProps {
   onBlockedAction?: (message: string) => void
   /** Document-type (genre) badge rendered at the start of the right-hand cluster. */
   genreBadge?: ReactNode
+  /** Opens a confirmation modal to create a new IEEE copy without modifying this document. */
+  onConvertToIeeeCopy?: () => void
 }
 
 /**
@@ -1804,6 +1806,7 @@ export function TiptapToolbar({
   onExportRequest,
   wholeBodyActionsBlocked = null,
   onBlockedAction,
+  onConvertToIeeeCopy,
 }: ToolbarProps): JSX.Element {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'styles'>('home')
   /** Ribbon folded to its tab strip, for more writing space on short screens (Ctrl+F1, as in Word). */
@@ -3189,6 +3192,7 @@ export function TiptapToolbar({
             currentStyleKey={currentStyleKey}
             onApplyStyle={onApplyStyle}
             onApplyPreset={onApplyPreset}
+            onConvertToIeeeCopy={onConvertToIeeeCopy}
             activePreset={activePreset}
           />
         </div>

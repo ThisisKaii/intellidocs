@@ -54,6 +54,8 @@ import { describePresetChanges, presetFontFamily } from '@/lib/presetSummary'
 import { applyPresetToBody } from '@/components/editor/chatFormatting'
 import { buildGenreSignals, type DocumentGenre, type GenreSource } from '@/lib/genreSignals'
 import { IeeePrintPreview } from '@/components/editor/IeeePrintPreview'
+import { IeeeConvertCopyDialog } from '@/components/editor/IeeeRestructureDialog'
+import { buildIeeeHtmlFromDoc, buildIeeeHtmlFromHtml } from '@/components/editor/ieeeConvertCommand'
 import { type FormatSuggestion } from '@/components/editor/FormatPrompt'
 import EditorSidePanel, { grammarCardKey, type SidePanelTab, type SuggestionReview } from '@/components/editor/EditorSidePanel'
 import { ACADEMIC_PRESETS, USER_PRESETS_CHANGED, basePresetKey, findAcademicPreset, registerUserPresets } from '@/components/editor/academicPresets'
@@ -2531,6 +2533,65 @@ export default function Document(): JSX.Element {
   const [exportError, setExportError] = useState<string>('')
   const [exportPresetTab, setExportPresetTab] = useState<string | null>(null)
 
+  const [ieeeCopyOpen, setIeeeCopyOpen] = useState<boolean>(false)
+  const [ieeeCopyBusy, setIeeeCopyBusy] = useState<boolean>(false)
+  const [ieeeCopyError, setIeeeCopyError] = useState<string>('')
+
+  /** Create a brand-new IEEE Conference copy of this document without modifying the original. */
+  async function confirmConvertToIeeeCopy(copyTitle: string): Promise<void> {
+    const live = liveEditorRef.current
+    if (!live || live.isDestroyed) {
+      setIeeeCopyError('The editor is not ready yet.')
+      return
+    }
+    setIeeeCopyBusy(true)
+    setIeeeCopyError('')
+    try {
+      let ieeeHtml: string | null = null
+      if (isTabbed && docTabs && id) {
+        const wholeHtml = await bodyForExport({ kind: 'whole' }, {
+          documentId: id,
+          shareToken,
+          tabs: docTabs,
+          openTabId: contentTabRef.current,
+          liveHtml: live.getHTML(),
+        })
+        ieeeHtml = buildIeeeHtmlFromHtml(wholeHtml, live.schema)
+      } else {
+        ieeeHtml = buildIeeeHtmlFromDoc(live.state.doc, live.schema)
+      }
+      if (!ieeeHtml) {
+        setIeeeCopyError('Add some content before creating an IEEE copy.')
+        return
+      }
+      const ieeePreset = findAcademicPreset('ieee')
+      const created = await api.documents.create(copyTitle, {
+        formatting_preset: 'ieee',
+        unique_title: true,
+      })
+      try {
+        await api.documents.update(created.id, {
+          content: ieeeHtml,
+          ...(ieeePreset ? {
+            page_size: ieeePreset.pageSize,
+            orientation: ieeePreset.orientation,
+            margins: ieeePreset.margins,
+          } : {}),
+          ...(references.length > 0 ? { citation_data: { style: 'ieee', references } } : {}),
+        })
+      } catch (updateErr) {
+        await api.documents.delete(created.id).catch(() => {})
+        throw updateErr
+      }
+      setIeeeCopyOpen(false)
+      navigate(`/document/${created.id}`)
+    } catch (err) {
+      setIeeeCopyError(err instanceof Error ? err.message : 'Could not create the IEEE copy.')
+    } finally {
+      setIeeeCopyBusy(false)
+    }
+  }
+
   /** The toolbar's export menu: a tabbed document opens the tab chooser; any other exports as before. */
   function requestExport(format: ExportFormat): boolean {
     if (!isTabbed) return false
@@ -4298,6 +4359,7 @@ export default function Document(): JSX.Element {
               onOpenCaptionSettings={readOnly ? undefined : () => { setCaptionError(''); setCaptionDialogOpen(true) }}
               onOpenPersonalization={() => setProfileModalOpen(true)}
               onExportRequest={requestExport}
+              onConvertToIeeeCopy={readOnly ? undefined : () => { setIeeeCopyError(''); setIeeeCopyOpen(true) }}
               wholeBodyActionsBlocked={isTabbed ? 'This document is split into tabs. Merge the tabs first (left panel) to import a file over it or restructure it.' : null}
               onBlockedAction={setTabError}
             />
@@ -4611,6 +4673,14 @@ export default function Document(): JSX.Element {
             onFormatChange={setExportFormat}
             onExport={(choice) => void runExport(choice)}
             onClose={() => setExportFormat(null)}
+          />
+          <IeeeConvertCopyDialog
+            open={ieeeCopyOpen}
+            defaultTitle={/\(ieee\)$/i.test(title.trim()) ? title.trim() : `${title.trim() || 'Untitled Document'} (IEEE)`}
+            busy={ieeeCopyBusy}
+            error={ieeeCopyError}
+            onOpenChange={setIeeeCopyOpen}
+            onConfirm={(copyTitle) => void confirmConvertToIeeeCopy(copyTitle)}
           />
           <SplitTabsDialog
             open={splitOpen && Boolean(splitProposal)}

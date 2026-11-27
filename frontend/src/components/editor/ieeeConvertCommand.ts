@@ -1,6 +1,6 @@
 import type { Editor } from '@tiptap/core'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { DOMSerializer } from '@tiptap/pm/model'
+import { DOMParser as ProseMirrorDOMParser, DOMSerializer } from '@tiptap/pm/model'
 
 import { buildBlueprintHtml, getBlueprint } from './documentBlueprints'
 import {
@@ -10,7 +10,7 @@ import {
   slotMatchName,
   type SourceSection,
 } from './ieeeScaffold'
-import { applyIeeeNumbering } from './ieeeNumberingCommand'
+import { applyIeeeNumbering, applyIeeeNumberingToDoc } from './ieeeNumberingCommand'
 
 /** HTML for a single top-level node, using the editor's own schema. */
 function serializeBlock(
@@ -134,4 +134,46 @@ export function convertToIeee(editor: Editor): boolean {
   editor.commands.setContent(html)
   applyIeeeNumbering(editor)
   return true
+}
+
+/**
+ * Non-destructively restructures a ProseMirror document into IEEE format with
+ * Roman/letter section numbering applied, returning serialized HTML.
+ * Returns null when the document is empty.
+ */
+export function buildIeeeHtmlFromDoc(
+  doc: ProseMirrorNode,
+  schema: Editor['schema']
+): string | null {
+  const sections = splitIntoSections(doc, schema)
+  if (sections.length === 0) {
+    return null
+  }
+
+  const ieee = getBlueprint('ieee')
+  const result = buildScaffold(sections, ieee)
+  const rawHtml = renderScaffoldHtml(result, ieee, buildBlueprintHtml)
+
+  const container = document.createElement('div')
+  container.innerHTML = rawHtml
+  const parsed = ProseMirrorDOMParser.fromSchema(schema).parse(container)
+  const numbered = applyIeeeNumberingToDoc(parsed)
+
+  const out = document.createElement('div')
+  out.appendChild(DOMSerializer.fromSchema(schema).serializeFragment(numbered.content))
+  return out.innerHTML
+}
+
+/**
+ * Parses an HTML string using the editor's schema and returns the IEEE-restructured
+ * and numbered HTML without mutating any open editor.
+ */
+export function buildIeeeHtmlFromHtml(
+  html: string,
+  schema: Editor['schema']
+): string | null {
+  const container = document.createElement('div')
+  container.innerHTML = html
+  const doc = ProseMirrorDOMParser.fromSchema(schema).parse(container)
+  return buildIeeeHtmlFromDoc(doc, schema)
 }

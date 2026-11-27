@@ -4,7 +4,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Heading from '@tiptap/extension-heading'
 
 import { getBlueprint } from '../documentBlueprints'
-import { convertToIeee } from '../ieeeConvertCommand'
+import { buildIeeeHtmlFromDoc, buildIeeeHtmlFromHtml, convertToIeee } from '../ieeeConvertCommand'
 import {
   applyIeeeNumberingToTexts,
   computeIeeeNumbers,
@@ -205,5 +205,22 @@ describe('convertToIeee in the editor', () => {
     convertToIeee(editor)
     const headings = headingTexts(editor)
     expect(headings.some((h) => h.startsWith('I. Introduction'))).toBe(true)
+  })
+
+  it('builds IEEE HTML non-destructively without mutating the source editor', () => {
+    const sourceHtml = '<h1>My Thesis</h1><h1>CHAPTER I: INTRODUCTION</h1><p>Thesis intro.</p><h1>Methodology</h1><p>Steps.</p>'
+    const editor = createEditor(sourceHtml)
+    const beforeHtml = editor.getHTML()
+
+    const ieeeHtml = buildIeeeHtmlFromDoc(editor.state.doc, editor.schema)
+    expect(ieeeHtml).not.toBeNull()
+    expect(ieeeHtml).toContain('I. INTRODUCTION')
+    expect(ieeeHtml).toContain('Methodology')
+    expect(ieeeHtml).toContain('Thesis intro.')
+    // Original editor content must remain untouched.
+    expect(editor.getHTML()).toBe(beforeHtml)
+
+    const fromRaw = buildIeeeHtmlFromHtml(sourceHtml, editor.schema)
+    expect(fromRaw).toBe(ieeeHtml)
   })
 })

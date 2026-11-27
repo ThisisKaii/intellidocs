@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
-import { Check, Eye, EyeOff, GraduationCap, Lock, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, Eye, EyeOff, FilePlus2, GraduationCap, Lock, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { STYLE_ITEMS, type StyleItem } from './styleCommands'
 import { STYLE_GALLERY, StyleTile } from './StyleTile'
 import { ACADEMIC_PRESETS, registeredUserPresets, type AcademicPreset } from './academicPresets'
@@ -85,6 +85,7 @@ interface EditorStylesPanelProps {
   currentStyleKey?: string
   onApplyStyle: (format: string) => void
   onApplyPreset: (key: string) => void
+  onConvertToIeeeCopy?: () => void
   activePreset: string | null
 }
 
@@ -111,6 +112,7 @@ export default function EditorStylesPanel({
   currentStyleKey = 'p',
   onApplyStyle,
   onApplyPreset,
+  onConvertToIeeeCopy,
   activePreset = null,
 }: EditorStylesPanelProps): JSX.Element {
   const [customStyles, setCustomStyles] = useState<CustomStyle[]>(loadCustomStyles)
@@ -211,6 +213,16 @@ export default function EditorStylesPanel({
             />
           )
         })}
+
+        {onConvertToIeeeCopy && (
+          <StripButton
+            label="Convert to IEEE copy"
+            title="Create a new IEEE Conference copy without modifying this document"
+            icon={<FilePlus2 style={{ width: '13px', height: '13px', opacity: 0.7 }} />}
+            disabled={!editor}
+            onApply={onConvertToIeeeCopy}
+          />
+        )}
 
         <StripDivider />
 

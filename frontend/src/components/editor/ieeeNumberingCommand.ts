@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/core'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { EditorState, type Transaction } from '@tiptap/pm/state'
 
 import {
   applyIeeeNumberingToTexts,
@@ -44,27 +45,14 @@ function collectHeadings(doc: ProseMirrorNode): LocatedHeading[] {
   return found
 }
 
-/**
- * Renumbers the document's headings to IEEE convention.
- *
- * Only each heading's leading label ("I. ", "A. ", "1) ") is replaced, so bold,
- * italic and links inside the heading survive. Edits are applied from the last
- * heading to the first, because an edit that changes a label's length would
- * otherwise shift the positions of every heading after it.
- *
- * Existing numbers are stripped first, so running this twice is a no-op.
- * Returns true when any heading changed, which lets the caller skip a no-op
- * transaction and its behavior event.
- */
-export function applyIeeeNumbering(editor: Editor): boolean {
-  const headings = collectHeadings(editor.state.doc)
+/** Build a transaction that adds IEEE section labels to headings in `doc`, or null if already up to date. */
+function buildIeeeNumberingTransaction(doc: ProseMirrorNode, tr: Transaction): boolean {
+  const headings = collectHeadings(doc)
   if (headings.length === 0) {
     return false
   }
 
   const nextTexts = applyIeeeNumberingToTexts(headings)
-
-  const tr = editor.state.tr
   let changed = false
 
   for (let index = headings.length - 1; index >= 0; index -= 1) {
@@ -89,10 +77,37 @@ export function applyIeeeNumbering(editor: Editor): boolean {
     changed = true
   }
 
-  if (!changed) {
+  return changed
+}
+
+/**
+ * Renumbers the document's headings to IEEE convention.
+ *
+ * Only each heading's leading label ("I. ", "A. ", "1) ") is replaced, so bold,
+ * italic and links inside the heading survive. Edits are applied from the last
+ * heading to the first, because an edit that changes a label's length would
+ * otherwise shift the positions of every heading after it.
+ *
+ * Existing numbers are stripped first, so running this twice is a no-op.
+ * Returns true when any heading changed, which lets the caller skip a no-op
+ * transaction and its behavior event.
+ */
+export function applyIeeeNumbering(editor: Editor): boolean {
+  const tr = editor.state.tr
+  if (!buildIeeeNumberingTransaction(editor.state.doc, tr)) {
     return false
   }
 
   editor.view.dispatch(tr)
   return true
+}
+
+/** Purely returns a renumbered copy of an offscreen ProseMirror document without touching any editor. */
+export function applyIeeeNumberingToDoc(doc: ProseMirrorNode): ProseMirrorNode {
+  const state = EditorState.create({ doc })
+  const tr = state.tr
+  if (!buildIeeeNumberingTransaction(doc, tr)) {
+    return doc
+  }
+  return state.apply(tr).doc
 }
