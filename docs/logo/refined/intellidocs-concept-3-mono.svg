@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Convergent Brackets (Mono Brand Colour)</title>
+  <rect x="32" y="49" width="32" height="158" fill="#388087" rx="8"/>
+  <rect x="32" y="49" width="32" height="16" fill="#388087"/>
+  <rect x="32" y="191" width="32" height="16" fill="#388087"/>
+  <rect x="192" y="49" width="32" height="158" fill="#388087" rx="8"/>
+  <rect x="192" y="49" width="32" height="16" fill="#388087"/>
+  <rect x="192" y="191" width="32" height="16" fill="#388087"/>
+  <path d="M64 82 Q128 128 192 82" fill="none" stroke="#C2EDCE" stroke-width="24" stroke-linecap="round" opacity="0.8"/>
+  <path d="M64 174 Q128 128 192 174" fill="none" stroke="#C2EDCE" stroke-width="24" stroke-linecap="round" opacity="0.8"/>
+  <circle cx="128" cy="128" r="20" fill="#388087"/>
+  <circle cx="128" cy="80" r="12" fill="#C2EDCE" stroke="#388087" stroke-width="2"/>
+  <circle cx="169" cy="156" r="12" fill="#C2EDCE" stroke="#388087" stroke-width="2"/>
+  <circle cx="87" cy="156" r="12" fill="#C2EDCE" stroke="#388087" stroke-width="2"/>
+  <g stroke="#388087" stroke-width="4" stroke-linecap="round" opacity="0.3">
+    <line x1="128" y1="108" x2="128" y2="100"/>
+    <line x1="142" y1="136" x2="158" y2="148"/>
+    <line x1="114" y1="136" x2="98" y2="148"/>
+  </g>
+  <circle cx="128" cy="128" r="36" fill="none" stroke="#C2EDCE" stroke-width="4" stroke-dasharray="12 16" opacity="0.3"/>
+</svg>

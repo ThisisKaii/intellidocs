@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 256" width="960" height="256" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Horizontal Lockup (Concept 2)</title>
+  <defs>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Symbol at left (scaled to fit) -->
+  <g transform="translate(24, 0)">
+    <rect x="44" y="16" width="168" height="224" fill="url(#tealGrad)" rx="12"/>
+    <path d="M158 16 L212 16 L212 70 L158 70 Z" fill="url(#mintGrad)"/>
+    <path d="M158 70 L212 16" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+    <rect x="68" y="36" width="120" height="12" fill="#000" rx="2"/>
+    <rect x="68" y="68" width="150" height="8" fill="#000" opacity="0.6" rx="1.5"/>
+    <rect x="68" y="92" width="140" height="8" fill="#000" opacity="0.6" rx="1.5"/>
+    <rect x="68" y="116" width="130" height="8" fill="#000" opacity="0.5" rx="1.5"/>
+    <path d="M170 62 L212 104 L128 104 Z" fill="url(#tealGrad)"/>
+    <path d="M170 62 L170 86" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/>
+    <circle cx="170" cy="72" r="5" fill="#fff" stroke="url(#tealGrad)" stroke-width="2"/>
+  </g>
+
+  <!-- Wordmark (same as concept 1) -->
+  <g transform="translate(320, 0)">
+    <rect x="0" y="28" width="24" height="200" fill="url(#tealGrad)" rx="4"/>
+    <rect x="-16" y="24" width="56" height="8" fill="url(#tealGrad)" rx="4"/>
+    <rect x="-16" y="224" width="56" height="8" fill="url(#tealGrad)" rx="4"/>
+    <rect x="56" y="28" width="24" height="160" fill="url(#tealGrad)" rx="4"/>
+    <path d="M56 88 Q80 88 80 112 Q80 136 56 136" fill="url(#tealGrad)"/>
+    <rect x="104" y="28" width="16" height="160" fill="url(#tealGrad)" rx="2"/>
+    <rect x="88" y="28" width="48" height="8" fill="url(#tealGrad)" rx="2"/>
+    <path d="M152 112 Q176 112 176 136 Q176 160 152 160 Q128 160 128 136 Q128 112 152 112" fill="url(#tealGrad)"/>
+    <rect x="144" y="136" width="16" height="8" fill="url(#tealGrad)"/>
+    <rect x="192" y="28" width="16" height="200" fill="url(#tealGrad)" rx="2"/>
+    <rect x="176" y="24" width="48" height="8" fill="url(#tealGrad)" rx="2"/>
+    <rect x="224" y="28" width="16" height="200" fill="url(#tealGrad)" rx="2"/>
+    <rect x="208" y="24" width="48" height="8" fill="url(#tealGrad)" rx="2"/>
+    <rect x="256" y="28" width="16" height="160" fill="url(#tealGrad)" rx="2"/>
+    <circle cx="264" cy="16" r="6" fill="url(#mintGrad)"/>
+    <rect x="288" y="28" width="24" height="200" fill="url(#tealGrad)" rx="4"/>
+    <path d="M312 28 Q360 28 360 76 Q360 124 312 124 Q312 228 264 228" fill="url(#tealGrad)"/>
+    <rect x="288" y="28" width="24" height="200" fill="url(#tealGrad)" rx="4"/>
+    <path d="M312 28 Q360 28 360 76 Q360 124 312 124 Q312 228 264 228" fill="url(#tealGrad)"/>
+    <path d="M312 28 Q340 28 340 60 Q340 92 312 92 Q284 92 284 124 Q284 156 312 156 Q340 156 340 188 Q340 220 312 220 Q284 220 284 188 Q284 156 312 156" fill="url(#tealGrad)"/>
+    <path d="M352 88 Q384 88 384 120 Q384 152 352 152 Q320 152 320 120 Q320 88 352 88" fill="url(#tealGrad)"/>
+    <rect x="344" y="120" width="16" height="8" fill="url(#mintGrad)"/>
+    <path d="M400 136 Q432 136 432 168 Q432 200 400 200 Q368 200 368 168 Q368 136 400 136" fill="url(#tealGrad)"/>
+    <rect x="392" y="136" width="16" height="8" fill="url(#mintGrad)"/>
+    <path d="M448 136 Q480 136 480 168 Q480 200 448 200 Q416 200 416 168 Q416 136 448 136" fill="url(#tealGrad)"/>
+    <rect x="440" y="136" width="16" height="8" fill="url(#mintGrad)"/>
+  </g>
+</svg>

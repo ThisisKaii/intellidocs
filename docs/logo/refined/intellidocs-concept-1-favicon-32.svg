@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Favicon 32px (Concept 1)</title>
+  <defs>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="4" width="8" height="24" fill="url(#tealGrad)" rx="1"/>
+  <rect x="8" y="4" width="16" height="2" fill="url(#tealGrad)"/>
+  <rect x="8" y="26" width="16" height="2" fill="url(#tealGrad)"/>
+  <path d="M20 4 L28 4 L28 12 L20 12 Z" fill="url(#mintGrad)"/>
+  <circle cx="24" cy="6" r="2" fill="url(#tealGrad)"/>
+</svg>

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Letterform I with Folded Corner</title>
+  <!--
+    Concept 1: Letterform I — Folded Document Corner
+    Construction: 256×256 grid, 16-unit stroke (1/16 grid), φ-ratio fold at 256/φ ≈ 158
+    Primitives: Rectangles for I-stem, fold corner; circle for neural spark
+    Optical: Overshoot on serifs (2%), bone effect fix on fold corner, irradiation-ready
+  -->
+  <defs>
+    <!-- Consistent radii: 8 (serifs), 16 (fold corner) -->
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- I-stem: 48×192 centred at x=128, overshoot 4 units (1.5%) top/bottom -->
+  <rect x="104" y="28" width="48" height="200" fill="#000" rx="8"/>
+
+  <!-- Top serifs with overshoot (extend 4 units past stem) -->
+  <rect x="88" y="24" width="80" height="8" fill="#000" rx="4"/>
+  <!-- Bottom serifs with overshoot -->
+  <rect x="88" y="224" width="80" height="8" fill="#000" rx="4"/>
+
+  <!-- Folded corner at golden ratio (256/φ ≈ 158) -->
+  <!-- Fold corner: 96×96 square at top-right of stem -->
+  <path d="M152 28 L248 28 L248 124 L152 124 Z" fill="#000"/>
+
+  <!-- Fold crease: diagonal from fold corner inner to outer (continuous curvature) -->
+  <path d="M152 124 L248 28" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity="0.3"/>
+
+  <!-- Neural spark at fold intersection (φ position on fold) -->
+  <circle cx="200" cy="56" r="14" fill="#000"/>
+
+  <!-- Colour variant hint (hidden in black master, for reference) -->
+  <!-- <rect x="104" y="28" width="48" height="200" fill="url(#tealGrad)" rx="8"/>
+  <rect x="88" y="24" width="80" height="8" fill="url(#tealGrad)" rx="4"/>
+  <rect x="88" y="224" width="80" height="8" fill="url(#tealGrad)" rx="4"/>
+  <path d="M152 28 L248 28 L248 124 L152 124 Z" fill="url(#mintGrad)"/>
+  <circle cx="200" cy="56" r="14" fill="url(#tealGrad)"/> -->
+</svg>

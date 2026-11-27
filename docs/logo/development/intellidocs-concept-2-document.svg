@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Academic Document with Pen Nib</title>
+  <!--
+    Concept 2: Pictorial Document — 3:4 ratio sheet with pen nib
+    Construction: 256×256 grid, document 168×224 (3:4), 12-unit corner radius
+    Primitives: Rect for sheet, rects for text lines, triangle for pen nib
+    Optical: Overshoot on text lines, bone effect fix on sheet corners, irradiation-ready
+  -->
+  <defs>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Document sheet: 168×224 (3:4 ratio), centred, 12-radius corners -->
+  <!-- Base rectangle with overshoot on text lines -->
+  <rect x="44" y="16" width="168" height="224" fill="#000" rx="12"/>
+
+  <!-- Folded corner at golden section (256/φ ≈ 158 from left = 44+114 = 158) -->
+  <path d="M158 16 L212 16 L212 70 L158 70 Z" fill="#000"/>
+
+  <!-- Fold crease: diagonal -->
+  <path d="M158 70 L212 16" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.3"/>
+
+  <!-- Text lines as negative space (knocked out) -->
+  <!-- Heading line (bold): y=40, width 120, height 12, overshoot 4 -->
+  <rect x="68" y="36" width="120" height="12" fill="#fff" rx="2"/>
+  <!-- Body line 1 -->
+  <rect x="68" y="68" width="150" height="8" fill="#fff" opacity="0.6" rx="1.5"/>
+  <!-- Body line 2 -->
+  <rect x="68" y="92" width="140" height="8" fill="#fff" opacity="0.6" rx="1.5"/>
+  <!-- Body line 3 -->
+  <rect x="68" y="116" width="130" height="8" fill="#fff" opacity="0.5" rx="1.5"/>
+
+  <!-- Fountain pen nib at folded corner -->
+  <!-- Nib: triangle with slit and breather hole -->
+  <path d="M170 62 L212 104 L128 104 Z" fill="#000"/>
+  <!-- Slit -->
+  <path d="M170 62 L170 86" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/>
+  <!-- Breather hole -->
+  <circle cx="170" cy="72" r="5" fill="#fff" stroke="#000" stroke-width="2"/>
+
+  <!-- Colour variant hint (hidden in black master) -->
+  <!-- <rect x="44" y="16" width="168" height="224" fill="url(#tealGrad)" rx="12"/>
+  <path d="M158 16 L212 16 L212 70 L158 70 Z" fill="url(#mintGrad)"/>
+  <rect x="68" y="36" width="120" height="12" fill="#000" rx="2"/>
+  <path d="M170 62 L212 104 L128 104 Z" fill="url(#tealGrad)"/>
+  <circle cx="170" cy="72" r="5" fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="2"/> -->
+</svg>

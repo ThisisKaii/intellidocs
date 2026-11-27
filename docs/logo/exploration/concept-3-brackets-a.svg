@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Concept 3A: Abstract Convergent Brackets - Black first -->
+  <!-- Left bracket at φ height (128/φ ≈ 79) -->
+  <path d="M16 24.5 V103.5 M16 24.5 H32 M16 103.5 H32" stroke="#000" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <!-- Right bracket mirrored -->
+  <path d="M112 24.5 V103.5 M112 24.5 H96 M112 103.5 H96" stroke="#000" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <!-- Converging inner arms - Bézier curves -->
+  <path d="M48 56 Q64 64 80 56" stroke="#000" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <path d="M48 72 Q64 64 80 72" stroke="#000" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <!-- Neural cluster: 3 circles at golden angle (137.5°) -->
+  <circle cx="64" cy="64" r="8" fill="#000"/>
+  <circle cx="64" cy="36" r="4.5" fill="#000"/>
+  <circle cx="84.5" cy="74.5" r="4.5" fill="#000"/>
+  <circle cx="43.5" cy="74.5" r="4.5" fill="#000"/>
+  <!-- Synapse connections -->
+  <g stroke="#000" stroke-width="2" stroke-linecap="round" opacity="0.4">
+    <line x1="64" y1="44" x2="64" y2="56"/>
+    <line x1="72" y1="60" x2="80" y2="68"/>
+    <line x1="56" y1="60" x2="48" y2="68"/>
+  </g>
+</svg>

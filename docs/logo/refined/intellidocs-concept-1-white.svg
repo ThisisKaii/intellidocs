@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Letterform I (White/Reversed — Irradiation Corrected)</title>
+  <!-- Irradiation correction: white on black appears heavier, so geometry is thinned ~3% -->
+  <!-- Stem thinned from 48 to 46 (2 units each side) -->
+  <rect x="105" y="28" width="46" height="200" fill="#fff" rx="7"/>
+  <!-- Serifs thinned from 8 to 6 height -->
+  <rect x="89" y="24" width="78" height="6" fill="#fff" rx="3"/>
+  <rect x="89" y="226" width="78" height="6" fill="#fff" rx="3"/>
+  <!-- Fold corner thinned -->
+  <path d="M153 28 L247 28 L247 123 L153 123 Z" fill="#fff"/>
+  <!-- Crease -->
+  <path d="M153 123 L247 28" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
+  <!-- Spark thinned from 14 to 13 radius -->
+  <circle cx="200" cy="56" r="13" fill="#fff"/>
+</svg>

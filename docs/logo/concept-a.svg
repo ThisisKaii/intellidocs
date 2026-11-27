@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!--
+    Concept A: "Scholar's Quill" — Academic Precision
+    Construction: 24×24 unit grid, 2px stroke (1/12 grid), φ-ratio corner radius
+    Metaphors: Document sheet with folded corner + fountain pen nib
+    Color: Soft-teal #388087 (primary), Mint #C2EDCE (accent), Paper #F6F6F2 (background)
+  -->
+  <defs>
+    <linearGradient id="paperGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F6F6F2"/>
+      <stop offset="100%" stop-color="#E8E8E0"/>
+    </linearGradient>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Document sheet (golden ratio proportions: 13.78 × 22.36 ≈ φ) -->
+  <rect x="2.5" y="1.5" width="14" height="20" rx="1.2" ry="1.2"
+        fill="url(#paperGrad)" stroke="url(#tealGrad)" stroke-width="2"/>
+
+  <!-- Folded corner (φ-based: 5.5 × 5.5) -->
+  <path d="M13.5 1.5 L16.5 1.5 L13.5 4.5 Z"
+        fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="1.5"/>
+
+  <!-- Fold crease line -->
+  <path d="M13.5 4.5 L16.5 1.5"
+        stroke="url(#tealGrad)" stroke-width="1" stroke-linecap="round" opacity="0.6"/>
+
+  <!-- Text lines (even spacing, 2.5 unit leading) -->
+  <g stroke="url(#tealGrad)" stroke-width="1.2" stroke-linecap="round" opacity="0.7">
+    <line x1="5" y1="6.5" x2="14.5" y2="6.5"/>
+    <line x1="5" y1="9.5" x2="13" y2="9.5"/>
+    <line x1="5" y1="12.5" x2="15" y2="12.5"/>
+    <line x1="5" y1="15.5" x2="12" y2="15.5"/>
+    <line x1="5" y1="18.5" x2="10" y2="18.5"/>
+  </g>
+
+  <!-- Fountain pen nib (positioned at φ ratio from right: 24/φ ≈ 14.8) -->
+  <g transform="translate(17.5, 8.5)">
+    <!-- Nib body -->
+    <path d="M0 0 L-3.5 -6 L3.5 -6 Z"
+          fill="url(#tealGrad)"/>
+    <!-- Nib slit -->
+    <line x1="0" y1="-1" x2="0" y2="-4.5"
+          stroke="#1A4A4D" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- Nib breather hole -->
+    <circle cx="0" cy="-4.8" r="0.7"
+            fill="#F6F6F2" stroke="#388087" stroke-width="1"/>
+    <!-- Feed -->
+    <rect x="-0.8" y="-6" width="1.6" height="3"
+          fill="#2D6B6E"/>
+  </g>
+
+  <!-- Accent dot (intelligence spark) at φ position -->
+  <circle cx="19.5" cy="3.5" r="1.2"
+          fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="1.5"/>
+</svg>

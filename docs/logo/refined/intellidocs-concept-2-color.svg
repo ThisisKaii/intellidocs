@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Academic Document (Full Colour)</title>
+  <defs>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+    <linearGradient id="paperGrad" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F6F6F2"/>
+      <stop offset="100%" stop-color="#E8E8E0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Document sheet: 168×224 (3:4), centred, 12-radius corners -->
+  <rect x="44" y="16" width="168" height="224" fill="url(#tealGrad)" rx="12"/>
+
+  <!-- Folded corner at φ (158) with mint gradient -->
+  <path d="M158 16 L212 16 L212 70 L158 70 Z" fill="url(#mintGrad)"/>
+
+  <!-- Fold crease: subtle highlight -->
+  <path d="M158 70 L212 16" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- Text lines as negative space (knocked out) -->
+  <!-- Heading line (bold) -->
+  <rect x="68" y="36" width="120" height="12" fill="#000" rx="2"/>
+  <!-- Body lines -->
+  <rect x="68" y="68" width="150" height="8" fill="#000" opacity="0.6" rx="1.5"/>
+  <rect x="68" y="92" width="140" height="8" fill="#000" opacity="0.6" rx="1.5"/>
+  <rect x="68" y="116" width="130" height="8" fill="#000" opacity="0.5" rx="1.5"/>
+
+  <!-- Fountain pen nib at folded corner -->
+  <path d="M170 62 L212 104 L128 104 Z" fill="url(#tealGrad)"/>
+  <path d="M170 62 L170 86" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity="0.4"/>
+  <circle cx="170" cy="72" r="5" fill="#fff" stroke="url(#tealGrad)" stroke-width="2"/>
+
+  <!-- Paper texture hint -->
+  <rect x="44" y="16" width="168" height="224" fill="url(#paperGrad)" rx="12" opacity="0.05"/>
+</svg>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Favicon 32px (Concept 3)</title>
+  <defs>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#388087" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#2D6B6E" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#1F5A5C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="4" y="10" width="4" height="12" fill="url(#tealGrad)" rx="1"/>
+  <rect x="24" y="10" width="4" height="12" fill="url(#tealGrad)" rx="1"/>
+  <path d="M8 18 Q16 16 24 18" stroke="url(#mintGrad)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <path d="M8 14 Q16 16 24 14" stroke="url(#mintGrad)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <circle cx="16" cy="16" r="3" fill="url(#tealGrad)"/>
+  <circle cx="16" cy="10" r="2" fill="url(#mintGrad)"/>
+</svg>

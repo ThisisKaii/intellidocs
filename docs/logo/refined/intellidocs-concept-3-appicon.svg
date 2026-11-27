@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — App Icon (Concept 3)</title>
+  <defs>
+    <linearGradient id="iconBg" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#1F5A5C"/>
+    </linearGradient>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#388087" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#2D6B6E" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#1F5A5C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="56" fill="url(#iconBg)"/>
+
+  <g transform="translate(51, 51)">
+    <g transform="scale(0.6) translate(43, 47)">
+      <rect x="32" y="49" width="32" height="158" fill="url(#tealGrad)" rx="8"/>
+      <rect x="32" y="49" width="32" height="16" fill="url(#tealGrad)"/>
+      <rect x="32" y="191" width="32" height="16" fill="url(#tealGrad)"/>
+      <rect x="192" y="49" width="32" height="158" fill="url(#tealGrad)" rx="8"/>
+      <rect x="192" y="49" width="32" height="16" fill="url(#tealGrad)"/>
+      <rect x="192" y="191" width="32" height="16" fill="url(#tealGrad)"/>
+      <path d="M64 82 Q128 128 192 82" fill="none" stroke="url(#mintGrad)" stroke-width="24" stroke-linecap="round" opacity="0.8"/>
+      <path d="M64 174 Q128 128 192 174" fill="none" stroke="url(#mintGrad)" stroke-width="24" stroke-linecap="round" opacity="0.8"/>
+      <circle cx="128" cy="128" r="20" fill="url(#nodeGlow)"/>
+      <circle cx="128" cy="80" r="12" fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="2"/>
+      <circle cx="169" cy="156" r="12" fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="2"/>
+      <circle cx="87" cy="156" r="12" fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="2"/>
+      <g stroke="url(#tealGrad)" stroke-width="4" stroke-linecap="round" opacity="0.3">
+        <line x1="128" y1="108" x2="128" y2="100"/>
+        <line x1="142" y1="136" x2="158" y2="148"/>
+        <line x1="114" y1="136" x2="98" y2="148"/>
+      </g>
+      <circle cx="128" cy="128" r="36" fill="none" stroke="url(#mintGrad)" stroke-width="4" stroke-dasharray="12 16" opacity="0.3"/>
+    </g>
+  </g>
+</svg>

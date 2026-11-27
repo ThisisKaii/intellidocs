@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!--
+    Concept B: "Convergent Bracket" — Adaptive Intelligence
+    Construction: 24×24 unit grid, 2px stroke, φ-ratio curves (r = 14.8, 9.2)
+    Metaphors: Opening/closing brackets converging → neural node cluster
+    Color: Soft-teal #388087 (primary), Mint #C2EDCE (accent), Paper #F6F6F2 (background)
+  -->
+  <defs>
+    <linearGradient id="tealGradB" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGradB" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#C2EDCE" stop-opacity="0.9"/>
+      <stop offset="70%" stop-color="#388087" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#388087" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Left bracket (φ-height: 14.8 units) -->
+  <path d="M4.5 4.6 V19.4 M4.5 4.6 H7.5 M4.5 19.4 H7.5"
+        stroke="url(#tealGradB)" stroke-width="2.5" stroke-linecap="round"
+        fill="none"/>
+
+  <!-- Right bracket (mirrored) -->
+  <path d="M19.5 4.6 V19.4 M19.5 4.6 H16.5 M19.5 19.4 H16.5"
+        stroke="url(#tealGradB)" stroke-width="2.5" stroke-linecap="round"
+        fill="none"/>
+
+  <!-- Converging inner arms (φ-ratio spacing) -->
+  <path d="M10.5 8 Q12 12 13.5 8"
+        stroke="url(#mintGradB)" stroke-width="2" stroke-linecap="round"
+        fill="none" opacity="0.8"/>
+  <path d="M10.5 16 Q12 12 13.5 16"
+        stroke="url(#mintGradB)" stroke-width="2" stroke-linecap="round"
+        fill="none" opacity="0.8"/>
+
+  <!-- Central neural cluster (3 nodes in φ-arrangement) -->
+  <g id="neuralCluster">
+    <!-- Center node (largest) -->
+    <circle cx="12" cy="12" r="3.2"
+            fill="url(#nodeGlow)" stroke="url(#tealGradB)" stroke-width="1.5"/>
+
+    <!-- Orbiting nodes (golden angle 137.5°) -->
+    <circle cx="12" cy="6.5" r="1.8"
+            fill="url(#mintGradB)" stroke="url(#tealGradB)" stroke-width="1.2"/>
+    <circle cx="16.8" cy="14.2" r="1.8"
+            fill="url(#mintGradB)" stroke="url(#tealGradB)" stroke-width="1.2"/>
+    <circle cx="7.2" cy="14.2" r="1.8"
+            fill="url(#mintGradB)" stroke="url(#tealGradB)" stroke-width="1.2"/>
+
+    <!-- Connecting synapses (subtle) -->
+    <g stroke="url(#tealGradB)" stroke-width="1" stroke-linecap="round" opacity="0.4">
+      <line x1="12" y1="9.2" x2="12" y2="8.3"/>
+      <line x1="13.6" y1="12.8" x2="14.5" y2="13.7"/>
+      <line x1="10.4" y1="12.8" x2="9.5" y2="13.7"/>
+    </g>
+  </g>
+
+  <!-- Accent pulse ring (intelligence activity) -->
+  <circle cx="12" cy="12" r="5.5"
+          fill="none" stroke="url(#mintGradB)" stroke-width="1.5"
+          stroke-dasharray="4 6" opacity="0.5">
+    <animate attributeName="r" values="5.5;7;5.5" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.5;0.1;0.5" dur="3s" repeatCount="indefinite"/>
+  </circle>
+</svg>

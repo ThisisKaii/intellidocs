@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Concept 3C: Abstract Convergent Brackets - Negative space approach -->
+  <!-- Two brackets sharing inner edge - negative space forms neural cluster -->
+  <path fill-rule="evenodd" fill="#000"
+    d="M16 24 L32 24 L32 40 L20 40 L20 100 L32 100 L32 116 L16 116 Z
+       M112 24 L96 24 L96 40 L112 40 L112 100 L96 100 L96 116 L112 116 Z
+       M64 64 m-12 0 a12 12 0 1 0 24 0 a12 12 0 1 0 -24 0
+       M64 64 m-6 0 a6 6 0 1 0 12 0 a6 6 0 1 0 -12 0
+       M64 64 m-3 0 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0"/>
+  <!-- Converging arms as negative space between brackets -->
+  <path fill="#fff" opacity="0.1"
+    d="M64 64 Q48 52 32 44 Q48 52 64 64 Q80 52 96 44 Q80 52 64 64
+       M64 64 Q48 76 32 84 Q48 76 64 64 Q80 76 96 84 Q80 76 64 64"/>
+</svg>

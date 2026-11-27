@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">IntelliDocs — Convergent Brackets with Neural Cluster</title>
+  <!--
+    Concept 3: Abstract Convergent Brackets — Neural Cluster
+    Construction: 256×256 grid, brackets at φ-height (256/φ ≈ 158), 16-stroke
+    Primitives: Rects for brackets, Bézier curves for converging arms, circles for neural nodes
+    Optical: Consistent radii (24), bone effect fix on bracket ends, irradiation-ready
+  -->
+  <defs>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#388087"/>
+      <stop offset="100%" stop-color="#2D6B6E"/>
+    </linearGradient>
+    <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C2EDCE"/>
+      <stop offset="100%" stop-color="#A8DBC5"/>
+    </linearGradient>
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#388087" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#2D6B6E" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#1F5A5C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Left bracket: 158-unit height (φ), 32-wide arms -->
+  <!-- Vertical stroke: x=32-64, y=49-207 (158 tall = φ ratio) -->
+  <rect x="32" y="49" width="32" height="158" fill="#000" rx="8"/>
+  <!-- Top horizontal arm -->
+  <rect x="32" y="49" width="32" height="16" fill="#000"/>
+  <!-- Bottom horizontal arm -->
+  <rect x="32" y="191" width="32" height="16" fill="#000"/>
+
+  <!-- Right bracket: mirrored at x=192-224 -->
+  <rect x="192" y="49" width="32" height="158" fill="#000" rx="8"/>
+  <rect x="192" y="49" width="32" height="16" fill="#000"/>
+  <rect x="192" y="191" width="32" height="16" fill="#000"/>
+
+  <!-- Converging inner arms: cubic Bézier curves -->
+  <!-- Upper arm: from inner top of brackets converging at centre -->
+  <path d="M64 82 Q128 128 192 82" fill="none" stroke="#000" stroke-width="24" stroke-linecap="round" opacity="0.8"/>
+  <!-- Lower arm -->
+  <path d="M64 174 Q128 128 192 174" fill="none" stroke="#000" stroke-width="24" stroke-linecap="round" opacity="0.8"/>
+
+  <!-- Central neural cluster: 3 circles at golden angle (137.5°) -->
+  <!-- Centre node (largest) -->
+  <circle cx="128" cy="128" r="20" fill="#000"/>
+
+  <!-- Orbiting nodes at golden angle (137.5° ≈ 2.4 rad) -->
+  <!-- Radius from centre: 48 units -->
+  <circle cx="128" cy="80" r="12" fill="#000"/>
+  <circle cx="169" cy="156" r="12" fill="#000"/>
+  <circle cx="87" cy="156" r="12" fill="#000"/>
+
+  <!-- Synapse connections (subtle) -->
+  <g stroke="#000" stroke-width="4" stroke-linecap="round" opacity="0.3">
+    <line x1="128" y1="108" x2="128" y2="100"/>
+    <line x1="142" y1="136" x2="158" y2="148"/>
+    <line x1="114" y1="136" x2="98" y2="148"/>
+  </g>
+
+  <!-- Pulse ring (animation reference) -->
+  <circle cx="128" cy="128" r="36" fill="none" stroke="#000" stroke-width="4" stroke-dasharray="12 16" opacity="0.3"/>
+
+  <!-- Colour variant hint (hidden in black master) -->
+  <!-- <circle cx="128" cy="128" r="20" fill="url(#nodeGlow)"/>
+  <circle cx="128" cy="80" r="12" fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="2"/>
+  <circle cx="169" cy="156" r="12" fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="2"/>
+  <circle cx="87" cy="156" r="12" fill="url(#mintGrad)" stroke="url(#tealGrad)" stroke-width="2"/>
+  <path d="M64 82 Q128 128 192 82" stroke="url(#mintGrad)" stroke-width="24" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <path d="M64 174 Q128 128 192 174" stroke="url(#mintGrad)" stroke-width="24" stroke-linecap="round" fill="none" opacity="0.8"/> -->
+</svg>

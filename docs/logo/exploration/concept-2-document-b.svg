@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Concept 2B: Pictorial Document - Minimal lines, strong silhouette -->
+  <path d="M24 16 H104 V122 H24 Z" fill="#000" stroke="#000" stroke-width="2"/>
+  <!-- Text lines as negative space -->
+  <rect x="36" y="30" width="56" height="4" fill="#fff"/>
+  <rect x="36" y="48" width="68" height="3" fill="#fff" opacity="0.5"/>
+  <rect x="36" y="66" width="60" height="3" fill="#fff" opacity="0.5"/>
+  <!-- Pen nib at corner -->
+  <path d="M90 100 L104 114 L76 114 Z" fill="#000"/>
+  <line x1="90" y1="100" x2="90" y2="108" stroke="#fff" stroke-width="1" stroke-linecap="round" opacity="0.3"/>
+</svg>
