@@ -1187,7 +1187,7 @@ export default function HomePage(): JSX.Element {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" style={{ minWidth: '190px' }}>
             <DropdownMenuItem onClick={() => void handleCreateDocument()} className="gap-2 py-2.5 cursor-pointer">
-              <FileText className="size-4" /> New document
+              <FileText className="size-4" /> New content
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCreateFolder} className="gap-2 py-2.5 cursor-pointer">
               <FolderIcon className="size-4 text-primary" /> New folder
