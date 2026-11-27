@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyStructuralRole, isHeadingLike, mergeSameFixCandidates, sectionIndex, type CandidateWording, type ScannerSuggestion } from '../useAutoFormatScanner'
+import { classifyStructuralRole, isHeadingLike, isStyledAsBlueprintFormat, mergeSameFixCandidates, sectionIndex, type CandidateWording, type ScannerSuggestion } from '../useAutoFormatScanner'
 
 describe('isHeadingLike', () => {
   it('accepts short numbered titles', () => {
@@ -83,6 +83,31 @@ describe('sectionIndex', { timeout: 20_000 }, () => {
     expect(at('First.').name).toBe('Review of Related Literature')
     expect(at('Second.').id).toBe(at('First.').id)
     expect(at('Third.').id).toBe(at('First.').id)
+    editor.destroy()
+  })
+
+  it('treats imported bold/aligned front-matter and title paragraphs as already formatted for UCLM preset', async () => {
+    const { Editor } = await import('@tiptap/core')
+    const { editorExtensions } = await import('@/components/editor/TiptapEditor')
+    const { presetRulesFor } = await import('@/lib/presetRules')
+    globalThis.ResizeObserver ??= class { observe(): void {} unobserve(): void {} disconnect(): void {} }
+    const rules = presetRulesFor('uclm_capstone')?.lines ?? null
+    const editor = new Editor({
+      extensions: editorExtensions,
+      content:
+        '<p style="text-align:center;"><strong>INTELLIDOCS TITLE</strong></p>'
+        + '<p style="text-align:center;"><strong>APPROVAL SHEET</strong></p>'
+        + '<p style="text-align:right;"><strong>DEDICATION</strong></p>'
+        + '<p style="text-align:justify;"><strong>Objectives of the Study</strong></p>'
+        + '<p>INTRODUCTION</p>',
+    })
+    const nodes: Array<{ text: string; node: typeof editor.state.doc.firstChild }> = []
+    editor.state.doc.forEach((node) => { nodes.push({ text: node.textContent, node }) })
+    expect(isStyledAsBlueprintFormat(nodes[0].node!, 'title', rules)).toBe(true)
+    expect(isStyledAsBlueprintFormat(nodes[1].node!, 'heading1', rules)).toBe(true)
+    expect(isStyledAsBlueprintFormat(nodes[2].node!, 'heading1', rules)).toBe(false)
+    expect(isStyledAsBlueprintFormat(nodes[3].node!, 'heading2', rules)).toBe(true)
+    expect(isStyledAsBlueprintFormat(nodes[4].node!, 'heading1', rules)).toBe(false)
     editor.destroy()
   })
 })

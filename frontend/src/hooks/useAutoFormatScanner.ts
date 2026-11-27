@@ -7,7 +7,7 @@ import { getBlueprint } from '@/components/editor/documentBlueprints'
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
 import { blockStyleFor, findBodyDeviations, findListItemDeviations } from '@/lib/bodyConsistency'
 import { FRONT_LABEL } from '@/lib/frontMatter'
-import { findShortLineDeviations } from '@/lib/shortLineConsistency'
+import { findShortLineDeviations, lineStyleOf, type PresetLineRules } from '@/lib/shortLineConsistency'
 import { presetRulesFor } from '@/lib/presetRules'
 import { findExtraBlankLines } from '@/lib/blankLines'
 import { findFigureIssues } from '@/lib/figurePlacement'
@@ -386,13 +386,29 @@ function normalizeBlueprintText(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
-/** True when a block already carries the blueprint section's target format. */
-function isStyledAsBlueprintFormat(node: ProseMirrorNode, format: string): boolean {
+/** True when a block already carries the blueprint section's target format or visual look. */
+export function isStyledAsBlueprintFormat(
+  node: ProseMirrorNode,
+  format: string,
+  lineRules: PresetLineRules | null = null,
+): boolean {
   if (format.startsWith('heading')) {
     const level = parseInt(format.replace('heading', ''), 10)
-    return node.type.name === 'heading' && node.attrs.level === level && node.attrs.docRole !== 'title'
+    if (node.type.name === 'heading' && node.attrs.level === level && node.attrs.docRole !== 'title') {
+      return true
+    }
+    const look = level >= 1 && level <= 3 ? lineRules?.headings[level as 1 | 2 | 3] : undefined
+    if (!look) return false
+    const style = lineStyleOf(node)
+    const alignMatches = level === 1 ? style.textAlign === look.textAlign : true
+    return style.bold === look.bold && style.italic === look.italic && alignMatches
   }
-  if (format === 'title') return node.attrs.docRole === 'title'
+  if (format === 'title') {
+    if (node.attrs.docRole === 'title') return true
+    const style = lineStyleOf(node)
+    const expectedAlign = lineRules?.titlePageAlign ?? 'center'
+    return style.bold && style.textAlign === expectedAlign
+  }
   if (format === 'blockquote') return node.type.name === 'blockquote'
   return false
 }
@@ -525,6 +541,7 @@ export function useAutoFormatScanner({
       // preset expects. Unstyled blocks whose text matches a section
       // placeholder become high-confidence suggestions from the blueprint.
       const blueprint = presetKey ? getBlueprint(presetKey) : null
+      const rules = presetRulesFor(presetKey)
       const blueprintTargets = new Map<string, { format: string; label: string }>()
       let blueprintHasTitle = false
       if (blueprint) {
@@ -647,7 +664,7 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
       if (blueprint && blueprintTargets.size > 0) {
         const target = blueprintTargets.get(normalizeBlueprintText(text))
         const alreadyCandidate = candidates.some((candidate) => candidate.from === pos)
-        if (target && !alreadyCandidate && !isStyledAsBlueprintFormat(node, target.format)) {
+        if (target && !alreadyCandidate && !isStyledAsBlueprintFormat(node, target.format, rules?.lines ?? null)) {
           const key = contentKey(text, target.format, seenKeys)
           if (!dismissedRef.current.has(key)) {
             candidates.push({
@@ -668,7 +685,7 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
           !alreadyCandidate &&
           node.type.name === 'paragraph' &&
           node.attrs.guide == null &&
-          !isStyledAsBlueprintFormat(node, 'title') &&
+          !isStyledAsBlueprintFormat(node, 'title', rules?.lines ?? null) &&
           text.length <= 120
         ) {
           // The opening line of a preset document is its title.
@@ -747,7 +764,6 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
       // shares; the active preset answers where the document has no clear
       // majority. The capture carries exactly the differing values, so
       // accepting also removes a stray bold, italic or alignment.
-      const rules = presetRulesFor(presetKey)
       const body = findBodyDeviations(doc, rules?.body ?? null)
       for (const deviation of body.deviations.slice(0, MAX_BODY_SUGGESTIONS)) {
         const key = contentKey(deviation.text, 'inconsistent-body_paragraph', seenKeys)
