@@ -509,11 +509,11 @@ export function DriveTable({
       )}
 
       {/* ══════════════════════════════════════════════ */}
-      {/* ── FOLDERS (Suggested Folders Grid) ────────── */}
+      {/* ── FOLDERS (Sub-folders Grid) ──────────────── */}
       {/* ══════════════════════════════════════════════ */}
       {!loading && folders.length > 0 && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold tracking-tight text-foreground px-1">Suggested folders</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-foreground px-1">Folders</h2>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
             {folders.map((f) => {
               const item: DriveItem = {

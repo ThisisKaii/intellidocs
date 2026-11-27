@@ -1288,16 +1288,29 @@ export const api = {
         body: JSON.stringify(payload),
       })
     },
-    /** Submit a student status application (regular user → pending student). */
+    /** Submit a student status application with optional study load upload. */
     applyStudent: async (payload: {
       studentId: string
       college: string
       degreeProgram: string
-    }): Promise<{ message: string; status: string }> => {
-      return fetchAPI<{ message: string; status: string }>('auth/apply-student', {
+      studyLoad?: File | null
+    } | FormData): Promise<{ message: string; status: string; autoApproved?: boolean }> => {
+      if (payload instanceof FormData) {
+        return fetchAPI<{ message: string; status: string; autoApproved?: boolean }>('auth/apply-student', {
+          method: 'POST',
+          body: payload,
+        })
+      }
+      const formData = new FormData()
+      formData.append('studentId', payload.studentId)
+      formData.append('college', payload.college)
+      formData.append('degreeProgram', payload.degreeProgram)
+      if (payload.studyLoad) {
+        formData.append('studyLoad', payload.studyLoad)
+      }
+      return fetchAPI<{ message: string; status: string; autoApproved?: boolean }>('auth/apply-student', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: formData,
       })
     },
     /** Called after Google OAuth redirect to sync profile with Express backend. */

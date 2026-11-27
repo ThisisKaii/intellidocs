@@ -141,35 +141,46 @@ export function ProfileSection({ userDisplayName, userFirstName, userLastName, e
       </div>
 
       <form onSubmit={(e) => { void handleSave(e) }} className="flex flex-col gap-4">
+        {Boolean(saved.firstName && saved.lastName) && (
+          <div className="flex items-center gap-2.5 p-3 rounded-xl bg-secondary/80 border border-border text-xs text-muted-foreground max-w-lg">
+            <span className="text-base leading-none">🔒</span>
+            <div>
+              <strong className="text-foreground font-semibold">Official Name (Locked):</strong> Your first and last name are static and cannot be modified to preserve academic verification integrity.
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
           <div className="flex flex-col gap-2">
             <label htmlFor="first-name" className="text-sm text-muted-foreground">
-              First name
+              First name {Boolean(saved.firstName && saved.lastName) && '(Locked)'}
             </label>
             <input
               id="first-name"
               type="text"
               value={firstName}
+              disabled={Boolean(saved.firstName && saved.lastName)}
               autoComplete="given-name"
               onChange={(e) => { setFirstName(e.target.value); setFeedback(null) }}
               maxLength={50}
               aria-invalid={check.changed && check.error ? true : undefined}
-              className="settings-input w-full"
+              className={`settings-input w-full ${Boolean(saved.firstName && saved.lastName) ? 'opacity-70 bg-muted cursor-not-allowed' : ''}`}
             />
           </div>
           <div className="flex flex-col gap-2">
             <label htmlFor="last-name" className="text-sm text-muted-foreground">
-              Last name
+              Last name {Boolean(saved.firstName && saved.lastName) && '(Locked)'}
             </label>
             <input
               id="last-name"
               type="text"
               value={lastName}
+              disabled={Boolean(saved.firstName && saved.lastName)}
               autoComplete="family-name"
               onChange={(e) => { setLastName(e.target.value); setFeedback(null) }}
               maxLength={50}
               aria-invalid={check.changed && check.error ? true : undefined}
-              className="settings-input w-full"
+              className={`settings-input w-full ${Boolean(saved.firstName && saved.lastName) ? 'opacity-70 bg-muted cursor-not-allowed' : ''}`}
             />
           </div>
         </div>
@@ -183,9 +194,11 @@ export function ProfileSection({ userDisplayName, userFirstName, userLastName, e
         )}
         {!feedback && check.changed && check.error && <p className="text-sm text-destructive">{check.error}</p>}
 
-        <button type="submit" disabled={saving || !check.changed || check.error !== null} className="btn-primary self-start">
-          {saving ? 'Saving…' : 'Save name'}
-        </button>
+        {!Boolean(saved.firstName && saved.lastName) && (
+          <button type="submit" disabled={saving || !check.changed || check.error !== null} className="btn-primary self-start">
+            {saving ? 'Saving…' : 'Save name'}
+          </button>
+        )}
       </form>
     </section>
   )

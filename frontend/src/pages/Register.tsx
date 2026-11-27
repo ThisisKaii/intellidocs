@@ -315,6 +315,28 @@ function Register(): JSX.Element {
           )}
 
           <form onSubmit={handleSubmit} noValidate>
+            {/* Warning that names are static */}
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.625rem',
+                backgroundColor: 'rgba(234, 179, 8, 0.08)',
+                border: '1px solid rgba(234, 179, 8, 0.35)',
+                borderRadius: '0.5rem',
+                padding: '0.625rem 0.75rem',
+                marginBottom: '1rem',
+              }}
+            >
+              <span style={{ fontSize: '1rem', lineHeight: 1.2 }}>⚠️</span>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--foreground)', lineHeight: 1.45 }}>
+                <strong>Important:</strong> First and last names are <strong>permanent and static</strong> once registered. They cannot be changed later and must match your official school documents / study load for academic verification.
+              </p>
+            </motion.div>
+
             {/* First and last name, side by side */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}

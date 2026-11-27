@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { AlertTriangle, BookOpen, Check, GraduationCap, HardDrive } from 'lucide-react'
+import { AlertTriangle, BookOpen, Check, GraduationCap, HardDrive, Loader2, Sparkles, Upload } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/services/api'
 import type { RoleName } from '@/types/admin'
@@ -22,6 +22,7 @@ function StudentApplicationForm({ rejected }: { rejected: boolean }): JSX.Elemen
   const [studentId, setStudentId] = useState('')
   const [college, setCollege] = useState('')
   const [degreeProgram, setDegreeProgram] = useState('')
+  const [studyLoadFile, setStudyLoadFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
   const [decisionNote, setDecisionNote] = useState<string | null>(null)
@@ -40,6 +41,7 @@ function StudentApplicationForm({ rejected }: { rejected: boolean }): JSX.Elemen
         studentId: studentId.trim(),
         college: college.trim(),
         degreeProgram: degreeProgram.trim(),
+        studyLoad: studyLoadFile,
       })
       setFeedback({ ok: true, text: res.message })
       void refreshRole()
@@ -72,14 +74,48 @@ function StudentApplicationForm({ rejected }: { rejected: boolean }): JSX.Elemen
         <label htmlFor="degree-program" className="text-sm text-muted-foreground">Degree program</label>
         <input id="degree-program" type="text" value={degreeProgram} onChange={(e) => setDegreeProgram(e.target.value)} placeholder="e.g. BS Computer Science" required maxLength={200} className="settings-input w-full" />
       </div>
+
+      {/* Study Load Image Upload */}
+      <div className="flex flex-col gap-2 p-3.5 rounded-xl border border-dashed border-border bg-secondary/30">
+        <div className="flex items-center justify-between">
+          <label htmlFor="study-load-file" className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Upload className="size-4 text-primary" /> Study Load / Certificate of Matriculation
+          </label>
+          {studyLoadFile && (
+            <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+              <Check className="size-3.5" /> File ready
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground m-0">
+          Upload an image (PNG, JPG, WebP) or PDF of your study load. If the student name on your document matches your official account name, your verification will be <strong>approved automatically</strong>! Otherwise, it will be queued for manual administrator review.
+        </p>
+        <input
+          id="study-load-file"
+          type="file"
+          accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) setStudyLoadFile(f)
+          }}
+          className="text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-primary file:text-primary-foreground hover:file:opacity-90 cursor-pointer"
+        />
+        {studyLoadFile && (
+          <p className="text-xs font-mono text-muted-foreground mt-1">
+            Selected: {studyLoadFile.name} ({(studyLoadFile.size / 1024).toFixed(1)} KB)
+          </p>
+        )}
+      </div>
+
       {feedback && (
         <p role="status" className={`flex items-center gap-1.5 text-sm ${feedback.ok ? 'text-green-600' : 'text-destructive'}`}>
           {feedback.ok ? <Check className="size-4" strokeWidth={2} /> : <AlertTriangle className="size-4" strokeWidth={2} />}
           {feedback.text}
         </p>
       )}
-      <button type="submit" disabled={saving} className="btn-primary">
-        {saving ? 'Submitting…' : 'Apply for student verification'}
+      <button type="submit" disabled={saving} className="btn-primary inline-flex items-center gap-2 self-start">
+        {saving ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+        {saving ? 'Verifying Study Load…' : 'Apply for student verification'}
       </button>
     </form>
   )

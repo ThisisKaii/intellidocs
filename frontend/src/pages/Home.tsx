@@ -353,16 +353,11 @@ export default function HomePage(): JSX.Element {
     return sorted.filter((d) => d.title.toLowerCase().includes(q))
   }, [allDocuments, recentDocuments, pinnedDocuments, folderDocuments, sharedDocuments, trashDocuments, selection, query])
 
-  /** Folders to display in the main content area (top-level or sub-folders). */
+  /** Folders to display in the main content area (sub-folders inside a folder). */
   const visibleFolders = useMemo((): FolderRecord[] => {
     if (selection.type === 'folder') return currentFolderChildren
-    if (selection.type === 'all') {
-      const q = query.trim().toLowerCase()
-      if (!q) return folders
-      return folders.filter((f) => f.name.toLowerCase().includes(q))
-    }
     return []
-  }, [selection, folders, currentFolderChildren, query])
+  }, [selection, currentFolderChildren])
 
   /* ── Actions ───────────────────────────────────────── */
 

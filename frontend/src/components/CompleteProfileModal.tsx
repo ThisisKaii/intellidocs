@@ -67,9 +67,16 @@ export default function CompleteProfileModal({ initial, onSaved, onLater }: Comp
         <h2 id="complete-profile-title" className="font-display" style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>
           Welcome to IntelliDocs — Complete Your Profile
         </h2>
-        <p style={{ margin: '0.375rem 0 1.25rem', fontSize: '0.8125rem', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
-          Add your first and last name so your professors and classmates know whose work they are reading.
+        <p style={{ margin: '0.375rem 0 0.75rem', fontSize: '0.8125rem', color: 'var(--muted-foreground)', lineHeight: 1.5 }}>
+          Add your official first and last name so your professors and classmates know whose work they are reading.
         </p>
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem', backgroundColor: 'rgba(234, 179, 8, 0.09)', border: '1px solid rgba(234, 179, 8, 0.35)', borderRadius: '0.5rem', padding: '0.625rem 0.75rem', marginBottom: '1.25rem' }}>
+          <span style={{ fontSize: '1rem', lineHeight: 1.2 }}>⚠️</span>
+          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--foreground)', lineHeight: 1.45 }}>
+            <strong>Notice for Google Sign-In:</strong> Your first and last name will become <strong>permanent and static</strong> once saved. They cannot be edited afterwards and must strictly match your official study load for student verification.
+          </p>
+        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(10rem, 1fr))', gap: '0.75rem' }}>
           <div>
