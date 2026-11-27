@@ -3098,6 +3098,65 @@ export default function Document(): JSX.Element {
    * Members apply bottom-up by range, then the highlighted first member; the
    * user's caret is restored afterwards so bulk formatting never steals focus.
    */
+  function handleAcceptAllScannerSuggestions(items: ScannerSuggestion[]): void {
+    if (!editor || !editor.isEditable || items.length === 0) return
+    const previous = editor.state.selection
+    const targets: Array<{ s: ScannerSuggestion; from: number; to: number }> = []
+    const seenRanges = new Set<string>()
+    for (const s of items) {
+      const blocks = [{ from: s.from, to: s.to }, ...(s.groupMembers ?? [])]
+      for (const block of blocks) {
+        const rangeKey = `${block.from}:${block.to}`
+        if (seenRanges.has(rangeKey)) continue
+        seenRanges.add(rangeKey)
+        targets.push({ s, from: block.from, to: block.to })
+      }
+    }
+    targets.sort((a, b) => b.from - a.from)
+
+    for (const { s, from, to } of targets) {
+      const presetGoverns = Boolean(findAcademicPreset(formattingPreset)) && structuralRole(s.format) !== null
+      const c = s.captures
+      const carriesStyle = Boolean(c && (c.bold || c.italic || c.underline || c.fontSize || c.textAlign || c.blockStyle))
+      if (!presetGoverns && (s.suggestionSource === 'learned' || carriesStyle)) {
+        applyLearnedFormat(
+          {
+            format: s.format,
+            bold: c?.bold,
+            italic: c?.italic,
+            underline: c?.underline,
+            fontSize: c?.fontSize,
+            textAlign: c?.textAlign,
+            blockStyle: c?.blockStyle,
+          },
+          { from, to },
+        )
+      } else {
+        applyFormatToRange(s.format, from, to)
+      }
+    }
+
+    const maxPos = editor.state.doc.content.size
+    editor.chain().setTextSelection({
+      from: Math.min(previous.from, maxPos),
+      to: Math.min(previous.to, maxPos),
+    }).run()
+
+    const acceptedKeys = new Set<string>()
+    for (const s of items) {
+      acceptedKeys.add(s.key)
+      acceptScannerSuggestion(s.key)
+      for (const mk of s.memberKeys ?? []) {
+        acceptedKeys.add(mk)
+        acceptScannerSuggestion(mk)
+      }
+    }
+    if (formatPrompt?.scannerKey && acceptedKeys.has(formatPrompt.scannerKey)) setFormatPrompt(null)
+    setExpandedSuggestionKey(null)
+    setAnnouncement(`Applied all ${items.length} formatting suggestions.`)
+    scheduleSave()
+  }
+
   function handlePromptAcceptAll(): void {
     if (!editor || !editor.isEditable) return
     const prompt = formatPrompt
@@ -4150,6 +4209,9 @@ export default function Document(): JSX.Element {
     onAcceptAllFormatting: () => {
       handlePromptAcceptAll()
       setExpandedSuggestionKey(null)
+    },
+    onAcceptAllFormattingQueue: (items) => {
+      handleAcceptAllScannerSuggestions(items)
     },
     onDismissFormatting: () => {
       handlePromptReject()

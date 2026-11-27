@@ -49,6 +49,7 @@ export interface SuggestionReview {
   activeFormatting: ActiveFormattingReview | null
   onAcceptFormatting: () => void
   onAcceptAllFormatting: () => void
+  onAcceptAllFormattingQueue?: (items: ScannerSuggestion[]) => void
   onDismissFormatting: () => void
   onAcceptGrammar: (issue: GrammarIssue, suggestion: string) => void
   onDismissGrammar: (issue: GrammarIssue) => void
@@ -715,6 +716,43 @@ function ActiveOnlyCard({ review }: { review: SuggestionReview }): JSX.Element |
   )
 }
 
+/** Shared top bar to accept every visible formatting suggestion in one click. */
+function AcceptAllFormatsBar({
+  suggestions,
+  review,
+}: {
+  suggestions: ScannerSuggestion[]
+  review: SuggestionReview
+}): JSX.Element | null {
+  if (suggestions.length === 0 || !review.onAcceptAllFormattingQueue) return null
+  const totalBlocks = suggestions.reduce((sum, s) => sum + 1 + (s.groupMembers?.length ?? 0), 0)
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '0.5rem',
+        padding: '0.375rem 0.5rem',
+        borderRadius: '0.5rem',
+        border: '1px solid var(--border)',
+        backgroundColor: 'var(--card)',
+      }}
+    >
+      <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>
+        {totalBlocks} formatting {totalBlocks === 1 ? 'fix' : 'fixes'} ready
+      </span>
+      <button
+        type="button"
+        onClick={() => review.onAcceptAllFormattingQueue?.(suggestions)}
+        style={{ ...actionButton, backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none' }}
+      >
+        <Check style={{ width: 13, height: 13 }} /> Accept all formats
+      </button>
+    </div>
+  )
+}
+
 /** Every suggestion in one list, grouped by the page it is on. */
 function AllView({
   scannerSuggestions,
@@ -778,6 +816,7 @@ function AllView({
   const pages = Array.from(new Set(items.map((item) => item.page))).sort((a, b) => (a ?? 9999) - (b ?? 9999))
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <AcceptAllFormatsBar suggestions={scannerSuggestions} review={review} />
       {activeOnly}
       {pages.map((page) => (
         <div key={page ?? 'other'} style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
@@ -1000,6 +1039,7 @@ function FormattingView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <AcceptAllFormatsBar suggestions={sorted} review={review} />
       {activeOnly}
       {mlSuggestions.map((s, i) => (
         <ReviewCard
