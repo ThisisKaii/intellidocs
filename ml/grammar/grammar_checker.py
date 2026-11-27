@@ -775,6 +775,262 @@ def looks_like_label(text: str) -> bool:
     return not has_sentence_evidence(stripped)
 
 
+_LINKING_OR_FINITE_VERBS = frozenset({
+    "is", "was", "are", "were", "has", "have", "had",
+    "will", "would", "can", "could", "did", "does",
+    "looks", "look", "feels", "feel", "seems", "seem",
+    "sounds", "sound", "became", "becomes", "got", "gets",
+    "came", "went", "means", "mean",
+})
+_MONTH_EVENT_NOUNS = frozenset({
+    "break", "class", "classes", "day", "deadline", "edition", "event",
+    "exam", "holiday", "issue", "meeting", "month", "report", "results",
+    "sale", "schedule", "session", "trip", "weather",
+})
+_POSSESSIVE_CONTEXT_NOUNS = frozenset({
+    "adviser", "advisor", "answer", "bag", "book", "brother", "car",
+    "classmate", "code", "dad", "document", "draft", "eyes", "family",
+    "father", "fault", "friend", "friends", "goal", "groupmate", "hand",
+    "head", "house", "idea", "laptop", "life", "mistake", "mom", "mother",
+    "name", "opinion", "paper", "partner", "phone", "plan", "problem",
+    "professor", "project", "question", "report", "research", "room",
+    "sister", "study", "teacher", "thesis", "time", "turn", "work",
+})
+_PRECEDING_TRANSITIVE_OR_LINKING = frozenset({
+    "are", "ask", "asked", "bought", "brought", "called", "checked",
+    "closed", "did", "forgot", "found", "gave", "got", "hate", "helped",
+    "is", "like", "lost", "love", "met", "need", "opened", "read", "saw",
+    "see", "sent", "showed", "told", "took", "used", "visited", "want",
+    "was", "were", "wrote",
+})
+_PREPOSITIONS = frozenset({
+    "about", "at", "by", "for", "from", "in", "of", "on", "to", "with",
+})
+_COMPARATIVE_WORDS = frozenset({
+    "better", "bigger", "easier", "faster", "fewer", "greater", "harder",
+    "higher", "less", "longer", "lower", "more", "newer", "older",
+    "other", "rather", "shorter", "slower", "smaller", "worse",
+})
+_CLAUSE_START_PREV = frozenset({".", "!", "?", ",", ";", ":", "that", "because", "if", "when", "since", "think", "know", "said"})
+
+
+def _match_case(source_word: str, replacement: str) -> str:
+    """Preserve title-case or all-caps when substituting a confused word."""
+    if source_word.isupper() and len(source_word) > 1:
+        return replacement.upper()
+    if source_word[:1].isupper():
+        return replacement.capitalize()
+    return replacement
+
+
+def _find_span_regex(text: str, words: list[str]) -> str | None:
+    """Return the exact substring in `text` matching `words` separated by whitespace."""
+    pattern = r"\b" + r"\s+".join(re.escape(w) for w in words) + r"\b"
+    found = re.search(pattern, text)
+    return found.group(0) if found else None
+
+
+def detect_contextual_confusion_issues(text: str) -> list[dict[str, str]]:
+    """Detect context-dependent word confusions (e.g., 'may name is' -> 'my name is')."""
+    issues: list[dict[str, str]] = []
+    try:
+        tokens = nltk.word_tokenize(text)
+        tagged = nltk.pos_tag(tokens)
+    except Exception:
+        return issues
+
+    n = len(tagged)
+    for i in range(n):
+        w, _tag = tagged[i]
+        wl = w.lower()
+        prev_w = tagged[i - 1][0] if i > 0 else ""
+        prev_wl = prev_w.lower()
+
+        # 1. 'may' mistyped for possessive 'my'
+        if wl == "may" and i + 1 < n:
+            next_w, next_tag = tagged[i + 1]
+            next_wl = next_w.lower()
+            # Pattern A: "may <noun> <linking/finite verb>" (e.g., "hello may name is marjun")
+            if i + 2 < n:
+                third_w, _ = tagged[i + 2]
+                third_wl = third_w.lower()
+                is_noun_like = next_tag in {"NN", "NNS", "NNP", "NNPS"} or next_wl in _POSSESSIVE_CONTEXT_NOUNS
+                month_phrase = w[0].isupper() and next_wl in _MONTH_EVENT_NOUNS
+                if is_noun_like and third_wl in _LINKING_OR_FINITE_VERBS and not month_phrase and not next_w.isdigit():
+                    original = _find_span_regex(text, [w, next_w, third_w])
+                    if original:
+                        sug_may = _match_case(w, "my")
+                        suggestion = f"{sug_may} {next_w} {third_w}"
+                        issue = build_issue(
+                            "grammar",
+                            original,
+                            suggestion,
+                            f"Use possessive '{sug_may}' before '{next_w}' instead of '{w}'.",
+                        )
+                        issue["source"] = "context"
+                        issues.append(issue)
+                        continue
+
+            # Pattern B: "<linking/transitive verb | preposition> may <possessive noun>"
+            # Require lowercase 'may' to avoid month phrases like "in May report".
+            if (
+                w == "may"
+                and next_wl in _POSSESSIVE_CONTEXT_NOUNS
+                and (prev_wl in _PRECEDING_TRANSITIVE_OR_LINKING or prev_wl in _PREPOSITIONS)
+            ):
+                original = _find_span_regex(text, [prev_w, w, next_w])
+                if original:
+                    suggestion = f"{prev_w} my {next_w}"
+                    issue = build_issue(
+                        "grammar",
+                        original,
+                        suggestion,
+                        f"Use possessive 'my' before '{next_w}' instead of 'may'.",
+                    )
+                    issue["source"] = "context"
+                    issues.append(issue)
+                    continue
+
+        # 2. 'their' vs 'there'
+        if wl == "their" and i + 1 < n:
+            next_w, _ = tagged[i + 1]
+            if next_w.lower() in {"is", "are", "was", "were"}:
+                original = _find_span_regex(text, [w, next_w])
+                if original:
+                    sug = _match_case(w, "there")
+                    issue = build_issue(
+                        "grammar",
+                        original,
+                        f"{sug} {next_w}",
+                        f"Use '{sug}' before '{next_w}' instead of possessive '{w}'.",
+                    )
+                    issue["source"] = "context"
+                    issues.append(issue)
+
+        elif wl == "there" and i + 1 < n:
+            next_w, next_tag = tagged[i + 1]
+            next_wl = next_w.lower()
+            if next_wl == "own" or (prev_wl in _PREPOSITIONS and next_tag in {"NN", "NNS"}):
+                original = _find_span_regex(text, [prev_w, w, next_w]) if prev_wl in _PREPOSITIONS else _find_span_regex(text, [w, next_w])
+                if original:
+                    sug = _match_case(w, "their")
+                    suggestion = f"{prev_w} {sug} {next_w}" if prev_wl in _PREPOSITIONS else f"{sug} {next_w}"
+                    issue = build_issue(
+                        "grammar",
+                        original,
+                        suggestion,
+                        f"Use possessive '{sug}' before '{next_w}' instead of '{w}'.",
+                    )
+                    issue["source"] = "context"
+                    issues.append(issue)
+
+        # 3. 'your' vs 'you're'
+        if wl == "your" and i + 1 < n:
+            next_w, _ = tagged[i + 1]
+            if next_w.lower() == "welcome":
+                original = _find_span_regex(text, [w, next_w])
+                if original:
+                    sug = _match_case(w, "you're")
+                    issue = build_issue(
+                        "grammar",
+                        original,
+                        f"{sug} {next_w}",
+                        f"Use '{sug}' (you are) instead of possessive '{w}'.",
+                    )
+                    issue["source"] = "context"
+                    issues.append(issue)
+
+        # 4. 'its' vs 'it's'
+        if wl == "its" and i + 1 < n and (i == 0 or prev_wl in _CLAUSE_START_PREV):
+            next_w, _ = tagged[i + 1]
+            if next_w.lower() in {"a", "an", "not", "been", "going"}:
+                original = _find_span_regex(text, [w, next_w])
+                if original:
+                    sug = _match_case(w, "it's")
+                    issue = build_issue(
+                        "grammar",
+                        original,
+                        f"{sug} {next_w}",
+                        f"Use '{sug}' (it is/has) instead of possessive '{w}'.",
+                    )
+                    issue["source"] = "context"
+                    issues.append(issue)
+
+        elif wl == "it's" and i + 1 < n and tagged[i + 1][0].lower() == "own":
+            next_w = tagged[i + 1][0]
+            original = _find_span_regex(text, [w, next_w])
+            if original:
+                sug = _match_case(w, "its")
+                issue = build_issue(
+                    "grammar",
+                    original,
+                    f"{sug} {next_w}",
+                    f"Use possessive '{sug}' before 'own' instead of '{w}'.",
+                )
+                issue["source"] = "context"
+                issues.append(issue)
+
+        # 5. 'then' after a comparative ('more then', 'better then', etc.)
+        if wl == "then" and prev_wl in _COMPARATIVE_WORDS:
+            original = _find_span_regex(text, [prev_w, w])
+            if original:
+                issue = build_issue(
+                    "grammar",
+                    original,
+                    f"{prev_w} than",
+                    f"Use 'than' for comparisons after '{prev_w}' instead of 'then'.",
+                )
+                issue["source"] = "context"
+                issues.append(issue)
+
+        # 6. 'were' mistyped for 'where' at clause start ("were are you", "were is the")
+        if wl == "were" and i + 1 < n and (i == 0 or prev_wl in _CLAUSE_START_PREV):
+            next_w, _ = tagged[i + 1]
+            if next_w.lower() in {"is", "are", "was", "were", "did", "do", "does", "can", "could", "will", "would"}:
+                original = _find_span_regex(text, [w, next_w])
+                if original:
+                    sug = _match_case(w, "where")
+                    issue = build_issue(
+                        "grammar",
+                        original,
+                        f"{sug} {next_w}",
+                        f"Use '{sug}' for a question/location instead of '{w}'.",
+                    )
+                    issue["source"] = "context"
+                    issues.append(issue)
+
+        # 7. 'no' mistyped for 'know' ("I no that", "don't no")
+        if wl == "no":
+            if prev_wl == "n't" and i >= 2 and tagged[i - 2][0].lower() in {"do", "did", "does"}:
+                contracted = f"{tagged[i - 2][0]}n't"
+                original = _find_span_regex(text, [contracted, w])
+                if original:
+                    issue = build_issue(
+                        "grammar",
+                        original,
+                        f"{contracted} know",
+                        "Use the verb 'know' instead of 'no'.",
+                    )
+                    issue["source"] = "context"
+                    issues.append(issue)
+            elif prev_wl in {"i", "we", "you", "they", "not"} and (
+                prev_wl == "not"
+                or (i + 1 < n and tagged[i + 1][0].lower() in {"that", "what", "how", "why", "where", "when", "who", "if", "whether"})
+            ):
+                original = _find_span_regex(text, [prev_w, w])
+                if original:
+                    issue = build_issue(
+                        "grammar",
+                        original,
+                        f"{prev_w} know",
+                        "Use the verb 'know' instead of 'no'.",
+                    )
+                    issue["source"] = "context"
+                    issues.append(issue)
+
+    return issues
+
+
 def detect_issues(text: str, check_boundaries: bool = True) -> list[dict[str, str]]:
     """Run the baseline rule-based grammar checks on one block of text.
 
@@ -788,6 +1044,7 @@ def detect_issues(text: str, check_boundaries: bool = True) -> list[dict[str, st
     issues.extend(detect_article_mismatch(text))
     issues.extend(detect_subject_verb_mismatch(text))
     issues.extend(detect_pos_syntax_issues(text))
+    issues.extend(detect_contextual_confusion_issues(text))
 
     if check_boundaries and not is_academic_structural_block(text) and not looks_like_label(text):
         issues.extend(detect_sentence_boundary_issues(text))
