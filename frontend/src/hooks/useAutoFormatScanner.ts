@@ -15,6 +15,7 @@ import type { CaptionContext } from '@/components/editor/captionNumbering'
 import { basePresetKey } from '@/components/editor/academicPresets'
 import { loadSuggestionMemory, rememberSuggestion } from '@/lib/suggestionMemory'
 import { isChapterHeading, isHeadingLikeParagraph } from '@/components/editor/chatFormatting'
+import { documentUsesHeadingStyles } from '@/lib/headingStyles'
 import {
   bodySuggestionDetail,
   bodySuggestionLabel,
@@ -548,6 +549,7 @@ export function useAutoFormatScanner({
       let firstTextBlockSeen = false
 
       const doc = editor.state.doc
+      const usesHeadingStyles = documentUsesHeadingStyles(doc)
       const candidates: ScannerSuggestion[] = []
       // Content-hash keys are unique per distinct text + suffix within a scan.
       const seenKeys = new Map<string, number>()
@@ -610,6 +612,9 @@ for (const { re, format, confidence } of MARKDOWN_PATTERNS) {
         }
       }
       for (const { re, format, confidence, numbered } of HEADING_PATTERNS) {
+        // A heading style is only proposed once the document uses heading styles; until then the
+        // writer formats lines by hand and their own habits are what gets suggested.
+        if (!usesHeadingStyles) break
         if (re.test(text)) {
           if (confidence / 100 < minConfidence) continue
           // A numbered sentence ("3.1 To develop ...") is body text, not a heading.

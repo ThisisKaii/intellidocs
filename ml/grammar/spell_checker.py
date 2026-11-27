@@ -252,13 +252,24 @@ def is_name_block(block: dict[str, Any]) -> bool:
     return is_title_page_block(block) or NAME_LINE.match(block["text"].strip()) is not None
 
 
+# A roman numeral ("ii", "xiv", "MCMXCIX"): chapter and page numbers, list markers "(iii)".
+ROMAN_NUMERAL = re.compile(r"^(?=[mdclxvi])m{0,4}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})$", re.IGNORECASE)
+
+
+def is_roman_numeral(word: str) -> bool:
+    """Whether a word is a roman numeral, which is never a misspelling."""
+    return bool(ROMAN_NUMERAL.match(word))
+
+
 def lowercase_words(text: str) -> list[str]:
     """The all-lowercase words of a line of names, which are still checked (a typo like "teh" is not a name)."""
     address_spans = [match.span() for match in WEB_ADDRESS_PATTERN.finditer(text)]
     return [
         match.group()
         for match in SPELL_PATTERN.finditer(text)
-        if match.group().islower() and not any(start <= match.start() < end for start, end in address_spans)
+        if match.group().islower()
+        and not is_roman_numeral(match.group())
+        and not any(start <= match.start() < end for start, end in address_spans)
     ]
 
 
@@ -275,6 +286,8 @@ def extract_checkable_words(text: str) -> list[str]:
     for match in SPELL_PATTERN.finditer(text):
         word = match.group()
         if any(start <= match.start() < end for start, end in address_spans):
+            continue
+        if is_roman_numeral(word):
             continue
         mixed_case = any(char.isupper() for char in word[1:]) and not word.isupper()
         if (

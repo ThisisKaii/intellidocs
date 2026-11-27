@@ -10,6 +10,8 @@ import {
 import { resolveFormattingTier } from '../skills/resolveFormattingTier'
 import { inferDocumentStructure } from '../skills/inferDocumentStructure'
 import { predictFormat } from '../skills/predictFormat'
+import { matchLearnedFormat } from '../skills/matchLearnedFormat'
+import type { DocumentGenre, LearnedFormatMatch } from '../types/index'
 import { consumeAIQuota } from '../models/aiQuotaModel'
 import { GENRE_BASE_PRESET_KEY } from '../utils/documentGenre'
 import { canUsePreset, PRESET_LOCKED_CODE } from '../skills/canUsePreset'
@@ -316,6 +318,23 @@ export async function inferStructure(req: Request, res: Response): Promise<void>
 /** Confidence reported for a genre base-preset rule match. */
 const GENRE_PRESET_CONFIDENCE = 0.8
 
+/** The tier-check answer for a habit learned in another document of the genre. */
+function learnedTierBody(learned: LearnedFormatMatch, genre: DocumentGenre): Record<string, unknown> {
+  return {
+    tier: 'learned',
+    format: learned.format,
+    confidence: learned.confidence,
+    bold: learned.bold,
+    italic: learned.italic,
+    underline: learned.underline,
+    fontSize: learned.fontSize,
+    textAlign: learned.textAlign,
+    snippet: learned.snippet,
+    genre,
+    reason: 'Matches formatting you applied to similar text in another document of this type',
+  }
+}
+
 /**
  * Resolve the formatting decision for a text block, strictly within the document's genre:
  * 1. custom binding → document preset rule
@@ -350,6 +369,17 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
 
     const tierResult = resolveFormattingTier({ text, bindings, presetRules })
 
+    // The user's own formatting comes before any style: after their explicit bindings, what they
+    // did by hand to this kind of line in another document of the genre (14pt, bold, centred) wins
+    // over a preset rule or the model's guess (Heading 2).
+    if (tierResult.tier !== 'binding') {
+      const learned = await matchLearnedFormat(effectiveUserId, genre, text)
+      if (learned) {
+        res.status(200).json(learnedTierBody(learned, genre))
+        return
+      }
+    }
+
     // Genre partition: learned patterns and personal model, then genre base preset, then neutral ML.
     if (tierResult.tier === 'none') {
       const quota = await consumeAIQuota(userId, 'tier-check')
@@ -374,19 +404,7 @@ export async function tierCheck(req: Request, res: Response): Promise<void> {
 
       // Learned text→format match from the user's documents of the same genre.
       if (prediction?.learned) {
-        res.status(200).json({
-          tier: 'learned',
-          format: prediction.learned.format,
-          confidence: prediction.learned.confidence,
-          bold: prediction.learned.bold,
-          italic: prediction.learned.italic,
-          underline: prediction.learned.underline,
-          fontSize: prediction.learned.fontSize,
-          textAlign: prediction.learned.textAlign,
-          snippet: prediction.learned.snippet,
-          genre,
-          reason: 'Matches formatting you applied to similar text in another document of this type',
-        })
+        res.status(200).json(learnedTierBody(prediction.learned, genre))
         return
       }
 

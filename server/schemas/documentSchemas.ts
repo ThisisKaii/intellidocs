@@ -55,6 +55,13 @@ export const pageLayoutBaseSchema = z.object({
       .optional(),
     flow_rules: z.boolean().optional(),
     two_column: z.boolean().optional(),
+    /** Where the writer placed the imported header/footer lines (Left / Center / Right / Split). */
+    placement: z
+      .object({
+        header: z.enum(['left', 'center', 'right', 'split']).optional(),
+        footer: z.enum(['left', 'center', 'right', 'split']).optional(),
+      })
+      .optional(),
 })
 
 export const pageLayoutSchema = pageLayoutBaseSchema.refine(

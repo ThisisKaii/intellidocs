@@ -5,7 +5,7 @@ import type { EditorView } from '@tiptap/pm/view'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Dialect, WorkerLinter } from 'harper.js'
 import { binary } from 'harper.js/binary'
-import { academicDictionary } from './academicVocabulary'
+import { academicDictionary, isRomanNumeral } from './academicVocabulary'
 import { getEditorPreferences, subscribeEditorPreferences } from '@/lib/editorPreferences'
 
 const harperKey = new PluginKey<HarperPluginState>('harperLinter')
@@ -232,6 +232,8 @@ export const HarperLinterExtension = Extension.create({
       const entries: HarperLintEntry[] = []
       for (const lint of lints) {
         const span = lint.span()
+        // "Chapter II", "part (iv)", "page xii": numerals Harper reads as unknown words.
+        if (isRomanNumeral(layout.text.slice(span.start, span.end))) continue
         const firstSuggestion = lint.suggestions()[0]
         const replacement = firstSuggestion ? firstSuggestion.get_replacement_text() : ''
         for (const range of mapSpanToDoc(layout, span.start, span.end)) {

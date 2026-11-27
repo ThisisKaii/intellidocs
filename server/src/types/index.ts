@@ -219,6 +219,8 @@ export interface PageLayout {
   flow_rules?: boolean
   /** The imported file is a two-column paper: the editor offers its IEEE view. */
   two_column?: boolean
+  /** Where the writer placed the imported header/footer lines. */
+  placement?: { header?: 'left' | 'center' | 'right' | 'split'; footer?: 'left' | 'center' | 'right' | 'split' }
 }
 
 /** A picture or text box Word hangs beside a paragraph without wrapping text around it. */

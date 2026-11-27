@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { predictFormat } from '../skills/predictFormat'
+import { matchLearnedFormat } from '../skills/matchLearnedFormat'
 import {
   type CheckInput,
   requestGrammarCheck,
@@ -118,6 +119,29 @@ export async function predictFormatting(
 
     const allowed = await enforceQuota(userId, 'predict', res)
     if (!allowed) {
+      return
+    }
+
+    // The user's own habit is read before the cache: a guess cached for this text earlier must not
+    // hide formatting the user has since applied to this kind of line.
+    const learned = await matchLearnedFormat(predictionTargetId, genre, text)
+    if (learned) {
+      res.status(200).json({
+        predicted_format: learned.format,
+        confidence: learned.confidence,
+        feature_values: {},
+        isolation_mode: 'learned',
+        learned: {
+          snippet: learned.snippet,
+          bold: learned.bold,
+          italic: learned.italic,
+          underline: learned.underline,
+          fontSize: learned.fontSize,
+          textAlign: learned.textAlign,
+          count: learned.count,
+        },
+        cached: false,
+      })
       return
     }
 

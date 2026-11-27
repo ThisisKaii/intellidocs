@@ -5,6 +5,7 @@ import {
   mergeLayoutSections,
   numberingCss,
   pageZones,
+  placeZoneFlow,
   sectionForPage,
   type PageLayoutData,
   type PageLayoutSection,
@@ -162,5 +163,45 @@ describe('sections from the document', () => {
     const list = [stored(0, 'a'), stored(1, 'b')]
     expect(mergeLayoutSections(list, [{ section: 1, props: null }])).toBe(list)
     expect(mergeLayoutSections(list, [])).toBe(list)
+  })
+})
+
+describe('placeZoneFlow', () => {
+  // An imported header line: running head, a Word tab (a flex gap), then the page number.
+  const tabbed = '<p style="display:flex; align-items:baseline; margin:0"><span>Running head</span><span style="flex:1 1 0"></span><span>{page}</span></p>'
+
+  it('centres, left-aligns or right-aligns every imported line', () => {
+    for (const placement of ['left', 'center', 'right'] as const) {
+      const line = new DOMParser().parseFromString(placeZoneFlow(tabbed, placement), 'text/html').querySelector('p')!
+      expect(line.style.textAlign).toBe(placement)
+      expect(line.style.display).toBe('')
+      expect(line.innerHTML).not.toContain('flex:1 1 0')
+      expect(line.textContent).toContain('Running head')
+    }
+  })
+
+  it('splits a centred line into text on the left and the page number on the right', () => {
+    const centred = '<p style="text-align:center"><span>Running head </span><span>{page}</span></p>'
+    const line = new DOMParser().parseFromString(placeZoneFlow(centred, 'split'), 'text/html').querySelector('p')!
+    expect(line.style.display).toBe('flex')
+    expect(line.style.textAlign).toBe('left')
+    const parts = Array.from(line.children).map((child) => child.getAttribute('style') ?? child.textContent)
+    expect(parts).toEqual(['Running head ', 'flex:1 1 0', '{page}'])
+  })
+
+  it('puts a line holding only the page number at the right when split', () => {
+    const line = new DOMParser().parseFromString(placeZoneFlow('<p style="text-align:center">{page}</p>', 'split'), 'text/html').querySelector('p')!
+    expect(line.style.textAlign).toBe('right')
+  })
+
+  it('applies the stored placement to an imported header', () => {
+    const layout: PageLayoutData = {
+      sections: [{ index: 0, header: 'h', footer: null, first_header: null, first_footer: null, title_pg: false, number_start: null, number_format: 'decimal', header_distance: 48, footer_distance: 48 }],
+      parts: { h: { flow: tabbed, art: '' } },
+      repeat_art: '',
+      page_art: {},
+      placement: { header: 'center' },
+    }
+    expect(pageZones(layout, { starts: [], pageCount: 1 }, 1).header).toContain('text-align: center')
   })
 })

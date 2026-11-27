@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
+import { readVarString } from 'lib0/decoding'
 import { recoverAuthSession } from '@/services/api'
 
 /**
@@ -24,6 +25,10 @@ const SYNC_TIMEOUT_MS = 5000
 
 /** Server close code for an expired or invalid session (see server collaboration/yjsServer.ts). */
 const CLOSE_UNAUTHORIZED = 4401
+/** The server's room restarted since this client synced (see server CLOSE_ROOM_RESET). */
+const CLOSE_ROOM_RESET = 4410
+/** Server message carrying the room's epoch, sent before every sync handshake. */
+const MESSAGE_ROOM_EPOCH = 100
 
 /**
  * The API base turned into a WebSocket URL: `https://api.host` → `wss://api.host/ws/collab`, and in
@@ -53,6 +58,9 @@ export function useCollaboration(documentId: string | undefined, shareToken: str
   const [session, setSession] = useState<CollaborationSession>({ mode: enabled ? 'connecting' : 'solo', ydoc: null, provider: null, room: null })
   const shareRef = useRef(shareToken)
   shareRef.current = shareToken
+  // Bumped when the server's room restarted under a live session: a fresh session (new Y.Doc, new
+  // editor) loads the room as the server now has it.
+  const [generation, setGeneration] = useState(0)
 
   useEffect(() => {
     if (!enabled || !documentId || !currentToken()) {
@@ -67,6 +75,12 @@ export function useCollaboration(documentId: string | undefined, shareToken: str
     let settled = false
     let destroyed = false
     let retriedAuth = false
+
+    // Every reconnect names the room it synced with. A room the server created since (a restart, or
+    // it sat empty) refuses it: merging this copy into a re-seeded room would duplicate everything.
+    provider.messageHandlers[MESSAGE_ROOM_EPOCH] = (_encoder, decoder) => {
+      provider.params.epoch = readVarString(decoder)
+    }
 
     const teardown = (): void => {
       if (destroyed) return
@@ -103,6 +117,10 @@ export function useCollaboration(documentId: string | undefined, shareToken: str
         goSolo()
         return
       }
+      if (code === CLOSE_ROOM_RESET) {
+        setGeneration((n) => n + 1)
+        return
+      }
       // Already collaborating: an expired session gets one refresh and a reconnect.
       if (code === CLOSE_UNAUTHORIZED && !retriedAuth) {
         retriedAuth = true
@@ -119,7 +137,7 @@ export function useCollaboration(documentId: string | undefined, shareToken: str
       teardown()
       setSession({ mode: enabled ? 'connecting' : 'solo', ydoc: null, provider: null, room: null })
     }
-  }, [documentId, enabled])
+  }, [documentId, enabled, generation])
 
   return session
 }

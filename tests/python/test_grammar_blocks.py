@@ -214,3 +214,13 @@ def test_web_addresses_are_not_spelling_errors() -> None:
 def test_real_typos_next_to_a_link_are_still_flagged() -> None:
     words = {issue["word"] for issue in check_spelling("The studnet visited www.deped.gov.ph yesterday.")["issues"]}
     assert words == {"studnet"}
+
+
+def test_roman_numerals_are_not_misspellings():
+    from grammar.spell_checker import extract_checkable_words, lowercase_words
+
+    text = "Chapter II covers the review in parts (iii) and (iv), see page xii."
+    assert not {"II", "iii", "iv", "xii"} & set(extract_checkable_words(text))
+    assert not {"iii", "iv", "xii"} & set(lowercase_words(text))
+    # A real typo next to a numeral is still checked.
+    assert "teh" in extract_checkable_words("See part iv of teh study.")

@@ -1,4 +1,5 @@
 import type { Server } from 'http'
+import { randomUUID } from 'crypto'
 import { WebSocketServer, WebSocket, type RawData } from 'ws'
 import * as Y from 'yjs'
 import * as syncProtocol from 'y-protocols/sync'
@@ -38,10 +39,18 @@ export const CLOSE_UNAUTHORIZED = 4401
 export const CLOSE_TRY_AGAIN = 1013
 export const CLOSE_FORBIDDEN = 4403
 export const CLOSE_NOT_FOUND = 4404
+/**
+ * The room this client synced with is gone (server restart, or it sat empty past ROOM_IDLE_MS) and a
+ * new one was seeded from the saved document. Merging the client's copy into it would add every
+ * paragraph a second time (the two copies share no Yjs ids), so the client starts a fresh session.
+ */
+export const CLOSE_ROOM_RESET = 4410
 
 const MESSAGE_SYNC = 0
 const MESSAGE_AWARENESS = 1
 const MESSAGE_QUERY_AWARENESS = 3
+/** Custom message: the room's epoch, sent before the sync handshake (the client echoes it on reconnect). */
+const MESSAGE_ROOM_EPOCH = 100
 
 /** A room with nobody in it is kept briefly so a reload or flaky network rejoins the same state. */
 const ROOM_IDLE_MS = 30_000
@@ -53,6 +62,7 @@ const connectionQuerySchema = z.object({
   tabId: z.string().uuid().optional(),
   token: z.string().min(10),
   share: z.string().min(1).max(200).optional(),
+  epoch: z.string().uuid().optional(),
 })
 
 interface Connection {
@@ -64,6 +74,8 @@ interface Connection {
 }
 
 interface Room {
+  /** A new id each time the room is created from the saved document. */
+  epoch: string
   doc: Y.Doc
   awareness: awarenessProtocol.Awareness
   connections: Map<WebSocket, Connection>
@@ -88,7 +100,7 @@ function createRoom(roomKey: string, json: unknown): Room {
   if (isPmDoc(json)) seedYDocFromJson(doc, json)
   const awareness = new awarenessProtocol.Awareness(doc)
   awareness.setLocalState(null)
-  const room: Room = { doc, awareness, connections: new Map(), idleTimer: null }
+  const room: Room = { epoch: randomUUID(), doc, awareness, connections: new Map(), idleTimer: null }
 
   doc.on('update', (update: Uint8Array, origin: unknown) => {
     const encoder = encoding.createEncoder()
@@ -179,12 +191,13 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
     tabId: tabPart ? decodeURIComponent(tabPart) : undefined,
     token: url.searchParams.get('token') ?? '',
     share: url.searchParams.get('share') ?? undefined,
+    epoch: url.searchParams.get('epoch') ?? undefined,
   })
   if (!parsed.success || extra.length > 0) {
     ws.close(CLOSE_NOT_FOUND, 'Invalid collaboration request')
     return
   }
-  const { documentId, tabId, token, share } = parsed.data
+  const { documentId, tabId, token, share, epoch } = parsed.data
   // One room per document, or per tab of a document split into tabs.
   const roomKey = tabId ? `${documentId}:${tabId}` : documentId
 
@@ -213,6 +226,11 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
   if (ws.readyState !== WebSocket.OPEN) return
 
   let room = rooms.get(roomKey)
+  if (epoch && room?.epoch !== epoch) {
+    // A reconnect into a room this client never synced with: refuse before it sends its copy.
+    ws.close(CLOSE_ROOM_RESET, 'The shared session restarted')
+    return
+  }
   if (!room) {
     // A document saved before content_json existed can't be seeded without the editor schema;
     // the client opens it solo, and its first save writes content_json for next time.
@@ -265,6 +283,12 @@ async function onConnection(ws: WebSocket, url: URL): Promise<void> {
       ws.close()
     }
   }
+
+  // The room's epoch first, so a later reconnect can prove it is rejoining this same room.
+  const epochEncoder = encoding.createEncoder()
+  encoding.writeVarUint(epochEncoder, MESSAGE_ROOM_EPOCH)
+  encoding.writeVarString(epochEncoder, activeRoom.epoch)
+  send(conn, encoding.toUint8Array(epochEncoder))
 
   // Start the handshake: our state vector, then everyone's cursors.
   const encoder = encoding.createEncoder()

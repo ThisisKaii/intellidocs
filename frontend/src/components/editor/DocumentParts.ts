@@ -29,7 +29,8 @@ export const GeneratedBlockExtension = Extension.create({
   addGlobalAttributes() {
     return [
       {
-        types: ['paragraph', 'heading'],
+        // A list of figures/tables is a table (Figure No. | Name | Page No.), tagged like its title.
+        types: ['paragraph', 'heading', 'table'],
         attributes: {
           generated: {
             default: null,
@@ -167,7 +168,49 @@ function collectCaptions(editor: Editor, kind: 'figure' | 'table'): PartEntry[] 
   return entries
 }
 
-/** One title paragraph plus one tab-aligned line per entry (page number right, dotted leader). */
+/** "Table 3. Respondents' profile" → number "3" and name "Respondents' profile". */
+const LIST_CAPTION = /^(?:Figure|Fig\.|Table)\s+([\w.-]+?)\s*[.:—-](?:\s+|$)(.*)$/i
+
+/** One cell of a generated list table, its text centred or not. */
+function listCell(type: 'tableHeader' | 'tableCell', text: string, centred: boolean, bold = false): JSONContent {
+  return {
+    type,
+    content: [
+      {
+        type: 'paragraph',
+        attrs: centred ? { textAlign: 'center' } : {},
+        content: text ? [{ type: 'text', text, ...(bold ? { marks: [{ type: 'bold' }] } : {}) }] : [],
+      },
+    ],
+  }
+}
+
+/**
+ * A list of figures or tables as a table: "Figure No. | Name | Page No." with one row per caption,
+ * the numbers centred. It is tagged as generated, so auto caption and the caption count leave it out.
+ */
+function buildListTable(kind: 'lof' | 'lot', entries: Array<{ text: string; pageLabel: string }>): JSONContent {
+  const header = {
+    type: 'tableRow',
+    content: [
+      listCell('tableHeader', kind === 'lof' ? 'Figure No.' : 'Table No.', true, true),
+      listCell('tableHeader', 'Name', true, true),
+      listCell('tableHeader', 'Page No.', true, true),
+    ],
+  }
+  const rows = entries.map((entry) => {
+    const match = LIST_CAPTION.exec(entry.text)
+    const number = match ? match[1].replace(/\.$/, '') : ''
+    const name = match ? match[2].trim() : entry.text
+    return { type: 'tableRow', content: [listCell('tableCell', number, true), listCell('tableCell', name, false), listCell('tableCell', entry.pageLabel, true)] }
+  })
+  return { type: 'table', attrs: { generated: kind, columnSize: '16,68,16' }, content: [header, ...rows] }
+}
+
+/**
+ * One title paragraph, then the entries: a table of contents as tab-aligned lines (page number right,
+ * dotted leader), a list of figures or tables as a table.
+ */
 function buildListNodes(editor: Editor, kind: GeneratedKind, entries: Array<{ text: string; level: number; pageLabel: string }>): JSONContent[] {
   const stops = JSON.stringify([['right', textColumnWidth(editor), 'dot']])
   const title: JSONContent = {
@@ -181,6 +224,7 @@ function buildListNodes(editor: Editor, kind: GeneratedKind, entries: Array<{ te
       { type: 'paragraph', attrs: { generated: kind }, content: [{ type: 'text', text: kind === 'toc' ? 'No headings yet.' : 'Nothing to list yet.' }] },
     ]
   }
+  if (kind === 'lof' || kind === 'lot') return [title, buildListTable(kind, entries)]
   const lines = entries.map((entry): JSONContent => ({
     type: 'paragraph',
     attrs: { generated: kind, tabStops: stops },

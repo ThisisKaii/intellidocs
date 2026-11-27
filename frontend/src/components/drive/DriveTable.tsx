@@ -92,9 +92,11 @@ interface DriveTableProps {
   /** Changes whenever the list shown changes (module, folder, search); "Show more" starts over. */
   pageResetKey?: string
   /** Which module is shown, so an empty list says the right thing (and "Shared with me" never offers to create). */
-  emptyVariant?: 'default' | 'shared' | 'recent' | 'pinned' | 'trash'
+  emptyVariant?: 'default' | 'shared' | 'recent' | 'pinned' | 'trash' | 'classes'
   /** Opens the "enter a share code" dialog (shown in the empty "Shared with me" state). */
   onEnterCode?: () => void
+  /** Opens the join-a-class dialog (shown in the empty "Class folders" state). */
+  onJoinClass?: () => void
   /** What the user typed in the search box: an empty list then says nothing matched it. */
   searchQuery?: string
   /** Pin or unpin a document for the signed-in user; omitted where pins do not apply (Trash). */
@@ -104,7 +106,11 @@ interface DriveTableProps {
 }
 
 /** What each module says when it has nothing to show. */
-const EMPTY_COPY: Record<'shared' | 'recent' | 'pinned' | 'trash', { title: string; body: string }> = {
+const EMPTY_COPY: Record<'shared' | 'recent' | 'pinned' | 'trash' | 'classes', { title: string; body: string }> = {
+  classes: {
+    title: 'No class folders yet',
+    body: 'Join a class with the code your professor gave you. Its folder, your workspace and your submissions appear here.',
+  },
   shared: {
     title: 'Nothing shared with you yet',
     body: 'Documents others share with you appear here. Got a share code? Enter it to open a document you were invited to.',
@@ -315,6 +321,7 @@ export function DriveTable({
   pageResetKey = '',
   emptyVariant = 'default',
   onEnterCode,
+  onJoinClass,
   searchQuery = '',
 }: DriveTableProps): JSX.Element {
   const searching = searchQuery.trim().length > 0
@@ -408,7 +415,8 @@ export function DriveTable({
   return (
     <div ref={containerRef} className="flex flex-col gap-6 min-h-0 pb-12" onClick={handleBackgroundClick} data-drive-background="true">
 
-      {/* ── Toolbar ───────────────────────────────────── */}
+      {/* ── Toolbar (the class folders view is a top-level module: no path to show) ── */}
+      {emptyVariant !== 'classes' && (
       <div className="flex items-center justify-between gap-4">
         {/* Breadcrumbs */}
         <nav className="flex items-center gap-1 text-sm min-w-0">
@@ -436,6 +444,7 @@ export function DriveTable({
           ))}
         </nav>
       </div>
+      )}
 
       {/* ── Loading ─────────────────────────────────── */}
       {loading && <ListSkeleton />}
@@ -461,7 +470,13 @@ export function DriveTable({
             className="flex items-center justify-center w-16 h-16 rounded-2xl bg-secondary mb-5"
             style={{ boxShadow: 'inset 0 0 0 1px var(--border)' }}
           >
-            {emptyVariant === 'shared' ? <Users className="size-7 text-muted-foreground" /> : <FileText className="size-7 text-muted-foreground" />}
+            {emptyVariant === 'shared' ? (
+              <Users className="size-7 text-muted-foreground" />
+            ) : emptyVariant === 'classes' ? (
+              <GraduationCap className="size-7 text-muted-foreground" />
+            ) : (
+              <FileText className="size-7 text-muted-foreground" />
+            )}
           </div>
           <p className="text-lg font-semibold text-foreground mb-1.5">{EMPTY_COPY[emptyVariant].title}</p>
           <p className="text-sm text-muted-foreground mb-6 max-w-sm">{EMPTY_COPY[emptyVariant].body}</p>
@@ -473,6 +488,16 @@ export function DriveTable({
               style={{ fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
             >
               <KeyRound className="size-4" /> Enter code
+            </button>
+          )}
+          {emptyVariant === 'classes' && onJoinClass && (
+            <button
+              type="button"
+              onClick={onJoinClass}
+              className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-primary hover:bg-[var(--accent-hover)] text-white text-sm font-semibold border-none cursor-pointer transition-all"
+              style={{ fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+            >
+              <GraduationCap className="size-4" /> Join a class
             </button>
           )}
         </div>
@@ -513,7 +538,7 @@ export function DriveTable({
       {/* ══════════════════════════════════════════════ */}
       {!loading && folders.length > 0 && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold tracking-tight text-foreground px-1">Folders</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-foreground px-1">{emptyVariant === 'classes' ? 'Classes' : 'Folders'}</h2>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
             {folders.map((f) => {
               const item: DriveItem = {
@@ -697,7 +722,7 @@ export function DriveTable({
       {/* ── FILES (Suggested Files List) ────────────── */}
       {/* ══════════════════════════════════════════════ */}
       {/* Documents empty but folders exist: still give feedback below the grid. */}
-      {!loading && items.length === 0 && folders.length > 0 && (
+      {!loading && items.length === 0 && folders.length > 0 && emptyVariant !== 'classes' && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16 px-8 text-center bg-secondary/30 mt-2">
           <FileText className="size-10 text-muted-foreground/40 mb-3" />
           <h3 className="text-base font-semibold text-foreground">No documents yet</h3>

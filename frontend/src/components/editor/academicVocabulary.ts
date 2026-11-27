@@ -96,3 +96,13 @@ export const PROPER_NAMES: readonly string[] = ['IntelliDocs', 'UCLM']
 export function academicDictionary(): string[] {
   return [...ACADEMIC_WORDS, ...ACADEMIC_ACRONYMS, ...PROPER_NAMES]
 }
+
+const ROMAN_NUMERAL = /^(?=[mdclxvi])m{0,4}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})$/i
+
+/**
+ * Whether a flagged span is a roman numeral ("II", "iv", "(xii)"): chapter, part and page numbers
+ * are never spelling or grammar mistakes.
+ */
+export function isRomanNumeral(text: string): boolean {
+  return ROMAN_NUMERAL.test(text.trim().replace(/^[([]+|[)\].,:;]+$/g, ''))
+}

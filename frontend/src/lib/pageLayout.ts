@@ -29,7 +29,12 @@ export interface PageLayoutData {
   flow_rules?: boolean
   /** The imported file is a two-column paper: the document page offers its IEEE view. */
   two_column?: boolean
+  /** Where the writer placed the imported header/footer lines (Page setup → Left / Center / Right / Split). */
+  placement?: { header?: ZonePlacement; footer?: ZonePlacement }
 }
+
+/** Horizontal placement of a header/footer zone's lines. */
+export type ZonePlacement = 'left' | 'center' | 'right' | 'split'
 
 /** A picture or text box Word hangs beside a paragraph without wrapping text around it. */
 export interface PageOverlay {
@@ -114,6 +119,49 @@ function capFlowPictures(flow: string, kind: 'header' | 'footer', distance: numb
   return root.innerHTML
 }
 
+/** The flex gap the importer puts where a Word header line had a tab (converter `_springy_tabs`). */
+const TAB_GAP = 'span[style*="flex:1 1 0"]'
+
+/**
+ * Re-lay an imported header/footer's lines for the placement the writer picked. Word lays these
+ * lines out with its own alignment and tab stops, which the placement buttons would otherwise never
+ * reach. Left / Center / Right align every line that way (a tab gap becomes a short space); Split
+ * puts a line's text at the left margin and its page number at the right. Tables keep their layout.
+ */
+export function placeZoneFlow(flow: string, placement: ZonePlacement): string {
+  const doc = new DOMParser().parseFromString(`<div id="flow">${flow}</div>`, 'text/html')
+  const root = doc.getElementById('flow')
+  if (!root) return flow
+  root.querySelectorAll('p').forEach((line) => {
+    if (line.closest('table')) return
+    line.style.removeProperty('display')
+    line.style.removeProperty('align-items')
+    line.style.removeProperty('justify-content')
+    line.querySelectorAll(TAB_GAP).forEach((gap) => gap.replaceWith(doc.createTextNode('\u00a0\u00a0\u00a0')))
+    if (placement !== 'split') {
+      line.style.textAlign = placement
+      return
+    }
+    // The line's own text on the left, the page number (the paginator's {page} token) on the right.
+    const children = Array.from(line.childNodes)
+    const numberAt = children.findIndex((child) => (child.textContent ?? '').includes('{page}'))
+    const before = numberAt < 0 ? children : children.slice(0, numberAt)
+    const hasText = before.some((child) => (child.textContent ?? '').trim().length > 0)
+    if (numberAt < 0 || !hasText) {
+      // Only text, or only the number: one side each.
+      line.style.textAlign = numberAt < 0 ? 'left' : 'right'
+      return
+    }
+    const gap = doc.createElement('span')
+    gap.setAttribute('style', 'flex:1 1 0')
+    line.insertBefore(gap, children[numberAt])
+    line.style.textAlign = 'left'
+    line.style.display = 'flex'
+    line.style.alignItems = 'baseline'
+  })
+  return root.innerHTML
+}
+
 /** One zone's absolutely positioned art plus its flowing text, ready for the pagination library. */
 function zoneHtml(
   layout: PageLayoutData,
@@ -132,11 +180,13 @@ function zoneHtml(
     ? `<div style="position:absolute;left:calc(var(--intellidocs-zone-left, var(--rm-margin-left)) * -1);top:calc(var(--rm-margin-top) * -0.5);width:var(--rm-page-width);height:var(--rm-page-height);pointer-events:none">${art}</div>`
     : ''
   if (!part?.flow) return artBox
+  const placement = layout.placement?.[kind]
+  const flow = placement ? placeZoneFlow(part.flow, placement) : part.flow
   const place =
     kind === 'header'
       ? `top:calc(${distance}px - var(--rm-margin-top) * 0.5)`
       : `bottom:calc(${distance}px - var(--rm-margin-bottom) * 0.5 - 9px)`
-  return `${artBox}<div style="position:absolute;left:var(--rm-margin-left);right:var(--rm-margin-right);${place};font-size:11pt">${capFlowPictures(part.flow, kind, distance)}</div>`
+  return `${artBox}<div style="position:absolute;left:var(--rm-margin-left);right:var(--rm-margin-right);${place};font-size:11pt">${capFlowPictures(flow, kind, distance)}</div>`
 }
 
 /**

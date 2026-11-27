@@ -131,6 +131,7 @@ export default function HomePage(): JSX.Element {
     }
     if (initialView === 'trash') return { type: 'trash' }
     if (initialView === 'shared') return { type: 'shared' }
+    if (initialView === 'classes') return { type: 'classes' }
     return { type: 'all' }
   })
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>(() => {
@@ -338,6 +339,10 @@ export default function HomePage(): JSX.Element {
       case 'trash':
         docs = trashDocuments
         break
+      case 'classes':
+        // The class folders view lists folders only.
+        docs = []
+        break
       default:
         docs = allDocuments
     }
@@ -356,8 +361,14 @@ export default function HomePage(): JSX.Element {
   /** Folders to display in the main content area (sub-folders inside a folder). */
   const visibleFolders = useMemo((): FolderRecord[] => {
     if (selection.type === 'folder') return currentFolderChildren
+    if (selection.type === 'classes') {
+      const q = query.trim().toLowerCase()
+      return folders.filter(
+        (f) => f.folder_type === 'class' && (!q || f.name.toLowerCase().includes(q) || (f.class_code ?? '').toLowerCase().includes(q)),
+      )
+    }
     return []
-  }, [selection, currentFolderChildren])
+  }, [selection, currentFolderChildren, folders, query])
 
   /* ── Actions ───────────────────────────────────────── */
 
@@ -508,6 +519,8 @@ export default function HomePage(): JSX.Element {
         setSearchParams({ view: 'trash' })
       } else if (sel.type === 'shared') {
         setSearchParams({ view: 'shared' })
+      } else if (sel.type === 'classes') {
+        setSearchParams({ view: 'classes' })
       } else {
         setSearchParams({})
       }
@@ -780,6 +793,8 @@ export default function HomePage(): JSX.Element {
         return 'Shared with me'
       case 'trash':
         return 'Trash'
+      case 'classes':
+        return 'Class folders'
       default:
         return 'My documents'
     }
@@ -916,7 +931,11 @@ export default function HomePage(): JSX.Element {
               <h1 className="text-2xl font-semibold normal-case tracking-tight text-foreground m-0">{pageTitle}</h1>
               <span className="text-xs font-medium text-muted-foreground bg-secondary rounded-full px-2.5 py-1 leading-none">
                 {/* While the list loads its count is not known yet: "0 documents" read as an empty account. */}
-                {loading ? 'Loading…' : `${visibleDocuments.length} ${visibleDocuments.length === 1 ? 'document' : 'documents'}`}
+                {loading
+                  ? 'Loading…'
+                  : selection.type === 'classes'
+                    ? `${visibleFolders.length} ${visibleFolders.length === 1 ? 'class' : 'classes'}`
+                    : `${visibleDocuments.length} ${visibleDocuments.length === 1 ? 'document' : 'documents'}`}
               </span>
               {openClassFolder && (
                 <button
@@ -939,7 +958,23 @@ export default function HomePage(): JSX.Element {
                   <KeyRound className="size-4" /> Enter code
                 </button>
               )}
+              {selection.type === 'classes' && (
+                <button
+                  type="button"
+                  onClick={() => setJoinClassOpen(true)}
+                  data-testid="join-class-button"
+                  className="ml-auto inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold border-none cursor-pointer transition-opacity hover:opacity-90"
+                  style={{ fontFamily: 'inherit' }}
+                >
+                  <GraduationCap className="size-4" /> Join a class
+                </button>
+              )}
             </div>
+            {selection.type === 'classes' && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Classes you teach or joined. Open one for its workspace, submissions and rubric.
+              </p>
+            )}
             {selection.type === 'trash' && (
               <p className="text-sm text-muted-foreground mt-1">
                 Items in trash are permanently deleted after you confirm. Restore anything you still need.
@@ -997,8 +1032,13 @@ export default function HomePage(): JSX.Element {
           <DriveTable
             pageResetKey={`${selection.type}:${selection.folderId ?? ''}:${query}`}
             searchQuery={query}
-            emptyVariant={selection.type === 'shared' || selection.type === 'recent' || selection.type === 'pinned' || selection.type === 'trash' ? selection.type : 'default'}
+            emptyVariant={
+              selection.type === 'shared' || selection.type === 'recent' || selection.type === 'pinned' || selection.type === 'trash' || selection.type === 'classes'
+                ? selection.type
+                : 'default'
+            }
             onEnterCode={() => setJoinCodeOpen(true)}
+            onJoinClass={() => setJoinClassOpen(true)}
             documents={visibleDocuments}
             folders={visibleFolders}
             loading={loading}

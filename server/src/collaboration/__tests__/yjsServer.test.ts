@@ -29,7 +29,8 @@ jest.mock('../../models/documentTabModel', () => ({
   }),
 }))
 
-import { attachCollaboration, closeAllRooms, CLOSE_NO_SAVED_JSON, CLOSE_UNAUTHORIZED } from '../yjsServer'
+import * as decoding from 'lib0/decoding'
+import { attachCollaboration, closeAllRooms, CLOSE_NO_SAVED_JSON, CLOSE_ROOM_RESET, CLOSE_UNAUTHORIZED } from '../yjsServer'
 
 const SEEDED = '11111111-1111-4111-8111-111111111111'
 const NO_JSON = '22222222-2222-4222-8222-222222222222'
@@ -72,6 +73,10 @@ function connect(docId: string, token: string): { doc: Y.Doc; provider: Websocke
     WebSocketPolyfill: WebSocket as unknown as typeof globalThis.WebSocket,
     disableBc: true,
   })
+  // What the app's client does: remember the room's epoch and send it on every reconnect.
+  provider.messageHandlers[100] = (_encoder, decoder) => {
+    provider.params.epoch = decoding.readVarString(decoder)
+  }
   providers.push(provider)
   return { doc, provider }
 }
@@ -163,6 +168,24 @@ describe('collaboration server', () => {
   it('refuses a tab that does not exist', async () => {
     const { provider } = connect(`${SEEDED}/44444444-4444-4444-8444-444444444444`, 'owner-token')
     expect(await closeCode(provider)).toBe(4404)
+  })
+
+  it('refuses a reconnect into a room re-seeded since, so the content is not added twice', async () => {
+    const a = connect(SEEDED, 'owner-token')
+    await synced(a.provider)
+    expect(a.provider.params.epoch).toMatch(/^[0-9a-f-]{36}$/)
+
+    const refused = closeCode(a.provider)
+    // A server restart: every room is gone; the provider reconnects on its own.
+    closeAllRooms()
+    const first = await refused
+    // The drop itself closes abnormally; the reconnect is the one refused.
+    const code = first === CLOSE_ROOM_RESET ? first : await (a.provider.shouldConnect = true, a.provider.connect(), closeCode(a.provider))
+    expect(code).toBe(CLOSE_ROOM_RESET)
+
+    const fresh = connect(SEEDED, 'editor-token')
+    await synced(fresh.provider)
+    expect(text(fresh.doc)).toBe('<paragraph>hello</paragraph>')
   })
 
   it('refuses a session that does not verify', async () => {

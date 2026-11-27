@@ -101,6 +101,32 @@ function titleRow(table: ProseMirrorNode, tablePos: number): { text: string; fro
   return { text, from, to }
 }
 
+/**
+ * Sections whose tables are layout, not tables of the study: a Definition of Terms laid out as
+ * term | meaning, and the lists of figures and tables (and contents). They are never captioned or counted.
+ */
+const UNCOUNTED_SECTION = /^(?:[\divxlc]+(?:\.\d+)*\.?\s+)?(?:(?:operational\s+)?definitions?\s+of\s+(?:key\s+)?terms|list\s+of\s+(?:tables|figures)|table\s+of\s+contents)\b/i
+
+/** The title of the section a block sits in: the nearest heading (or short bold line) above it. */
+function sectionTitleBefore(blocks: TopBlock[], index: number): string | null {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const node = blocks[i].node
+    if (!node.isTextblock) continue
+    const text = node.textContent.replace(/\s+/g, ' ').trim()
+    if (!text || text.length > 100) continue
+    const bold = node.firstChild?.marks.some((mark) => mark.type.name === 'bold') ?? false
+    if (node.type.name === 'heading' || bold) return text
+  }
+  return null
+}
+
+/** A generated list of figures/tables, or a table inside a Definition of Terms or a list section. */
+function isUncountedTable(blocks: TopBlock[], index: number): boolean {
+  if (blocks[index].node.attrs.generated) return true
+  const title = sectionTitleBefore(blocks, index)
+  return title !== null && UNCOUNTED_SECTION.test(title)
+}
+
 /** Caption positions by kind, for the neighbour checks. */
 function captionPositions(doc: ProseMirrorNode): Map<number, CaptionKind> {
   return new Map(findCaptions(doc).map((entry) => [entry.pos, entry.kind]))
@@ -156,6 +182,7 @@ export function planAutoCaptions(doc: ProseMirrorNode, config: CaptionConfig, ki
     const { node, pos } = blocks[index]
 
     if (node.type.name === 'table' && kinds.includes('table')) {
+      if (isUncountedTable(blocks, index)) continue
       const row = titleRow(node, pos)
       // A first row reading "Table 3: ..." is the table's caption, written inside it.
       if (row && CAPTION_LABEL.test(row.text)) continue

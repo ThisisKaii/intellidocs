@@ -271,9 +271,26 @@ def collect_caption_numbers(blocks: list[str], pattern: re.Pattern[str]) -> list
     return numbers
 
 
+# Tables that are layout, not tables of the study: a Definition of Terms laid out as term | meaning
+# and the lists of figures/tables (and contents). They are not captioned or counted.
+UNCOUNTED_SECTION_PATTERN = re.compile(
+    r"^(?:[\divxlc]+(?:\.\d+)*\.?\s+)?(?:(?:operational\s+)?definitions?\s+of\s+(?:key\s+)?terms"
+    r"|list\s+of\s+(?:tables|figures)|table\s+of\s+contents)\b",
+    re.IGNORECASE,
+)
+
+
+def is_counted_table(table: Any) -> bool:
+    """False for a generated list table or a table under a Definition of Terms / list heading."""
+    if table.get("data-generated"):
+        return False
+    heading = table.find_previous(["h1", "h2", "h3", "h4"])
+    return not (heading and UNCOUNTED_SECTION_PATTERN.match(heading.get_text(" ", strip=True)))
+
+
 def check_table_captions(soup: BeautifulSoup) -> dict[str, Any]:
     """Verify every table is captioned and captions are numbered sequentially."""
-    table_count = len(soup.find_all("table"))
+    table_count = sum(1 for table in soup.find_all("table") if is_counted_table(table))
     if table_count == 0:
         return make_check(
             "table_captions", "Table caption numbering", CATEGORY_STRUCTURE,

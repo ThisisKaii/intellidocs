@@ -74,6 +74,7 @@ import { useAutoFormatScanner, classifyStructuralRole, REMOVE_BLANK_LINES, type 
 import { isBlankParagraph } from '@/lib/blankLines'
 import { CENTER_FIGURE, FIX_CAPTION_NUMBER, UNWRAP_FIGURE, centerFigure, unwrapFigure } from '@/lib/figurePlacement'
 import { describeBlock, isFormatSatisfied, isTitleCandidate } from '@/lib/formatSatisfied'
+import { documentUsesHeadingStyles, isHeadingStyleFormat } from '@/lib/headingStyles'
 import { buildStyleProfile, documentStyleOverrides } from '@/lib/documentStyleProfile'
 import type { PageLayoutData } from '@/lib/pageLayout'
 import { addLearnedFormatSteps, type LearnedFormatSpec } from '@/lib/learnedFormat'
@@ -1210,6 +1211,9 @@ export default function Document(): JSX.Element {
     setCaptionConfig(doc.caption_config ?? null)
     setDocOwnerId(doc.user_id ?? null)
     setPageLayout(doc.page_layout ?? null)
+    // An imported document keeps the placement chosen for its own header/footer lines.
+    setHeaderPlacement(doc.page_layout?.placement?.header ?? 'split')
+    setFooterPlacement(doc.page_layout?.placement?.footer ?? 'split')
     setMissingDocFonts(fontNoticeDismissed(doc.id) ? [] : missingFonts(fontFamiliesIn(nextContent)))
     if (doc.citation_data) {
       setCitationStyle(doc.citation_data.style)
@@ -1724,6 +1728,20 @@ export default function Document(): JSX.Element {
       // A genre base-preset fallback is only a suggestion: it goes through the ML suggestion
       // path, never the auto-apply path used for the document's own preset and bindings.
       const result = response.tier === 'genre_preset' ? { ...response, tier: 'ml' as const } : response
+
+      // A guessed heading style waits until the document uses heading styles: until then the writer
+      // formats lines by hand, and their own habits (the learned tier) are what gets suggested.
+      if (
+        result.tier === 'ml' &&
+        isHeadingStyleFormat(result.format) &&
+        editor && !editor.isDestroyed &&
+        !documentUsesHeadingStyles(editor.state.doc)
+      ) {
+        setSuggestions([])
+        setShowSuggestions(false)
+        setPendingLearnedFormat(null)
+        return
+      }
 
       if (result.format && isFormatAlreadyActive(result.format)) {
         setSuggestions([])
@@ -2805,13 +2823,30 @@ export default function Document(): JSX.Element {
     scheduleSave()
   }
 
+  /**
+   * An imported document draws its header/footer from the file's own lines (page_layout), which the
+   * plain placement setting never reached: the choice is stored with that layout and re-lays them.
+   */
+  function placeImportedZone(kind: 'header' | 'footer', value: HeaderFooterPlacement): void {
+    if (!pageLayout) return
+    const next = { ...pageLayout, placement: { ...pageLayout.placement, [kind]: value } }
+    setPageLayout(next)
+    if (id && !readOnly) {
+      api.documents
+        .update(id, { page_layout: next }, shareToken)
+        .catch((error) => console.error('Saving the header/footer placement failed', error))
+    }
+  }
+
   function handleHeaderPlacementChange(value: HeaderFooterPlacement): void {
     setHeaderPlacement(value)
+    placeImportedZone('header', value)
     scheduleSave()
   }
 
   function handleFooterPlacementChange(value: HeaderFooterPlacement): void {
     setFooterPlacement(value)
+    placeImportedZone('footer', value)
     scheduleSave()
   }
 

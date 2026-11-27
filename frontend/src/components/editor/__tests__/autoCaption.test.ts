@@ -133,3 +133,21 @@ describe('insertAutoCaptions', () => {
     expect(current.commands.insertAutoCaptions()).toBe(false)
   })
 })
+
+describe('tables that are not counted', () => {
+  it('leaves Definition of Terms, list sections and generated lists uncaptioned', () => {
+    const current = open(
+      `<h1>CHAPTER I</h1><h2>Definition of Terms</h2>${TABLE}` +
+        `<h2>LIST OF TABLES</h2><table data-generated="lot"><tbody><tr><th>Table No.</th><th>Name</th><th>Page No.</th></tr></tbody></table>` +
+        `<h2>Results</h2>${TABLE}`
+    )
+    const items = planAutoCaptions(current.state.doc, DEFAULT_CAPTIONS)
+    // Only the table under "Results" is a table of the study.
+    expect(items).toHaveLength(1)
+    let resultsTable = -1
+    current.state.doc.forEach((node, pos) => {
+      if (node.type.name === 'table') resultsTable = pos
+    })
+    expect(items[0].from).toBe(resultsTable)
+  })
+})

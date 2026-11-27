@@ -3,6 +3,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { mergeStyleDecls } from '@/lib/inlineStyle'
 import type { AIChatBlockCategory, AIChatTargetCategory } from '@/services/api'
 import { findCaptions } from './captionNumbering'
+import { learnedTextMatch } from '@/lib/learnedTextMatch'
 
 /** A document range (ProseMirror positions) a chat formatting request applies to. */
 export interface TextRange {
@@ -787,7 +788,7 @@ export function learnedKey(text: string): string {
 }
 
 /**
- * The paragraphs and headings a learned habit applies to: the block's text equals the text the
+ * The paragraphs and headings a learned habit applies to (see learnedTextMatch): the block's text equals the text the
  * habit was learned on, or starts with it when that is a phrase of 6+ characters (the same rule
  * the server uses to suggest a learned format).
  */
@@ -797,8 +798,9 @@ export function findLearnedBlockRanges(doc: ProseMirrorNode, key: string): TextR
   doc.descendants((node, pos) => {
     if (!node.isTextblock) return true
     if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return false
-    const text = learnedKey(node.textContent)
-    if (text.length > 0 && (text === key || (key.length >= 6 && text.startsWith(key)))) {
+    // The same text, a learned heading phrase it starts with, or the same kind of line
+    // ("Chapter 1 Introduction" after "Chapter 1. introduction"), as the server matches it.
+    if (learnedTextMatch(key, node.textContent)) {
       ranges.push({ from: pos + 1, to: pos + node.nodeSize - 1 })
     }
     return false

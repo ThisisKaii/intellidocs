@@ -2327,7 +2327,7 @@ export function TiptapToolbar({
 
       <Divider />
 
-      {/* Font family + size */}
+      {/* Font family, text color, highlight, size */}
       <div style={GROUP_STYLE}>
         <div style={{ position: 'relative' }}>
           <button
@@ -2384,6 +2384,93 @@ export function TiptapToolbar({
                     <span style={{ fontFamily: font.fontStyle }}>{font.label}</span>
                     {currentFontFamily === font.value && <Check style={{ width: '14px', height: '14px' }} />}
                   </MenuItem>
+                ))}
+              </div>
+            </Popover>
+          )}
+        </div>
+
+        {/* Text color + highlight, beside the font they colour */}
+        <div style={{ position: 'relative' }}>
+          <ToolButton
+            icon={Palette}
+            title="Text Color"
+            indicatorColor={currentColor}
+            onClick={() => {
+              const next = !openColor
+              closeAllMenus()
+              setOpenColor(next)
+            }}
+          />
+          {openColor && (
+            <Popover width={120}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+                {PRESET_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    title={c}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      closeAllMenus()
+                      run('font_color', () => editor?.chain().focus().setColor(c).run())
+                    }}
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      backgroundColor: c,
+                      ...SHADOW_BORDER,
+                      cursor: 'pointer',
+                      transition: 'transform 120ms',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                  />
+                ))}
+              </div>
+            </Popover>
+          )}
+        </div>
+
+        <div style={{ position: 'relative' }}>
+          <ToolButton
+            icon={Highlighter}
+            title="Highlight Color"
+            indicatorColor={currentHighlight}
+            onClick={() => {
+              const next = !openHighlight
+              closeAllMenus()
+              setOpenHighlight(next)
+            }}
+          />
+          {openHighlight && (
+            <Popover width={120}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                {PRESET_HIGHLIGHTS.map((hl) => (
+                  <button
+                    key={hl}
+                    type="button"
+                    title={hl === 'transparent' ? 'No Highlight' : hl}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      closeAllMenus()
+                      run('highlight', () => editor?.chain().focus().toggleHighlight({ color: hl }).run())
+                    }}
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      backgroundColor: hl === 'transparent' ? 'var(--background)' : hl,
+                      ...SHADOW_BORDER,
+                      cursor: 'pointer',
+                      transition: 'transform 120ms',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                  />
                 ))}
               </div>
             </Popover>
@@ -2539,96 +2626,6 @@ export function TiptapToolbar({
 
       <Divider />
 
-      {/* Color + highlight */}
-      <div style={GROUP_STYLE}>
-        <div style={{ position: 'relative' }}>
-          <ToolButton
-            icon={Palette}
-            title="Text Color"
-            indicatorColor={currentColor}
-            onClick={() => {
-              const next = !openColor
-              closeAllMenus()
-              setOpenColor(next)
-            }}
-          />
-          {openColor && (
-            <Popover width={120}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
-                {PRESET_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    title={c}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      closeAllMenus()
-                      run('font_color', () => editor?.chain().focus().setColor(c).run())
-                    }}
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      backgroundColor: c,
-                      ...SHADOW_BORDER,
-                      cursor: 'pointer',
-                      transition: 'transform 120ms',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                  />
-                ))}
-              </div>
-            </Popover>
-          )}
-        </div>
-
-        <div style={{ position: 'relative' }}>
-          <ToolButton
-            icon={Highlighter}
-            title="Highlight Color"
-            indicatorColor={currentHighlight}
-            onClick={() => {
-              const next = !openHighlight
-              closeAllMenus()
-              setOpenHighlight(next)
-            }}
-          />
-          {openHighlight && (
-            <Popover width={120}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
-                {PRESET_HIGHLIGHTS.map((hl) => (
-                  <button
-                    key={hl}
-                    type="button"
-                    title={hl === 'transparent' ? 'No Highlight' : hl}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      closeAllMenus()
-                      run('highlight', () => editor?.chain().focus().toggleHighlight({ color: hl }).run())
-                    }}
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '6px',
-                      border: 'none',
-                      backgroundColor: hl === 'transparent' ? 'var(--background)' : hl,
-                      ...SHADOW_BORDER,
-                      cursor: 'pointer',
-                      transition: 'transform 120ms',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                  />
-                ))}
-              </div>
-            </Popover>
-          )}
-        </div>
-      </div>
-
-      <Divider />
 
       {/* Alignment, lists, indent */}
       <div style={GROUP_STYLE}>

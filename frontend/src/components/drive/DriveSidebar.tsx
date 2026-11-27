@@ -33,7 +33,7 @@ interface SidebarItem {
 
 /** Describes which view/section the sidebar has selected. */
 export interface FolderSelection {
-  type: 'all' | 'folder' | 'recent' | 'trash' | 'shared' | 'pinned'
+  type: 'all' | 'folder' | 'recent' | 'trash' | 'shared' | 'pinned' | 'classes'
   folderId?: string
   folderName?: string
 }
@@ -79,6 +79,8 @@ const MAIN_NAV_ITEMS: SidebarItem[] = [
   { id: 'recent', label: 'Recent', icon: Clock3, selectionType: 'recent' },
   { id: 'shared', label: 'Shared with me', icon: Share2, selectionType: 'shared' },
   { id: 'pinned', label: 'Pinned', icon: Pin, selectionType: 'pinned' },
+  // The classes the user teaches or joined; the view itself has the Join button.
+  { id: 'classes', label: 'Class folders', icon: GraduationCap, selectionType: 'classes' },
 ]
 
 const TRASH_ITEM: SidebarItem = {
@@ -119,6 +121,7 @@ function DriveSidebar({
     if (item.selectionType === 'recent') return recentCount
     if (item.selectionType === 'pinned') return pinnedCount
     if (item.selectionType === 'trash') return trashCount
+    if (item.selectionType === 'classes') return folders?.filter((f) => f.folder_type === 'class').length
     return undefined
   }
 
@@ -218,7 +221,44 @@ function DriveSidebar({
         })}
       </nav>
 
-      {/* ── Folders (only regular folders) ─────────── */}
+      {/* ── Trash, closing the navigation ─────────── */}
+      <nav className="flex flex-col px-3 gap-0.5 mt-0.5">
+        {(() => {
+          const active = isNavActive(TRASH_ITEM)
+          const Icon = TRASH_ITEM.icon
+          const count = navCount(TRASH_ITEM)
+          return (
+            <button
+              key={TRASH_ITEM.id}
+              type="button"
+              onClick={() => {
+                onSelectView({ type: TRASH_ITEM.selectionType })
+                onClose()
+              }}
+              className={`flex items-center gap-3 w-full px-4 h-10 rounded-full text-[0.875rem] border-none cursor-pointer text-left transition-all duration-150 ease-out hover:translate-x-1 ${
+                active
+                  ? 'font-semibold text-foreground bg-accent shadow-xs'
+                  : 'font-medium text-muted-foreground hover:bg-primary/10 hover:text-foreground'
+              }`}
+              style={{ fontFamily: 'inherit' }}
+            >
+              <Icon className={`size-[18px] ${active ? 'text-primary' : 'text-muted-foreground'}`} strokeWidth={active ? 2 : 1.75} />
+              <span className="truncate">{TRASH_ITEM.label}</span>
+              {typeof count === 'number' && count > 0 && (
+                <span
+                  className={`ml-auto text-xs font-medium tabular-nums rounded-full px-2 py-0.5 ${
+                    active ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          )
+        })()}
+      </nav>
+
+      {/* ── Folders (regular folders), below Trash ──── */}
       {(() => {
         const regularFolders = folders?.filter((f) => f.folder_type !== 'class') ?? []
         if (regularFolders.length === 0) return null
@@ -258,103 +298,6 @@ function DriveSidebar({
           </div>
         )
       })()}
-
-      {/* ── My Class Folders (New part of sidebar above Trash) ── */}
-      {(() => {
-        const classFolders = folders?.filter((f) => f.folder_type === 'class') ?? []
-        return (
-          <div className="mt-5">
-            <div className="flex items-center justify-between px-4 pb-2 text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              <span>My class folders</span>
-              {onJoinClass && (
-                <button
-                  type="button"
-                  onClick={() => { onClose(); onJoinClass() }}
-                  className="text-[0.6875rem] normal-case text-primary hover:underline bg-transparent border-none cursor-pointer p-0"
-                >
-                  + Join
-                </button>
-              )}
-            </div>
-            <nav className="flex flex-col px-3 gap-0.5">
-              {classFolders.length > 0 ? (
-                classFolders.map((folder) => {
-                  const active = selection.type === 'folder' && selection.folderId === folder.folder_id
-                  return (
-                    <button
-                      key={folder.folder_id}
-                      type="button"
-                      onClick={() => {
-                        onSelectView({ type: 'folder', folderId: folder.folder_id, folderName: folder.name })
-                        onClose()
-                      }}
-                      title={folder.class_code ? `${folder.name} · ${folder.class_code}` : folder.name}
-                      className={`flex items-center gap-3 w-full px-4 h-9 rounded-full text-[0.8125rem] border-none cursor-pointer text-left transition-colors ${
-                        active
-                          ? 'font-medium text-accent-foreground bg-accent/20'
-                          : 'font-normal text-foreground/80 hover:bg-accent/15'
-                      }`}
-                      style={{ fontFamily: 'inherit' }}
-                    >
-                      <GraduationCap
-                        className={`size-4 shrink-0 ${active ? 'text-accent-foreground' : 'text-primary'}`}
-                        strokeWidth={active ? 2 : 1.75}
-                      />
-                      <span className="truncate">{folder.name}</span>
-                      {folder.class_code && (
-                        <span className="ml-auto shrink-0 text-[0.6875rem] font-semibold uppercase tracking-wide tabular-nums rounded-full px-1.5 py-0.5 bg-accent/25 text-accent-foreground">
-                          {folder.class_code}
-                        </span>
-                      )}
-                    </button>
-                  )
-                })
-              ) : (
-                <div className="px-4 py-1.5 text-xs text-muted-foreground/75 italic">
-                  No class folders yet
-                </div>
-              )}
-            </nav>
-          </div>
-        )
-      })()}
-
-      {/* ── Trash (Located below My class folders) ──── */}
-      <nav className="flex flex-col px-3 gap-0.5 mt-4">
-        {(() => {
-          const active = isNavActive(TRASH_ITEM)
-          const Icon = TRASH_ITEM.icon
-          const count = navCount(TRASH_ITEM)
-          return (
-            <button
-              key={TRASH_ITEM.id}
-              type="button"
-              onClick={() => {
-                onSelectView({ type: TRASH_ITEM.selectionType })
-                onClose()
-              }}
-              className={`flex items-center gap-3 w-full px-4 h-10 rounded-full text-[0.875rem] border-none cursor-pointer text-left transition-all duration-150 ease-out hover:translate-x-1 ${
-                active
-                  ? 'font-semibold text-foreground bg-accent shadow-xs'
-                  : 'font-medium text-muted-foreground hover:bg-primary/10 hover:text-foreground'
-              }`}
-              style={{ fontFamily: 'inherit' }}
-            >
-              <Icon className={`size-[18px] ${active ? 'text-primary' : 'text-muted-foreground'}`} strokeWidth={active ? 2 : 1.75} />
-              <span className="truncate">{TRASH_ITEM.label}</span>
-              {typeof count === 'number' && count > 0 && (
-                <span
-                  className={`ml-auto text-xs font-medium tabular-nums rounded-full px-2 py-0.5 ${
-                    active ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
-                  }`}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          )
-        })()}
-      </nav>
 
       {/* ── Storage status card ───────────────────── */}
       <div className="mt-auto p-3.5 m-3 rounded-2xl bg-card border border-border shadow-xs">
