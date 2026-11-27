@@ -21,6 +21,9 @@ import {
   Search,
   GraduationCap,
   Briefcase,
+  Eye,
+  ExternalLink,
+  X,
 } from 'lucide-react'
 import {
   AdminApplicant,
@@ -61,6 +64,13 @@ export default function AdminDashboard(): JSX.Element {
   const [reports, setReports] = useState<SystemReport | null>(null)
   const [series, setSeries] = useState<ReportTimeseries | null>(null)
   const [rejecting, setRejecting] = useState<AdminApplicant | null>(null)
+  const [previewDoc, setPreviewDoc] = useState<{
+    applicantName: string
+    docLabel: string
+    url: string
+    mime: string | null
+    name: string | null
+  } | null>(null)
   const [documents, setDocuments] = useState<AdminDocumentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -85,6 +95,15 @@ export default function AdminDashboard(): JSX.Element {
     void loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!previewDoc) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPreviewDoc(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [previewDoc])
 
   async function loadApplicants() {
     try {
@@ -590,8 +609,134 @@ export default function AdminDashboard(): JSX.Element {
                       </div>
 
                       {details.reason && (
-                        <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 1rem' }}>
+                        <p style={{ fontSize: '0.8125rem', color: 'var(--muted-foreground)', margin: '0 0 0.75rem' }}>
                           <span style={{ color: 'var(--muted-foreground)' }}>Stated Purpose:</span> &ldquo;{details.reason}&rdquo;
+                        </p>
+                      )}
+
+                      {details.documentUrl ? (
+                        <div
+                          style={{
+                            marginBottom: '0.875rem',
+                            padding: '0.75rem',
+                            borderRadius: '0.5rem',
+                            border: '1px solid var(--border)',
+                            backgroundColor: 'var(--card)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.875rem',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          {(!details.documentMime || details.documentMime.startsWith('image/')) ? (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc({
+                                applicantName: applicant.display_name || applicant.email || 'Applicant',
+                                docLabel: isProfessor ? 'Faculty ID Image' : 'Study Load Image',
+                                url: details.documentUrl!,
+                                mime: details.documentMime ?? null,
+                                name: details.documentName ?? null,
+                              })}
+                              style={{
+                                padding: 0,
+                                border: '1px solid var(--border)',
+                                borderRadius: '0.375rem',
+                                overflow: 'hidden',
+                                backgroundColor: 'var(--background)',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                              }}
+                              title="Click to inspect full image"
+                            >
+                              <img
+                                src={details.documentUrl}
+                                alt={isProfessor ? 'Submitted Faculty ID' : 'Submitted Study Load'}
+                                style={{ display: 'block', width: '120px', height: '84px', objectFit: 'cover' }}
+                              />
+                            </button>
+                          ) : (
+                            <div
+                              style={{
+                                width: '64px',
+                                height: '64px',
+                                borderRadius: '0.375rem',
+                                border: '1px solid var(--border)',
+                                backgroundColor: 'var(--background)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <FileText style={{ width: '24px', height: '24px', color: 'var(--primary)' }} />
+                            </div>
+                          )}
+
+                          <div style={{ flex: 1, minWidth: '180px' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--muted-foreground)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              {isProfessor ? 'Submitted Faculty ID' : 'Submitted Study Load'}
+                            </div>
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 500, marginTop: '0.125rem', wordBreak: 'break-word' }}>
+                              {details.documentName || 'Verification document'}
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDoc({
+                                  applicantName: applicant.display_name || applicant.email || 'Applicant',
+                                  docLabel: isProfessor ? 'Faculty ID Document' : 'Study Load Document',
+                                  url: details.documentUrl!,
+                                  mime: details.documentMime ?? null,
+                                  name: details.documentName ?? null,
+                                })}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.375rem',
+                                  height: '28px',
+                                  padding: '0 0.625rem',
+                                  borderRadius: '0.375rem',
+                                  border: '1px solid var(--border)',
+                                  backgroundColor: 'var(--background)',
+                                  color: 'var(--foreground)',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  fontFamily: 'inherit',
+                                }}
+                              >
+                                <Eye style={{ width: '13px', height: '13px' }} />
+                                View full size
+                              </button>
+                              <a
+                                href={details.documentUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.375rem',
+                                  height: '28px',
+                                  padding: '0 0.625rem',
+                                  borderRadius: '0.375rem',
+                                  border: '1px solid var(--border)',
+                                  backgroundColor: 'transparent',
+                                  color: 'var(--muted-foreground)',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 500,
+                                  textDecoration: 'none',
+                                }}
+                              >
+                                <ExternalLink style={{ width: '13px', height: '13px' }} />
+                                Open tab
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: '0 0 0.875rem', fontStyle: 'italic' }}>
+                          No {isProfessor ? 'faculty ID' : 'study load'} image attached.
                         </p>
                       )}
 
@@ -762,6 +907,132 @@ export default function AdminDashboard(): JSX.Element {
             onCancel={() => setRejecting(null)}
             onConfirm={(reason) => { void submitVerification(rejecting, 'rejected', reason || undefined) }}
           />
+        )}
+
+        {previewDoc && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${previewDoc.docLabel} for ${previewDoc.applicantName}`}
+            onClick={() => setPreviewDoc(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 60,
+              backgroundColor: 'rgba(0, 0, 0, 0.68)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1.25rem',
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: '880px',
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column',
+                borderRadius: '0.75rem',
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--card)',
+                color: 'var(--foreground)',
+                overflow: 'hidden',
+                boxShadow: '0 24px 60px rgba(0, 0, 0, 0.35)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                  padding: '0.875rem 1.125rem',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '0.9375rem', fontWeight: 600 }}>
+                    {previewDoc.docLabel} — {previewDoc.applicantName}
+                  </div>
+                  {previewDoc.name && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {previewDoc.name}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                  <a
+                    href={previewDoc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.375rem',
+                      height: '32px',
+                      padding: '0 0.75rem',
+                      borderRadius: '0.375rem',
+                      border: '1px solid var(--border)',
+                      color: 'var(--foreground)',
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <ExternalLink style={{ width: '14px', height: '14px' }} />
+                    Open original
+                  </a>
+                  <button
+                    type="button"
+                    aria-label="Close preview"
+                    onClick={() => setPreviewDoc(null)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '0.375rem',
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'transparent',
+                      color: 'var(--foreground)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X style={{ width: '16px', height: '16px' }} />
+                  </button>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  overflow: 'auto',
+                  padding: '1rem',
+                  backgroundColor: 'var(--background)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {previewDoc.mime === 'application/pdf' ? (
+                  <iframe
+                    src={previewDoc.url}
+                    title={previewDoc.docLabel}
+                    style={{ width: '100%', height: '72vh', border: 'none', borderRadius: '0.375rem' }}
+                  />
+                ) : (
+                  <img
+                    src={previewDoc.url}
+                    alt={`${previewDoc.docLabel} for ${previewDoc.applicantName}`}
+                    style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain', borderRadius: '0.375rem' }}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Tab 4: Document Moderation */}

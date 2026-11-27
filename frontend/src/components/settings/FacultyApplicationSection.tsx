@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react'
-import { Check, AlertTriangle, GraduationCap } from 'lucide-react'
+import { Check, AlertTriangle, GraduationCap, Upload } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/services/api'
 
@@ -18,9 +18,21 @@ export function FacultyApplicationSection({
   const [institutionalEmail, setInstitutionalEmail] = useState('')
   const [facultyId, setFacultyId] = useState('')
   const [reason, setReason] = useState('')
+  const [facultyIdFile, setFacultyIdFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null)
   const { refreshRole } = useAuth()
+
+  useEffect(() => {
+    if (!facultyIdFile || !facultyIdFile.type.startsWith('image/')) {
+      setPreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(facultyIdFile)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [facultyIdFile])
 
   const appliedForProfessor = requestedRole === 'professor' || role === 'professor'
   const isPending = appliedForProfessor && verificationStatus === 'pending'
@@ -60,6 +72,7 @@ export function FacultyApplicationSection({
         institutionalEmail: institutionalEmail.trim(),
         facultyId: facultyId.trim(),
         reason: reason.trim(),
+        facultyIdImage: facultyIdFile,
       })
       setFeedback({ ok: true, text: res.message })
       // Pick up the new pending status straight away so the form is replaced by
@@ -70,6 +83,7 @@ export function FacultyApplicationSection({
       setInstitutionalEmail('')
       setFacultyId('')
       setReason('')
+      setFacultyIdFile(null)
     } catch (err) {
       setFeedback({
         ok: false,
@@ -180,6 +194,48 @@ export function FacultyApplicationSection({
             rows={3}
             className="settings-input w-full resize-none"
           />
+        </div>
+
+        {/* Faculty ID Upload */}
+        <div className="flex flex-col gap-2 p-3.5 rounded-xl border border-dashed border-border bg-secondary/30">
+          <div className="flex items-center justify-between">
+            <label htmlFor="faculty-id-file" className="text-sm font-medium text-foreground flex items-center gap-2">
+              <Upload className="size-4 text-primary" /> Faculty ID / Employment Proof
+            </label>
+            {facultyIdFile && (
+              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                <Check className="size-3.5" /> File ready
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground m-0">
+            Upload a clear photo or scan of your institutional Faculty ID (PNG, JPG, WebP, or PDF, up to 10 MB) for administrator review.
+          </p>
+          <input
+            id="faculty-id-file"
+            type="file"
+            accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf"
+            required
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null
+              setFacultyIdFile(f)
+            }}
+            className="text-xs text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-primary file:text-primary-foreground hover:file:opacity-90 cursor-pointer"
+          />
+          {facultyIdFile && (
+            <div className="mt-1 flex flex-col gap-2">
+              <p className="text-xs font-mono text-muted-foreground m-0">
+                Selected: {facultyIdFile.name} ({(facultyIdFile.size / 1024).toFixed(1)} KB)
+              </p>
+              {previewUrl && (
+                <img
+                  src={previewUrl}
+                  alt="Faculty ID preview"
+                  className="max-h-40 w-fit rounded-lg border border-border object-contain bg-background"
+                />
+              )}
+            </div>
+          )}
         </div>
 
         {feedback && (

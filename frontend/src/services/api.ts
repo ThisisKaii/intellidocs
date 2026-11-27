@@ -1281,11 +1281,31 @@ export const api = {
       institutionalEmail: string
       facultyId: string
       reason: string
+      facultyIdImage?: File | null
     }): Promise<{ message: string; status: string }> => {
+      if (payload.facultyIdImage) {
+        const formData = new FormData()
+        formData.append('college', payload.college)
+        formData.append('department', payload.department)
+        formData.append('institutionalEmail', payload.institutionalEmail)
+        formData.append('facultyId', payload.facultyId)
+        formData.append('reason', payload.reason)
+        formData.append('facultyIdImage', payload.facultyIdImage)
+        return fetchAPI<{ message: string; status: string }>('auth/apply-professor', {
+          method: 'POST',
+          body: formData,
+        })
+      }
       return fetchAPI<{ message: string; status: string }>('auth/apply-professor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          college: payload.college,
+          department: payload.department,
+          institutionalEmail: payload.institutionalEmail,
+          facultyId: payload.facultyId,
+          reason: payload.reason,
+        }),
       })
     },
     /** Submit a student status application with optional study load upload. */
