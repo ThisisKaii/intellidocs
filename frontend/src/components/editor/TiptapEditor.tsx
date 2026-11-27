@@ -52,7 +52,7 @@ import {
   inToPx,
 } from './HeaderFooterPlugin'
 import { AcademicObjectsExtension } from './AcademicObjects'
-import { basePresetKey } from './academicPresets'
+import { basePresetKey, findAcademicPreset } from './academicPresets'
 import { CaptionExtension } from './CaptionExtension'
 import { GeneratedBlockExtension } from './DocumentParts'
 import { applyIeeeNumbering } from './ieeeNumberingCommand'
@@ -121,6 +121,7 @@ import { FontSizeExtension } from './FontSizeExtension'
 import { LetterSpacingExtension } from './LetterSpacingExtension'
 import { IndentExtension } from './IndentExtension'
 import { InvisibleBackspace } from './InvisibleBackspace'
+import { exportDocumentPdf } from '@/lib/thesisExport'
 import { readRibbonCollapsed, writeRibbonCollapsed } from '@/lib/ribbonState'
 import {
   snapshotTableContext,
@@ -215,11 +216,6 @@ export function downloadDOCX(html: string, title: string): void {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
-}
-
-/** Open print preview to print or Save as PDF. */
-function printDocument(): void {
-  window.print()
 }
 
 // Re-export types from HeaderFooterPlugin (single source of truth)
@@ -3778,7 +3774,17 @@ export function TiptapToolbar({
         onOpenPersonalization={onOpenPersonalization}
         exportActions={{
           onWord: () => { if (onExportRequest?.('word')) return; if (editor) downloadDOCX(editor.getHTML(), documentTitle) },
-          onPdf: () => { if (onExportRequest?.('pdf')) return; printDocument() },
+          onPdf: () => {
+            if (onExportRequest?.('pdf')) return
+            if (editor) {
+              exportDocumentPdf(editor.getHTML(), documentTitle, {
+                pageSize,
+                margins,
+                orientation,
+                presetCss: findAcademicPreset(activePreset)?.css,
+              })
+            }
+          },
         }}
       />
       </div>

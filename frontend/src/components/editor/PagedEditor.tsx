@@ -1094,10 +1094,9 @@ export function PagedEditor({
             word-break: normal;
             overflow-wrap: break-word;
           }
-          @media print {
-            @page {
-              margin: 0;
-            }
+          @page {
+            size: ${page.width}px ${page.height}px;
+            margin: ${margins.top}in ${margins.right}in ${margins.bottom}in ${margins.left}in;
           }
           /* Centered header/footer placement: fill the space between the page
              margins so the text centers on the text column, not the page. */

@@ -21,7 +21,7 @@ import WholeDocumentView from '@/components/editor/WholeDocumentView'
 import { documentOutline, pageFinder, type CrossTabEntries } from '@/components/editor/DocumentParts'
 import { captionScheme, findCaptions, type CaptionContext } from '@/components/editor/captionNumbering'
 import { bodyForExport, exportTitle, selectedTabs, type ExportFormat } from '@/lib/tabExport'
-import { exportThesisPdf, exportThesisWord } from '@/lib/thesisExport'
+import { exportDocumentPdf, exportThesisWord } from '@/lib/thesisExport'
 import { exportIeeeDocx } from '@/lib/ieeeExport'
 import {
   TiptapToolbar,
@@ -699,10 +699,18 @@ export default function Document(): JSX.Element {
     if (!prefs.grammarSuggestions) setGrammarIssues([])
   }, [prefs.grammarSuggestions])
 
-  /** Ctrl+\ keyboard shortcut toggles the docked side panel. */
+  const ctrlPrintRef = useRef<(() => void) | null>(null)
+
+  /** Ctrl+\ keyboard shortcut toggles the docked side panel, Ctrl+P opens clean PDF print. */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       const mod = event.ctrlKey || event.metaKey
+      // Ctrl+P opens the clean document print/PDF sheet instead of printing the raw editor UI.
+      if (mod && !event.shiftKey && event.key.toLowerCase() === 'p') {
+        event.preventDefault()
+        ctrlPrintRef.current?.()
+        return
+      }
       // Ctrl+Shift+\ toggles the left outline panel
       if (mod && event.shiftKey && event.key === '\\') {
         event.preventDefault()
@@ -2613,8 +2621,8 @@ export default function Document(): JSX.Element {
       openTabId: contentTabRef.current,
       liveHtml: live && !live.isDestroyed ? live.getHTML() : latestContentRef.current,
     }
-    if ((format === 'print' || format === 'pdf') && choice.selection.kind === 'tab') {
-      // The open tab is what is on screen: the browser prints it as laid out.
+    if (format === 'print' && choice.selection.kind === 'tab') {
+      // Legacy print branch: the open tab is printed directly.
       setExportFormat(null)
       window.setTimeout(() => window.print(), 50)
       return
@@ -2636,7 +2644,14 @@ export default function Document(): JSX.Element {
       else if (format === 'ieeeWord') await exportIeeeDocx(html, name)
       else if (format === 'thesisWord') exportThesisWord(html, name, { bodyStart })
       else if (format === 'html') downloadHTML(html, name)
-      else exportThesisPdf(html, name)
+      else {
+        exportDocumentPdf(html, name, {
+          pageSize,
+          margins,
+          orientation,
+          presetCss: activeAcademicPreset?.css,
+        })
+      }
       setExportFormat(null)
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'The download could not be prepared.')
@@ -3631,6 +3646,37 @@ export default function Document(): JSX.Element {
 
   /** Resolve the active preset (if the doc uses one of the academic presets). */
   const activeAcademicPreset = findAcademicPreset(formattingPreset)
+
+  ctrlPrintRef.current = () => {
+    const live = liveEditorRef.current
+    const activeHtml = live && !live.isDestroyed ? live.getHTML() : latestContentRef.current
+    if (isTabbed && docTabs && id && wholeView) {
+      void bodyForExport(
+        { kind: 'whole' },
+        {
+          documentId: id,
+          shareToken,
+          tabs: docTabs,
+          openTabId: contentTabRef.current,
+          liveHtml: activeHtml,
+        }
+      ).then((wholeHtml) => {
+        exportDocumentPdf(wholeHtml, title, {
+          pageSize,
+          margins,
+          orientation,
+          presetCss: activeAcademicPreset?.css,
+        })
+      })
+      return
+    }
+    exportDocumentPdf(activeHtml, title, {
+      pageSize,
+      margins,
+      orientation,
+      presetCss: activeAcademicPreset?.css,
+    })
+  }
 
   /* ── Blueprint drift → "save as my own version" (section 9) ────────────────
    *

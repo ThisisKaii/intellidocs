@@ -1,3 +1,10 @@
+import {
+  PAGE_SIZES,
+  type MarginValues,
+  type PageOrientation,
+  type PageSizeKey,
+} from '@/components/editor/HeaderFooterPlugin'
+
 /**
  * Defense-ready export engine (plan point 26).
  *
@@ -105,49 +112,139 @@ export function buildThesisWordHtml(html: string, title: string, options: { body
 </html>`
 }
 
-/** Generate the headless print page used by the "Export as PDF" flow. */
-export function buildThesisPdfHtml(html: string, title: string): string {
+export interface PdfExportOptions {
+  pageSize?: PageSizeKey
+  margins?: MarginValues
+  orientation?: PageOrientation
+  presetCss?: string
+}
+
+const DEFAULT_PDF_MARGINS: MarginValues = { top: 1, bottom: 1, left: 1, right: 1 }
+
+/** Scope editor-only preset selectors to the print document wrapper. */
+function scopePresetCssForPrint(presetCss?: string): string {
+  if (!presetCss) return ''
+  return presetCss
+    .replace(/\.intellidocs-page-editor\s+\.ProseMirror/g, '.intellidocs-print-doc')
+    .replace(/\.ProseMirror\.rm-with-pagination/g, '.intellidocs-print-doc')
+    .replace(/\.ProseMirror/g, '.intellidocs-print-doc')
+}
+
+/**
+ * Build a clean self-contained print page that mirrors the document's exact
+ * page size, orientation, and margins on every page while keeping `@page { margin: 0 }`
+ * so Chromium does not inject browser date/title/URL/page-count headers or footers.
+ */
+export function buildDocumentPdfHtml(
+  html: string,
+  title: string,
+  options: PdfExportOptions = {}
+): string {
   const safeTitle = esc(title.trim() || 'Untitled Document')
+  const baseSize = PAGE_SIZES[options.pageSize ?? 'short'] ?? PAGE_SIZES.short
+  const isLandscape = options.orientation === 'landscape'
+  const widthIn = (isLandscape ? baseSize.height : baseSize.width) / 96
+  const heightIn = (isLandscape ? baseSize.width : baseSize.height) / 96
+  const margins = options.margins ?? DEFAULT_PDF_MARGINS
+  const scopedPreset = scopePresetCssForPrint(options.presetCss)
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset='utf-8'>
+<meta charset="utf-8">
 <title>${safeTitle}</title>
 <style>
   @page {
-    size: letter;
-    margin: ${BODY_MARGIN_IN} ${BODY_MARGIN_IN} ${BODY_MARGIN_IN} ${BINDING_LEFT_IN};
+    size: ${widthIn.toFixed(4)}in ${heightIn.toFixed(4)}in;
+    margin: 0;
   }
   html, body {
-    font-family: 'Times New Roman', serif;
-    font-size: 12pt;
-    line-height: 200%;
-    color: #000;
+    margin: 0;
+    padding: 0;
     background: #fff;
+    color: #000;
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 11pt;
+    line-height: 1.35;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  body { margin: 0; padding: 0; }
-  p { margin: 0 0 0.18in; text-align: justify; line-height: 200%; }
-  h1 { font-size: 15pt; font-weight: bold; margin: 0.35in 0 0.2in; }
-  h2 { font-size: 13pt; font-weight: bold; margin: 0.3in 0 0.15in; }
-  h3 { font-size: 12pt; font-weight: bold; margin: 0.25in 0 0.12in; }
-  blockquote { margin: 0.2in 0.4in; font-style: italic; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #444; padding: 4pt; vertical-align: top; }
-  img { max-width: 100%; height: auto; }
-  .intellidocs-page-break, hr.page-break {
+  table.intellidocs-print-sheet {
+    width: 100%;
+    border-collapse: collapse;
+    border: 0;
+    table-layout: fixed;
+  }
+  table.intellidocs-print-sheet > thead > tr > td,
+  table.intellidocs-print-sheet > tfoot > tr > td {
+    border: 0;
+    padding: 0;
+    margin: 0;
+  }
+  table.intellidocs-print-sheet > tbody > tr > td {
+    border: 0;
+    padding: 0 ${margins.right}in 0 ${margins.left}in;
+    vertical-align: top;
+  }
+  .intellidocs-print-doc {
+    width: 100%;
+    box-sizing: border-box;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  .intellidocs-print-doc p { margin: 0 0 0.08in; }
+  .intellidocs-print-doc h1,
+  .intellidocs-print-doc h2,
+  .intellidocs-print-doc h3,
+  .intellidocs-print-doc h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .intellidocs-print-doc blockquote { margin: 0.15in 0.4in; }
+  .intellidocs-print-doc table { border-collapse: collapse; width: 100%; }
+  .intellidocs-print-doc th,
+  .intellidocs-print-doc td { border: 1px solid #444; padding: 4pt; vertical-align: top; }
+  .intellidocs-print-doc img { max-width: 100%; height: auto; }
+  .intellidocs-print-doc [data-tab] { display: inline-block; min-width: 0.5in; }
+  .intellidocs-print-doc .intellidocs-page-break,
+  .intellidocs-print-doc hr.page-break {
     page-break-after: always;
     break-after: page;
-    height: 0;
+    height: 0 !important;
+    min-height: 0 !important;
     border: 0;
     margin: 0;
+    padding: 0;
     visibility: hidden;
   }
+  .intellidocs-print-doc .rm-pages-wrapper { display: none !important; }
+  .intellidocs-print-doc .doc-guide,
+  .intellidocs-print-doc [data-blueprint-guide] {
+    border: none !important;
+    background: transparent !important;
+  }
+  ${scopedPreset}
 </style>
 </head>
 <body>
-  ${html}
+  <table class="intellidocs-print-sheet">
+    <thead><tr><td style="height: ${margins.top}in;"></td></tr></thead>
+    <tfoot><tr><td style="height: ${margins.bottom}in;"></td></tr></tfoot>
+    <tbody><tr><td>
+      <div class="intellidocs-print-doc">${html}</div>
+    </td></tr></tbody>
+  </table>
 </body>
 </html>`
+}
+
+/** Generate the headless print page used by the thesis "Export as PDF" flow. */
+export function buildThesisPdfHtml(html: string, title: string): string {
+  return buildDocumentPdfHtml(html, title, {
+    pageSize: 'letter',
+    orientation: 'portrait',
+    margins: { top: 1, bottom: 1, left: 1.5, right: 1 },
+  })
 }
 
 /** Convert ANY string to a Blob URL and trigger a client-side download. */
@@ -173,35 +270,65 @@ export function exportThesisWord(html: string, title: string, options: { bodySta
   )
 }
 
-/** One-click PDF export: opens the browser print dialog preconfigured for PDF. */
-export function exportThesisPdf(html: string, title: string): void {
-  const win = window.open('', '_blank', 'noopener')
-  if (!win) {
-    // Pop-up blocked: fall back to a temporary iframe over the current page.
-    const frame = document.createElement('iframe')
-    frame.style.position = 'fixed'
-    frame.style.right = '0'
-    frame.style.bottom = '0'
-    frame.style.width = '0'
-    frame.style.height = '0'
-    frame.style.border = '0'
-    document.body.appendChild(frame)
-    const doc = frame.contentDocument
-    if (doc) {
-      doc.open()
-      doc.write(buildThesisPdfHtml(html, title))
-      doc.close()
-      frame.contentWindow?.focus()
-      frame.contentWindow?.print()
-      setTimeout(() => {
-        if (frame.parentNode) frame.parentNode.removeChild(frame)
-      }, 1000)
-    }
+/** Print HTML cleanly inside a hidden iframe (never opening a new browser tab). */
+function printHtmlViaHiddenIframe(fullHtml: string): void {
+  const existing = document.getElementById('intellidocs-pdf-print-frame')
+  if (existing?.parentNode) existing.parentNode.removeChild(existing)
+
+  const frame = document.createElement('iframe')
+  frame.id = 'intellidocs-pdf-print-frame'
+  frame.setAttribute('aria-hidden', 'true')
+  frame.style.position = 'fixed'
+  frame.style.right = '0'
+  frame.style.bottom = '0'
+  frame.style.width = '0'
+  frame.style.height = '0'
+  frame.style.border = '0'
+  frame.style.opacity = '0'
+  frame.style.pointerEvents = 'none'
+  document.body.appendChild(frame)
+
+  const doc = frame.contentDocument
+  const win = frame.contentWindow
+  if (!doc || !win) {
+    if (frame.parentNode) frame.parentNode.removeChild(frame)
     return
   }
-  win.document.open()
-  win.document.write(buildThesisPdfHtml(html, title))
-  win.document.close()
-  win.focus()
-  win.print()
+
+  doc.open()
+  doc.write(fullHtml)
+  doc.close()
+
+  let cleaned = false
+  const cleanup = (): void => {
+    if (cleaned) return
+    cleaned = true
+    if (frame.parentNode) frame.parentNode.removeChild(frame)
+  }
+
+  win.addEventListener('afterprint', cleanup, { once: true })
+  // Safety cleanup if a browser skips afterprint.
+  window.setTimeout(cleanup, 60_000)
+
+  const triggerPrint = (): void => {
+    win.focus()
+    win.print()
+  }
+
+  // Let web fonts settle briefly before opening the print preview.
+  if (doc.fonts?.ready) {
+    void doc.fonts.ready.then(() => requestAnimationFrame(triggerPrint))
+  } else {
+    requestAnimationFrame(triggerPrint)
+  }
+}
+
+/** Export the current document via the browser Save-as-PDF dialog without opening a new tab. */
+export function exportDocumentPdf(html: string, title: string, options: PdfExportOptions = {}): void {
+  printHtmlViaHiddenIframe(buildDocumentPdfHtml(html, title, options))
+}
+
+/** One-click PDF export: opens the Save-as-PDF dialog in a hidden iframe (no new tab). */
+export function exportThesisPdf(html: string, title: string): void {
+  printHtmlViaHiddenIframe(buildThesisPdfHtml(html, title))
 }
