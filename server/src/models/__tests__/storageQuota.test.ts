@@ -72,14 +72,24 @@ describe('storage quotas', () => {
     await expect(assertWithinStorageQuota('u1', 2 * MB)).rejects.toMatchObject({ status: 413 })
   })
 
-  it('lifts the quota entirely for an active Pro plan', async () => {
+  it('upgrades Pro accounts to 350 MB and rejects uploads beyond 350 MB', async () => {
     state.role = 'user'
     state.plan = { plan: 'pro', plan_canceled_at: null }
-    state.used = 500 * MB
+    state.used = 300 * MB
     await expect(assertWithinStorageQuota('u1', 50 * MB)).resolves.toBeUndefined()
+
+    state.used = 340 * MB
+    await expect(assertWithinStorageQuota('u1', 20 * MB)).rejects.toMatchObject({ status: 413 })
   })
 
-  it('keeps Pro until the end of a cancelled period, then restores the role quota', async () => {
+  it('keeps admins at 500 MB even on Pro', async () => {
+    state.role = 'admin'
+    state.plan = { plan: 'pro', plan_canceled_at: null }
+    state.used = 450 * MB
+    await expect(assertWithinStorageQuota('u1', 40 * MB)).resolves.toBeUndefined()
+  })
+
+  it('keeps Pro 350 MB quota until the end of a cancelled period, then restores the role quota', async () => {
     state.role = 'user'
     state.used = 24 * MB
     state.plan = { plan: 'pro', plan_canceled_at: '2026-01-01T00:00:00Z', plan_renews_at: '2999-01-01T00:00:00Z' }

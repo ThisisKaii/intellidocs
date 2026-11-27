@@ -26,7 +26,7 @@ export interface SubscriptionStatus {
 /** Signed-in user's own storage usage versus their account quota. */
 export interface StorageSummary {
   usedBytes: number
-  /** Null when the plan has unlimited storage (Pro). */
+  /** Quota in bytes (Pro raises user/student/professor accounts to 350 MB; null if uncapped). */
   quotaBytes: number | null
   role: RoleName
   plan: Plan

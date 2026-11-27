@@ -14,6 +14,7 @@ import { sliceDocumentContent } from '../utils/webText'
 import type { WebCheckPayload } from '../../schemas/plagiarismSchemas'
 import { documentBody } from '../models/documentTabModel'
 import { htmlWordCount } from '../utils/documentGuards'
+import * as webCheckJobModel from '../models/webCheckJobModel'
 
 /** Fewest words a submission needs for a council scan. */
 const MIN_SCAN_WORDS = 50
@@ -141,6 +142,87 @@ export async function webCheck(req: AuthenticatedRequest, res: Response): Promis
     res.json(await runWebOriginalityCheck({ documentHtml: contentToCheck }))
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to check originality online'
+    res.status(errorStatus(err)).json({ error: message })
+  }
+}
+
+/**
+ * Start an async online originality check and return a 202 job handle right away so users can
+ * navigate back to the editor (or anywhere else) while the check runs on the server.
+ */
+export async function startWebCheck(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const { documentId, scope = 'all', chapterTitle, pageStart, pageEnd } = req.body as WebCheckPayload
+    const document = await documentModel.getDocumentById(documentId, userId)
+
+    if (!(await allowAttempt(`web-check:${userId}`, WEB_CHECKS_PER_HOUR, 3600))) {
+      res.status(429).json({ error: `You can run ${WEB_CHECKS_PER_HOUR} online checks per hour. Try again later.` })
+      return
+    }
+
+    const contentToCheck = sliceDocumentContent(await documentBody(document), { scope, chapterTitle, pageStart, pageEnd })
+    const scopeLabel = webCheckJobModel.formatWebCheckScopeLabel({ scope, chapterTitle, pageStart, pageEnd })
+    const job = webCheckJobModel.createWebCheckJob({ userId, documentId, scopeLabel })
+
+    void runWebOriginalityCheck({ documentHtml: contentToCheck })
+      .then((result) => {
+        webCheckJobModel.completeWebCheckJob(job.jobId, result)
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'Failed to check originality online'
+        webCheckJobModel.failWebCheckJob(job.jobId, message)
+      })
+
+    res.status(202).json(job)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to check originality online'
+    res.status(errorStatus(err)).json({ error: message })
+  }
+}
+
+/** Return the status (and completed result, if ready) of a user's async web originality check. */
+export async function getWebCheckJob(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const jobId = String(req.params.jobId ?? '')
+    const job = webCheckJobModel.getWebCheckJob(jobId, userId)
+    if (!job) {
+      res.status(404).json({ error: 'Originality check job not found' })
+      return
+    }
+    res.json(job)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to load originality check'
+    res.status(errorStatus(err)).json({ error: message })
+  }
+}
+
+/** Return the latest async web originality job for a document, or `{ job: null }` if none. */
+export async function getLatestDocumentWebCheck(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const documentId = String(req.params.documentId ?? '')
+    await documentModel.getDocumentById(documentId, userId)
+    const job = webCheckJobModel.getLatestWebCheckJobForDocument(userId, documentId)
+    res.json({ job })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to load originality check'
     res.status(errorStatus(err)).json({ error: message })
   }
 }

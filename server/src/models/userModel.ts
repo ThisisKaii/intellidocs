@@ -19,7 +19,7 @@ const supabase = createClient(
  * Storage quota per role in bytes: document text plus pictures (migration 050). A student's
  * 100 MB holds a 1,400-page thesis with its pictures (about 85 MB once they are shrunk on import).
  * New accounts start as `user`; academic verification (student, professor) and admin raise the
- * cap. Pro subscribers have no cap (see getUserStorageSummary).
+ * cap. Pro subscribers receive 350 MB (or keep 500 MB if admin; see getUserStorageSummary).
  */
 export const STORAGE_QUOTA_BYTES: Record<RoleName, number> = {
   user: 25 * 1024 * 1024,
@@ -27,6 +27,8 @@ export const STORAGE_QUOTA_BYTES: Record<RoleName, number> = {
   professor: 250 * 1024 * 1024,
   admin: 500 * 1024 * 1024,
 }
+
+export const PRO_STORAGE_QUOTA_BYTES = 350 * 1024 * 1024
 
 /**
  * Create an email/password account with the person's names in Auth metadata
@@ -136,7 +138,12 @@ export async function getUserStorageSummary(userId: string): Promise<StorageSumm
     console.error('Storage summary size query failed (degrading to 0; is migration 027 applied?):', e)
   }
 
-  return { usedBytes, quotaBytes: plan === 'pro' ? null : STORAGE_QUOTA_BYTES[role], role, plan }
+  const quotaBytes =
+    plan === 'pro'
+      ? Math.max(STORAGE_QUOTA_BYTES[role], PRO_STORAGE_QUOTA_BYTES)
+      : STORAGE_QUOTA_BYTES[role]
+
+  return { usedBytes, quotaBytes, role, plan }
 }
 
 /**
@@ -536,7 +543,7 @@ export async function assertWithinStorageQuota(userId: string, addedBytes: numbe
       summary = await getUserStorageSummary(userId)
       if (summary) quotaCache.set(userId, { at: Date.now(), summary })
     }
-    // A null quota is unlimited (Pro).
+    // A null quota indicates no cap when explicitly returned by storage summary.
     if (summary && summary.quotaBytes !== null && summary.usedBytes + addedBytes > summary.quotaBytes) throw storageQuotaError()
     // Count this save in the cached size, so a quick run of saves can't all pass on a stale reading.
     if (summary) quotaCache.set(userId, { at: cached?.at ?? Date.now(), summary: { ...summary, usedBytes: summary.usedBytes + addedBytes } })
