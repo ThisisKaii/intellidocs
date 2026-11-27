@@ -429,7 +429,7 @@ export async function createDocument(
     header_number_format: req.header_number_format ?? 'none',
     footer_number_format: req.footer_number_format ?? 'none',
     page_size: req.page_size ?? 'short',
-    margins: req.margins ?? { top: 1, bottom: 1, left: 1.5, right: 1 },
+    margins: req.margins ?? { top: 1, bottom: 1, left: 1, right: 1 },
     orientation: req.orientation ?? 'portrait',
     formatting_history: [],
     ...(req.formatting_preset
