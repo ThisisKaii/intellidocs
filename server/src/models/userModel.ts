@@ -323,6 +323,70 @@ export async function createStudentApplication(
 }
 
 /**
+ * Immediately approve a student application after automatic study-load verification.
+ * Ensures the profile row exists, saves `student_id`, assigns the `student` role,
+ * and leaves `decided_by` as `null` (valid for the uuid FK column).
+ * Returns 'already' if the account already holds student or higher access.
+ */
+export async function approveStudentAutomatically(
+  userId: string,
+  input: StudentApplicationInput,
+): Promise<'approved' | 'already'> {
+  const { data: existing } = await supabase
+    .from('user_profiles')
+    .select('verification_status, roles(role_name)')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const currentRole = (existing?.roles as { role_name?: RoleName } | null)?.role_name
+  const alreadyApproved = existing?.verification_status === 'approved'
+  if (currentRole === 'admin' || (currentRole && alreadyApproved && ALREADY_HAS.student.includes(currentRole))) {
+    return 'already'
+  }
+
+  const studentRoleId = await roleIdByName('student')
+  if (!studentRoleId) throw new Error("Role 'student' not found in system")
+
+  const now = new Date().toISOString()
+  const fields = {
+    role_id: studentRoleId,
+    verification_status: 'approved' as const,
+    requested_role: null,
+    student_id: input.studentId,
+    decision_note: 'Auto-accepted: Name matched on uploaded study load',
+    decided_at: now,
+    decided_by: null,
+    updated_at: now,
+  }
+
+  if (existing) {
+    const { error } = await supabase.from('user_profiles').update(fields).eq('user_id', userId)
+    if (error) throw new Error(error.message)
+  } else {
+    const { error } = await supabase.from('user_profiles').insert({ user_id: userId, ...fields })
+    if (error) throw new Error(error.message)
+  }
+
+  const { error: notifError } = await supabase.from('notifications').insert({
+    user_id: userId,
+    type: 'verification_decision',
+    title: 'Application Approved',
+    message: 'Congratulations! Your student has been approved. You now have verified student access. Note: Auto-accepted: Name matched on uploaded study load',
+    metadata: {
+      status: 'approved',
+      role: 'student',
+      studentId: input.studentId,
+      college: input.college,
+      degreeProgram: input.degreeProgram,
+      notes: 'Auto-accepted: Name matched on uploaded study load',
+    },
+  })
+  if (notifError) console.error('approveStudentAutomatically: notification insert failed:', notifError.message)
+
+  return 'approved'
+}
+
+/**
  * Record a professor application. The user keeps their current role while the
  * application is pending; the admin's approval is what grants professor access.
  * Returns 'already' when the user is already an approved professor or admin.

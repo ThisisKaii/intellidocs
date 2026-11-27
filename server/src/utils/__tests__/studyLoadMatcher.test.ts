@@ -1,4 +1,4 @@
-import { checkStudyLoadNameMatch } from '../studyLoadMatcher'
+import { checkStudyLoadNameMatch, resolveApplicantNames } from '../studyLoadMatcher'
 
 describe('checkStudyLoadNameMatch', () => {
   const SAMPLE_UC_STUDY_LOAD_TEXT = `
@@ -36,5 +36,27 @@ describe('checkStudyLoadNameMatch', () => {
     expect(checkStudyLoadNameMatch('', 'Joshua', 'Asingua')).toBe(false)
     expect(checkStudyLoadNameMatch(SAMPLE_UC_STUDY_LOAD_TEXT, '', 'Asingua')).toBe(false)
     expect(checkStudyLoadNameMatch(SAMPLE_UC_STUDY_LOAD_TEXT, 'Joshua', '')).toBe(false)
+  })
+})
+
+describe('resolveApplicantNames', () => {
+  it('prefers explicit first and last name when set', () => {
+    expect(resolveApplicantNames({ firstName: 'Joshua', lastName: 'Asingua', displayName: 'Other Name' })).toEqual({
+      firstName: 'Joshua',
+      lastName: 'Asingua',
+    })
+  })
+
+  it('falls back to displayName for Google OAuth accounts missing first_name/last_name', () => {
+    const resolved = resolveApplicantNames({ firstName: null, lastName: null, displayName: 'Joshua L. Asingua' })
+    expect(resolved).toEqual({ firstName: 'Joshua L.', lastName: 'Asingua' })
+    expect(checkStudyLoadNameMatch('ASINGUA, JOSHUA L. (23249600)', resolved.firstName, resolved.lastName)).toBe(true)
+  })
+
+  it('handles comma-separated displayName formats', () => {
+    expect(resolveApplicantNames({ firstName: null, lastName: null, displayName: 'Asingua, Joshua L.' })).toEqual({
+      firstName: 'Joshua L.',
+      lastName: 'Asingua',
+    })
   })
 })

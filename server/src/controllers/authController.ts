@@ -1,8 +1,9 @@
+import os from 'os'
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
-import { updateOwnProfile, registerUser, getOwnNames, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow, signInWithPassword } from '../models/userModel'
-import { verifyApplicant } from '../models/adminModel'
+import { updateOwnProfile, registerUser, getOwnNames, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, approveStudentAutomatically, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow, signInWithPassword } from '../models/userModel'
+import { checkStudyLoadNameMatch, resolveApplicantNames } from '../utils/studyLoadMatcher'
 import { effectivePlan } from '../utils/plan'
 import { resolvePendingShares } from '../models/shareModel'
 import * as accountModel from '../models/accountModel'
@@ -320,27 +321,32 @@ export async function getApplicationStatus(req: AuthenticatedRequest, res: Respo
   }
 }
 
-/** Extract text from an uploaded study load file (PDF via pdf-parse, image via Tesseract OCR). */
+/** Extract text from an uploaded study load file (PDF via pdf-parse v2, image via Tesseract OCR). */
 async function extractStudyLoadText(file: Express.Multer.File): Promise<string> {
   try {
     const isPdf = file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')
     if (isPdf) {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const pdfParse = require('pdf-parse')
-      const data = await pdfParse(file.buffer)
-      return data?.text ? String(data.text) : ''
+      const { PDFParse } = require('pdf-parse') as {
+        PDFParse: new (opts: { data: Buffer }) => { getText: () => Promise<{ text?: string }>; destroy: () => Promise<void> }
+      }
+      const parser = new PDFParse({ data: file.buffer })
+      try {
+        const data = await parser.getText()
+        return data?.text ? String(data.text) : ''
+      } finally {
+        await parser.destroy().catch(() => {})
+      }
     }
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Tesseract = require('tesseract.js')
-    const { data } = await Tesseract.recognize(file.buffer, 'eng')
+    const { data } = await Tesseract.recognize(file.buffer, 'eng', { cachePath: os.tmpdir() })
     return data?.text ? String(data.text) : ''
   } catch (err) {
     console.warn('Study load text extraction warning:', err instanceof Error ? err.message : err)
     return ''
   }
 }
-
-import { checkStudyLoadNameMatch } from '../utils/studyLoadMatcher'
 
 /**
  * Submit a student role-application with optional study load upload.
@@ -362,9 +368,8 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
       return
     }
 
-    const names = await getOwnNames(userId)
-    const firstName = names?.firstName ?? ''
-    const lastName = names?.lastName ?? ''
+    const rawNames = await getOwnNames(userId)
+    const { firstName, lastName } = resolveApplicantNames(rawNames)
 
     let autoApproved = false
     if (req.file) {
@@ -375,7 +380,16 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
     }
 
     if (autoApproved) {
-      await verifyApplicant(userId, 'approved', 'student', 'Auto-accepted: Name matched on uploaded study load', 'system')
+      const outcome = await approveStudentAutomatically(userId, {
+        email: req.user?.email ?? null,
+        studentId,
+        college,
+        degreeProgram,
+      })
+      if (outcome === 'already') {
+        res.status(409).json({ error: 'You already have verified student access' })
+        return
+      }
       res.status(200).json({
         message: 'Study load verified successfully! Your student status has been automatically approved.',
         status: 'approved',
