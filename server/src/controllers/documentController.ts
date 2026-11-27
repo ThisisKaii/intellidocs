@@ -11,7 +11,7 @@ import { getOwnerOfDocument } from '../models/formattingModel'
 
 import { enqueueLocalImport } from '../skills/processLocalImportJob'
 import { validateImportUpload } from '../skills/validateImportUpload'
-import { getImportJob, listUserImportJobs, settleStaleJob } from '../models/importJobModel'
+import { cancelImportJob as cancelJob, getImportJob, listUserImportJobs, settleStaleJob } from '../models/importJobModel'
 
 /** A document id as the client sends it with an upload. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -358,7 +358,17 @@ export async function importDocument(req: Request, res: Response): Promise<void>
 
     // The editor's in-document import needs the document back in this response.
     if (req.query.sync === '1') {
-      res.status(201).json(await importLocalFile(userId, file))
+      // The editor's Cancel drops the request: a document made after that is nobody's to open.
+      let abandoned = false
+      res.on('close', () => {
+        if (!res.writableFinished) abandoned = true
+      })
+      const document = await importLocalFile(userId, file)
+      if (abandoned) {
+        await documentModel.purgeDocument(document.id, userId).catch(() => undefined)
+        return
+      }
+      res.status(201).json(document)
       return
     }
 
@@ -420,6 +430,33 @@ export async function getImportJobStatus(req: Request, res: Response): Promise<v
       return
     }
     res.status(200).json(settleStaleJob(job))
+  } catch {
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+/** Cancel one of the caller's unfinished imports; a finished one can no longer be cancelled (409). */
+export async function cancelImportJob(req: Request, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.id
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+    const job = await getImportJob(req.params.jobId)
+    if (!job || job.userId !== userId) {
+      res.status(404).json({ error: 'Import job not found' })
+      return
+    }
+    if (job.state === 'done') {
+      res.status(409).json({ error: 'This import already finished.' })
+      return
+    }
+    if (job.state === 'failed') {
+      res.status(200).json(job)
+      return
+    }
+    res.status(200).json(await cancelJob(job.id))
   } catch {
     res.status(500).json({ error: 'Internal server error' })
   }

@@ -14,6 +14,7 @@ import type { PythonConversionResponse } from '../../schemas/predictionSchemas'
 import {
   createImportJob,
   failImportJob,
+  isImportJobCancelled,
   keepJobAlive,
   updateImportJob,
   type ImportJob,
@@ -154,7 +155,7 @@ export async function processImportJob(job: ImportJob): Promise<void> {
   const stopHeartbeat = keepJobAlive(job.id)
 
   try {
-    await updateImportJob(job.id, { state: 'downloading', progress: 0 })
+    if (!(await updateImportJob(job.id, { state: 'downloading', progress: 0 }))) return
 
     const drive = await getDriveClient(job.userId)
     const meta = await drive.files.get({ fileId: job.fileId, fields: 'name, mimeType' })
@@ -173,11 +174,16 @@ export async function processImportJob(job: ImportJob): Promise<void> {
       })
     })
 
-    await updateImportJob(job.id, { state: 'converting', progress: CONVERT_START })
-    const wake = await waitForConverter(() => updateImportJob(job.id, { waking: true }))
+    if (!(await updateImportJob(job.id, { state: 'converting', progress: CONVERT_START }))) return
+    const wake = await waitForConverter(async () => { await updateImportJob(job.id, { waking: true }) })
     if (wake.wakeMs > 0) await updateImportJob(job.id, { waking: false })
     const convertStartedAt = Date.now()
     const { html, conversion } = await convertToHtml({ userId: job.userId, pictures, filePath: tempPath, title, mimeType, buffer: null })
+    // Cancelled while it converted: its pictures go, and no document is made.
+    if (await isImportJobCancelled(job.id)) {
+      await pictures.discard()
+      return
+    }
     console.info(`[import] ${title}: converter wake ${Math.round(wake.wakeMs / 1000)}s, convert ${Math.round((Date.now() - convertStartedAt) / 1000)}s`)
 
     // The server owns document creation so the import finishes even when the
@@ -195,12 +201,14 @@ export async function processImportJob(job: ImportJob): Promise<void> {
     created = true
     // Its pictures belong to it now: deleted with it, and not counted while it is in the trash.
     await documentModel.linkDocumentImages(job.userId, document.id, [content, JSON.stringify(content_json ?? null), JSON.stringify(layout)])
-    await updateImportJob(job.id, {
+    const finished = await updateImportJob(job.id, {
       state: 'done',
       progress: 100,
       title: document.title,
       documentId: document.id,
     })
+    // Cancelled while the document was being saved: it is not wanted.
+    if (!finished) await documentModel.purgeDocument(document.id, job.userId).catch(() => undefined)
   } catch (error) {
     if (!created) await pictures.discard()
     await failImportJob(

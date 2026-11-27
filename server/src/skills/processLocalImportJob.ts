@@ -1,7 +1,8 @@
 import { readFile, rm, writeFile } from 'fs/promises'
 import os from 'os'
 import path from 'path'
-import { createImportJob, failImportJob, keepJobAlive, updateImportJob, type ImportJob } from '../models/importJobModel'
+import { createImportJob, failImportJob, isImportJobCancelled, keepJobAlive, updateImportJob, type ImportJob } from '../models/importJobModel'
+import { purgeDocument } from '../models/documentModel'
 import { importLocalFile } from './importLocalFile'
 import { waitForConverter } from './waitForConverter'
 
@@ -29,14 +30,16 @@ export async function processLocalImportJob(job: ImportJob): Promise<void> {
   const startedAt = Date.now()
   const stopHeartbeat = keepJobAlive(job.id)
   try {
-    await updateImportJob(job.id, { state: 'converting', progress: CONVERTING_PROGRESS })
+    // Cancelled while it waited behind the user's earlier imports: nothing to do.
+    if (!(await updateImportJob(job.id, { state: 'converting', progress: CONVERTING_PROGRESS }))) return
     const buffer = await readFile(filePath)
     // A sleeping converter is woken first, so the file is not sent to it (and dropped to the
     // fallback converter) while it boots.
     const wake = /\.(docx|pdf)$/i.test(job.fileName)
-      ? await waitForConverter(() => updateImportJob(job.id, { waking: true }))
+      ? await waitForConverter(async () => { await updateImportJob(job.id, { waking: true }) })
       : { reachable: true, wakeMs: 0 }
     if (wake.wakeMs > 0) await updateImportJob(job.id, { waking: false })
+    if (await isImportJobCancelled(job.id)) return
     const convertStartedAt = Date.now()
     // Report the picture uploads as they finish, about every tenth, so a long import visibly moves.
     let reported = -1
@@ -58,12 +61,14 @@ export async function processLocalImportJob(job: ImportJob): Promise<void> {
     // temp path) never races the cleanup in `finally`.
     await rm(filePath, { force: true }).catch(() => undefined)
     await updateImportJob(job.id, { state: 'converting', progress: SAVING_PROGRESS })
-    await updateImportJob(job.id, {
+    const finished = await updateImportJob(job.id, {
       state: 'done',
       progress: 100,
       title: document.title,
       documentId: document.id,
     })
+    // Cancelled while it converted: the document it made is not wanted.
+    if (!finished) await purgeDocument(document.id, job.userId).catch(() => undefined)
   } catch (error) {
     await failImportJob(job.id, error instanceof Error ? error.message : String(error))
   } finally {

@@ -5,6 +5,8 @@ interface ImportToastProps {
   items: TrackedImport[]
   /** Remove one finished row. */
   onDismiss: (id: string) => void
+  /** Stop one unfinished import. */
+  onCancel: (id: string) => void
   /** Remove every finished row. */
   onDismissAll: () => void
   /** Open the document a finished import created. */
@@ -40,7 +42,7 @@ function summary(items: TrackedImport[]): string {
  * showing every import while the user moves around the app. Finished rows stay
  * until dismissed; failures keep their reason visible.
  */
-export function ImportToast({ items, onDismiss, onDismissAll, onOpen }: ImportToastProps): JSX.Element {
+export function ImportToast({ items, onDismiss, onCancel, onDismissAll, onOpen }: ImportToastProps): JSX.Element {
   const anyFinished = items.some((item) => !isActive(item))
 
   return (
@@ -89,7 +91,29 @@ export function ImportToast({ items, onDismiss, onDismissAll, onOpen }: ImportTo
               <span style={{ fontSize: '0.75rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {item.fileName}
               </span>
-              {!active && (
+              {active ? (
+                <button
+                  type="button"
+                  onClick={() => onCancel(item.id)}
+                  aria-label={`Cancel importing ${item.fileName}`}
+                  title="Cancel import"
+                  data-testid="import-cancel"
+                  style={{
+                    fontSize: '0.6875rem',
+                    fontWeight: 600,
+                    color: 'var(--muted-foreground)',
+                    background: 'none',
+                    border: '1px solid var(--border)',
+                    borderRadius: '0.375rem',
+                    padding: '0.125rem 0.5rem',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  Cancel
+                </button>
+              ) : (
                 <button type="button" onClick={() => onDismiss(item.id)} aria-label={`Dismiss ${item.fileName}`} style={iconButton}>
                   <X style={{ width: '12px', height: '12px' }} />
                 </button>

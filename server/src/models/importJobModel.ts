@@ -25,6 +25,8 @@ export interface ImportJob {
   documentId: string
   /** True while the job waits for a sleeping converter to wake up (absent on older records). */
   waking?: boolean
+  /** The user cancelled it: it reads as failed, and its worker's later updates are ignored. */
+  cancelled?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -134,15 +136,16 @@ export async function getImportJob(jobId: string): Promise<ImportJob | null> {
 
 /**
  * Update a job's progress. Passing `html` records the converted document;
- * omitting it leaves the previously stored value untouched.
+ * omitting it leaves the previously stored value untouched. Returns false, changing nothing, when
+ * the job is gone or was cancelled (its worker then throws away what it made).
  */
 export async function updateImportJob(
   jobId: string,
   patch: Partial<Pick<ImportJob, 'state' | 'progress' | 'error' | 'title' | 'html' | 'documentId' | 'waking'>>
-): Promise<void> {
+): Promise<boolean> {
   const client = await getRedisClient()
   const existing = await getImportJob(jobId)
-  if (!existing) return
+  if (!existing || existing.cancelled) return false
 
   const merged: ImportJob = {
     ...existing,
@@ -154,6 +157,36 @@ export async function updateImportJob(
 
   rememberJob(merged)
   await client.set(jobKey(jobId), JSON.stringify(merged), { EX: JOB_TTL_SECONDS })
+  return true
+}
+
+/**
+ * Cancel an unfinished job: it reads as failed ("Import cancelled.") at once, leaves the pending
+ * queue, and its worker stops at its next step. Returns the cancelled job, or null when it is gone.
+ */
+export async function cancelImportJob(jobId: string): Promise<ImportJob | null> {
+  const existing = await getImportJob(jobId)
+  if (!existing) return null
+  const cancelled: ImportJob = {
+    ...existing,
+    state: 'failed',
+    progress: 0,
+    error: 'Import cancelled.',
+    waking: false,
+    cancelled: true,
+    updatedAt: Date.now(),
+  }
+  rememberJob(cancelled)
+  const client = await getRedisClient()
+  await client.set(jobKey(jobId), JSON.stringify(cancelled), { EX: JOB_TTL_SECONDS })
+  await removeFromQueue(jobId)
+  return cancelled
+}
+
+/** Whether the user cancelled this job (a gone job counts as cancelled: nobody is waiting for it). */
+export async function isImportJobCancelled(jobId: string): Promise<boolean> {
+  const job = await getImportJob(jobId)
+  return !job || job.cancelled === true
 }
 
 /** Mark a job failed and drop it from the pending queue. */

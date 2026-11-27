@@ -23,7 +23,8 @@ import { importDocument } from '../documentController'
 function fakeRes(): { res: Response; status: jest.Mock; json: jest.Mock } {
   const json = jest.fn()
   const status = jest.fn(() => ({ json }))
-  return { res: { status } as unknown as Response, status, json }
+  // `on` takes the close listener the sync import uses to spot a cancelled request.
+  return { res: { status, on: jest.fn() } as unknown as Response, status, json }
 }
 
 /** Build a fake import request. */

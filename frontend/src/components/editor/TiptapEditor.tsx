@@ -1887,6 +1887,8 @@ export function TiptapToolbar({
     setColumnsDraft(next)
   }
   const [isImporting, setIsImporting] = useState(false)
+  // The running in-editor import, so Cancel can stop it before it replaces the document.
+  const importAbortRef = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -2112,8 +2114,11 @@ export function TiptapToolbar({
     if (!file) return
 
     setIsImporting(true)
+    const controller = new AbortController()
+    importAbortRef.current = controller
     try {
-      const importedDoc = await api.documents.import(file)
+      const importedDoc = await api.documents.import(file, controller.signal)
+      if (controller.signal.aborted) return
       if (importedDoc?.content && editor) {
         const content = clampImageWidthsInHtml(
           importedDoc.content,
@@ -2129,6 +2134,8 @@ export function TiptapToolbar({
         })
       }
     } catch (error) {
+      // Cancelled: the document stays as it was.
+      if (controller.signal.aborted) return
       console.error('File import failed:', error)
       const reader = new FileReader()
       reader.onload = (event) => {
@@ -2150,6 +2157,7 @@ export function TiptapToolbar({
       }
       reader.readAsText(file)
     } finally {
+      if (importAbortRef.current === controller) importAbortRef.current = null
       setIsImporting(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
@@ -3146,6 +3154,31 @@ export function TiptapToolbar({
           <FileUp style={{ width: '14px', height: '14px' }} />
           {isImporting ? 'Importing…' : 'Import File'}
         </button>
+        {isImporting && (
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              importAbortRef.current?.abort()
+            }}
+            title="Cancel import"
+            data-testid="editor-import-cancel"
+            style={{
+              height: '24px',
+              padding: '0 8px',
+              borderRadius: '6px',
+              border: '1px solid var(--border)',
+              backgroundColor: 'transparent',
+              color: 'var(--muted-foreground)',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Cancel
+          </button>
+        )}
 
       </RibbonGroup>
       </div>

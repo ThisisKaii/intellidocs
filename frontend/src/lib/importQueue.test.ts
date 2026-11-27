@@ -27,6 +27,7 @@ function setup(api: Partial<ImportQueueApi>, storage = memoryStorage(), onJobDon
     queueImport: vi.fn(),
     getJob: vi.fn(),
     listJobs: vi.fn().mockResolvedValue([]),
+    cancelJob: vi.fn().mockResolvedValue(undefined),
     ...api,
   }
   const queue = new ImportQueue(full, storage, (items) => { rows.current = items }, onJobDone)
@@ -144,5 +145,46 @@ describe('ImportQueue', () => {
     queue.dispose()
     await queue.pollOnce()
     expect(rows.current[0].state).toBe('queued')
+  })
+
+  it('cancels a server job: the row leaves and the server is told', async () => {
+    const { queue, rows, api } = setup({ queueImport: vi.fn().mockResolvedValue({ jobId: 'job-1' }) })
+    await queue.enqueueFiles([file('a.docx')])
+    queue.cancel('job-1')
+    queue.dispose()
+    expect(rows.current).toEqual([])
+    expect(api.cancelJob).toHaveBeenCalledWith('job-1')
+  })
+
+  it('aborts an upload still in flight and never adopts its job', async () => {
+    let signal: AbortSignal | undefined
+    let answer: (value: { jobId: string }) => void = () => undefined
+    const queueImport = vi.fn((_file: File, s?: AbortSignal) => {
+      signal = s
+      return new Promise<{ jobId: string }>((resolve) => { answer = resolve })
+    })
+    const { queue, rows, api } = setup({ queueImport })
+    const done = queue.enqueueFiles([file('a.docx')])
+    await Promise.resolve()
+    queue.cancel(rows.current[0].id)
+    expect(signal?.aborted).toBe(true)
+    expect(rows.current).toEqual([])
+    // The server took the file anyway: its job is cancelled, and no row comes back.
+    answer({ jobId: 'job-late' })
+    await done
+    queue.dispose()
+    expect(rows.current).toEqual([])
+    expect(api.cancelJob).toHaveBeenCalledWith('job-late')
+  })
+
+  it('skips a queued file that was cancelled before its upload started', async () => {
+    const queueImport = vi.fn().mockResolvedValue({ jobId: 'job-a' })
+    const { queue, rows } = setup({ queueImport })
+    const done = queue.enqueueFiles([file('a.docx'), file('b.docx')])
+    queue.cancel(rows.current[1].id)
+    await done
+    queue.dispose()
+    expect(queueImport).toHaveBeenCalledTimes(1)
+    expect(rows.current.map((r) => r.fileName)).toEqual(['a.docx'])
   })
 })

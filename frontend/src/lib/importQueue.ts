@@ -30,7 +30,9 @@ export interface TrackedImport {
 
 /** The server calls the queue needs; injected so tests can fake them. */
 export interface ImportQueueApi {
-  queueImport: (file: File) => Promise<{ jobId: string }>
+  queueImport: (file: File, signal?: AbortSignal) => Promise<{ jobId: string }>
+  /** Cancel a server job (it may have finished meanwhile: the call then fails, harmlessly). */
+  cancelJob: (jobId: string) => Promise<void>
   getJob: (jobId: string) => Promise<ImportJob>
   listJobs: () => Promise<ImportJob[]>
 }
@@ -91,6 +93,10 @@ export class ImportQueue {
   private stopped = false
   /** Consecutive "not found" polls per job id (see NOT_FOUND_LIMIT). */
   private notFound = new Map<string, number>()
+  /** Uploads in flight, by their temporary row id, so Cancel can abort them. */
+  private uploads = new Map<string, AbortController>()
+  /** Upload rows the user cancelled before the server answered. */
+  private cancelledUploads = new Set<string>()
 
   constructor(
     private readonly api: ImportQueueApi,
@@ -122,15 +128,26 @@ export class ImportQueue {
 
     this.uploadChain = this.uploadChain.then(async () => {
       for (const { file, row } of pending) {
+        if (this.cancelledUploads.delete(row.id)) continue
+        const controller = new AbortController()
+        this.uploads.set(row.id, controller)
         try {
-          const { jobId } = await this.api.queueImport(file)
+          const { jobId } = await this.api.queueImport(file, controller.signal)
+          if (this.cancelledUploads.delete(row.id)) {
+            // Cancelled just as the server took the file: stop the job it started.
+            void this.api.cancelJob(jobId).catch(() => undefined)
+            continue
+          }
           this.replace(row.id, { ...row, id: jobId, state: 'queued' })
         } catch (error) {
+          if (this.cancelledUploads.delete(row.id)) continue
           this.replace(row.id, {
             ...row,
             state: 'failed',
             error: error instanceof Error ? error.message : 'Upload failed.',
           })
+        } finally {
+          this.uploads.delete(row.id)
         }
       }
       this.schedulePoll(0)
@@ -169,6 +186,26 @@ export class ImportQueue {
     if (adopted.length === 0) return
     this.emit([...this.items, ...adopted])
     this.schedulePoll(0)
+  }
+
+  /**
+   * Cancel an unfinished import and take its row off the toast: an upload still in flight is
+   * aborted, a server job is told to stop (and drop any document it already made).
+   */
+  cancel(id: string): void {
+    const item = this.items.find((candidate) => candidate.id === id)
+    if (!item || !isActive(item)) return
+    this.emit(this.items.filter((candidate) => candidate.id !== id))
+    if (item.state === 'uploading') {
+      this.cancelledUploads.add(id)
+      this.uploads.get(id)?.abort()
+      return
+    }
+    this.notFound.delete(id)
+    void this.api
+      .cancelJob(id)
+      // It may have finished just before the cancel arrived: show its document in the list.
+      .catch(() => this.onJobDone(item))
   }
 
   /** Remove one finished row from the toast. */

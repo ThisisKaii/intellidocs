@@ -1635,23 +1635,29 @@ export const api = {
         (await fetchAPI<{ tabs: DocumentTabSummary[] }>(`documents/${id}/tabs/${tabId}`, { method: 'DELETE' })).tabs,
     },
     /** Import a file and wait for the created document (used by the editor's own import). */
-    import: async (file: File): Promise<DocumentRecord> => {
+    import: async (file: File, signal?: AbortSignal): Promise<DocumentRecord> => {
       const formData = new FormData()
       formData.append('file', file)
       // Do NOT set Content-Type — browser sets the multipart boundary automatically
       return fetchAPI<DocumentRecord>('documents/import?sync=1', {
         method: 'POST',
         body: formData,
+        signal,
       })
     },
     /** Hand a file to the server's background import queue; resolves once it is accepted. */
-    queueImport: async (file: File): Promise<{ jobId: string }> => {
+    queueImport: async (file: File, signal?: AbortSignal): Promise<{ jobId: string }> => {
       const formData = new FormData()
       formData.append('file', file)
       return fetchAPI<{ jobId: string }>('documents/import', {
         method: 'POST',
         body: formData,
+        signal,
       })
+    },
+    /** Cancel an unfinished background import (the server drops whatever it already made). */
+    cancelImportJob: async (jobId: string): Promise<void> => {
+      await fetchAPI<unknown>(`documents/imports/${jobId}`, { method: 'DELETE' })
     },
     /** Fetch one background import job. */
     getImportJob: async (jobId: string): Promise<ImportJob> => {

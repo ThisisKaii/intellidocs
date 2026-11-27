@@ -2,6 +2,7 @@ import type { ImportJob } from '../../models/importJobModel'
 
 const jobs = new Map<string, ImportJob>()
 const importLocalFile = jest.fn()
+const purgeDocument = jest.fn(async () => undefined)
 
 jest.mock('../../models/importJobModel', () => ({
   // The heartbeat timer is not part of what these tests check.
@@ -15,11 +16,18 @@ jest.mock('../../models/importJobModel', () => ({
     return job
   },
   updateImportJob: async (id: string, patch: Partial<ImportJob>) => {
-    jobs.set(id, { ...(jobs.get(id) as ImportJob), ...patch })
+    const job = jobs.get(id)
+    if (!job || job.cancelled) return false
+    jobs.set(id, { ...job, ...patch })
+    return true
   },
+  isImportJobCancelled: async (id: string) => jobs.get(id)?.cancelled === true,
   failImportJob: async (id: string, error: string) => {
     jobs.set(id, { ...(jobs.get(id) as ImportJob), state: 'failed', error, progress: 0 })
   },
+}))
+jest.mock('../../models/documentModel', () => ({
+  purgeDocument: (...args: unknown[]) => purgeDocument(...(args as [])),
 }))
 jest.mock('../importLocalFile', () => ({
   importLocalFile: (...args: unknown[]) => importLocalFile(...args),
@@ -46,6 +54,7 @@ describe('enqueueLocalImport', () => {
   beforeEach(() => {
     jobs.clear()
     importLocalFile.mockReset()
+    purgeDocument.mockClear()
   })
 
   it('returns a queued local job immediately and records the new document id on finish', async () => {
@@ -87,6 +96,28 @@ describe('enqueueLocalImport', () => {
     await settled(a.id)
     await settled(b.id)
     expect(peak).toBe(1)
+  })
+
+  it('skips a job cancelled while it waited its turn', async () => {
+    importLocalFile.mockResolvedValue({ id: 'doc-1', title: 'A' })
+    const job = { id: 'job-c', userId: 'u1', fileName: 'A.docx' } as ImportJob
+    jobs.set(job.id, { ...job, state: 'failed', error: 'Import cancelled.', cancelled: true } as ImportJob)
+    await processLocalImportJob(job)
+    expect(importLocalFile).not.toHaveBeenCalled()
+    expect(jobs.get('job-c')?.state).toBe('failed')
+  })
+
+  it('deletes the document of a job cancelled while it converted', async () => {
+    importLocalFile.mockImplementation(async () => {
+      // The user cancels while the converter works.
+      jobs.set('job-1', { ...(jobs.get('job-1') as ImportJob), state: 'failed', error: 'Import cancelled.', cancelled: true })
+      return { id: 'doc-late', title: 'Late' }
+    })
+    const job = await enqueueLocalImport('u3', { buffer: Buffer.from('a'), originalname: 'Late.docx' })
+    for (let i = 0; i < 100 && purgeDocument.mock.calls.length === 0; i += 1) await new Promise((r) => setTimeout(r, 5))
+    expect(purgeDocument).toHaveBeenCalledWith('doc-late', 'u3')
+    expect(jobs.get(job.id)?.state).toBe('failed')
+    expect(jobs.get(job.id)?.documentId).toBe('')
   })
 
   it('fails a job whose stored upload is missing', async () => {

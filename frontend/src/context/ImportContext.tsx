@@ -36,7 +36,8 @@ export function ImportProvider({ children }: { children: ReactNode }): JSX.Eleme
   useEffect(() => {
     const queue = new ImportQueue(
       {
-        queueImport: (file) => api.documents.queueImport(file),
+        queueImport: (file, signal) => api.documents.queueImport(file, signal),
+        cancelJob: (jobId) => api.documents.cancelImportJob(jobId),
         getJob: (jobId) => api.documents.getImportJob(jobId),
         listJobs: () => api.documents.listImportJobs(),
       },
@@ -75,6 +76,7 @@ export function ImportProvider({ children }: { children: ReactNode }): JSX.Eleme
         <ImportToast
           items={items}
           onDismiss={(id) => queueRef.current?.dismiss(id)}
+          onCancel={(id) => queueRef.current?.cancel(id)}
           onDismissAll={() => queueRef.current?.dismissFinished()}
           onOpen={(documentId) => navigate(`/document/${documentId}`)}
         />

@@ -82,6 +82,7 @@ router.post('/import', validateQuery(importQuerySchema), upload.single('file'), 
 /** Background import jobs for the caller. Must be before /:id */
 router.get('/imports', documentController.listImportJobs)
 router.get('/imports/:jobId', documentController.getImportJobStatus)
+router.delete('/imports/:jobId', documentController.cancelImportJob)
 
 /** Upload an editor image and get back its public URL. Must be before /:id */
 router.post('/images', imageUpload.single('image'), documentController.uploadImage)
