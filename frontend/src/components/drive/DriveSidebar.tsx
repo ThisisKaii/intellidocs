@@ -306,7 +306,7 @@ function DriveSidebar({
             <HardDrive className="size-3.5" /> Storage
           </span>
           <span className="text-xs text-foreground font-semibold tabular-nums">
-            {storage ? `${formatBytes(storage.usedBytes)} / ${storage.quotaBytes === null ? 'Unlimited' : formatBytes(storage.quotaBytes)}` : '— / —'}
+            {storage ? `${formatBytes(storage.usedBytes)} / ${storage.quotaBytes === null ? '350 MB' : formatBytes(storage.quotaBytes)}` : '— / —'}
           </span>
         </div>
         <div className="w-full h-1.5 rounded-full bg-secondary overflow-hidden">

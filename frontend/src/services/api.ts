@@ -262,7 +262,7 @@ interface GoogleSyncResponse {
 /** Signed-in user's own storage usage vs their account quota. */
 export interface StorageSummary {
   usedBytes: number
-  /** Null when the plan has unlimited storage (Pro). */
+  /** Quota in bytes (Pro raises user/student/professor accounts to 350 MB; null if uncapped). */
   quotaBytes: number | null
   role: RoleName
   plan?: Plan
@@ -992,6 +992,19 @@ export interface WebCheckOptions {
   chapterTitle?: string
   pageStart?: number
   pageEnd?: number
+}
+
+export type WebCheckJobStatus = 'running' | 'completed' | 'failed'
+
+export interface WebCheckJobRecord {
+  jobId: string
+  documentId: string
+  status: WebCheckJobStatus
+  scopeLabel: string
+  result?: WebOriginalityResult
+  error?: string
+  startedAt: string
+  updatedAt: string
 }
 
 /** Result of checking a document against the web and scholarly sources. */
@@ -2201,6 +2214,23 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documentId, ...options }),
       })
+    },
+    /** Start an async online originality check and return its job handle right away so users can leave the page. */
+    startWebCheck: async (documentId: string, options?: WebCheckOptions): Promise<WebCheckJobRecord> => {
+      return fetchAPI<WebCheckJobRecord>('plagiarism/web-check/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId, ...options }),
+      })
+    },
+    /** Poll the status (and completed result) of an async web originality check. */
+    getWebCheckJob: async (jobId: string): Promise<WebCheckJobRecord> => {
+      return fetchAPI<WebCheckJobRecord>(`plagiarism/web-check/${jobId}`)
+    },
+    /** Read the latest tracked async web originality check for a document, or null when none exists. */
+    getLatestWebCheck: async (documentId: string): Promise<WebCheckJobRecord | null> => {
+      const res = await fetchAPI<{ job: WebCheckJobRecord | null }>(`plagiarism/web-check/document/${documentId}`)
+      return res.job
     },
     /** Ask the AI judges to review this document's overlapping passages (nothing stored). */
     selfCheckReview: async (documentId: string): Promise<OriginalityReview> => {

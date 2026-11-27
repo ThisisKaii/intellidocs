@@ -63,6 +63,7 @@ import { hasDriftedFromPreset } from '@/components/editor/documentBlueprints'
 import PresetForkPrompt from '@/components/PresetForkPrompt'
 import { applyStyleCommand } from '@/components/editor/styleCommands'
 import WordProgress from '@/components/editor/WordProgress'
+import { useWebOriginalityJob } from '@/lib/originalityJobs'
 import DocumentZoomWidget, { clampZoom, ZOOM_STEP } from '@/components/editor/DocumentZoomWidget'
 import { PAGE_SIZES } from '@/components/editor/HeaderFooterPlugin'
 import { useAuth } from '@/hooks/useAuth'
@@ -264,6 +265,7 @@ export default function Document(): JSX.Element {
   /** Why the document could not be opened (no access, or gone); null once it loads. */
   const [loadError, setLoadError] = useState<string | null>(null)
   const readOnly = searchParams.get('readonly') === '1' || viewOnly
+  const originalityJob = useWebOriginalityJob(!readOnly && id ? id : '')
   const [docOwnerId, setDocOwnerId] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState<boolean>(false)
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false)
@@ -4276,11 +4278,31 @@ export default function Document(): JSX.Element {
             {id && !readOnly && (
               <Link
                 to={`/document/${id}/originality`}
-                title="Check originality against online and scholarly sources"
+                title={
+                  originalityJob.job?.status === 'running'
+                    ? 'Originality check running in the background — click to view progress'
+                    : originalityJob.job?.status === 'completed'
+                      ? `Originality check ready (${originalityJob.job.result?.overlap_percent ?? 0}% match) — click to view report`
+                      : 'Check originality against online and scholarly sources'
+                }
                 aria-label="Check originality against online and scholarly sources"
-                className="inline-flex items-center justify-center size-8 rounded-lg border border-transparent bg-transparent text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                className={`relative inline-flex items-center justify-center size-8 rounded-lg border transition-colors ${
+                  originalityJob.job?.status === 'running'
+                    ? 'bg-primary/10 text-primary border-primary/20'
+                    : 'border-transparent bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground'
+                }`}
               >
-                <ShieldCheck className="size-4" strokeWidth={1.75} />
+                {originalityJob.job?.status === 'running' ? (
+                  <Loader2 className="size-4 animate-spin" strokeWidth={1.75} />
+                ) : (
+                  <ShieldCheck className="size-4" strokeWidth={1.75} />
+                )}
+                {originalityJob.job?.status === 'completed' && !originalityJob.dismissed && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-emerald-500"
+                  />
+                )}
               </Link>
             )}
 
@@ -4678,7 +4700,7 @@ export default function Document(): JSX.Element {
           {!readOnly && (
             <WordProgress
               wordCount={totalWordCount}
-              targetWords={3000}
+              documentId={id}
               wordsPerPage={pageSize === 'a4' ? 300 : 275}
             />
           )}
@@ -4764,6 +4786,41 @@ export default function Document(): JSX.Element {
               {tabError}
               <button type="button" onClick={() => setTabError('')} style={{ border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600 }}>
                 Dismiss
+              </button>
+            </div>
+          )}
+
+          {id && !readOnly && originalityJob.job && !originalityJob.dismissed && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="fixed bottom-12 right-6 z-40 flex items-center gap-3 rounded-lg border border-border bg-card px-3.5 py-2 text-xs text-foreground shadow-lg"
+            >
+              {originalityJob.job.status === 'running' ? (
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+              ) : (
+                <ShieldCheck className="size-3.5 shrink-0 text-primary" />
+              )}
+              <span>
+                {originalityJob.job.status === 'running'
+                  ? `Checking originality (${originalityJob.job.scopeLabel}) in the background…`
+                  : originalityJob.job.status === 'completed'
+                    ? `Originality check ready (${originalityJob.job.result?.overlap_percent ?? 0}% match)`
+                    : 'Originality check failed'}
+              </span>
+              <Link
+                to={`/document/${id}/originality`}
+                className="font-semibold text-primary no-underline hover:underline"
+              >
+                {originalityJob.job.status === 'completed' ? 'View report' : originalityJob.job.status === 'failed' ? 'Retry' : 'Open'}
+              </Link>
+              <button
+                type="button"
+                aria-label="Dismiss originality status"
+                onClick={originalityJob.dismissNotice}
+                className="border-0 bg-transparent p-0 text-muted-foreground cursor-pointer hover:text-foreground"
+              >
+                ×
               </button>
             </div>
           )}

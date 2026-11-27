@@ -7,9 +7,9 @@ import {
   type DocumentRecord,
   type WebCheckOptions,
   type WebOriginalityPassage,
-  type WebOriginalityResult,
   type WebSourceKind,
 } from '@/services/api'
+import { useWebOriginalityJob } from '@/lib/originalityJobs'
 import { PageHeader } from '@/components/PageHeader'
 import { editorExtensions } from '@/components/editor/TiptapEditor'
 import {
@@ -62,16 +62,19 @@ type CheckScope = 'all' | 'chapter' | 'pages'
 export default function Originality(): JSX.Element {
   const { id = '' } = useParams<{ id: string }>()
   const [document, setDocument] = useState<DocumentRecord | null>(null)
-  const [webResult, setWebResult] = useState<WebOriginalityResult | null>(null)
-  const [webChecking, setWebChecking] = useState<boolean>(false)
-  const [error, setError] = useState<string | null>(null)
+  const [docError, setDocError] = useState<string | null>(null)
+  const { job, starting, startError, startCheck } = useWebOriginalityJob(id)
+
+  const webChecking = starting || job?.status === 'running'
+  const webResult = job?.status === 'completed' ? job.result ?? null : null
+  const activeScopeLabel = job?.scopeLabel ?? ''
+  const error = docError ?? startError ?? (job?.status === 'failed' ? job.error ?? 'The online check failed.' : null)
 
   // Scope controls
   const [scope, setScope] = useState<CheckScope>('all')
   const [selectedChapter, setSelectedChapter] = useState<string>('')
   const [pageStart, setPageStart] = useState<number>(1)
   const [pageEnd, setPageEnd] = useState<number>(5)
-  const [activeScopeLabel, setActiveScopeLabel] = useState<string>('')
 
   const editor = useEditor({ extensions: VIEW_EXTENSIONS, content: '', editable: false })
 
@@ -112,32 +115,16 @@ export default function Originality(): JSX.Element {
     return shown.map((passage) => ({ id: `${passage.paragraph_index}`, text: passage.text }))
   }, [webResult])
 
-  /** Search the web and scholarly sources for text copied into the document. */
+  /** Start an async online originality check that keeps running even if the user goes back to the editor. */
   async function runWebCheck(): Promise<void> {
-    setWebChecking(true)
-    setError(null)
+    setDocError(null)
     const options: WebCheckOptions = {
       scope,
       chapterTitle: scope === 'chapter' ? selectedChapter : undefined,
       pageStart: scope === 'pages' ? pageStart : undefined,
       pageEnd: scope === 'pages' ? pageEnd : undefined,
     }
-
-    if (scope === 'chapter' && selectedChapter) {
-      setActiveScopeLabel(`Chapter: ${selectedChapter}`)
-    } else if (scope === 'pages') {
-      setActiveScopeLabel(`Pages ${pageStart}–${pageEnd}`)
-    } else {
-      setActiveScopeLabel('Entire document')
-    }
-
-    try {
-      setWebResult(await api.plagiarism.webCheck(id, options))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'The online check failed.')
-    } finally {
-      setWebChecking(false)
-    }
+    await startCheck(options)
   }
 
   useEffect(() => {
@@ -151,7 +138,7 @@ export default function Originality(): JSX.Element {
         setDocument(body === null ? record : { ...record, content: body })
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not open this document.')
+        if (!cancelled) setDocError(err instanceof Error ? err.message : 'Could not open this document.')
       })
     return () => {
       cancelled = true
@@ -303,9 +290,14 @@ export default function Originality(): JSX.Element {
           <aside className="flex flex-col gap-3">
             <div className="rounded-xl border border-border bg-card p-4">
               {webChecking ? (
-                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin text-primary" />
-                  <span>Searching online sources for {activeScopeLabel || 'selected content'}…</span>
+                <div className="space-y-1.5 py-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+                    <span>Searching online sources for {activeScopeLabel || 'selected content'}…</span>
+                  </div>
+                  <p className="m-0 pl-6 text-xs text-muted-foreground">
+                    Running in the background — you can safely go back to the document while waiting.
+                  </p>
                 </div>
               ) : webResult ? (
                 <>

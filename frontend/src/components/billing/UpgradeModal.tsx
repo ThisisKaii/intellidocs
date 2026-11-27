@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Gauge, HardDrive, Infinity as InfinityIcon, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
+import { Check, Database, Gauge, HardDrive, Loader2, ShieldCheck, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { api, type SubscriptionStatus } from '@/services/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -10,7 +10,7 @@ const GATEWAY_DELAY_MS = 1500
 const PRICE_LABEL = '₱249 / month'
 
 const PERKS = [
-  { icon: InfinityIcon, title: 'Unlimited storage', detail: 'No more 25–250 MB cap on your documents and pictures.' },
+  { icon: Database, title: '350 MB storage', detail: 'Upgrade past the 25–250 MB cap for documents and pictures.' },
   { icon: Gauge, title: 'Priority ML suggestions', detail: 'Formatting predictions served ahead of the free queue.' },
   { icon: ShieldCheck, title: 'Extended originality checks', detail: 'Longer documents and more sources per scan.' },
   { icon: HardDrive, title: 'Everything in your current tier', detail: 'Verified student and professor tools stay unlocked.' },
@@ -121,7 +121,7 @@ export function UpgradeModal({ open, onOpenChange }: { open: boolean; onOpenChan
             </span>
             <DialogTitle className="mt-4">You're on Pro</DialogTitle>
             <DialogDescription className="mt-1">
-              Unlimited storage is active. Next billing date: {formatBillingDate(status?.renewsAt ?? null)}.
+              350 MB storage is active. Next billing date: {formatBillingDate(status?.renewsAt ?? null)}.
             </DialogDescription>
             <button type="button" onClick={() => onOpenChange(false)} className="btn-primary mt-6 min-h-[44px] px-6 active:scale-[0.98]">
               Start writing

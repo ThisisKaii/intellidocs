@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { ClipboardCheck, Globe2, Loader2, RefreshCw, Square, Users, X } from 'lucide-react'
 import { api, type GlobalScopeFilters, type PlagiarismScanDetail, type PlagiarismScope } from '@/services/api'
 import { SimilarityMatrix } from '@/components/editor/SimilarityMatrix'
@@ -10,6 +10,45 @@ interface ScanProgress {
   done: number
   total: number
   title: string
+}
+
+interface BatchScanState {
+  folderId: string
+  scope: PlagiarismScope
+  scanning: boolean
+  progress: ScanProgress | null
+  refreshKey: number
+  notice: { tone: 'ok' | 'error'; text: string } | null
+  finished: { text: string; report: PlagiarismScanDetail | null } | null
+}
+
+let batchState: BatchScanState = {
+  folderId: '',
+  scope: 'local',
+  scanning: false,
+  progress: null,
+  refreshKey: 0,
+  notice: null,
+  finished: null,
+}
+let cancelBatchRequested = false
+let latestOnScanned: (() => void) | null = null
+const batchListeners = new Set<() => void>()
+
+function updateBatchState(patch: Partial<BatchScanState>): void {
+  batchState = { ...batchState, ...patch }
+  for (const listener of batchListeners) listener()
+}
+
+function subscribeBatch(listener: () => void): () => void {
+  batchListeners.add(listener)
+  return () => {
+    batchListeners.delete(listener)
+  }
+}
+
+function getBatchSnapshot(): BatchScanState {
+  return batchState
 }
 
 /** How often a running scan is checked, and how long one is waited for before moving on. */
@@ -37,19 +76,22 @@ function distinct(values: Array<string | null | undefined>): string[] {
 
 /** Local/global toggle, scan runner and similarity matrix for the professor's classes. */
 export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; onScanned: () => void }): JSX.Element {
-  const [folderId, setFolderId] = useState(classes[0]?.folder.folder_id ?? '')
-  const [scope, setScope] = useState<PlagiarismScope>('local')
-  const [scanning, setScanning] = useState(false)
-  const [progress, setProgress] = useState<ScanProgress | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+  const { folderId, scope, scanning, progress, refreshKey, notice, finished } = useSyncExternalStore(
+    subscribeBatch,
+    getBatchSnapshot,
+    getBatchSnapshot,
+  )
   const [detail, setDetail] = useState<PlagiarismScanDetail | null>(null)
-  // The toast shown when a batch of scans is done, with the last finished report.
-  const [finished, setFinished] = useState<{ text: string; report: PlagiarismScanDetail | null } | null>(null)
-  const cancelRef = useRef(false)
   const [term, setTerm] = useState('')
   const [classCode, setClassCode] = useState('')
   const [includePast, setIncludePast] = useState(true)
+
+  useEffect(() => {
+    latestOnScanned = onScanned
+    return () => {
+      if (latestOnScanned === onScanned) latestOnScanned = null
+    }
+  }, [onScanned])
 
   const classNames = useMemo(() => Object.fromEntries(classes.map((c) => [c.folder.folder_id, c.folder.name])), [classes])
   const selected = classes.find((c) => c.folder.folder_id === folderId) ?? classes[0]
@@ -62,16 +104,16 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
 
   /** Scan every submission in the selected class in the chosen scope; Stop ends it after the current document. */
   async function runScans(): Promise<void> {
-    if (!selected || scanning) return
+    if (!selected || batchState.scanning) return
     const docs = selected.submissions
     if (docs.length === 0) {
-      setNotice({ tone: 'error', text: 'This class has no submissions to scan yet.' })
+      updateBatchState({ notice: { tone: 'error', text: 'This class has no submissions to scan yet.' } })
       return
     }
-    cancelRef.current = false
-    setScanning(true)
-    setNotice(null)
-    setFinished(null)
+    const runScope = batchState.scope
+    const runFolderId = activeFolderId
+    cancelBatchRequested = false
+    updateBatchState({ folderId: runFolderId, scanning: true, notice: null, finished: null })
     let done = 0
     let failed = 0
     let stillRunning = 0
@@ -79,13 +121,13 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
     const refused: string[] = []
     try {
       // One scan at a time: each answers at once and the council works on the server, so the page
-      // stays usable; the next submission starts when the last one is done.
+      // stays usable (and switching dashboard tabs preserves progress).
       for (const doc of docs) {
-        if (cancelRef.current) break
-        setProgress({ done, total: docs.length, title: doc.title || 'Untitled' })
+        if (cancelBatchRequested) break
+        updateBatchState({ progress: { done, total: docs.length, title: doc.title || 'Untitled' } })
         let started: PlagiarismScanDetail
         try {
-          started = await api.plagiarism.runScan(activeFolderId, doc.id, scope, filters)
+          started = await api.plagiarism.runScan(runFolderId, doc.id, runScope, filters)
         } catch (err) {
           // A submission the server refuses (too short to scan) is skipped, not the whole batch.
           refused.push(`${doc.title || 'Untitled'}: ${err instanceof Error ? err.message : 'could not be scanned'}`)
@@ -98,18 +140,19 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
         else report = result
         done += 1
       }
-      const parts = [`${cancelRef.current ? 'Stopped after' : 'Scanned'} ${done} of ${docs.length} submissions (${scope === 'global' ? 'all your classes' : 'this class'}).`]
+      const parts = [`${cancelBatchRequested ? 'Stopped after' : 'Scanned'} ${done} of ${docs.length} submissions (${runScope === 'global' ? 'all your classes' : 'this class'}).`]
       if (failed > 0) parts.push(`${failed} could not finish; run them again.`)
       if (stillRunning > 0) parts.push(`${stillRunning} still running; you will be notified when done.`)
       if (refused.length > 0) parts.push(`Not scanned: ${refused.join('; ')}`)
-      setFinished({ text: parts.join(' '), report })
-      setRefreshKey((key) => key + 1)
-      onScanned()
+      updateBatchState({
+        finished: { text: parts.join(' '), report },
+        refreshKey: batchState.refreshKey + 1,
+      })
+      latestOnScanned?.()
     } catch (err) {
-      setNotice({ tone: 'error', text: err instanceof Error ? err.message : 'Scan failed' })
+      updateBatchState({ notice: { tone: 'error', text: err instanceof Error ? err.message : 'Scan failed' } })
     } finally {
-      setProgress(null)
-      setScanning(false)
+      updateBatchState({ progress: null, scanning: false })
     }
   }
 
@@ -119,12 +162,12 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
       const scans = await api.plagiarism.listFolderScans(activeFolderId)
       const scan = scans.find((entry) => entry.user_id === studentId)
       if (!scan) {
-        setNotice({ tone: 'error', text: 'No scan recorded for this student yet. Run a scan first.' })
+        updateBatchState({ notice: { tone: 'error', text: 'No scan recorded for this student yet. Run a scan first.' } })
         return
       }
       setDetail(await api.plagiarism.getScan(scan.scan_id))
     } catch (err) {
-      setNotice({ tone: 'error', text: err instanceof Error ? err.message : 'Failed to load the scan' })
+      updateBatchState({ notice: { tone: 'error', text: err instanceof Error ? err.message : 'Failed to load the scan' } })
     }
   }
 
@@ -135,13 +178,13 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <select aria-label="Class" value={activeFolderId} onChange={(e) => setFolderId(e.target.value)} className="h-9 rounded-md border border-border bg-background px-3 text-sm">
+        <select aria-label="Class" value={activeFolderId} onChange={(e) => updateBatchState({ folderId: e.target.value })} className="h-9 rounded-md border border-border bg-background px-3 text-sm">
           {classes.map((c) => <option key={c.folder.folder_id} value={c.folder.folder_id}>{c.folder.name}</option>)}
         </select>
 
         <div role="group" aria-label="Scope" className="inline-flex rounded-md border border-border p-0.5">
           {([['local', 'This class', Users], ['global', 'All my classes', Globe2]] as const).map(([key, label, Icon]) => (
-            <button key={key} type="button" aria-pressed={scope === key} onClick={() => setScope(key)} className={`inline-flex h-8 items-center gap-1.5 rounded px-3 text-sm font-medium ${scope === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            <button key={key} type="button" aria-pressed={scope === key} onClick={() => updateBatchState({ scope: key })} className={`inline-flex h-8 items-center gap-1.5 rounded px-3 text-sm font-medium ${scope === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
               <Icon className="size-3.5" /> {label}
             </button>
           ))}
@@ -149,7 +192,7 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
 
         <div className="ml-auto flex items-center gap-2">
           {scanning ? (
-            <button type="button" onClick={() => { cancelRef.current = true }} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-4 text-sm font-medium hover:bg-secondary">
+            <button type="button" onClick={() => { cancelBatchRequested = true }} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-4 text-sm font-medium hover:bg-secondary">
               <Square className="size-3.5" /> Stop
             </button>
           ) : (
@@ -157,7 +200,7 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
               <ClipboardCheck className="size-4" /> Scan submissions
             </button>
           )}
-          <button type="button" onClick={() => setRefreshKey((key) => key + 1)} aria-label="Refresh matrix" className="inline-flex size-9 items-center justify-center rounded-md border border-border hover:bg-secondary">
+          <button type="button" onClick={() => updateBatchState({ refreshKey: batchState.refreshKey + 1 })} aria-label="Refresh matrix" className="inline-flex size-9 items-center justify-center rounded-md border border-border hover:bg-secondary">
             <RefreshCw className="size-4" />
           </button>
         </div>
@@ -224,7 +267,7 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
                 type="button"
                 onClick={() => {
                   setDetail(finished.report)
-                  setFinished(null)
+                  updateBatchState({ finished: null })
                 }}
                 className="mt-2 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
               >
@@ -232,7 +275,7 @@ export function PlagiarismPanel({ classes, onScanned }: { classes: ClassData[]; 
               </button>
             )}
           </div>
-          <button type="button" aria-label="Dismiss" onClick={() => setFinished(null)} className="text-muted-foreground hover:text-foreground">
+          <button type="button" aria-label="Dismiss" onClick={() => updateBatchState({ finished: null })} className="text-muted-foreground hover:text-foreground">
             <X className="size-4" />
           </button>
         </div>

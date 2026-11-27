@@ -72,7 +72,7 @@ export function BillingSection(): JSX.Element {
             </>
           ) : (
             <div className="flex flex-col items-start gap-3">
-              <p className="text-sm text-muted-foreground">Unlimited storage, priority ML suggestions and extended originality checks.</p>
+              <p className="text-sm text-muted-foreground">350 MB storage, priority ML suggestions and extended originality checks.</p>
               <button type="button" onClick={() => setUpgradeOpen(true)} className="btn-primary inline-flex min-h-[44px] items-center gap-2 px-5 active:scale-[0.98]">
                 <Sparkles className="size-4" /> Upgrade to Pro
               </button>
