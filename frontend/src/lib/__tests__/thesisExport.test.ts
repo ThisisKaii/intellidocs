@@ -36,4 +36,16 @@ describe('PDF export HTML builder', () => {
     expect(document.getElementById('intellidocs-pdf-print-frame')).not.toBeNull()
     openSpy.mockRestore()
   })
+
+  it('preserves blank-line paragraphs so empty spacers keep one line height', () => {
+    const html = buildDocumentPdfHtml(
+      '<p>Title</p><p class="empty-spacer" style="font-size:11pt; line-height:1.725;"></p>' +
+        '<p><span style="font-size:12pt;"></span></p><p><img src="fig.png"></p>',
+      'Manuscript'
+    )
+    expect(html).toContain("content: '\\00a0'")
+    expect(html).toContain('<p class="empty-spacer" style="font-size:11pt; line-height:1.725;">&nbsp;</p>')
+    expect(html).toContain('<p><span style="font-size:12pt;">&nbsp;</span></p>')
+    expect(html).toContain('<p><img src="fig.png"></p>')
+  })
 })

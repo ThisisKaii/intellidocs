@@ -130,6 +130,26 @@ function scopePresetCssForPrint(presetCss?: string): string {
     .replace(/\.ProseMirror/g, '.intellidocs-print-doc')
 }
 
+/** Give blank paragraphs/headings without text a non-breaking space so browsers draw one line box. */
+function preserveBlankLines(html: string): string {
+  if (typeof DOMParser !== 'undefined') {
+    const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+    doc.body.querySelectorAll('p, h1, h2, h3, h4, h5, h6').forEach((el) => {
+      if (el.querySelector('img, table, svg, hr, br, video, canvas, iframe, [data-tab], [data-type]')) return
+      const text = (el.textContent ?? '').replace(/[\u200B-\u200D\uFEFF]/g, '')
+      if (text.trim().length > 0) return
+      // Keep any inline font-size/family span if present by placing the nbsp inside the deepest inline wrapper.
+      let target: Element = el
+      while (target.firstElementChild && !target.firstElementChild.nextElementSibling) {
+        target = target.firstElementChild
+      }
+      target.textContent = '\u00a0'
+    })
+    return doc.body.innerHTML
+  }
+  return html.replace(/<(p|h[1-6])(\b[^>]*)>\s*<\/\1>/gi, '<$1$2>\u00a0</$1>')
+}
+
 /**
  * Build a clean self-contained print page that mirrors the document's exact
  * page size, orientation, and margins on every page while keeping `@page { margin: 0 }`
@@ -147,6 +167,7 @@ export function buildDocumentPdfHtml(
   const heightIn = (isLandscape ? baseSize.width : baseSize.height) / 96
   const margins = options.margins ?? DEFAULT_PDF_MARGINS
   const scopedPreset = scopePresetCssForPrint(options.presetCss)
+  const bodyHtml = preserveBlankLines(html)
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -192,7 +213,16 @@ export function buildDocumentPdfHtml(
     word-wrap: break-word;
     overflow-wrap: break-word;
   }
-  .intellidocs-print-doc p { margin: 0 0 0.08in; }
+  .intellidocs-print-doc p { margin: 0; }
+  .intellidocs-print-doc p:empty::before,
+  .intellidocs-print-doc h1:empty::before,
+  .intellidocs-print-doc h2:empty::before,
+  .intellidocs-print-doc h3:empty::before,
+  .intellidocs-print-doc h4:empty::before,
+  .intellidocs-print-doc h5:empty::before,
+  .intellidocs-print-doc h6:empty::before {
+    content: '\\00a0';
+  }
   .intellidocs-print-doc h1,
   .intellidocs-print-doc h2,
   .intellidocs-print-doc h3,
@@ -231,7 +261,7 @@ export function buildDocumentPdfHtml(
     <thead><tr><td style="height: ${margins.top}in;"></td></tr></thead>
     <tfoot><tr><td style="height: ${margins.bottom}in;"></td></tr></tfoot>
     <tbody><tr><td>
-      <div class="intellidocs-print-doc">${html}</div>
+      <div class="intellidocs-print-doc">${bodyHtml}</div>
     </td></tr></tbody>
   </table>
 </body>
