@@ -3,6 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 import { Plan, RoleName, StorageSummary, VerificationStatus } from '../types/index'
 import { effectivePlan, PlanRow } from '../utils/plan'
 import { namesMetadata, readAccountNames, type AccountNames } from '../utils/accountNames'
+import {
+  saveVerificationDocument,
+  type StoredVerificationDocument,
+  type VerificationDocumentInput,
+} from './verificationDocumentModel'
 import type { User } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -219,6 +224,7 @@ export interface ProfessorApplicationInput {
   institutionalEmail: string
   facultyId: string
   reason: string
+  document?: VerificationDocumentInput
 }
 
 /** The user's application state as shown on their settings page. */
@@ -241,16 +247,11 @@ const ALREADY_HAS: Record<'student' | 'professor', RoleName[]> = {
   professor: ['professor', 'admin'],
 }
 
-/**
- * Mark a profile as having a pending academic application. The user keeps their current role
- * (and quota) while pending; only an admin approval grants the requested role.
- * Returns 'already' when the user already holds that role or a higher one.
- */
-async function markApplicationPending(
+/** Check whether an account is eligible to apply for `requestedRole` without downgrading an equal/higher role. */
+async function checkApplicationEligibility(
   userId: string,
   requestedRole: 'student' | 'professor',
-  idFields: Record<string, string>,
-): Promise<'pending' | 'already'> {
+): Promise<{ hasProfile: boolean } | 'already'> {
   const { data: existing } = await supabase
     .from('user_profiles')
     .select('verification_status, roles(role_name)')
@@ -262,7 +263,28 @@ async function markApplicationPending(
   if (currentRole === 'admin' || (currentRole && approved && ALREADY_HAS[requestedRole].includes(currentRole))) {
     return 'already'
   }
+  return { hasProfile: Boolean(existing) }
+}
 
+function documentMetadataFields(stored: StoredVerificationDocument | null): Record<string, string> {
+  if (!stored) return {}
+  return {
+    documentPath: stored.path,
+    documentMime: stored.mime,
+    documentName: stored.name,
+  }
+}
+
+/**
+ * Mark a profile as having a pending academic application. The user keeps their current role
+ * (and quota) while pending; only an admin approval grants the requested role.
+ */
+async function markApplicationPending(
+  userId: string,
+  requestedRole: 'student' | 'professor',
+  hasProfile: boolean,
+  idFields: Record<string, string>,
+): Promise<void> {
   const fields = {
     verification_status: 'pending',
     requested_role: requestedRole,
@@ -273,7 +295,7 @@ async function markApplicationPending(
     updated_at: new Date().toISOString(),
   }
 
-  if (existing) {
+  if (hasProfile) {
     const { error } = await supabase.from('user_profiles').update(fields).eq('user_id', userId)
     if (error) throw new Error(error.message)
   } else {
@@ -282,7 +304,6 @@ async function markApplicationPending(
     const { error } = await supabase.from('user_profiles').insert({ user_id: userId, role_id: baseRole, ...fields })
     if (error) throw new Error(error.message)
   }
-  return 'pending'
 }
 
 /** Details a user submits when applying for verified student status. */
@@ -291,6 +312,7 @@ export interface StudentApplicationInput {
   studentId: string
   college: string
   degreeProgram: string
+  document?: VerificationDocumentInput
 }
 
 /**
@@ -301,8 +323,14 @@ export async function createStudentApplication(
   userId: string,
   input: StudentApplicationInput,
 ): Promise<'submitted' | 'already'> {
-  const outcome = await markApplicationPending(userId, 'student', { student_id: input.studentId })
-  if (outcome === 'already') return 'already'
+  const eligibility = await checkApplicationEligibility(userId, 'student')
+  if (eligibility === 'already') return 'already'
+
+  const storedDoc = input.document
+    ? await saveVerificationDocument(userId, 'student', input.document)
+    : null
+
+  await markApplicationPending(userId, 'student', eligibility.hasProfile, { student_id: input.studentId })
 
   const { error: notifError } = await supabase.from('notifications').insert({
     user_id: userId,
@@ -314,6 +342,7 @@ export async function createStudentApplication(
       college: input.college,
       degreeProgram: input.degreeProgram,
       submittedAt: new Date().toISOString(),
+      ...documentMetadataFields(storedDoc),
     },
   })
   if (notifError) throw new Error(notifError.message)
@@ -332,17 +361,8 @@ export async function approveStudentAutomatically(
   userId: string,
   input: StudentApplicationInput,
 ): Promise<'approved' | 'already'> {
-  const { data: existing } = await supabase
-    .from('user_profiles')
-    .select('verification_status, roles(role_name)')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  const currentRole = (existing?.roles as { role_name?: RoleName } | null)?.role_name
-  const alreadyApproved = existing?.verification_status === 'approved'
-  if (currentRole === 'admin' || (currentRole && alreadyApproved && ALREADY_HAS.student.includes(currentRole))) {
-    return 'already'
-  }
+  const eligibility = await checkApplicationEligibility(userId, 'student')
+  if (eligibility === 'already') return 'already'
 
   const studentRoleId = await roleIdByName('student')
   if (!studentRoleId) throw new Error("Role 'student' not found in system")
@@ -359,7 +379,7 @@ export async function approveStudentAutomatically(
     updated_at: now,
   }
 
-  if (existing) {
+  if (eligibility.hasProfile) {
     const { error } = await supabase.from('user_profiles').update(fields).eq('user_id', userId)
     if (error) throw new Error(error.message)
   } else {
@@ -395,8 +415,14 @@ export async function createProfessorApplication(
   userId: string,
   input: ProfessorApplicationInput,
 ): Promise<'submitted' | 'already'> {
-  const outcome = await markApplicationPending(userId, 'professor', { faculty_id: input.facultyId })
-  if (outcome === 'already') return 'already'
+  const eligibility = await checkApplicationEligibility(userId, 'professor')
+  if (eligibility === 'already') return 'already'
+
+  const storedDoc = input.document
+    ? await saveVerificationDocument(userId, 'professor', input.document)
+    : null
+
+  await markApplicationPending(userId, 'professor', eligibility.hasProfile, { faculty_id: input.facultyId })
 
   // The applicant's own notification carries the details the admin queue shows.
   const { error: notifError } = await supabase.from('notifications').insert({
@@ -411,6 +437,7 @@ export async function createProfessorApplication(
       facultyId: input.facultyId,
       reason: input.reason,
       submittedAt: new Date().toISOString(),
+      ...documentMetadataFields(storedDoc),
     },
   })
   if (notifError) throw new Error(notifError.message)

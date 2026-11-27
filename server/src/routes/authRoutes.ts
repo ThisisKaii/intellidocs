@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { login, register, googleAuth, updateProfile, applyProfessor, applyStudent, getApplicationStatus, changePassword, deleteAccount, getUserStorage, getMe } from '../controllers/authController'
 import { uploadAvatar, deleteAvatar } from '../controllers/avatarController'
 import { avatarUpload } from '../middleware/avatarUpload'
-import { studyLoadUpload } from '../middleware/studyLoadUpload'
+import { studyLoadUpload, facultyIdUpload } from '../middleware/studyLoadUpload'
 import { authMiddleware } from '../middleware/authMiddleware'
 import { authArcjet, signupArcjet } from '../middleware/arcjet'
 import { validateBody } from '../middleware/validate'
@@ -37,7 +37,7 @@ router.get('/me', authMiddleware, getMe)
 router.get('/application-status', authMiddleware, getApplicationStatus)
 router.post('/password', authMiddleware, validateBody(changePasswordSchema), changePassword)
 router.delete('/account', authMiddleware, validateBody(deleteAccountSchema), deleteAccount)
-router.post('/apply-professor', authMiddleware, validateBody(applyProfessorSchema), applyProfessor)
+router.post('/apply-professor', authMiddleware, facultyIdUpload, validateBody(applyProfessorSchema), applyProfessor)
 
 /** Submit a student status application (regular user → pending or auto-approved student). */
 router.post('/apply-student', authMiddleware, studyLoadUpload, validateBody(applyStudentSchema), applyStudent)

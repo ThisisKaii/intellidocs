@@ -1,5 +1,6 @@
  import { createClient } from '@supabase/supabase-js'
 import { bucketByWeek } from '../utils/weeklyBuckets'
+import { signVerificationDocumentUrls } from './verificationDocumentModel'
 import {
   AdminApplicant,
   AdminDocumentRecord,
@@ -168,11 +169,17 @@ export async function getPendingApplicants(): Promise<AdminApplicant[]> {
     }
   }
 
+  const docPaths = Object.values(notificationMap)
+    .map((entry) => entry.metadata?.documentPath)
+    .filter((p): p is string => typeof p === 'string' && p.length > 0)
+  const signedUrls = await signVerificationDocumentUrls(docPaths)
+
   return (data || []).map((p) => {
     const currentRole = (p.roles as { role_name?: string } | null)?.role_name ?? 'user'
     const roleName = requestedByUser.get(p.user_id) ?? currentRole
     const raw = notificationMap[p.user_id]?.metadata ?? {}
     const strValue = (value: unknown): string | null => (typeof value === 'string' ? value : null)
+    const documentPath = strValue(raw.documentPath)
     const details: ApplicantDetails = {
       applicantType: roleName,
       college: strValue(raw.college),
@@ -183,6 +190,9 @@ export async function getPendingApplicants(): Promise<AdminApplicant[]> {
       degreeProgram: strValue(raw.degreeProgram),
       reason: strValue(raw.reason),
       submittedAt: strValue(raw.submittedAt),
+      documentUrl: documentPath ? (signedUrls.get(documentPath) ?? null) : null,
+      documentMime: strValue(raw.documentMime),
+      documentName: strValue(raw.documentName),
     }
     return {
       profile_id: p.id,

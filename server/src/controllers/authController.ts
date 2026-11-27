@@ -3,6 +3,7 @@ import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import 'dotenv/config'
 import { updateOwnProfile, registerUser, getOwnNames, getUserStorageSummary, getOwnRoleStatus, createProfessorApplication, createStudentApplication, approveStudentAutomatically, ensureUserProfile, getOwnApplicationStatus, getRequestedRole, getPlanRow, signInWithPassword } from '../models/userModel'
+import { VerificationDocumentError, type VerificationDocumentInput } from '../models/verificationDocumentModel'
 import { checkStudyLoadNameMatch, resolveApplicantNames } from '../utils/studyLoadMatcher'
 import { effectivePlan } from '../utils/plan'
 import { resolvePendingShares } from '../models/shareModel'
@@ -272,6 +273,11 @@ export async function getMe(req: AuthenticatedRequest, res: Response): Promise<v
   }
 }
 
+function uploadedDocumentFrom(file?: Express.Multer.File): VerificationDocumentInput | undefined {
+  if (!file) return undefined
+  return { buffer: file.buffer, mimetype: file.mimetype, originalname: file.originalname }
+}
+
 /**
  * Submit a faculty verification application. The user keeps their current role
  * until an administrator approves the application.
@@ -290,7 +296,11 @@ export async function applyProfessor(req: AuthenticatedRequest, res: Response): 
       return
     }
 
-    const outcome = await createProfessorApplication(userId, { ...body, email: req.user?.email ?? null })
+    const outcome = await createProfessorApplication(userId, {
+      ...body,
+      email: req.user?.email ?? null,
+      document: uploadedDocumentFrom(req.file),
+    })
     if (outcome === 'already') {
       res.status(409).json({ error: 'You already have professor access' })
       return
@@ -301,6 +311,10 @@ export async function applyProfessor(req: AuthenticatedRequest, res: Response): 
       status: 'pending',
     })
   } catch (err) {
+    if (err instanceof VerificationDocumentError) {
+      res.status(err.status).json({ error: err.message })
+      return
+    }
     console.error('applyProfessor: unexpected error:', err instanceof Error ? err.message : err)
     res.status(500).json({ error: 'Failed to submit application' })
   }
@@ -403,6 +417,7 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
       studentId,
       college,
       degreeProgram,
+      document: uploadedDocumentFrom(req.file),
     })
     if (outcome === 'already') {
       res.status(409).json({ error: 'You already have verified student access' })
@@ -417,6 +432,10 @@ export async function applyStudent(req: AuthenticatedRequest, res: Response): Pr
       autoApproved: false,
     })
   } catch (err) {
+    if (err instanceof VerificationDocumentError) {
+      res.status(err.status).json({ error: err.message })
+      return
+    }
     console.error('applyStudent: unexpected error:', err instanceof Error ? err.message : err)
     res.status(500).json({ error: 'Failed to submit application' })
   }

@@ -372,6 +372,9 @@ export interface ApplicantDetails {
   degreeProgram?: string | null
   reason?: string | null
   submittedAt?: string | null
+  documentUrl?: string | null
+  documentMime?: string | null
+  documentName?: string | null
 }
 
 /** A pending Student or Professor applicant in the admin verification queue. */
